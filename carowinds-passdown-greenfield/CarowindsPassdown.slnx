@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Carowinds.Passdown.Application/Carowinds.Passdown.Application.csproj" />
+    <Project Path="src/Carowinds.Passdown.Desktop/Carowinds.Passdown.Desktop.csproj" />
+    <Project Path="src/Carowinds.Passdown.Documents/Carowinds.Passdown.Documents.csproj" />
+    <Project Path="src/Carowinds.Passdown.Domain/Carowinds.Passdown.Domain.csproj" />
+    <Project Path="src/Carowinds.Passdown.Infrastructure/Carowinds.Passdown.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Carowinds.Passdown.Documents.Tests/Carowinds.Passdown.Documents.Tests.csproj" />
+    <Project Path="tests/Carowinds.Passdown.Domain.Tests/Carowinds.Passdown.Domain.Tests.csproj" />
+    <Project Path="tests/Carowinds.Passdown.Infrastructure.Tests/Carowinds.Passdown.Infrastructure.Tests.csproj" />
+    <Project Path="tests/Carowinds.Passdown.Ui.Tests/Carowinds.Passdown.Ui.Tests.csproj" />
+  </Folder>
+</Solution>
