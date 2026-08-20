@@ -1,0 +1,4 @@
+This file exists only to verify that FixtureFile can locate and read a
+committed fixture from tests/Carowinds.Passdown.Infrastructure.Tests. It is
+not real Carowinds/Six Flags data and contains no private company
+information (spec §14.2).
