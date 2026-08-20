@@ -1,0 +1,29 @@
+<!--
+  SYNTHETIC defensive fixture (not captured from a live response): a single productv2-card with no
+  price-before (qualifier) and no price-strikethrough (comparison price) element at all — proving
+  the parser leaves both null rather than fabricating a value, for the case where a promotions-page
+  card has neither. Both fields are documented as genuinely optional per-card
+  (docs/retrieval/catalog-source-inventory.md Part B: "Daily Fast Lane... has neither, while All
+  Season Fast Lane... has both"); this fixture applies that same already-proven optionality to the
+  promotions page rather than inventing a new markup shape, since this phase's live special-offers
+  fetch happened to have both cards populated.
+-->
+<div id="offers-grid">
+  <div data-ab="productv2-card" data-ab-product="synthetic-no-qualifier-promo" class="relative flex h-full min-h-0 w-full flex-1 flex-col rounded-2xl shadow-card">
+    <div class="flex h-full min-h-0 flex-col overflow-visible rounded-2xl">
+      <div class="relative flex min-h-[120px] flex-col gap-2 rounded-t-2xl px-6 pb-8 pt-5 text-white">
+        <h3 data-ab="productv2-card-title" class="type-24-700 leading-tight">Weekday Value Ticket</h3>
+      </div>
+      <div class="flex flex-1 flex-col rounded-b-2xl bg-gray-lighter px-6 py-4 text-black">
+        <div class="mt-auto pt-3">
+          <div class="flex flex-col gap-0.5">
+            <div class="flex items-baseline gap-1.5 mt-1.5">
+              <span data-ab="productv2-card-price" class="text-[40px] font-semibold text-navy">$29</span>
+            </div>
+          </div>
+          <button class="ui-button" data-accesso-keyword="synthetic-weekday-value" data-ab="productv2-card-buynow" accessoStore="">Buy Now</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

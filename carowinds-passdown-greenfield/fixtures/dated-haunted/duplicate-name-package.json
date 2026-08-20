@@ -1,0 +1,26 @@
+{
+  "SERVICE": {
+    "keyword_image": "",
+    "request_type": "GetKeywordCalendar",
+    "session_id": "test-session",
+    "status": "OK",
+    "DATES": {
+      "D": {
+        "bookings_sold_out": "null",
+        "date": "2026-09-11",
+        "lowest_price": "0.00",
+        "lowest_price_customer_type": "",
+        "lowest_price_package": "",
+        "lowest_price_savings": "",
+        "PS": {
+          "P": [
+            { "available": "14", "capacity": "14", "event_id": "10049161", "id": "10098520", "name": "Haunted Attractions Pass", "CT": { "fee_amount": "0", "id": "758", "retail_amount": "10.00", "tax_amount": "0.00" } },
+            { "available": "14", "capacity": "14", "event_id": "10049161", "id": "10098599", "name": "Haunted Attractions Pass", "CT": { "fee_amount": "0", "id": "758", "retail_amount": "18.00", "tax_amount": "0.00" } }
+          ]
+        }
+      }
+    },
+    "request_token": "TESTTOKEN0000000000000000000026",
+    "_client_ip": "0.0.0.0"
+  }
+}

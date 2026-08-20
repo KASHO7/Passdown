@@ -1,0 +1,11 @@
+{
+  "SERVICE": {
+    "keyword_image": "fast-lane-store.png",
+    "request_type": "GetKeywordCalendar",
+    "session_id": "test-session",
+    "status": "OK",
+    "DATES": {},
+    "request_token": "TESTTOKEN0000000000000000000014",
+    "_client_ip": "0.0.0.0"
+  }
+}

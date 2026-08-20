@@ -1,0 +1,58 @@
+{
+  "SERVICE": {
+    "keyword_image": "",
+    "request_type": "GetKeywordCalendar",
+    "session_id": "test-session",
+    "status": "OK",
+    "DATES": {
+      "D": [
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-08-20",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              { "available": "14", "capacity": "14", "event_id": "10048997", "id": "10094884", "name": "Park Ticket", "CT": { "fee_amount": "0", "id": "1", "retail_amount": "49.00", "tax_amount": "3.25" } }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-08-21",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              { "available": "14", "capacity": "14", "event_id": "10048997", "id": "10094885", "name": "Park Ticket", "CT": { "fee_amount": "0", "id": "1", "retail_amount": "49.00", "tax_amount": "3.25" } },
+              { "available": "14", "capacity": "14", "event_id": "10048997", "id": "10094886", "name": "Park Ticket", "CT": { "fee_amount": "0", "id": "1", "retail_amount": "55.00", "tax_amount": "3.64" } },
+              { "available": "14", "capacity": "14", "event_id": "10048997", "id": "10095285", "name": "Ticket + Meal, Snack & Drink Bundle", "CT": { "fee_amount": "0", "id": "141", "retail_amount": "69.00", "tax_amount": "5.05" } },
+              { "available": "14", "capacity": "14", "event_id": "10048997", "id": "10095286", "name": "Ticket + Meal, Snack & Drink Bundle", "CT": { "fee_amount": "0", "id": "141", "retail_amount": "75.00", "tax_amount": "5.44" } },
+              { "available": "14", "capacity": "14", "event_id": "10048997", "id": "10095293", "name": "Ticket + Fast Lane Reserve Bundle", "CT": { "fee_amount": "0", "id": "141", "retail_amount": "89.00", "tax_amount": "2.58" } },
+              { "available": "14", "capacity": "14", "event_id": "10048997", "id": "10095294", "name": "Ticket + Fast Lane Reserve Bundle", "CT": { "fee_amount": "0", "id": "141", "retail_amount": "95.00", "tax_amount": "2.98" } }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-08-29",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              { "available": "14", "capacity": "14", "event_id": "10048997", "id": "10094930", "name": "Park Ticket", "CT": { "fee_amount": "0", "id": "1", "retail_amount": "55.00", "tax_amount": "3.64" } }
+            ]
+          }
+        }
+      ]
+    },
+    "request_token": "TESTTOKEN0000000000000000000000",
+    "_client_ip": "0.0.0.0"
+  }
+}

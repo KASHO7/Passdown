@@ -4,6 +4,11 @@
     <ProjectReference Include="..\Carowinds.Passdown.Domain\Carowinds.Passdown.Domain.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- ProductCardHtmlParser (Phase 3F1) has no adapter yet to exercise it indirectly through,
+         unlike the JSON DTOs other sources keep internal — tests need direct access. -->
+    <InternalsVisibleTo Include="Carowinds.Passdown.Infrastructure.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
     <PackageReference Include="Microsoft.Playwright" Version="1.62.0" />

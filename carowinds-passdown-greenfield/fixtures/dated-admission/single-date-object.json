@@ -1,0 +1,25 @@
+{
+  "SERVICE": {
+    "keyword_image": "",
+    "request_type": "GetKeywordCalendar",
+    "session_id": "test-session",
+    "status": "OK",
+    "DATES": {
+      "D": {
+        "bookings_sold_out": "null",
+        "date": "2026-08-20",
+        "lowest_price": "0.00",
+        "lowest_price_customer_type": "",
+        "lowest_price_package": "",
+        "lowest_price_savings": "",
+        "PS": {
+          "P": [
+            { "available": "14", "capacity": "14", "event_id": "10048997", "id": "10094884", "name": "Park Ticket", "CT": { "fee_amount": "0", "id": "1", "retail_amount": "49.00", "tax_amount": "3.25" } }
+          ]
+        }
+      }
+    },
+    "request_token": "TESTTOKEN0000000000000000000001",
+    "_client_ip": "0.0.0.0"
+  }
+}

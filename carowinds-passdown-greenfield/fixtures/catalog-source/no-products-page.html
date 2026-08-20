@@ -1,0 +1,15 @@
+<!--
+  A well-formed page response containing no recognized product-card markers at all —
+  representing a legitimately empty catalog result (the parser must return an empty list, not an
+  error). Modeled on the real https://www.sixflags.com/carowinds/add-ons page, which returned zero
+  matches for this parser's card marker during investigation (it uses a different, simpler card
+  variant not covered by this parser — see docs/retrieval/catalog-source-inventory.md's "known
+  limitations" for that variant). This fixture keeps only unrelated page chrome, no product cards
+  at all.
+-->
+<nav><a href="/carowinds">Carowinds</a></nav>
+<main>
+  <h1>Add-Ons</h1>
+  <p>Check back soon for available add-ons.</p>
+</main>
+<footer><a href="/carowinds/park-hours">Calendar</a></footer>

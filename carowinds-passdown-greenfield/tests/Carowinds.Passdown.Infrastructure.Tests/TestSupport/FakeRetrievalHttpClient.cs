@@ -14,6 +14,10 @@ internal sealed class FakeRetrievalHttpClient : IRetrievalHttpClient
 
     public Uri? LastRequestedUri { get; private set; }
 
+    public string? LastPostedBody { get; private set; }
+
+    public IReadOnlyDictionary<string, string>? LastPostedHeaders { get; private set; }
+
     public FakeRetrievalHttpClient(RetrievalHttpResponse response) => _response = response;
 
     public FakeRetrievalHttpClient(Exception exception) => _exception = exception;
@@ -21,6 +25,20 @@ internal sealed class FakeRetrievalHttpClient : IRetrievalHttpClient
     public Task<RetrievalHttpResponse> GetAsync(Uri requestUri, CancellationToken cancellationToken)
     {
         LastRequestedUri = requestUri;
+        return _exception is not null
+            ? Task.FromException<RetrievalHttpResponse>(_exception)
+            : Task.FromResult(_response!);
+    }
+
+    public Task<RetrievalHttpResponse> PostJsonAsync(
+        Uri requestUri,
+        string jsonBody,
+        IReadOnlyDictionary<string, string>? headers,
+        CancellationToken cancellationToken)
+    {
+        LastRequestedUri = requestUri;
+        LastPostedBody = jsonBody;
+        LastPostedHeaders = headers;
         return _exception is not null
             ? Task.FromException<RetrievalHttpResponse>(_exception)
             : Task.FromResult(_response!);

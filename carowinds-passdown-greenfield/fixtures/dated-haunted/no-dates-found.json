@@ -1,0 +1,11 @@
+{
+  "SERVICE": {
+    "error_msg": "No dates found that meet requirements",
+    "keyword_image": "",
+    "request_type": "GetKeywordCalendar",
+    "session_id": "test-session",
+    "status": "FAILED",
+    "request_token": "TESTTOKEN0000000000000000000022",
+    "_client_ip": "0.0.0.0"
+  }
+}

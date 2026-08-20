@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace Carowinds.Passdown.Infrastructure.Retrieval.Http;
 
 /// <summary>
@@ -22,6 +24,45 @@ public sealed class RetrievalHttpClient(HttpClient httpClient, RetrievalHttpOpti
         {
             using var response = await httpClient
                 .GetAsync(requestUri, HttpCompletionOption.ResponseHeadersRead, linkedCts.Token)
+                .ConfigureAwait(false);
+            var body = await response.Content.ReadAsStringAsync(linkedCts.Token).ConfigureAwait(false);
+
+            return new RetrievalHttpResponse(response.StatusCode, response.Content.Headers.ContentType?.MediaType, body);
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Request to '{requestUri}' did not complete within {options.Timeout}.");
+        }
+    }
+
+    public async Task<RetrievalHttpResponse> PostJsonAsync(
+        Uri requestUri,
+        string jsonBody,
+        IReadOnlyDictionary<string, string>? headers,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(requestUri);
+        ArgumentNullException.ThrowIfNull(jsonBody);
+
+        using var timeoutCts = new CancellationTokenSource(options.Timeout);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, requestUri)
+        {
+            Content = new StringContent(jsonBody, Encoding.UTF8, "application/json"),
+        };
+        if (headers is not null)
+        {
+            foreach (var (name, value) in headers)
+            {
+                request.Headers.TryAddWithoutValidation(name, value);
+            }
+        }
+
+        try
+        {
+            using var response = await httpClient
+                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linkedCts.Token)
                 .ConfigureAwait(false);
             var body = await response.Content.ReadAsStringAsync(linkedCts.Token).ConfigureAwait(false);
 

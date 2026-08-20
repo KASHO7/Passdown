@@ -1,0 +1,11 @@
+<!--
+  A card marker with a title but a truncated/corrupted remainder — no price content at all —
+  simulating a network-truncated or restructured response. The parser must reject this as
+  malformed rather than silently treating it as a priceless product (spec: never fabricate).
+-->
+<div id="passes-grid">
+  <div data-ab="productv2-card" data-ab-product="550e3db6-5bad-45f8-8404-5d608c367617" class="relative flex h-full min-h-0 w-full flex-1 flex-col rounded-2xl shadow-card mt-5">
+    <div class="flex h-full min-h-0 flex-col overflow-visible rounded-2xl">
+      <div class="relative flex min-h-[120px] flex-col gap-2 rounded-t-2xl px-6 pb-8 pt-5 text-white">
+        <h3 data-ab="productv2-card-title" class="type-24-700 leading-tight">2027 Gold Pass</h3>
+      </div>

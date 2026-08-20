@@ -1,0 +1,37 @@
+<!--
+  Modeled on real, live-observed behavior (Phase 3F5): the live add-ons page renders each real
+  product's title/price/data-accesso-keyword markup twice (a responsive-breakpoint duplicate, the
+  same pattern already documented for the productv2-card pages) — every data-accesso-keyword on
+  https://www.sixflags.com/carowinds/add-ons was independently found exactly twice
+  (2026SinglePhoto x2, 27AddonsPhoto x2) during this phase's live re-check, not merely assumed from
+  the season-passes precedent. This fixture reproduces that shape with one product only, to prove
+  the parser/mapper's existing dedup keeps exactly one.
+-->
+<main>
+  <div class="grid gap-6">
+    <div class="lg:h-full rounded-2xl shadow-card h-full relative hidden md:block">
+      <div class="flex flex-col md:flex-row items-start gap-2">
+        <div class="flex-1"><h3 class="font-medium text-blue-dark type-20-600 break-words">Single Day FunPix</h3></div>
+        <div class="w-full md:w-auto md:text-right md:min-w-[120px]">
+          <div class="text-gray type-14-400">Only</div>
+          <div class="break-words"><span class="type-20-600">$19.99</span></div>
+        </div>
+      </div>
+      <div class="absolute bottom-4 flex justify-between gap-4">
+        <button class="ui-button" data-accesso-keyword="2026SinglePhoto" accessoStore="">Buy Now</button>
+      </div>
+    </div>
+    <div class="lg:h-full rounded-2xl shadow-card h-full relative block md:hidden">
+      <div class="flex flex-col md:flex-row items-start gap-2">
+        <div class="flex-1"><h3 class="font-medium text-blue-dark type-20-600 break-words">Single Day FunPix</h3></div>
+        <div class="w-full md:w-auto md:text-right md:min-w-[120px]">
+          <div class="text-gray type-14-400">Only</div>
+          <div class="break-words"><span class="type-20-600">$19.99</span></div>
+        </div>
+      </div>
+      <div class="absolute bottom-4 flex justify-between gap-4">
+        <button class="ui-button" data-accesso-keyword="2026SinglePhoto" accessoStore="">Buy Now</button>
+      </div>
+    </div>
+  </div>
+</main>

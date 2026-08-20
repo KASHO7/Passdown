@@ -1,0 +1,40 @@
+{
+  "SERVICE": {
+    "keyword_image": "fast-lane-store.png",
+    "request_type": "GetKeywordCalendar",
+    "session_id": "test-session",
+    "status": "OK",
+    "DATES": {
+      "D": [
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-08-20",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              { "available": "14", "capacity": "14", "event_id": "10048996", "id": "10094822", "name": "FAST LANE RESERVE", "CT": { "fee_amount": "0", "id": "10", "retail_amount": "49.00", "tax_amount": "0.00" } }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-08-21",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              { "available": "14", "capacity": "14", "event_id": "10048996", "id": "10094823", "name": "FAST LANE RESERVE", "CT": { "fee_amount": "0", "id": "10", "retail_amount": "59.00", "tax_amount": "0.00" } }
+            ]
+          }
+        }
+      ]
+    },
+    "request_token": "TESTTOKEN0000000000000000000015",
+    "_client_ip": "0.0.0.0"
+  }
+}

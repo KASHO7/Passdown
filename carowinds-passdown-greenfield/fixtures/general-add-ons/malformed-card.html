@@ -1,0 +1,12 @@
+<!--
+  SYNTHETIC defensive fixture (not captured from a live response): a card title marker with a
+  truncated/corrupted remainder — no price content at all — simulating a network-truncated or
+  restructured response, mirroring catalog-source/malformed-card.html's role for the shared
+  productv2-card parser. The parser must reject this as malformed rather than silently treating it
+  as a priceless product (spec: never fabricate).
+-->
+<main>
+  <div class="grid gap-6">
+    <div class="lg:h-full rounded-2xl shadow-card h-full relative">
+      <div class="flex flex-col md:flex-row items-start gap-2">
+        <div class="flex-1"><h3 class="font-medium text-blue-dark type-20-600 break-words">Single Day FunPix</h3></div>

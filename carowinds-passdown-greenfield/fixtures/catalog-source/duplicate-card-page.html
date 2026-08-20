@@ -1,0 +1,50 @@
+<!--
+  SYNTHETIC fixture — not captured live. No real page observed during investigation repeated a
+  whole productv2-card (only individual attribute occurrences inside a single card, e.g. for
+  responsive icon markup, which the parser already handles correctly since it scopes each card to
+  its own fragment). Included defensively to prove CatalogCardMapper's deduplication is
+  deterministic if a page ever did render the same product twice (e.g. a desktop/mobile duplicate
+  card block) rather than assuming that can never happen. Same real "2027 Gold Pass" field values as
+  fixtures/season-passes/published-page.html, repeated twice with identical identity.
+-->
+<div id="passes-grid">
+  <div data-ab="productv2-card" data-ab-product="550e3db6-5bad-45f8-8404-5d608c367617" class="relative flex h-full min-h-0 w-full flex-1 flex-col rounded-2xl shadow-card mt-5">
+    <div class="flex h-full min-h-0 flex-col overflow-visible rounded-2xl">
+      <div class="relative flex min-h-[120px] flex-col gap-2 rounded-t-2xl px-6 pb-8 pt-5 text-white">
+        <h3 data-ab="productv2-card-title" class="type-24-700 leading-tight">2027 Gold Pass</h3>
+      </div>
+      <div class="flex flex-1 flex-col rounded-b-2xl bg-gray-lighter px-6 py-4 text-black">
+        <div class="mt-auto pt-3">
+          <div class="flex flex-col gap-0.5">
+            <p data-ab="productv2-card-price-before" class="text-xs font-semibold text-navy">Sale Price</p>
+            <span data-ab="productv2-card-price-strikethrough" class="mt-1 text-[20px] font-semibold text-navy/60 line-through">$115</span>
+            <div class="flex items-baseline gap-1.5 mt-1.5">
+              <span data-ab="productv2-card-price" class="text-[40px] font-semibold text-navy">$89</span>
+            </div>
+          </div>
+          <button class="ui-button" data-accesso-keyword="FallGoldSP2027" data-ab="productv2-card-buynow" accessoStore="">Buy Now</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Same card again, e.g. a hidden mobile-breakpoint duplicate of the block above. -->
+  <div data-ab="productv2-card" data-ab-product="550e3db6-5bad-45f8-8404-5d608c367617" class="relative flex h-full min-h-0 w-full flex-1 flex-col rounded-2xl shadow-card mt-5 md:hidden">
+    <div class="flex h-full min-h-0 flex-col overflow-visible rounded-2xl">
+      <div class="relative flex min-h-[120px] flex-col gap-2 rounded-t-2xl px-6 pb-8 pt-5 text-white">
+        <h3 data-ab="productv2-card-title" class="type-24-700 leading-tight">2027 Gold Pass</h3>
+      </div>
+      <div class="flex flex-1 flex-col rounded-b-2xl bg-gray-lighter px-6 py-4 text-black">
+        <div class="mt-auto pt-3">
+          <div class="flex flex-col gap-0.5">
+            <p data-ab="productv2-card-price-before" class="text-xs font-semibold text-navy">Sale Price</p>
+            <span data-ab="productv2-card-price-strikethrough" class="mt-1 text-[20px] font-semibold text-navy/60 line-through">$115</span>
+            <div class="flex items-baseline gap-1.5 mt-1.5">
+              <span data-ab="productv2-card-price" class="text-[40px] font-semibold text-navy">$89</span>
+            </div>
+          </div>
+          <button class="ui-button" data-accesso-keyword="FallGoldSP2027" data-ab="productv2-card-buynow" accessoStore="">Buy Now</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

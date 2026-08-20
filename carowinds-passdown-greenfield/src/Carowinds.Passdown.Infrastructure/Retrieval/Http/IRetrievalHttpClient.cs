@@ -11,6 +11,19 @@ namespace Carowinds.Passdown.Infrastructure.Retrieval.Http;
 public interface IRetrievalHttpClient
 {
     Task<RetrievalHttpResponse> GetAsync(Uri requestUri, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// POSTs a JSON body with caller-supplied headers. Added for
+    /// <see cref="Sources.DatedAdmissionSource"/> (spec Phase 3C), whose official endpoint is a
+    /// JSON POST API rather than a plain GET like <see cref="Sources.ParkHoursSource"/>'s — see
+    /// docs/retrieval/dated-admission-source.md. <paramref name="headers"/> carries the public
+    /// storefront identification headers the endpoint requires (not credentials/auth).
+    /// </summary>
+    Task<RetrievalHttpResponse> PostJsonAsync(
+        Uri requestUri,
+        string jsonBody,
+        IReadOnlyDictionary<string, string>? headers,
+        CancellationToken cancellationToken);
 }
 
 public sealed record RetrievalHttpResponse(HttpStatusCode StatusCode, string? ContentType, string Body)

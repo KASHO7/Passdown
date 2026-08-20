@@ -1,0 +1,14 @@
+<!--
+  SYNTHETIC defensive fixture (not captured from a live response): a well-formed add-ons page with
+  no recognized product cards at all — representing a legitimately empty catalog result (the parser
+  must return an empty list, not an error), mirroring catalog-source/no-products-page.html's role
+  for the shared productv2-card parser. No real add-ons-page occurrence of this was observed live
+  (Phase 3F5 found two products present); this fixture only proves the parser doesn't fabricate a
+  product when the page's own title marker is genuinely absent.
+-->
+<nav><a href="/carowinds">Carowinds</a></nav>
+<main>
+  <h1>Add-Ons</h1>
+  <p>Check back soon for available add-ons.</p>
+</main>
+<footer><a href="/carowinds/park-hours">Calendar</a></footer>
