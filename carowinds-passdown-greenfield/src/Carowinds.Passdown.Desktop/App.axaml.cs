@@ -65,7 +65,15 @@ public partial class App : global::Avalonia.Application
             return new SqliteConnectionFactory(databasePath);
         });
 
-        services.AddSingleton<IReadOnlyList<IMigration>>([new Migration0001CreateSchemaVersionTable()]);
+        services.AddSingleton<IReadOnlyList<IMigration>>([
+            new Migration0001CreateSchemaVersionTable(),
+            new Migration0002CreateSourceStateTable(),
+            new Migration0003CreateDatedResultsTable(),
+            new Migration0004CreateCatalogProductsTable(),
+            new Migration0005CreateProductHistoryTable(),
+            new Migration0006CreateAssociateDraftsTable(),
+            new Migration0007CreateManagerDraftsTable(),
+        ]);
         services.AddSingleton<MigrationRunner>();
 
         services.AddTransient<MainWindow>();

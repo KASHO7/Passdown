@@ -1,8 +1,8 @@
-# Architecture — Phase 1 baseline
+# Architecture — Phase 1 baseline, updated through Phase 2
 
-Established during Phase 1 (AGENT_BUILD_SPEC.md §17 Phase 1). Domain models,
-adapters, and UI screens are added in later phases; this records the
-boundaries and infrastructure they will build on.
+Established during Phase 1 (AGENT_BUILD_SPEC.md §17 Phase 1) and extended
+through Phase 2 (§17 Phase 2). Source adapters and UI screens are added in
+later phases; this records the boundaries and infrastructure they build on.
 
 ## Project boundaries and dependency direction
 
@@ -30,8 +30,16 @@ Windows APIs — enforced automatically rather than by convention alone.
 
 Interfaces/abstractions for external systems (e.g. the `IOfficialDataSource`
 shape sketched in spec §16) belong in Application; Infrastructure supplies
-the concrete adapters. None exist yet — Phase 2/3 add them alongside the
-domain models they serve.
+the concrete adapters. Phase 2 added the persistence side of this split —
+`ISourceStateRepository`, `IDatedResultRepository`, `ICatalogProductRepository`,
+`IProductHistoryRepository`, `IAssociateDraftRepository`, `IManagerDraftRepository`,
+and `IUnitOfWork`/`IUnitOfWorkFactory` in Application, each with a SQLite
+implementation in Infrastructure — plus `IClock`/`EasternTimeZone` for
+deterministic, DST-safe time. Retrieval-side abstractions (the actual
+`IOfficialDataSource`-shaped adapters) remain Phase 3's job.
+`tests/Carowinds.Passdown.Application.Tests` includes a reflection-based
+guard (`ApplicationDependencyDirectionTests`) mirroring Domain's, so
+Application can't accidentally acquire a concrete Infrastructure dependency.
 
 ## Cross-cutting infrastructure established in Phase 1
 
@@ -53,11 +61,14 @@ domain models they serve.
   tracked via `PRAGMA user_version`; a `schema_version` table records
   human-readable migration history for diagnostics. Migrations implement
   `IMigration` and are applied in ascending version order, exactly once.
-  Phase 1 ships one migration (`Migration0001CreateSchemaVersionTable`)
-  that creates only the diagnostic history table — no domain tables yet.
-  Domain/catalog/draft schema arrives in Phase 2 as additional numbered
-  migrations, per spec §6.2's separate dated-results/catalog-results/
-  source-state/drafts model.
+  Phase 1 shipped `Migration0001CreateSchemaVersionTable` (diagnostic
+  history table only). Phase 2 added six more, per spec §6.2's separate
+  dated-results/catalog-results/source-state/drafts model:
+  `Migration0002CreateSourceStateTable`, `Migration0003CreateDatedResultsTable`,
+  `Migration0004CreateCatalogProductsTable`, `Migration0005CreateProductHistoryTable`,
+  `Migration0006CreateAssociateDraftsTable`, `Migration0007CreateManagerDraftsTable`.
+  `SqliteUnitOfWork`/`SqliteUnitOfWorkFactory` let a catalog-row upsert and its
+  history append commit as one transaction, for callers that need that (spec §7.3).
 - **Composition root**: `Carowinds.Passdown.Desktop.App` builds a single
   `IServiceProvider` in `Initialize()`, runs the migration runner before
   resolving the main window in `OnFrameworkInitializationCompleted()`, and
@@ -65,9 +76,32 @@ domain models they serve.
   their services here rather than introducing a second composition
   mechanism.
 
+## Phase 2 additions
+
+Phase 2 built the domain/persistence/reconciliation backbone without wiring
+any of it into the running app (Desktop only gained the migration-list
+registration needed to keep applying schema changes at startup — no
+ViewModel or screen touches these services yet):
+
+- **Domain** (`Carowinds.Passdown.Domain`): `SourceCategory`; `Retrieval/`
+  (`RetrievalStatus`, `RetrievalStrategy`, `SourceEvidence`, `DatedResultKey`,
+  `LastKnownGood<T>`, `SourceState`, `FreshnessCadence`, `FreshnessPolicy`);
+  `Catalog/` (`CatalogProductKey`, `ProductLifecycleState`, `CatalogProductLifecycle`).
+- **Application** (`Carowinds.Passdown.Application`): `Persistence/` (the
+  repository ports plus `IUnitOfWork`); `Time/` (`IClock`, `EasternTimeZone`);
+  `Freshness/` (`FreshnessOptions`, `FreshnessPolicyCatalog`, `IFreshnessPlanner`,
+  `IRollingDatePlanner`, `DatedResultProjectionExtensions`); `Catalog/`
+  (`IProductReconciliationService`, `ObservedProduct`).
+- **Infrastructure** (`Carowinds.Passdown.Infrastructure`): migrations 0002–0007;
+  one SQLite repository per Application port; `SqliteUnitOfWork(Factory)`;
+  `SqliteConvert` (consistent UTC-ISO8601/date-only text encoding); `SystemClock`.
+
+Live retrieval (HTTP/Playwright source adapters), product-catalog UI, and PDF
+generation remain out of scope — those are Phase 3+.
+
 ## Deferred to later phases
 
-Domain models, real freshness cadences, source adapters, Avalonia
-screens/view models beyond the template placeholder, PDF generation,
-scheduling, and packaging are explicitly out of scope for Phase 1 (see the
-approved Phase 1 plan).
+Source adapters, Avalonia screens/view models beyond the template
+placeholder, PDF generation, scheduling orchestration, and packaging are
+explicitly out of scope through Phase 2 (see the approved Phase 1 and
+Phase 2 plans).

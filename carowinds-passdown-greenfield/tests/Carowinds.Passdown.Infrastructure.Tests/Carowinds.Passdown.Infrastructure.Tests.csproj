@@ -16,6 +16,21 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--
+      Several repository test classes open concurrent SQLite connections against
+      their own temp database files and call SqliteConnection.ClearAllPools() in
+      Dispose(). ClearAllPools() is process-wide, so xUnit's default parallel
+      test-collection execution let one class's cleanup dispose connections still
+      in use by another, running class — serializing collections within this
+      assembly avoids that race without weakening the pool-clearing cleanup the
+      existing migration tests already rely on to reliably delete their temp files.
+    -->
+    <None Include="xunit.runner.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Carowinds.Passdown.Infrastructure\Carowinds.Passdown.Infrastructure.csproj" />
   </ItemGroup>
 

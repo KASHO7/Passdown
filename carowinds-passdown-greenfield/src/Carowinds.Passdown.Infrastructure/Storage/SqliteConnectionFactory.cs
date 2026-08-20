@@ -22,4 +22,17 @@ public sealed class SqliteConnectionFactory(string databasePath)
         connection.Open();
         return connection;
     }
+
+    public async Task<SqliteConnection> OpenConnectionAsync(CancellationToken cancellationToken = default)
+    {
+        var directory = Path.GetDirectoryName(DatabasePath);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        var connection = new SqliteConnection($"Data Source={DatabasePath}");
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        return connection;
+    }
 }
