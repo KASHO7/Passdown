@@ -1,0 +1,164 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
+             xmlns:presentation="using:Carowinds.Passdown.Desktop.Presentation"
+             xmlns:converters="using:Carowinds.Passdown.Desktop.Converters"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1120" d:DesignHeight="780"
+             x:Class="Carowinds.Passdown.Desktop.Views.AssociateView"
+             x:DataType="vm:AssociateViewModel">
+
+  <UserControl.Resources>
+    <converters:ParkHoursBadgeBrushConverter x:Key="BadgeBrushConverter" />
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <Style Selector="TextBlock.sectionTitle">
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Margin" Value="0,0,0,10" />
+    </Style>
+    <Style Selector="TextBlock.muted">
+      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+      <Setter Property="FontSize" Value="13" />
+    </Style>
+    <Style Selector="Border.section">
+      <Setter Property="Padding" Value="20" />
+      <Setter Property="Margin" Value="0,0,0,16" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}" />
+      <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" />
+    </Style>
+  </UserControl.Styles>
+
+  <DockPanel LastChildFill="True">
+
+    <!-- Sticky footer: save status foundation (spec §10.2's "sticky action area"; Save/Refresh-section/Create PDF buttons are later Phase 4 work). -->
+    <Border DockPanel.Dock="Bottom"
+            Padding="24,12"
+            BorderThickness="0,1,0,0"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+      <TextBlock Text="{Binding SaveStatus.Text, FallbackValue='Not saved yet'}"
+                 Classes="muted"
+                 AutomationProperties.Name="Save status" />
+    </Border>
+
+    <!-- Page header: date, Check Online, refresh progress/result. -->
+    <Border DockPanel.Dock="Top" Padding="24,20,24,16">
+      <StackPanel Spacing="12">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+            <TextBlock Text="Associate Passdown" FontSize="24" FontWeight="Bold" VerticalAlignment="Center" />
+          </StackPanel>
+
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Button Content="◀" Width="36"
+                    Command="{Binding PreviousDayCommand}"
+                    AutomationProperties.Name="Previous day" />
+            <DatePicker SelectedDate="{Binding SelectedDateOffset}"
+                        AutomationProperties.Name="Operating date" />
+            <Button Content="▶" Width="36"
+                    Command="{Binding NextDayCommand}"
+                    AutomationProperties.Name="Next day" />
+            <Button Content="Check Online"
+                    Margin="12,0,0,0"
+                    Command="{Binding CheckOnlineCommand}"
+                    Classes="accent"
+                    AutomationProperties.Name="Check this date online"
+                    AutomationProperties.HelpText="Checks official Carowinds sources for this date. Does not run automatically." />
+          </StackPanel>
+        </Grid>
+
+        <ProgressBar IsIndeterminate="True" Height="3"
+                     IsVisible="{Binding IsBusy}" />
+
+        <TextBlock Text="{Binding RefreshStatusMessage}"
+                   IsVisible="{Binding RefreshStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   Classes="muted" />
+
+        <TextBlock Text="{Binding RefreshResultMessage}"
+                   IsVisible="{Binding RefreshResultMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+        <TextBlock Text="{Binding LoadErrorMessage}"
+                   IsVisible="{Binding LoadErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   Foreground="#B3261E" />
+      </StackPanel>
+    </Border>
+
+    <!-- Main content. -->
+    <ScrollViewer Padding="24,0,24,24">
+      <StackPanel MaxWidth="820" HorizontalAlignment="Left" Spacing="0">
+
+        <!-- Park hours summary (Part D). -->
+        <Border Classes="section">
+          <StackPanel Spacing="6">
+            <TextBlock Text="Park Hours" Classes="sectionTitle" />
+
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+              <Ellipse Width="10" Height="10"
+                       Fill="{Binding ParkHours.BadgeKind, Converter={StaticResource BadgeBrushConverter}}" />
+              <TextBlock Text="{Binding ParkHours.BadgeText, FallbackValue='Not checked yet'}" FontWeight="SemiBold" />
+            </StackPanel>
+
+            <TextBlock Text="{Binding ParkHours.HeadlineText, FallbackValue='Hours not checked yet'}"
+                       FontSize="30" FontWeight="Bold" Margin="0,4,0,4" />
+
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" Margin="0,4,0,4">
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="North Gate:" Margin="0,0,10,4" />
+              <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding ParkHours.NorthGateText, FallbackValue='—'}" />
+              <TextBlock Grid.Row="1" Grid.Column="0" Text="Avenue:" Margin="0,0,10,0" />
+              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ParkHours.AvenueText, FallbackValue='—'}" />
+            </Grid>
+
+            <TextBlock Text="{Binding ParkHours.VerificationText}"
+                       IsVisible="{Binding ParkHours.VerificationText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       Classes="muted" />
+
+            <TextBlock Text="{Binding ParkHours.StaleNoteText}"
+                       IsVisible="{Binding ParkHours.StaleNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       Foreground="#B26A00" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <!-- Category-level status (Part E): only rendered for a category with no visible product rows. -->
+        <ItemsControl ItemsSource="{Binding CategoryStatuses}"
+                      IsVisible="{Binding HasCategoryStatuses}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="presentation:CategoryStatusPresentation">
+              <Border Classes="section">
+                <StackPanel Spacing="2">
+                  <TextBlock Text="{Binding CategoryDisplayName}" FontWeight="SemiBold" FontSize="15" />
+                  <TextBlock Text="{Binding StatusText}" />
+                  <TextBlock Text="{Binding DetailText}"
+                             IsVisible="{Binding DetailText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                             Classes="muted" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Read-only product counts (spec: no full editable form yet — this only confirms dynamic data is flowing). -->
+        <Border Classes="section" IsVisible="{Binding HasProductSummaries}">
+          <StackPanel Spacing="6">
+            <TextBlock Text="Products at a Glance" Classes="sectionTitle" />
+            <ItemsControl ItemsSource="{Binding ProductSummaries}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="presentation:ProductCategorySummary">
+                  <Grid ColumnDefinitions="*,Auto" Margin="0,3">
+                    <TextBlock Grid.Column="0" Text="{Binding CategoryDisplayName}" />
+                    <TextBlock Grid.Column="1" Text="{Binding Count}" Classes="muted" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+      </StackPanel>
+    </ScrollViewer>
+
+  </DockPanel>
+</UserControl>

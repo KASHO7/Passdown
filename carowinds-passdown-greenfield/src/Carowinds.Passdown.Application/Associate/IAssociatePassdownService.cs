@@ -1,4 +1,14 @@
+using Carowinds.Passdown.Application.Refresh;
+
 namespace Carowinds.Passdown.Application.Associate;
+
+/// <summary>
+/// <see cref="AssociateWorkspace"/> plus the raw job outcome behind it (Phase 4B Part F), so a
+/// caller can render both the recomposed screen state and a plain-language "Updated successfully" /
+/// "Updated with 1 source unavailable" summary from one round trip — without a second call back
+/// into <see cref="Refresh.IRefreshOrchestrator"/>.
+/// </summary>
+public sealed record AssociateOnlineCheckResult(AssociateWorkspace Workspace, RefreshSummary Summary);
 
 /// <summary>
 /// Application-layer Associate Passdown workflow (Phase 4A): loads/saves the per-date manual
@@ -20,8 +30,11 @@ public interface IAssociatePassdownService
     /// <paramref name="operatingDate"/>, then recomposes the view from whatever is cached
     /// afterward — success or failure. All manual draft fields, product include/exclude, and
     /// display-price overrides are preserved regardless of outcome (spec §8.3/§6.7).
+    /// <paramref name="progress"/> is forwarded as-is to <see cref="Refresh.IRefreshOrchestrator.RunManualDateRefreshAsync"/>
+    /// (Phase 4B Part F's "checking park hours... 3 of 4 complete") — this method reuses the
+    /// existing refresh abstraction rather than tracking progress itself.
     /// </summary>
-    Task<AssociateWorkspace> CheckAssociateDateOnlineAsync(DateOnly operatingDate, CancellationToken cancellationToken = default);
+    Task<AssociateOnlineCheckResult> CheckAssociateDateOnlineAsync(DateOnly operatingDate, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Persists <paramref name="draft"/> as the manual draft for <paramref name="operatingDate"/>

@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Catalog;
 using Carowinds.Passdown.Application.Freshness;
 using Carowinds.Passdown.Application.Persistence;
@@ -94,6 +95,14 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<MigrationRunner>();
 
         AddRefreshOrchestration(services, configuration);
+
+        // Phase 4B: the Associate Passdown screen (Part J). Reuses the same
+        // IAssociateDraftRepository/IDatedResultRepository/ICatalogProductRepository/
+        // IRefreshOrchestrator/IClock singletons AddRefreshOrchestration already registered above —
+        // nothing here is a new storage or retrieval path.
+        services.AddSingleton<IAssociateDraftRepository, SqliteAssociateDraftRepository>();
+        services.AddSingleton<IAssociatePassdownService, AssociatePassdownService>();
+        services.AddTransient<AssociateViewModel>();
 
         services.AddTransient<MainWindow>();
         services.AddTransient<MainViewModel>();

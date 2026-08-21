@@ -1,22 +1,36 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
+        xmlns:views="using:Carowinds.Passdown.Desktop.Views"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        mc:Ignorable="d" d:DesignWidth="1120" d:DesignHeight="800"
         x:Class="Carowinds.Passdown.Desktop.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="Carowinds.Passdown.Desktop">
+        Title="Carowinds Passdown"
+        Width="1120" Height="800" MinWidth="820" MinHeight="600">
 
-    <Design.DataContext>
-        <!-- This only sets the DataContext for the previewer in an IDE,
-             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
-        <vm:MainViewModel />
-    </Design.DataContext>
+    <DockPanel LastChildFill="True">
 
-    <TextBox Text="{Binding Greeting}"
-             HorizontalAlignment="Center"
-             VerticalAlignment="Center" />
+        <!-- App shell header (spec §10.2): a clean top-level identity bar. Associate Passdown is
+             the only workflow this release — no mode selector/nav rail is needed for one item, and
+             no Manager entry point is added as a placeholder (CLAUDE.md "current scope decision"). -->
+        <Border DockPanel.Dock="Top" Padding="20,14" BorderThickness="0,0,0,1"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <!-- A small original ascending-track mark (spec §10.1) — plain geometric bars, not a reskin of any existing asset. -->
+                <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Bottom" Height="22">
+                    <Rectangle Width="6" Height="10" Fill="#2E7D32" VerticalAlignment="Bottom" />
+                    <Rectangle Width="6" Height="16" Fill="#2E7D32" VerticalAlignment="Bottom" />
+                    <Rectangle Width="6" Height="22" Fill="#2E7D32" VerticalAlignment="Bottom" />
+                </StackPanel>
+                <TextBlock Text="Carowinds Passdown" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+        <views:AssociateView DataContext="{Binding Associate}" />
+
+    </DockPanel>
 
 </Window>

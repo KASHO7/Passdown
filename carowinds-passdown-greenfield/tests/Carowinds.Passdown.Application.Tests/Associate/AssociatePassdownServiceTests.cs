@@ -348,9 +348,9 @@ public class AssociatePassdownServiceTests
         env.RefreshOrchestrator.OnManualDateRefresh = async (date, ct) =>
             await SeedParkHoursAsync(env.DatedResults, date, new TimeOnly(9, 0), new TimeOnly(22, 0), env.Clock.UtcNow);
 
-        var workspace = await env.Service.CheckAssociateDateOnlineAsync(Date);
+        var result = await env.Service.CheckAssociateDateOnlineAsync(Date);
 
-        Assert.Equal(new TimeOnly(9, 0), workspace.ParkHours.Effective.Opening);
+        Assert.Equal(new TimeOnly(9, 0), result.Workspace.ParkHours.Effective.Opening);
     }
 
     [Fact]
@@ -361,9 +361,9 @@ public class AssociatePassdownServiceTests
             new DatedAdmissionProduct("PKG-A", "Date Ticket", 60m, null, null, Date));
         env.RefreshOrchestrator.OnManualDateRefresh = (_, _) => Task.CompletedTask; // simulates a refresh whose sources all errored, writing nothing new
 
-        var workspace = await env.Service.CheckAssociateDateOnlineAsync(Date);
+        var result = await env.Service.CheckAssociateDateOnlineAsync(Date);
 
-        var product = Assert.Single(workspace.Products);
+        var product = Assert.Single(result.Workspace.Products);
         Assert.Equal(60m, product.OfficialPriceAmount);
     }
 
@@ -388,10 +388,10 @@ public class AssociatePassdownServiceTests
             ? (date, ct) => SeedAdmissionAsync(env.DatedResults, date, env.Clock.UtcNow, new DatedAdmissionProduct("PKG-A", "Date Ticket", 65m, null, null, date))
             : (_, _) => Task.CompletedTask;
 
-        var workspace = await env.Service.CheckAssociateDateOnlineAsync(Date);
+        var result = await env.Service.CheckAssociateDateOnlineAsync(Date);
 
-        AssertDraftsEqual(draft, workspace.Draft);
-        var product = Assert.Single(workspace.Products);
+        AssertDraftsEqual(draft, result.Workspace.Draft);
+        var product = Assert.Single(result.Workspace.Products);
         Assert.False(product.IncludeOnPdf);
         Assert.Equal(55m, product.DisplayPriceOverride);
         Assert.Equal(55m, product.EffectiveDisplayPrice);
@@ -413,9 +413,9 @@ public class AssociatePassdownServiceTests
 
         env.RefreshOrchestrator.OnManualDateRefresh = (date, ct) =>
             SeedAdmissionAsync(env.DatedResults, date, env.Clock.UtcNow, new DatedAdmissionProduct("PKG-A", "Date Ticket", 60m, null, null, date));
-        var workspace = await env.Service.CheckAssociateDateOnlineAsync(Date);
+        var result = await env.Service.CheckAssociateDateOnlineAsync(Date);
 
-        var product = Assert.Single(workspace.Products);
+        var product = Assert.Single(result.Workspace.Products);
         Assert.False(product.IncludeOnPdf);
         Assert.Equal(45m, product.DisplayPriceOverride);
     }
@@ -650,6 +650,89 @@ public class AssociatePassdownServiceTests
         var afterSeasonalDataArrives = await env.Service.LoadAssociateDateAsync(Date);
         Assert.Single(afterSeasonalDataArrives.Products, p => p.Category == SourceCategory.SeasonPasses);
         Assert.Single(afterSeasonalDataArrives.Products, p => p.Category == SourceCategory.HauntedAttractions);
+    }
+
+    // ===================== Category-level status (Phase 4B Part E) =====================
+
+    [Fact]
+    public async Task CategoryStatuses_CoverTheThreeNonParkHoursDatedCategories()
+    {
+        var env = CreateEnvironment();
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+
+        Assert.Equal(
+            new[] { SourceCategory.DatedAdmissionTickets, SourceCategory.DatedFastLane, SourceCategory.HauntedAttractions },
+            workspace.CategoryStatuses.Select(s => s.Category));
+        Assert.DoesNotContain(workspace.CategoryStatuses, s => s.Category == SourceCategory.ParkHours);
+    }
+
+    [Fact]
+    public async Task CategoryStatuses_NoAttemptEver_ReportsNotCheckedYet()
+    {
+        var env = CreateEnvironment();
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+
+        var status = workspace.CategoryStatuses.Single(s => s.Category == SourceCategory.DatedFastLane);
+        Assert.Equal(AssociateVerificationState.NotCheckedYet, status.State);
+        Assert.Null(status.LastCheckedAt);
+    }
+
+    [Theory]
+    [InlineData(RetrievalStatus.NotPublished)]
+    [InlineData(RetrievalStatus.Unavailable)]
+    public async Task CategoryStatuses_SuccessfulButEmptyOutcome_ReportsStatusEvenWithZeroProductRows(RetrievalStatus status)
+    {
+        var env = CreateEnvironment();
+        var checkedAt = FixedNow.AddHours(-2);
+        await env.DatedResults.RecordSuccessAsync(
+            new DatedResultKey(SourceCategory.HauntedAttractions, Date),
+            Evidence(status, checkedAt, Date),
+            payloadJson: null);
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+
+        Assert.DoesNotContain(workspace.Products, p => p.Category == SourceCategory.HauntedAttractions);
+        var categoryStatus = workspace.CategoryStatuses.Single(s => s.Category == SourceCategory.HauntedAttractions);
+        Assert.Equal(status switch { RetrievalStatus.NotPublished => AssociateVerificationState.NotPublished, _ => AssociateVerificationState.Unavailable }, categoryStatus.State);
+        Assert.Equal(checkedAt, categoryStatus.LastCheckedAt);
+    }
+
+    [Fact]
+    public async Task CategoryStatuses_ErrorWithNoPriorSuccess_ReportsErrorAndLastCheckedTime_EvenThoughNoProductRowsExist()
+    {
+        var env = CreateEnvironment();
+        var checkedAt = FixedNow.AddMinutes(-30);
+        await env.DatedResults.RecordFailedAttemptAsync(
+            new DatedResultKey(SourceCategory.DatedAdmissionTickets, Date),
+            Evidence(RetrievalStatus.Error, checkedAt, Date));
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+
+        Assert.DoesNotContain(workspace.Products, p => p.Category == SourceCategory.DatedAdmissionTickets);
+        var categoryStatus = workspace.CategoryStatuses.Single(s => s.Category == SourceCategory.DatedAdmissionTickets);
+        Assert.Equal(AssociateVerificationState.Error, categoryStatus.State);
+        Assert.Equal(checkedAt, categoryStatus.LastCheckedAt);
+        Assert.NotNull(categoryStatus.Detail);
+    }
+
+    [Fact]
+    public async Task CategoryStatuses_PriorSuccessThenLaterError_ReportsStaleWithProductRowsStillPresent()
+    {
+        var env = CreateEnvironment();
+        await SeedAdmissionAsync(env.DatedResults, Date, FixedNow.AddHours(-3),
+            new DatedAdmissionProduct("PKG-A", "Ticket", 60m, null, null, Date));
+        await env.DatedResults.RecordFailedAttemptAsync(
+            new DatedResultKey(SourceCategory.DatedAdmissionTickets, Date),
+            Evidence(RetrievalStatus.Error, FixedNow, Date));
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+
+        Assert.Single(workspace.Products, p => p.Category == SourceCategory.DatedAdmissionTickets); // stale rows are still shown, not hidden.
+        var categoryStatus = workspace.CategoryStatuses.Single(s => s.Category == SourceCategory.DatedAdmissionTickets);
+        Assert.Equal(AssociateVerificationState.Stale, categoryStatus.State);
+        Assert.Equal(FixedNow, categoryStatus.LastCheckedAt); // reflects the latest attempt, not the older success.
     }
 
     // ===================== Save status (38-40) =====================

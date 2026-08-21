@@ -1,4 +1,22 @@
+using Carowinds.Passdown.Domain;
+
 namespace Carowinds.Passdown.Application.Associate;
+
+/// <summary>
+/// Category-level status for one dated product category (Phase 4B Part E), independent of any
+/// individual <see cref="AssociateProduct"/> row. Phase 4A identified a presentation gap: when a
+/// category's latest retrieval is <c>Error</c>/<c>NotPublished</c>/<c>Unavailable</c> with no prior
+/// successful payload, <see cref="AssociateWorkspace.Products"/> alone renders nothing for it — a
+/// screen needs somewhere to say "Fast Lane: Not available for this date" instead of showing an
+/// empty section with no explanation. <see cref="LastCheckedAt"/> is the most recent attempt of
+/// any outcome (unlike <see cref="AssociateVerificationInfo.LastVerifiedAt"/>, which is
+/// success-only) so a pure-failure category can still say when it was last checked.
+/// </summary>
+public sealed record AssociateProductCategoryStatus(
+    SourceCategory Category,
+    AssociateVerificationState State,
+    DateTimeOffset? LastCheckedAt,
+    string? Detail);
 
 /// <summary>
 /// The composed Associate Passdown view state for one operating date (spec Phase 4's "compose the
@@ -11,4 +29,5 @@ public sealed record AssociateWorkspace(
     AssociateDraftPayload Draft,
     AssociateParkHoursView ParkHours,
     IReadOnlyList<AssociateProduct> Products,
+    IReadOnlyList<AssociateProductCategoryStatus> CategoryStatuses,
     AssociateSaveStatus SaveStatus);

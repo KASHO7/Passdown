@@ -33,18 +33,27 @@ public sealed class AssociatePassdownService(
         SourceCategory.Promotions,
     ];
 
+    /// <summary>Dated categories a Phase 4B screen needs a category-level status for (spec Part E) — every dated category except <see cref="SourceCategory.ParkHours"/>, which already has its own dedicated <see cref="AssociateParkHoursView"/>.</summary>
+    private static readonly SourceCategory[] StatusTrackedDatedCategories =
+    [
+        SourceCategory.DatedAdmissionTickets,
+        SourceCategory.DatedFastLane,
+        SourceCategory.HauntedAttractions,
+    ];
+
     public Task<AssociateWorkspace> LoadAssociateDateAsync(DateOnly operatingDate, CancellationToken cancellationToken = default) =>
         ComposeAsync(operatingDate, cancellationToken);
 
-    public async Task<AssociateWorkspace> CheckAssociateDateOnlineAsync(DateOnly operatingDate, CancellationToken cancellationToken = default)
+    public async Task<AssociateOnlineCheckResult> CheckAssociateDateOnlineAsync(DateOnly operatingDate, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)
     {
-        await refreshOrchestrator.RunManualDateRefreshAsync(operatingDate, progress: null, cancellationToken).ConfigureAwait(false);
+        var summary = await refreshOrchestrator.RunManualDateRefreshAsync(operatingDate, progress, cancellationToken).ConfigureAwait(false);
 
         // Recomposed unconditionally, whether the refresh above succeeded or failed: on failure,
         // RunManualDateRefreshAsync's own dated-source registrations already left every prior
         // last-known-good value untouched (spec §6.7), so this simply re-reads whatever is now the
         // current cached state either way — no separate success/failure branch is needed here.
-        return await ComposeAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+        var workspace = await ComposeAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+        return new AssociateOnlineCheckResult(workspace, summary);
     }
 
     public async Task<AssociateSaveStatus> SaveDraftAsync(DateOnly operatingDate, AssociateDraftPayload draft, CancellationToken cancellationToken = default)
@@ -99,7 +108,11 @@ public sealed class AssociatePassdownService(
 
         products.AddRange(ComposeCustomProducts(draft));
 
-        return new AssociateWorkspace(operatingDate, draft, parkHours, products, saveStatus);
+        var categoryStatuses = StatusTrackedDatedCategories
+            .Select(category => ComposeCategoryStatus(category, datedByCategory.GetValueOrDefault(category), asOf))
+            .ToList();
+
+        return new AssociateWorkspace(operatingDate, draft, parkHours, products, categoryStatuses, saveStatus);
     }
 
     private static AssociateDraftPayload DeserializeDraft(string payloadJson) =>
@@ -129,6 +142,25 @@ public sealed class AssociatePassdownService(
             draft.PrivateBuyout.ClosingTime);
 
         return new AssociateParkHoursView(effective, verification);
+    }
+
+    /// <summary>
+    /// Category-level status (spec Part E), computed the same way as an individual product's
+    /// <see cref="AssociateVerificationInfo"/> but independent of whether any product row exists —
+    /// this is what lets a category with zero rows (no prior successful payload) still say why,
+    /// e.g. "Not available for this date" instead of rendering nothing at all.
+    /// </summary>
+    private static AssociateProductCategoryStatus ComposeCategoryStatus(SourceCategory category, DatedResultRecord? record, DateTimeOffset asOf)
+    {
+        var lastKnownGood = record?.ToLastKnownGood() ?? LastKnownGood<string>.Empty;
+        var verification = AssociateVerificationInfo.From(lastKnownGood, asOf);
+
+        // Unlike AssociateVerificationInfo.LastVerifiedAt (success-only), a category with no
+        // successful payload yet should still be able to say when it was last attempted.
+        var lastCheckedAt = lastKnownGood.LastAttemptEvidence?.TimeChecked ?? lastKnownGood.SuccessEvidence?.TimeChecked;
+        var detail = lastKnownGood.LastAttemptEvidence?.Detail ?? lastKnownGood.SuccessEvidence?.Detail;
+
+        return new AssociateProductCategoryStatus(category, verification.State, lastCheckedAt, detail);
     }
 
     private sealed record DatedProductFields(string PackageId, string DisplayName, decimal Price, decimal? ComparisonPrice, string? PriceQualifier, DateOnly ApplicableDate);
