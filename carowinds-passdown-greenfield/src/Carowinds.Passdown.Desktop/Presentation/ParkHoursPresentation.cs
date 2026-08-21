@@ -28,6 +28,14 @@ public sealed record ParkHoursPresentation(
     string? VerificationText,
     string? StaleNoteText)
 {
+    /// <summary>
+    /// True when there are no actual hours to show yet (spec Part D: "Not checked yet" must not
+    /// appear as a giant headline) — used purely to pick a quieter headline style, never to change
+    /// what text is shown.
+    /// </summary>
+    public bool IsHoursUnknown => BadgeKind == ParkHoursBadgeKind.NotChecked;
+
+
     public static ParkHoursPresentation Build(AssociateParkHoursView view)
     {
         ArgumentNullException.ThrowIfNull(view);

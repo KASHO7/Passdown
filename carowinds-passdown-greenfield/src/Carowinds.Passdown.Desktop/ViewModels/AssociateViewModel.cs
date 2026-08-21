@@ -4,6 +4,8 @@ using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Presentation;
+using Carowinds.Passdown.Desktop.Services;
+using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Hours;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -38,6 +40,8 @@ public partial class AssociateViewModel : ViewModelBase
     private static readonly TimeSpan DefaultAutosaveDebounce = TimeSpan.FromMilliseconds(800);
 
     private readonly IAssociatePassdownService _service;
+    private readonly IAssociatePassdownPdfExportService _pdfExportService;
+    private readonly IPdfSaveFilePicker _pdfSavePicker;
     private readonly ILogger<AssociateViewModel>? _logger;
     private readonly TimeSpan _autosaveDebounce;
     private readonly Func<TimeSpan, CancellationToken, Task> _autosaveDelay;
@@ -62,6 +66,7 @@ public partial class AssociateViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(ParkHours))]
     [NotifyPropertyChangedFor(nameof(SaveStatus))]
     [NotifyPropertyChangedFor(nameof(SaveStatusText))]
+    [NotifyCanExecuteChangedFor(nameof(CreatePdfCommand))]
     public partial AssociateWorkspace? Workspace { get; set; }
 
     /// <summary>
@@ -87,11 +92,13 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBusy))]
     [NotifyCanExecuteChangedFor(nameof(CheckOnlineCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CreatePdfCommand))]
     public partial bool IsLoadingDate { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBusy))]
     [NotifyCanExecuteChangedFor(nameof(CheckOnlineCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CreatePdfCommand))]
     public partial bool IsCheckingOnline { get; set; }
 
     /// <summary>Concise in-progress copy such as "Checked Fast Lane — 3 of 4 complete" (spec Part F). Null while not refreshing.</summary>
@@ -177,12 +184,23 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     public partial string? DailyFunText { get; set; }
 
+    /// <summary>True while <see cref="CreatePdfCommand"/> is building/saving the PDF (spec Part I) — kept separate from <see cref="IsBusy"/> so a load/Check Online in progress is the only thing that disables the export action itself.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CreatePdfCommand))]
+    public partial bool IsExportingPdf { get; set; }
+
+    /// <summary>Concise post-export feedback (spec Part I #8) — success or a user-facing failure message. A cancelled picker leaves this null; cancelling is normal, not an error (spec Part I "Cancellation").</summary>
+    [ObservableProperty]
+    public partial string? PdfExportMessage { get; set; }
+
     public AssociateViewModel(
         IAssociatePassdownService service,
         IClock clock,
         ILogger<AssociateViewModel>? logger = null,
         TimeSpan? autosaveDebounce = null,
-        Func<TimeSpan, CancellationToken, Task>? autosaveDelay = null)
+        Func<TimeSpan, CancellationToken, Task>? autosaveDelay = null,
+        IAssociatePassdownPdfExportService? pdfExportService = null,
+        IPdfSaveFilePicker? pdfSavePicker = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -191,6 +209,8 @@ public partial class AssociateViewModel : ViewModelBase
         _logger = logger;
         _autosaveDebounce = autosaveDebounce ?? DefaultAutosaveDebounce;
         _autosaveDelay = autosaveDelay ?? Task.Delay;
+        _pdfExportService = pdfExportService ?? new AssociatePassdownPdfExportService(new AssociatePassdownPdfGenerator());
+        _pdfSavePicker = pdfSavePicker ?? new UnavailablePdfSaveFilePicker();
 
         // "Today" in the park's own wall-clock time (spec §6.5/§6.6 use the same Eastern
         // convention for "today") rather than the host machine's arbitrary local time zone.
@@ -371,6 +391,57 @@ public partial class AssociateViewModel : ViewModelBase
     }
 
     private bool CanCheckOnline() => !IsBusy;
+
+    /// <summary>
+    /// Spec Part I: flushes pending edits, builds the PDF from the current workspace, and hands the
+    /// bytes to the native save-file picker. A cancelled picker is treated as normal (no message);
+    /// only an actual failure produces user-facing text, and any unexpected exception is caught so
+    /// the screen never crashes mid-export.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanCreatePdf))]
+    private async Task CreatePdfAsync()
+    {
+        IsExportingPdf = true;
+        PdfExportMessage = null;
+        try
+        {
+            await FlushPendingAutosaveAsync().ConfigureAwait(true);
+
+            if (Workspace is not { } workspace)
+            {
+                return;
+            }
+
+            var result = _pdfExportService.GeneratePdf(workspace, DateTimeOffset.Now);
+            if (result.PdfBytes is not { } pdfBytes)
+            {
+                _logger?.LogWarning("Associate PDF failed validation for {OperatingDate}: {Status}", workspace.OperatingDate, result.Preflight.Status);
+                PdfExportMessage = "The PDF could not be created for this date yet.";
+                return;
+            }
+
+            var fileName = $"Carowinds-Passdown-{workspace.OperatingDate:yyyy-MM-dd}.pdf";
+            var saveResult = await _pdfSavePicker.SaveAsync(pdfBytes, fileName).ConfigureAwait(true);
+
+            PdfExportMessage = saveResult.Outcome switch
+            {
+                PdfSaveOutcome.Saved => "PDF saved.",
+                PdfSaveOutcome.Cancelled => null,
+                _ => saveResult.ErrorMessage ?? "The PDF could not be saved. Try again.",
+            };
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogError(ex, "Create PDF failed unexpectedly for {OperatingDate}.", SelectedDate);
+            PdfExportMessage = "The PDF could not be created. Try again.";
+        }
+        finally
+        {
+            IsExportingPdf = false;
+        }
+    }
+
+    private bool CanCreatePdf() => HasWorkspace && !IsBusy && !IsExportingPdf;
 
     [RelayCommand]
     private void PreviousDay() => SelectedDate = SelectedDate.AddDays(-1);
@@ -724,4 +795,11 @@ public partial class AssociateViewModel : ViewModelBase
     private static TimeOnly? ToTimeOnly(TimeSpan? value) => value is { } span ? TimeOnly.FromTimeSpan(span) : null;
 
     private static TimeSpan? ToTimeSpan(TimeOnly? value) => value?.ToTimeSpan();
+
+    /// <summary>Default <see cref="IPdfSaveFilePicker"/> when none is supplied — only reachable if the composition root failed to register the real one; every production path registers <see cref="Services.AvaloniaPdfSaveFilePicker"/>.</summary>
+    private sealed class UnavailablePdfSaveFilePicker : IPdfSaveFilePicker
+    {
+        public Task<PdfSaveResult> SaveAsync(byte[] pdfBytes, string suggestedFileName, CancellationToken cancellationToken = default) =>
+            Task.FromResult(PdfSaveResult.Failed("PDF export is not available."));
+    }
 }

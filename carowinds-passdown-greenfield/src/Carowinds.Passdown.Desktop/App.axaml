@@ -9,6 +9,32 @@
         <local:ViewLocator />
     </Application.DataTemplates>
 
+    <Application.Resources>
+        <ResourceDictionary>
+            <!-- Semantic colors used across the Associate screen (spec §10.4/Part N): kept as named,
+                 theme-varying tokens instead of literal hex scattered through view styles, so
+                 light/dark both stay readable. -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <Color x:Key="PassdownAccentColor">#2E7D32</Color>
+                    <SolidColorBrush x:Key="PassdownAccentBrush" Color="{StaticResource PassdownAccentColor}" />
+                    <SolidColorBrush x:Key="PassdownErrorBrush" Color="#B3261E" />
+                    <SolidColorBrush x:Key="PassdownWarningBrush" Color="#8A5A00" />
+                    <SolidColorBrush x:Key="PassdownSubtleSurfaceBrush" Color="#F4F4F5" />
+                    <SolidColorBrush x:Key="PassdownChipBrush" Color="#E7E7E9" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <Color x:Key="PassdownAccentColor">#66BB6A</Color>
+                    <SolidColorBrush x:Key="PassdownAccentBrush" Color="{StaticResource PassdownAccentColor}" />
+                    <SolidColorBrush x:Key="PassdownErrorBrush" Color="#FF8A80" />
+                    <SolidColorBrush x:Key="PassdownWarningBrush" Color="#FFC46B" />
+                    <SolidColorBrush x:Key="PassdownSubtleSurfaceBrush" Color="#26262A" />
+                    <SolidColorBrush x:Key="PassdownChipBrush" Color="#333338" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
     <Application.Styles>
         <FluentTheme />
     </Application.Styles>

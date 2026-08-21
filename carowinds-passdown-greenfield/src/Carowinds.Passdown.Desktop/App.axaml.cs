@@ -9,8 +9,10 @@ using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Retrieval.Browser;
 using Carowinds.Passdown.Application.Time;
+using Carowinds.Passdown.Desktop.Services;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
+using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Retrieval;
 using Carowinds.Passdown.Infrastructure;
@@ -102,6 +104,13 @@ public partial class App : global::Avalonia.Application
         // nothing here is a new storage or retrieval path.
         services.AddSingleton<IAssociateDraftRepository, SqliteAssociateDraftRepository>();
         services.AddSingleton<IAssociatePassdownService, AssociatePassdownService>();
+
+        // Phase 4F Part I: the Associate PDF export pipeline (Documents project) plus the native
+        // save-file picker seam (Desktop-only integration; see IPdfSaveFilePicker).
+        services.AddSingleton<IAssociatePassdownPdfGenerator, AssociatePassdownPdfGenerator>();
+        services.AddSingleton<IAssociatePassdownPdfExportService, AssociatePassdownPdfExportService>();
+        services.AddSingleton<IPdfSaveFilePicker, AvaloniaPdfSaveFilePicker>();
+
         services.AddTransient<AssociateViewModel>();
 
         services.AddTransient<MainWindow>();

@@ -18,6 +18,12 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
     private const float PageMargin = 32f;
     private const float BoxSpacing = 6f;
 
+    // A single restrained accent, applied only to decorative rules/tags — never the sole carrier of
+    // meaning (spec §11.1) and dark enough to stay legible converted to grayscale.
+    private static readonly string AccentColor = Colors.Green.Darken2;
+    private static readonly string PanelFill = Colors.Grey.Lighten5;
+    private static readonly string HairlineColor = Colors.Grey.Lighten2;
+
     private readonly IAssociatePassdownPreflightService _preflightService;
 
     static AssociatePassdownPdfGenerator()
@@ -131,32 +137,48 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
         {
             column.Item().Row(row =>
             {
-                row.RelativeItem().Text(isContinuation
-                        ? "Carowinds Passdown - Associate - Supporting Details"
-                        : "Carowinds Passdown - Associate")
-                    .Bold().FontSize(15);
+                row.AutoItem().Height(14).Width(3).Background(AccentColor);
 
-                row.ConstantItem(180).AlignRight().Text(model.OperatingDateText).FontSize(11);
+                row.RelativeItem().PaddingLeft(6).AlignMiddle().Text(text =>
+                {
+                    text.Span("Carowinds Passdown").Bold().FontSize(15);
+                    text.Span(isContinuation ? "  –  Associate  –  Supporting Details" : "  –  Associate").FontSize(10).FontColor(Colors.Grey.Darken2);
+                });
+
+                row.ConstantItem(180).AlignRight().AlignMiddle().Text(model.OperatingDateText).FontSize(11).Bold();
             });
 
             column.Item().PaddingTop(3).BorderBottom(1.5f).BorderColor(Colors.Black);
         });
     }
 
-    private static void ComposeHoursBox(IContainer container, AssociatePassdownDocumentModel model)
+    private static void ComposePanel(IContainer container, string heading, Action<ColumnDescriptor> content)
     {
-        container.Border(1).BorderColor(Colors.Grey.Lighten2).Padding(6).Column(column =>
+        container.Background(PanelFill).Border(1).BorderColor(HairlineColor).Padding(7).Column(column =>
         {
             column.Spacing(2);
-            column.Item().Text("PARK HOURS").Bold().FontSize(9.5f);
-            column.Item().Text(model.ParkHours.HeadlineText).FontSize(13).Bold();
+            column.Item().Text(heading).Bold().FontSize(8.5f).FontColor(Colors.Grey.Darken3);
+            content(column);
+        });
+    }
+
+    private static void ComposeHoursBox(IContainer container, AssociatePassdownDocumentModel model) =>
+        ComposePanel(container, "PARK HOURS", column =>
+        {
+            column.Item().PaddingTop(1).Text(model.ParkHours.HeadlineText).FontSize(15).Bold();
 
             if (model.ParkHours.BadgeText is { } badge)
             {
-                column.Item().Text(badge).FontSize(8.5f).Italic();
+                column.Item().Text(badge).FontSize(8.5f).Italic().FontColor(Colors.Grey.Darken2);
             }
 
-            column.Item().Text($"North Gate {model.ParkHours.NorthGateText ?? "-"}    |    Avenue {model.ParkHours.AvenueText ?? "-"}").FontSize(9);
+            column.Item().PaddingTop(1).Text(text =>
+            {
+                text.Span("North Gate  ").FontSize(9).FontColor(Colors.Grey.Darken2);
+                text.Span(model.ParkHours.NorthGateText ?? "-").FontSize(9).Bold();
+                text.Span("     Avenue  ").FontSize(9).FontColor(Colors.Grey.Darken2);
+                text.Span(model.ParkHours.AvenueText ?? "-").FontSize(9).Bold();
+            });
 
             if (model.ParkHours.VerificationText is { } verification)
             {
@@ -168,29 +190,28 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
                 column.Item().Text($"Buyout details: {details}").FontSize(8.5f);
             }
         });
-    }
 
-    private static void ComposeAttendanceBox(IContainer container, AssociatePassdownDocumentModel model)
-    {
-        container.Border(1).BorderColor(Colors.Grey.Lighten2).Padding(6).Column(column =>
+    private static void ComposeAttendanceBox(IContainer container, AssociatePassdownDocumentModel model) =>
+        ComposePanel(container, "ATTENDANCE", column =>
         {
-            column.Spacing(2);
-            column.Item().Text("ATTENDANCE").Bold().FontSize(9.5f);
-            column.Item().Text($"Projected: {FormatCount(model.Attendance.ProjectedAttendance)}").FontSize(10);
-            column.Item().Text($"Pre-solds: {FormatCount(model.Attendance.PreSolds)}").FontSize(10);
+            column.Item().PaddingTop(1).Text(text =>
+            {
+                text.Span("Projected  ").FontSize(9).FontColor(Colors.Grey.Darken2);
+                text.Span(FormatCount(model.Attendance.ProjectedAttendance)).FontSize(11).Bold();
+            });
+            column.Item().Text(text =>
+            {
+                text.Span("Pre-solds  ").FontSize(9).FontColor(Colors.Grey.Darken2);
+                text.Span(FormatCount(model.Attendance.PreSolds)).FontSize(11).Bold();
+            });
         });
-    }
 
-    private static void ComposeEarlyRideTimeBox(IContainer container, AssociatePassdownDocumentModel model)
-    {
-        container.Border(1).BorderColor(Colors.Grey.Lighten2).Padding(6).Column(column =>
+    private static void ComposeEarlyRideTimeBox(IContainer container, AssociatePassdownDocumentModel model) =>
+        ComposePanel(container, "EARLY RIDE TIME", column =>
         {
-            column.Spacing(2);
-            column.Item().Text("EARLY RIDE TIME").Bold().FontSize(9.5f);
-
             if (!model.EarlyRideTime.Enabled)
             {
-                column.Item().Text("Not applicable for this date.").FontSize(9.5f).Italic();
+                column.Item().Text("Not applicable for this date.").FontSize(9.5f).Italic().FontColor(Colors.Grey.Darken2);
                 return;
             }
 
@@ -204,24 +225,19 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
                 column.Item().Text($"Attractions: {string.Join(", ", model.EarlyRideTime.ParticipatingAttractions)}").FontSize(9);
             }
         });
-    }
 
-    private static void ComposeDailyFunBox(IContainer container, AssociatePassdownDocumentModel model)
-    {
-        container.Border(1).BorderColor(Colors.Grey.Lighten2).Padding(6).Column(column =>
+    private static void ComposeDailyFunBox(IContainer container, AssociatePassdownDocumentModel model) =>
+        ComposePanel(container, "DAILY FUN", column =>
         {
-            column.Spacing(2);
-            column.Item().Text("DAILY FUN").Bold().FontSize(9.5f);
-
             if (!model.DailyFun.HasContent)
             {
-                column.Item().Text("Not entered.").FontSize(9.5f).Italic();
+                column.Item().Text("Not entered.").FontSize(9.5f).Italic().FontColor(Colors.Grey.Darken2);
                 return;
             }
 
             if (model.DailyFun.TypeLabel is { } label)
             {
-                column.Item().Text(label).FontSize(9).Italic();
+                column.Item().Text(label).FontSize(9).Italic().FontColor(Colors.Grey.Darken2);
             }
 
             if (model.DailyFun.Text is { } text)
@@ -229,7 +245,6 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
                 column.Item().Text(text).FontSize(9.5f);
             }
         });
-    }
 
     // Rows/notes are laid out in their own tightly-spaced inner column, added to the outer content
     // column as a single item — the outer column's spacing is meant to separate major sections
@@ -248,11 +263,15 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
 
             foreach (var category in categories)
             {
-                section.Item().PaddingTop(3).Text(category.CategoryName).Bold().FontSize(9).FontColor(Colors.Grey.Darken3);
+                section.Item().PaddingTop(4).Row(row =>
+                {
+                    row.AutoItem().Height(9).Width(2).Background(AccentColor);
+                    row.RelativeItem().PaddingLeft(4).Text(category.CategoryName).Bold().FontSize(9).FontColor(Colors.Grey.Darken3);
+                });
 
                 foreach (var product in category.Products)
                 {
-                    section.Item().Row(row =>
+                    section.Item().PaddingBottom(1).BorderBottom(0.6f).BorderColor(HairlineColor).Row(row =>
                     {
                         row.RelativeItem(3).Column(nameColumn =>
                         {
@@ -285,17 +304,21 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
 
             foreach (var note in notes)
             {
-                section.Item().Text($"- {note}").FontSize(9.5f);
+                section.Item().Row(row =>
+                {
+                    row.ConstantItem(10).Text("-").FontSize(9.5f).FontColor(Colors.Grey.Darken2);
+                    row.RelativeItem().Text(note).FontSize(9.5f);
+                });
             }
         });
     }
 
     private static void SectionHeading(ColumnDescriptor column, string title) =>
-        column.Item().PaddingTop(4).PaddingBottom(2).BorderBottom(1).BorderColor(Colors.Black).Text(title.ToUpperInvariant()).Bold().FontSize(10);
+        column.Item().PaddingTop(4).PaddingBottom(2).BorderBottom(1.25f).BorderColor(AccentColor).Text(title.ToUpperInvariant()).Bold().FontSize(10);
 
     private static void ComposeFooter(IContainer container, AssociatePassdownDocumentModel model)
     {
-        container.PaddingTop(4).BorderTop(0.75f).BorderColor(Colors.Grey.Lighten2).PaddingTop(3).Row(row =>
+        container.PaddingTop(3).BorderTop(0.75f).BorderColor(Colors.Grey.Lighten2).PaddingTop(3).Row(row =>
         {
             row.RelativeItem().Text(text =>
             {
