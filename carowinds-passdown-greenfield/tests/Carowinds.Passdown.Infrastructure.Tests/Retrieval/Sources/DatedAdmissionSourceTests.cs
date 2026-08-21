@@ -107,6 +107,20 @@ public class DatedAdmissionSourceTests
     }
 
     [Fact]
+    public async Task RetrieveAsync_ThreePackagesShareOneName_ReturnsErrorRatherThanSilentlyDroppingTheMiddlePrice()
+    {
+        // Synthetic/defensive fixture: never observed live (every live response seen during
+        // investigation had at most a standard/comparison pair per name), but min/max-only
+        // grouping would otherwise silently discard a genuine third price with no diagnostic.
+        var source = BuildSource(JsonResponse("three-way-name-collision.json"), out _);
+
+        var result = await source.RetrieveAsync(Request(Today), CancellationToken.None);
+
+        Assert.Equal(RetrievalStatus.Error, result.Evidence.Status);
+        Assert.Null(result.Payload);
+    }
+
+    [Fact]
     public async Task RetrieveAsync_RequestedDateWithinPublishedRangeButMissing_ReturnsUnavailable()
     {
         // published-window.json has 08-20, 08-21, then jumps to 08-29 (a real closed-date gap

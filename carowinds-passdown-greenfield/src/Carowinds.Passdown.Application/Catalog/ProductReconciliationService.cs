@@ -46,9 +46,15 @@ public sealed class ProductReconciliationService(
             results.Add(await ReconcileObservedAsync(observed, existing, evidence, cancellationToken).ConfigureAwait(false));
         }
 
+        // Scoped to this call's own source (via evidence.SourceName), not every source sharing
+        // this category: SourceCategory.AddOns is deliberately shared by two independent sources
+        // (season-pass add-ons and general add-ons, spec §6.1's shared cadence), so without this
+        // scope every reconciliation of one would wrongly push the other's disjoint products
+        // toward absence/archival.
         var missing = existingByKey.Values
             .Where(record =>
                 !observedKeys.Contains(record.ProductKey) &&
+                record.LastEvidence.SourceName == evidence.SourceName &&
                 record.LifecycleState is ProductLifecycleState.Active or ProductLifecycleState.PendingConfirmation);
 
         foreach (var record in missing)

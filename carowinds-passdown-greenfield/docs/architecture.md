@@ -1,9 +1,11 @@
-# Architecture — Phase 1 baseline, updated through Phase 3A
+# Architecture — Phase 1 baseline, updated through Phase 3 (complete)
 
 Established during Phase 1 (AGENT_BUILD_SPEC.md §17 Phase 1) and extended
-through Phase 2 (§17 Phase 2) and Phase 3A (§17 Phase 3's shared retrieval
-architecture). Concrete source adapters and UI screens are added in later
-phases; this records the boundaries and infrastructure they build on.
+through Phase 2 (§17 Phase 2) and the full Phase 3 (§17 Phase 3 — retrieval
+performance and consistency, now complete through the Phase 3H integrated
+review). UI screens beyond the template placeholder and PDF generation are
+added in later phases; this records the boundaries and infrastructure they
+build on.
 
 ## Project boundaries and dependency direction
 
@@ -151,11 +153,77 @@ wiring anything into the running app:
 Live retrieval for any *specific* Carowinds/Six Flags product (park hours,
 dated tickets, Fast Lane, haunted attractions, passes, add-ons, promotions),
 refresh-job orchestration across multiple due sources, and wiring any of
-this into the composition root remain out of scope for Phase 3A.
+this into the composition root remained out of scope for Phase 3A — all of
+it was completed in Phase 3B–3H, described below.
+
+## Phase 3B–3G additions — concrete source adapters and shared parsing
+
+Eight concrete `IOfficialDataSource<TPayload>` adapters were added under
+`Carowinds.Passdown.Infrastructure.Retrieval.Sources`, all `DirectApi`/`Html`
+strategy (no Playwright launch for any currently-implemented production
+source — verified both by code review and by an empirical process check
+during a live Phase 3H run):
+
+- **Dated** (Phase 3C–3E; `SourceScope.Dated`, keyed by requested date):
+  `ParkHoursSource`, `DatedAdmissionSource`, `DatedFastLaneSource`,
+  `DatedHauntedSource`. Each confirms the exact requested date from the
+  response before ever returning `Verified` — enforced redundantly at the
+  Domain layer too (`SourceEvidence`'s constructor throws if a `Verified`
+  result's confirmed date doesn't match its requested date, spec §5.4).
+  Documented per-source in `docs/retrieval/park-hours-source.md`,
+  `dated-admission-source.md`, `dated-fast-lane-source.md`,
+  `dated-haunted-source.md`.
+- **Catalog** (Phase 3F1–3F6; `SourceScope.Catalog`, keyed by normalized
+  product): `SeasonPassCatalogSource`, `SeasonPassAddOnsCatalogSource`,
+  `PromotionsCatalogSource`, `GeneralAddOnsCatalogSource`. Feed
+  `Application.Catalog.IProductReconciliationService` (Phase 2) via
+  `ObservedProduct`/`CatalogPayload`. Documented in
+  `docs/retrieval/catalog-source-inventory.md`, including the live
+  Phase 3F4/3F5 addendum that disproved cross-page Sanity-id stability —
+  `CatalogProductKey` scopes identity per `SourceCategory` so this can't
+  cause a collision, and `ProductReconciliationService` additionally scopes
+  its missing-product/confirmed-absence pass to the *reconciling* source
+  (`evidence.SourceName`), not every source sharing a category, since
+  `SourceCategory.AddOns` is deliberately shared by two independent sources
+  (general add-ons and season-pass add-ons).
+- **Shared parsing** (`Infrastructure.Retrieval.Sources`): `AccessoKeywordCalendar`
+  (the accesso ticketing keyword-calendar JSON shape the three ticket-dated
+  adapters share) and `ProductCardHtmlParser`/`CatalogCardMapper` (the
+  `productv2-card` markup shape shared by season passes, season-pass
+  add-ons, promotions, and the daily-tickets/Fast-Lane marketing pages —
+  proven shared only after independent confirmation on 6+ live page
+  fetches). `GeneralAddOnHtmlParser` is a separate, narrower parser for the
+  one page (`add-ons`) that does *not* use that markup shape — deliberately
+  not forced into the shared parser on single-page evidence.
+
+## Phase 3G–3H additions — refresh orchestration and composition root
+
+- **Application** (`Carowinds.Passdown.Application.Refresh`):
+  `IRefreshOrchestrator`/`RefreshOrchestrator` — plans only due sources
+  (`IFreshnessPlanner`), expands dated sources across the rolling window
+  today → tomorrow → remaining days (`IRollingDatePlanner`, spec §6.5),
+  and runs planned operations under a configurable `MaxConcurrency`
+  (`RefreshOrchestratorOptions`, a bounded `SemaphoreSlim`, spec §6.4).
+  `RunManualDateRefreshAsync` ("Check this date online", spec §6.3) is a
+  separate entry point that deliberately skips freshness gating and
+  `source_state` bookkeeping. Every operation persists independently as it
+  completes (`DatedSourceRegistration`/`CatalogSourceRegistration`); a
+  cancelled or failed operation can never discard or overwrite an earlier
+  success (spec §6.7), and a catalog `Error` never reaches reconciliation.
+  A job-scoped Playwright browser (`IJobBrowserSessionFactory`/
+  `PlaywrightJobBrowserSession`, Infrastructure) starts at most once, lazily,
+  only if a due source actually requires it — currently dead code in
+  practice, since none of the eight adapters above does.
+- **Desktop** (`App.axaml.cs`, `AddRefreshOrchestration`): composition-root
+  DI wiring only — registers Phase 2 persistence/freshness services, Phase
+  3A transport, all eight adapters, and `IRefreshOrchestrator`. No
+  ViewModel/View references any of it yet; `CompositionRootTests`
+  (`Carowinds.Passdown.Ui.Tests`) resolves the full graph offline to catch
+  a broken registration without needing a live smoke test.
 
 ## Deferred to later phases
 
-Concrete source adapters, refresh orchestration, Avalonia screens/view
-models beyond the template placeholder, PDF generation, scheduling, and
-packaging are explicitly out of scope through Phase 3A (see the approved
-Phase 1, Phase 2, and Phase 3A plans).
+Avalonia screens/view models beyond the template placeholder (wiring the
+date experience, product display, and manual refresh actions to
+`IRefreshOrchestrator`), PDF generation, the 6 AM scheduler and Windows Task
+Scheduler integration, and packaging remain out of scope — Phase 4 onward.

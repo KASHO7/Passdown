@@ -349,6 +349,39 @@ public class ProductReconciliationServiceTests
     }
 
     [Fact]
+    public async Task TwoSourcesSharingOneCategory_DoNotDriveEachOthersProductsTowardAbsence()
+    {
+        // SourceCategory.AddOns is deliberately shared by two independent sources (general
+        // add-ons and season-pass add-ons — spec §6.1's shared 14-day cadence). Reconciling one
+        // must not treat the other's disjoint, previously-observed products as missing.
+        var h = Harness.Create();
+        var generalAddOn = new ObservedProduct(
+            CatalogProductKey.FromSourceAndName(SourceCategory.AddOns, "General add-ons", "Single Day FunPix"),
+            "Single Day FunPix", 19.99m, "$19.99", null, null, false, null);
+        var seasonPassAddOn = new ObservedProduct(
+            CatalogProductKey.FromSourceAndName(SourceCategory.AddOns, "Season-pass add-ons", "All Season Fast Lane"),
+            "All Season Fast Lane", 499m, "$499", 899m, "Sale Price", false, null);
+
+        var generalPageEvidence = new SourceEvidence(
+            "General add-ons", SampleUrl, Day1, RetrievalStatus.Verified, "Checked successfully.", RetrievalStrategy.Html);
+        var seasonPassAddOnsPageEvidence = new SourceEvidence(
+            "Season-pass add-ons", SampleUrl, Day1, RetrievalStatus.Verified, "Checked successfully.", RetrievalStrategy.Html);
+
+        await h.Service.ReconcileAsync(SourceCategory.AddOns, generalPageEvidence, [generalAddOn]);
+        await h.Service.ReconcileAsync(SourceCategory.AddOns, seasonPassAddOnsPageEvidence, [seasonPassAddOn]);
+
+        // Re-reconcile the general add-ons page alone (season-pass add-ons product is absent from
+        // *this* batch only because it's a different page, not because it actually disappeared).
+        var generalPageEvidenceDay2 = new SourceEvidence(
+            "General add-ons", SampleUrl, Day2, RetrievalStatus.Verified, "Checked successfully.", RetrievalStrategy.Html);
+        await h.Service.ReconcileAsync(SourceCategory.AddOns, generalPageEvidenceDay2, [generalAddOn]);
+
+        var stillActive = await h.Catalog.GetAsync(seasonPassAddOn.Key);
+        Assert.Equal(ProductLifecycleState.Active, stillActive!.LifecycleState);
+        Assert.Equal(0, stillActive.ConsecutiveConfirmedAbsenceCount);
+    }
+
+    [Fact]
     public async Task PersistAsync_WithHistory_CommitsThroughASharedUnitOfWork()
     {
         var h = Harness.Create();

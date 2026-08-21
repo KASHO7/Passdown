@@ -234,6 +234,15 @@ public sealed class DatedAdmissionSource(IRetrievalHttpClient httpClient, IClock
         var products = new List<DatedAdmissionProduct>(byName.Count);
         foreach (var (name, group) in byName)
         {
+            // Exactly one or two entries per name is the only shape ever observed live (a single
+            // price, or a standard/comparison pair). A third differently-named-but-same-title
+            // entry has no defined pairing rule — rather than silently drop it (min/max would
+            // discard everything but the extremes), treat it as an unexpected response shape.
+            if (group.Count > 2)
+            {
+                return null;
+            }
+
             var lowest = group.MinBy(p => p.Price);
             var highest = group.MaxBy(p => p.Price);
             var hasComparison = highest.Price > lowest.Price;
