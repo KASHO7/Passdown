@@ -1,5 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <PackageReference Include="QuestPDF" Version="2026.7.3" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Carowinds.Passdown.Application\Carowinds.Passdown.Application.csproj" />
     <ProjectReference Include="..\Carowinds.Passdown.Domain\Carowinds.Passdown.Domain.csproj" />
   </ItemGroup>
