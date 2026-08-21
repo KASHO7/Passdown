@@ -157,7 +157,7 @@ public class AssociateViewModelTests
             officialIsClosed: true, null, null,
             manualOverrideEnabled: false, null, null,
             privateBuyoutEnabled: false, null, null);
-        var service = WithParkHours(effective, new AssociateVerificationInfo(AssociateVerificationState.Closed, FixedNow, null, "Closed."));
+        var service = WithParkHours(effective, new AssociateVerificationInfo(AssociateVerificationState.Closed, FixedNow, null, "Closed."), officialIsClosed: true, officialOpening: null, officialClosing: null);
         var viewModel = CreateViewModel(service);
         await viewModel.PendingLoad;
 
@@ -174,7 +174,7 @@ public class AssociateViewModelTests
             officialIsClosed: false, new TimeOnly(10, 0), new TimeOnly(21, 0),
             manualOverrideEnabled: false, null, null,
             privateBuyoutEnabled: false, null, null);
-        var service = WithParkHours(effective, new AssociateVerificationInfo(AssociateVerificationState.Verified, FixedNow, null, "Verified."));
+        var service = WithParkHours(effective, new AssociateVerificationInfo(AssociateVerificationState.Verified, FixedNow, null, "Verified."), officialIsClosed: false, officialOpening: new TimeOnly(10, 0), officialClosing: new TimeOnly(21, 0));
         var viewModel = CreateViewModel(service);
         await viewModel.PendingLoad;
 
@@ -194,7 +194,7 @@ public class AssociateViewModelTests
             manualOverrideEnabled: false, null, null,
             privateBuyoutEnabled: false, null, null);
         var verification = new AssociateVerificationInfo(AssociateVerificationState.Stale, FixedNow.AddHours(-6), TimeSpan.FromHours(6), "Could not be rechecked.");
-        var service = WithParkHours(effective, verification);
+        var service = WithParkHours(effective, verification, officialIsClosed: false, officialOpening: new TimeOnly(10, 0), officialClosing: new TimeOnly(21, 0));
         var viewModel = CreateViewModel(service);
         await viewModel.PendingLoad;
 
@@ -300,11 +300,11 @@ public class AssociateViewModelTests
         Assert.Contains("Saved on this computer at", viewModel.SaveStatus!.Text);
     }
 
-    private static FakeAssociatePassdownService WithParkHours(EffectiveHours effective, AssociateVerificationInfo verification) => new()
+    private static FakeAssociatePassdownService WithParkHours(EffectiveHours effective, AssociateVerificationInfo verification, bool officialIsClosed = false, TimeOnly? officialOpening = null, TimeOnly? officialClosing = null) => new()
     {
         WorkspaceFactory = date => FakeAssociatePassdownService.DefaultWorkspace(date) with
         {
-            ParkHours = new AssociateParkHoursView(effective, verification),
+            ParkHours = new AssociateParkHoursView(effective, verification, officialIsClosed, officialOpening, officialClosing),
         },
     };
 }

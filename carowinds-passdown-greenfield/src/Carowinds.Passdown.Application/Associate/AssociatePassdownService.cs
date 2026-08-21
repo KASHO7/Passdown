@@ -141,7 +141,7 @@ public sealed class AssociatePassdownService(
             draft.PrivateBuyout.OpeningTime,
             draft.PrivateBuyout.ClosingTime);
 
-        return new AssociateParkHoursView(effective, verification);
+        return new AssociateParkHoursView(effective, verification, officialIsClosed, officialPayload?.OpeningTime, officialPayload?.ClosingTime);
     }
 
     /// <summary>

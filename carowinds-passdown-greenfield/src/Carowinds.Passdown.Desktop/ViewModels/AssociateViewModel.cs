@@ -1,7 +1,9 @@
+using System.Globalization;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Presentation;
+using Carowinds.Passdown.Domain.Hours;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -9,18 +11,44 @@ using Microsoft.Extensions.Logging;
 namespace Carowinds.Passdown.Desktop.ViewModels;
 
 /// <summary>
-/// Phase 4B's Associate Passdown screen state. Depends only on <see cref="IAssociatePassdownService"/>
+/// Phase 4B/4C's Associate Passdown screen state. Depends only on <see cref="IAssociatePassdownService"/>
 /// (application-layer) and <see cref="IClock"/> (application-layer) — it never queries a
-/// repository, calls HTTP/Playwright, or recomputes effective-hours arithmetic; every value it
-/// exposes is either passed straight through from <see cref="AssociateWorkspace"/> or formatted by
-/// the pure <c>Presentation</c> builders (see <see cref="ParkHoursPresentation"/> and friends).
+/// repository, calls HTTP/Playwright, or recomputes effective-hours arithmetic (every effective-hours
+/// value comes from re-running the canonical <see cref="ParkHoursCalculator.Calculate"/> against the
+/// composed workspace's official inputs, never a reimplementation of the -30/-45 minute rule); every
+/// other value it exposes is either passed straight through from <see cref="AssociateWorkspace"/> or
+/// formatted by the pure <c>Presentation</c> builders (see <see cref="ParkHoursPresentation"/> and
+/// friends).
+///
+/// Phase 4C adds editable draft fields plus debounced autosave (spec §8.3): every bindable field
+/// below mirrors one part of <see cref="AssociateDraftPayload"/>, populated from a loaded
+/// <see cref="AssociateWorkspace"/> by <see cref="ApplyWorkspaceToFields"/> and converted back by
+/// <see cref="BuildDraft"/> — the Application layer's <see cref="IAssociatePassdownService.SaveDraftAsync"/>
+/// remains the only place a draft is actually persisted.
 /// </summary>
 public partial class AssociateViewModel : ViewModelBase
 {
+    private static readonly TimeSpan DefaultAutosaveDebounce = TimeSpan.FromMilliseconds(800);
+
     private readonly IAssociatePassdownService _service;
     private readonly ILogger<AssociateViewModel>? _logger;
+    private readonly TimeSpan _autosaveDebounce;
+    private readonly Func<TimeSpan, CancellationToken, Task> _autosaveDelay;
+    private readonly SemaphoreSlim _saveSemaphore = new(1, 1);
+
     private int _loadVersion;
     private Task _pendingLoad = Task.CompletedTask;
+    private Task _pendingAutosave = Task.CompletedTask;
+    private CancellationTokenSource? _debounceCts;
+
+    /// <summary>The operating date the current editable fields belong to — distinct from <see cref="SelectedDate"/>, which may already hold a newer date while a flush-then-load is still switching over (Part H).</summary>
+    private DateOnly? _draftDateInEdit;
+
+    private bool _isApplyingWorkspace;
+    private bool _isDirty;
+    private bool _saveInFlight;
+    private int? _projectedAttendance;
+    private int? _preSolds;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasWorkspace))]
@@ -28,6 +56,7 @@ public partial class AssociateViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(CategoryStatuses))]
     [NotifyPropertyChangedFor(nameof(ProductSummaries))]
     [NotifyPropertyChangedFor(nameof(SaveStatus))]
+    [NotifyPropertyChangedFor(nameof(SaveStatusText))]
     [NotifyPropertyChangedFor(nameof(HasCategoryStatuses))]
     [NotifyPropertyChangedFor(nameof(HasProductSummaries))]
     public partial AssociateWorkspace? Workspace { get; set; }
@@ -61,13 +90,88 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     public partial string? LoadErrorMessage { get; set; }
 
-    public AssociateViewModel(IAssociatePassdownService service, IClock clock, ILogger<AssociateViewModel>? logger = null)
+    /// <summary>Presentation-only save lifecycle (spec §8.3's "unsaved -> saving -> saved"); see <see cref="AssociateAutosaveState"/>.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SaveStatusText))]
+    public partial AssociateAutosaveState AutosaveState { get; set; } = AssociateAutosaveState.Saved;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ParkHours))]
+    [NotifyPropertyChangedFor(nameof(ManualHoursWarningText))]
+    public partial bool ManualHoursOverrideEnabled { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ParkHours))]
+    [NotifyPropertyChangedFor(nameof(ManualHoursWarningText))]
+    public partial TimeSpan? ManualOpeningTime { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ParkHours))]
+    [NotifyPropertyChangedFor(nameof(ManualHoursWarningText))]
+    public partial TimeSpan? ManualClosingTime { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ParkHours))]
+    [NotifyPropertyChangedFor(nameof(PrivateBuyoutHoursWarningText))]
+    public partial bool PrivateBuyoutEnabled { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ParkHours))]
+    [NotifyPropertyChangedFor(nameof(PrivateBuyoutHoursWarningText))]
+    public partial TimeSpan? PrivateBuyoutOpeningTime { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ParkHours))]
+    [NotifyPropertyChangedFor(nameof(PrivateBuyoutHoursWarningText))]
+    public partial TimeSpan? PrivateBuyoutClosingTime { get; set; }
+
+    [ObservableProperty]
+    public partial string? PrivateBuyoutDetails { get; set; }
+
+    [ObservableProperty]
+    public partial string? ProjectedAttendanceText { get; set; }
+
+    [ObservableProperty]
+    public partial string? ProjectedAttendanceError { get; set; }
+
+    [ObservableProperty]
+    public partial string? PreSoldsText { get; set; }
+
+    [ObservableProperty]
+    public partial string? PreSoldsError { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsEarlyRideTimeEnabled { get; set; }
+
+    [ObservableProperty]
+    public partial string? EarlyRideTimeDetailsText { get; set; }
+
+    [ObservableProperty]
+    public partial string? ParticipatingAttractionsText { get; set; }
+
+    [ObservableProperty]
+    public partial string? OperationalNotesText { get; set; }
+
+    [ObservableProperty]
+    public partial DailyFunTypeOption SelectedDailyFunTypeOption { get; set; } = DailyFunTypeOption.All[0];
+
+    [ObservableProperty]
+    public partial string? DailyFunText { get; set; }
+
+    public AssociateViewModel(
+        IAssociatePassdownService service,
+        IClock clock,
+        ILogger<AssociateViewModel>? logger = null,
+        TimeSpan? autosaveDebounce = null,
+        Func<TimeSpan, CancellationToken, Task>? autosaveDelay = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
 
         _service = service;
         _logger = logger;
+        _autosaveDebounce = autosaveDebounce ?? DefaultAutosaveDebounce;
+        _autosaveDelay = autosaveDelay ?? Task.Delay;
 
         // "Today" in the park's own wall-clock time (spec §6.5/§6.6 use the same Eastern
         // convention for "today") rather than the host machine's arbitrary local time zone.
@@ -98,7 +202,42 @@ public partial class AssociateViewModel : ViewModelBase
 
     public bool HasWorkspace => Workspace is not null;
 
-    public ParkHoursPresentation? ParkHours => Workspace is { } workspace ? ParkHoursPresentation.Build(workspace.ParkHours) : null;
+    /// <summary>
+    /// Re-runs <see cref="ParkHoursCalculator.Calculate"/> against the workspace's official inputs
+    /// plus whatever override fields are currently in the editable form (spec §8.2's "recalculate
+    /// immediately when the manager changes the override") — never a save round-trip, and never a
+    /// second, ViewModel-owned copy of the -30/-45 minute rule.
+    /// </summary>
+    public ParkHoursPresentation? ParkHours
+    {
+        get
+        {
+            if (Workspace is not { } workspace)
+            {
+                return null;
+            }
+
+            var official = workspace.ParkHours;
+            var live = ParkHoursCalculator.Calculate(
+                official.OfficialIsClosed, official.OfficialOpening, official.OfficialClosing,
+                ManualHoursOverrideEnabled, ToTimeOnly(ManualOpeningTime), ToTimeOnly(ManualClosingTime),
+                PrivateBuyoutEnabled, ToTimeOnly(PrivateBuyoutOpeningTime), ToTimeOnly(PrivateBuyoutClosingTime));
+
+            return ParkHoursPresentation.Build(official with { Effective = live });
+        }
+    }
+
+    public string? ManualHoursWarningText =>
+        ManualHoursOverrideEnabled && ManualOpeningTime is { } manualOpen && ManualClosingTime is { } manualClose && manualClose <= manualOpen
+            ? "Closing time should be after opening time."
+            : null;
+
+    public string? PrivateBuyoutHoursWarningText =>
+        PrivateBuyoutEnabled && PrivateBuyoutOpeningTime is { } buyoutOpen && PrivateBuyoutClosingTime is { } buyoutClose && buyoutClose <= buyoutOpen
+            ? "Closing time should be after opening time."
+            : null;
+
+    public IReadOnlyList<DailyFunTypeOption> DailyFunTypeOptions => DailyFunTypeOption.All;
 
     public IReadOnlyList<CategoryStatusPresentation> CategoryStatuses
     {
@@ -126,6 +265,14 @@ public partial class AssociateViewModel : ViewModelBase
 
     public SaveStatusPresentation? SaveStatus => Workspace is { } workspace ? SaveStatusPresentation.Build(workspace.SaveStatus) : null;
 
+    /// <summary>The footer's actual text: the in-progress autosave state when there is one, otherwise the last persisted <see cref="SaveStatus"/> (spec §8.3/§10.3's "Saved locally at 2:14 PM").</summary>
+    public string SaveStatusText => AutosaveState switch
+    {
+        AssociateAutosaveState.Saving => "Saving…",
+        AssociateAutosaveState.Unsaved => "Unsaved changes",
+        _ => SaveStatus?.Text ?? "Not saved yet",
+    };
+
     /// <summary>
     /// The in-flight (or most recently finished) local load, so a test can await it deterministically
     /// instead of racing the fire-and-forget task <see cref="OnSelectedDateChanged"/> starts. The
@@ -135,13 +282,23 @@ public partial class AssociateViewModel : ViewModelBase
     /// </summary>
     public Task PendingLoad => _pendingLoad;
 
+    /// <summary>The in-flight (or most recently finished) debounced autosave, so a test can await a scheduled save deterministically instead of racing it.</summary>
+    public Task PendingAutosave => _pendingAutosave;
+
     /// <summary>
     /// Spec §6.3 "fast date changes": every date change — including the very first one, via the
     /// constructor's initial assignment — runs through this single local-only path. It never calls
     /// <see cref="IAssociatePassdownService.CheckAssociateDateOnlineAsync"/> or anything else that
-    /// could reach the network.
+    /// could reach the network. Spec Part H: the previous date's pending edits are flushed/saved
+    /// before the new date's workspace is composed and applied.
     /// </summary>
-    partial void OnSelectedDateChanged(DateOnly value) => _pendingLoad = LoadDateAsync(value);
+    partial void OnSelectedDateChanged(DateOnly value) => _pendingLoad = SwitchDateAsync(value);
+
+    private async Task SwitchDateAsync(DateOnly newDate)
+    {
+        await FlushPendingAutosaveAsync().ConfigureAwait(true);
+        await LoadDateAsync(newDate).ConfigureAwait(true);
+    }
 
     private async Task LoadDateAsync(DateOnly date)
     {
@@ -156,7 +313,7 @@ public partial class AssociateViewModel : ViewModelBase
                 return; // a newer date was selected before this one finished composing.
             }
 
-            Workspace = workspace;
+            ApplyWorkspaceToFields(workspace);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -188,8 +345,13 @@ public partial class AssociateViewModel : ViewModelBase
 
         try
         {
+            // Part I: persist whatever is currently only sitting in the editable fields first, so
+            // the recompose below (which re-reads the saved draft record) reflects it instead of
+            // discarding it in favor of stale on-disk state.
+            await FlushPendingAutosaveAsync().ConfigureAwait(true);
+
             var result = await _service.CheckAssociateDateOnlineAsync(date, progress);
-            Workspace = result.Workspace;
+            ApplyWorkspaceToFields(result.Workspace);
             RefreshResultMessage = RefreshMessages.Summary(result.Summary);
             RefreshHadFailures = result.Summary.Failed > 0 || result.Summary.Cancelled > 0;
         }
@@ -216,4 +378,284 @@ public partial class AssociateViewModel : ViewModelBase
 
     [RelayCommand]
     private void NextDay() => SelectedDate = SelectedDate.AddDays(1);
+
+    partial void OnManualHoursOverrideEnabledChanged(bool value) => ScheduleAutosave();
+
+    partial void OnManualOpeningTimeChanged(TimeSpan? value) => ScheduleAutosave();
+
+    partial void OnManualClosingTimeChanged(TimeSpan? value) => ScheduleAutosave();
+
+    partial void OnPrivateBuyoutEnabledChanged(bool value) => ScheduleAutosave();
+
+    partial void OnPrivateBuyoutOpeningTimeChanged(TimeSpan? value) => ScheduleAutosave();
+
+    partial void OnPrivateBuyoutClosingTimeChanged(TimeSpan? value) => ScheduleAutosave();
+
+    partial void OnPrivateBuyoutDetailsChanged(string? value) => ScheduleAutosave();
+
+    partial void OnProjectedAttendanceTextChanged(string? value)
+    {
+        if (TryParseNonNegativeInt(value, out var parsed, out var error))
+        {
+            ProjectedAttendanceError = null;
+            _projectedAttendance = parsed;
+            ScheduleAutosave();
+        }
+        else
+        {
+            ProjectedAttendanceError = error;
+        }
+    }
+
+    partial void OnPreSoldsTextChanged(string? value)
+    {
+        if (TryParseNonNegativeInt(value, out var parsed, out var error))
+        {
+            PreSoldsError = null;
+            _preSolds = parsed;
+            ScheduleAutosave();
+        }
+        else
+        {
+            PreSoldsError = error;
+        }
+    }
+
+    /// <summary>Turning Early Ride Time off means "not applicable" (spec Part D) — its detail fields are cleared rather than left populated but hidden.</summary>
+    partial void OnIsEarlyRideTimeEnabledChanged(bool value)
+    {
+        if (!value && !_isApplyingWorkspace)
+        {
+            EarlyRideTimeDetailsText = null;
+            ParticipatingAttractionsText = null;
+        }
+
+        ScheduleAutosave();
+    }
+
+    partial void OnEarlyRideTimeDetailsTextChanged(string? value) => ScheduleAutosave();
+
+    partial void OnParticipatingAttractionsTextChanged(string? value) => ScheduleAutosave();
+
+    partial void OnOperationalNotesTextChanged(string? value) => ScheduleAutosave();
+
+    partial void OnSelectedDailyFunTypeOptionChanged(DailyFunTypeOption value) => ScheduleAutosave();
+
+    partial void OnDailyFunTextChanged(string? value) => ScheduleAutosave();
+
+    /// <summary>Pushes a freshly loaded/refreshed workspace's draft into the editable fields without treating that as a user edit (see <see cref="_isApplyingWorkspace"/>), then publishes the workspace itself.</summary>
+    private void ApplyWorkspaceToFields(AssociateWorkspace workspace)
+    {
+        _isApplyingWorkspace = true;
+        try
+        {
+            var draft = workspace.Draft;
+
+            ManualHoursOverrideEnabled = draft.ManualHoursOverride.Enabled;
+            ManualOpeningTime = ToTimeSpan(draft.ManualHoursOverride.OpeningTime);
+            ManualClosingTime = ToTimeSpan(draft.ManualHoursOverride.ClosingTime);
+
+            PrivateBuyoutEnabled = draft.PrivateBuyout.Enabled;
+            PrivateBuyoutOpeningTime = ToTimeSpan(draft.PrivateBuyout.OpeningTime);
+            PrivateBuyoutClosingTime = ToTimeSpan(draft.PrivateBuyout.ClosingTime);
+            PrivateBuyoutDetails = draft.PrivateBuyout.Details;
+
+            _projectedAttendance = draft.ProjectedAttendance;
+            ProjectedAttendanceText = draft.ProjectedAttendance?.ToString(CultureInfo.InvariantCulture);
+            ProjectedAttendanceError = null;
+
+            _preSolds = draft.PreSolds;
+            PreSoldsText = draft.PreSolds?.ToString(CultureInfo.InvariantCulture);
+            PreSoldsError = null;
+
+            IsEarlyRideTimeEnabled = !string.IsNullOrWhiteSpace(draft.EarlyRideTime.Details) || draft.EarlyRideTime.ParticipatingAttractions.Count > 0;
+            EarlyRideTimeDetailsText = draft.EarlyRideTime.Details;
+            ParticipatingAttractionsText = string.Join(Environment.NewLine, draft.EarlyRideTime.ParticipatingAttractions);
+
+            OperationalNotesText = string.Join(Environment.NewLine, draft.OperationalNotes);
+
+            SelectedDailyFunTypeOption = DailyFunTypeOption.For(draft.DailyFunType);
+            DailyFunText = draft.DailyFunText;
+
+            _draftDateInEdit = workspace.OperatingDate;
+            _isDirty = false;
+            AutosaveState = AssociateAutosaveState.Saved;
+        }
+        finally
+        {
+            _isApplyingWorkspace = false;
+        }
+
+        Workspace = workspace;
+    }
+
+    /// <summary>Converts the current editable fields into a full <see cref="AssociateDraftPayload"/>, carrying <see cref="AssociateDraftPayload.ProductOverrides"/>/<see cref="AssociateDraftPayload.CustomProducts"/> forward unchanged (Phase 4C does not edit products yet).</summary>
+    private AssociateDraftPayload BuildDraft()
+    {
+        var existing = Workspace?.Draft ?? AssociateDraftPayload.CreateDefault();
+
+        return existing with
+        {
+            ManualHoursOverride = new ManualHoursOverride(ManualHoursOverrideEnabled, ToTimeOnly(ManualOpeningTime), ToTimeOnly(ManualClosingTime)),
+            PrivateBuyout = new PrivateBuyoutOverride(PrivateBuyoutEnabled, ToTimeOnly(PrivateBuyoutOpeningTime), ToTimeOnly(PrivateBuyoutClosingTime), NullIfBlank(PrivateBuyoutDetails)),
+            ProjectedAttendance = _projectedAttendance,
+            PreSolds = _preSolds,
+            EarlyRideTime = new EarlyRideTimeDetails(NullIfBlank(EarlyRideTimeDetailsText), ParseLines(ParticipatingAttractionsText)),
+            OperationalNotes = ParseLines(OperationalNotesText),
+            DailyFunType = SelectedDailyFunTypeOption.Value,
+            DailyFunText = NullIfBlank(DailyFunText),
+        };
+    }
+
+    /// <summary>
+    /// Any edit marks the draft unsaved and (re)starts the debounce timer (spec §8.3's "short
+    /// debounce"); a later edit before the timer elapses cancels and replaces it rather than
+    /// queuing a second save, so rapid typing never produces one save per keystroke. No-ops while
+    /// <see cref="ApplyWorkspaceToFields"/> is itself assigning the fields — that is a data load,
+    /// not a user edit.
+    /// </summary>
+    private void ScheduleAutosave()
+    {
+        if (_isApplyingWorkspace)
+        {
+            return;
+        }
+
+        _isDirty = true;
+        AutosaveState = AssociateAutosaveState.Unsaved;
+
+        if (_draftDateInEdit is not { } date)
+        {
+            return; // nothing loaded yet to attach this edit to.
+        }
+
+        _debounceCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _debounceCts = cts;
+        _pendingAutosave = RunAutosaveAsync(date, cts.Token);
+    }
+
+    private async Task RunAutosaveAsync(DateOnly date, CancellationToken debounceToken)
+    {
+        try
+        {
+            await _autosaveDelay(_autosaveDebounce, debounceToken).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return; // superseded by a newer edit or a flush-then-switch.
+        }
+
+        if (debounceToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        await SaveDraftNowAsync(date).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// The one place <see cref="IAssociatePassdownService.SaveDraftAsync"/> is actually called.
+    /// Serialized by <see cref="_saveSemaphore"/> so overlapping calls (a debounce firing while a
+    /// flush is already saving, or vice versa) can never race — a second caller simply waits, then
+    /// saves whatever the editable fields hold at that later point, never a stale snapshot.
+    /// </summary>
+    private async Task SaveDraftNowAsync(DateOnly date)
+    {
+        await _saveSemaphore.WaitAsync().ConfigureAwait(true);
+        _saveInFlight = true;
+        try
+        {
+            _isDirty = false;
+            AutosaveState = AssociateAutosaveState.Saving;
+            var draft = BuildDraft();
+
+            var status = await _service.SaveDraftAsync(date, draft).ConfigureAwait(true);
+
+            if (Workspace is { } current && current.OperatingDate == date)
+            {
+                Workspace = current with { Draft = draft, SaveStatus = status };
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogError(ex, "Failed to autosave the Associate draft for {OperatingDate}.", date);
+            _isDirty = true; // the edit is still only local; the next scheduled/flushed save retries it.
+        }
+        finally
+        {
+            _saveInFlight = false;
+            AutosaveState = _isDirty ? AssociateAutosaveState.Unsaved : AssociateAutosaveState.Saved;
+            _saveSemaphore.Release();
+        }
+    }
+
+    /// <summary>
+    /// Synchronously drains any pending debounce/save for the date currently being edited (spec
+    /// Part H/I) before the caller replaces it — a date switch or a Check Online recompose. Cancels
+    /// the debounce timer itself (no need to wait 800ms for something about to be flushed anyway)
+    /// and saves directly instead.
+    /// </summary>
+    private async Task FlushPendingAutosaveAsync()
+    {
+        _debounceCts?.Cancel();
+
+        if (_draftDateInEdit is not { } date)
+        {
+            return;
+        }
+
+        while (_isDirty || _saveInFlight)
+        {
+            await SaveDraftNowAsync(date).ConfigureAwait(true);
+        }
+    }
+
+    private static bool TryParseNonNegativeInt(string? text, out int? value, out string? error)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            value = null;
+            error = null;
+            return true;
+        }
+
+        if (!int.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+        {
+            value = null;
+            error = "Enter a whole number.";
+            return false;
+        }
+
+        if (parsed < 0)
+        {
+            value = null;
+            error = "Enter a number 0 or greater.";
+            return false;
+        }
+
+        value = parsed;
+        error = null;
+        return true;
+    }
+
+    private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static IReadOnlyList<string> ParseLines(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return [];
+        }
+
+        return text.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0)
+            .ToList();
+    }
+
+    private static TimeOnly? ToTimeOnly(TimeSpan? value) => value is { } span ? TimeOnly.FromTimeSpan(span) : null;
+
+    private static TimeSpan? ToTimeSpan(TimeOnly? value) => value?.ToTimeSpan();
 }

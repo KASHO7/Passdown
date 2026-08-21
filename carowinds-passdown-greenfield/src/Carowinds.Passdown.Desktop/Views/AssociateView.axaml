@@ -23,6 +23,26 @@
       <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
       <Setter Property="FontSize" Value="13" />
     </Style>
+    <Style Selector="TextBlock.fieldLabel">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Margin" Value="0,0,0,4" />
+    </Style>
+    <Style Selector="TextBlock.fieldHint">
+      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Margin" Value="0,3,0,0" />
+    </Style>
+    <Style Selector="TextBlock.fieldWarning">
+      <Setter Property="Foreground" Value="#B26A00" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Margin" Value="0,3,0,0" />
+    </Style>
+    <Style Selector="TextBlock.fieldError">
+      <Setter Property="Foreground" Value="#B3261E" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Margin" Value="0,3,0,0" />
+    </Style>
     <Style Selector="Border.section">
       <Setter Property="Padding" Value="20" />
       <Setter Property="Margin" Value="0,0,0,16" />
@@ -30,6 +50,13 @@
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}" />
       <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" />
+    </Style>
+    <Style Selector="Border.subsection">
+      <Setter Property="Padding" Value="14" />
+      <Setter Property="Margin" Value="0,10,0,0" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}" />
     </Style>
   </UserControl.Styles>
 
@@ -40,7 +67,7 @@
             Padding="24,12"
             BorderThickness="0,1,0,0"
             BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
-      <TextBlock Text="{Binding SaveStatus.Text, FallbackValue='Not saved yet'}"
+      <TextBlock Text="{Binding SaveStatusText, FallbackValue='Not saved yet'}"
                  Classes="muted"
                  AutomationProperties.Name="Save status" />
     </Border>
@@ -119,6 +146,159 @@
             <TextBlock Text="{Binding ParkHours.StaleNoteText}"
                        IsVisible="{Binding ParkHours.StaleNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                        Foreground="#B26A00" TextWrapping="Wrap" />
+
+            <!-- Manual hours override (Part B): a correction to official hours on a day the park is otherwise open. -->
+            <Border Classes="subsection">
+              <StackPanel Spacing="8">
+                <CheckBox Content="Use a manual hours override"
+                          IsChecked="{Binding ManualHoursOverrideEnabled}"
+                          AutomationProperties.Name="Use a manual hours override" />
+                <StackPanel Orientation="Horizontal" Spacing="16" IsVisible="{Binding ManualHoursOverrideEnabled}">
+                  <StackPanel Spacing="0">
+                    <TextBlock Text="Opening time" Classes="fieldLabel" />
+                    <TimePicker SelectedTime="{Binding ManualOpeningTime}"
+                                AutomationProperties.Name="Manual override opening time" />
+                  </StackPanel>
+                  <StackPanel Spacing="0">
+                    <TextBlock Text="Closing time" Classes="fieldLabel" />
+                    <TimePicker SelectedTime="{Binding ManualClosingTime}"
+                                AutomationProperties.Name="Manual override closing time" />
+                  </StackPanel>
+                </StackPanel>
+                <TextBlock Text="{Binding ManualHoursWarningText}"
+                           IsVisible="{Binding ManualHoursWarningText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           Classes="fieldWarning" />
+              </StackPanel>
+            </Border>
+
+            <!-- Private buyout / custom hours (Part B): spec §8.2's one named exception that can show hours on an officially closed date. -->
+            <Border Classes="subsection">
+              <StackPanel Spacing="8">
+                <CheckBox Content="Private buyout / custom hours"
+                          IsChecked="{Binding PrivateBuyoutEnabled}"
+                          AutomationProperties.Name="Private buyout or custom hours" />
+                <StackPanel Spacing="8" IsVisible="{Binding PrivateBuyoutEnabled}">
+                  <StackPanel Orientation="Horizontal" Spacing="16">
+                    <StackPanel Spacing="0">
+                      <TextBlock Text="Opening time" Classes="fieldLabel" />
+                      <TimePicker SelectedTime="{Binding PrivateBuyoutOpeningTime}"
+                                  AutomationProperties.Name="Private buyout opening time" />
+                    </StackPanel>
+                    <StackPanel Spacing="0">
+                      <TextBlock Text="Closing time" Classes="fieldLabel" />
+                      <TimePicker SelectedTime="{Binding PrivateBuyoutClosingTime}"
+                                  AutomationProperties.Name="Private buyout closing time" />
+                    </StackPanel>
+                  </StackPanel>
+                  <StackPanel Spacing="0">
+                    <TextBlock Text="Buyout details" Classes="fieldLabel" />
+                    <TextBox Text="{Binding PrivateBuyoutDetails}"
+                             PlaceholderText="Group name, contact, or other details"
+                             AutomationProperties.Name="Private buyout details" />
+                  </StackPanel>
+                </StackPanel>
+                <TextBlock Text="{Binding PrivateBuyoutHoursWarningText}"
+                           IsVisible="{Binding PrivateBuyoutHoursWarningText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           Classes="fieldWarning" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </Border>
+
+        <!-- Attendance (Part C). -->
+        <Border Classes="section">
+          <StackPanel Spacing="6">
+            <TextBlock Text="Attendance" Classes="sectionTitle" />
+            <StackPanel Orientation="Horizontal" Spacing="24">
+              <StackPanel Spacing="0" Width="220">
+                <TextBlock Text="Projected attendance" Classes="fieldLabel" />
+                <TextBox Text="{Binding ProjectedAttendanceText}"
+                         PlaceholderText="Not entered"
+                         AutomationProperties.Name="Projected attendance" />
+                <TextBlock Text="{Binding ProjectedAttendanceError}"
+                           IsVisible="{Binding ProjectedAttendanceError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           Classes="fieldError" />
+              </StackPanel>
+              <StackPanel Spacing="0" Width="220">
+                <TextBlock Text="Pre-solds" Classes="fieldLabel" />
+                <TextBox Text="{Binding PreSoldsText}"
+                         PlaceholderText="Not entered"
+                         AutomationProperties.Name="Pre-solds" />
+                <TextBlock Text="{Binding PreSoldsError}"
+                           IsVisible="{Binding PreSoldsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           Classes="fieldError" />
+              </StackPanel>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <!-- Early Ride Time (Part D). -->
+        <Border Classes="section">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Early Ride Time" Classes="sectionTitle" />
+            <CheckBox Content="Early Ride Time is happening today"
+                      IsChecked="{Binding IsEarlyRideTimeEnabled}"
+                      AutomationProperties.Name="Early Ride Time is happening today" />
+            <StackPanel Spacing="10" IsVisible="{Binding IsEarlyRideTimeEnabled}">
+              <StackPanel Spacing="0">
+                <TextBlock Text="Details" Classes="fieldLabel" />
+                <TextBox Text="{Binding EarlyRideTimeDetailsText}"
+                         PlaceholderText="e.g. 9:00 AM – 10:00 AM, first two rows only"
+                         AutomationProperties.Name="Early Ride Time details" />
+              </StackPanel>
+              <StackPanel Spacing="0">
+                <TextBlock Text="Participating attractions" Classes="fieldLabel" />
+                <TextBox Text="{Binding ParticipatingAttractionsText}"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         MinHeight="80"
+                         PlaceholderText="One attraction per line"
+                         AutomationProperties.Name="Participating attractions" />
+                <TextBlock Text="One attraction per line." Classes="fieldHint" />
+              </StackPanel>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <!-- Operational notes (Part E). -->
+        <Border Classes="section">
+          <StackPanel Spacing="6">
+            <TextBlock Text="Operational Notes" Classes="sectionTitle" />
+            <TextBox Text="{Binding OperationalNotesText}"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     MinHeight="120"
+                     PlaceholderText="Important operational notes, one line per note"
+                     AutomationProperties.Name="Operational notes" />
+          </StackPanel>
+        </Border>
+
+        <!-- Daily Fun (Part F). -->
+        <Border Classes="section">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Daily Fun" Classes="sectionTitle" />
+            <StackPanel Spacing="0" Width="260">
+              <TextBlock Text="Type" Classes="fieldLabel" />
+              <ComboBox ItemsSource="{Binding DailyFunTypeOptions}"
+                        SelectedItem="{Binding SelectedDailyFunTypeOption}"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="Daily Fun type">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="presentation:DailyFunTypeOption">
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+            <StackPanel Spacing="0">
+              <TextBlock Text="Text" Classes="fieldLabel" />
+              <TextBox Text="{Binding DailyFunText}"
+                       AcceptsReturn="True"
+                       TextWrapping="Wrap"
+                       MinHeight="60"
+                       PlaceholderText="Enter the question, fact, or quote"
+                       AutomationProperties.Name="Daily Fun text" />
+            </StackPanel>
           </StackPanel>
         </Border>
 

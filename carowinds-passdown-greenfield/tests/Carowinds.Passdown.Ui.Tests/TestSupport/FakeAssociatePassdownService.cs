@@ -11,16 +11,39 @@ namespace Carowinds.Passdown.Ui.Tests.TestSupport;
 /// <see cref="Carowinds.Passdown.Desktop.ViewModels.AssociateViewModel"/> tests. Never touches
 /// SQLite, HTTP, or Playwright — records every call so a test can assert whether the ViewModel
 /// ever invoked the explicit online check (spec §6.3's "date change never triggers retrieval").
+///
+/// Phase 4C adds a small in-memory per-date draft store: unless a test overrides
+/// <see cref="WorkspaceFactory"/>, <see cref="LoadAssociateDateAsync"/>/<see cref="CheckAssociateDateOnlineAsync"/>
+/// compose a workspace from whatever <see cref="SaveDraftAsync"/> has actually saved for that date
+/// so far (or the default draft if nothing has). This lets a test exercise real save-then-reload
+/// round trips (Phase 4C Part H/I) instead of only ever asserting against
+/// <see cref="SaveCalls"/> in isolation.
 /// </summary>
 internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
 {
+    private readonly Dictionary<DateOnly, AssociateDraftPayload> _savedDrafts = [];
+    private readonly Dictionary<DateOnly, DateTimeOffset> _savedAt = [];
+
     public List<DateOnly> LoadCalls { get; } = [];
 
     public List<DateOnly> CheckOnlineCalls { get; } = [];
 
-    public Func<DateOnly, AssociateWorkspace> WorkspaceFactory { get; set; } = DefaultWorkspace;
+    /// <summary>Every <see cref="SaveDraftAsync"/> call, in order — the primary assertion point for autosave/debounce/overlap tests.</summary>
+    public List<(DateOnly OperatingDate, AssociateDraftPayload Draft)> SaveCalls { get; } = [];
+
+    /// <summary>When set, overrides the default per-date-store composition entirely (existing Phase 4B presentation tests use this to script an exact workspace).</summary>
+    public Func<DateOnly, AssociateWorkspace>? WorkspaceFactory { get; set; }
 
     public Func<DateOnly, AssociateOnlineCheckResult>? CheckOnlineResultFactory { get; set; }
+
+    /// <summary>
+    /// When set (and <see cref="CheckOnlineResultFactory"/> is not), simulates "the online check
+    /// found different official data" by substituting just the composed workspace's
+    /// <see cref="AssociateWorkspace.ParkHours"/> — the draft/products still come from the normal
+    /// per-date store, so a test can assert official data changed while manual fields survived, in
+    /// one call.
+    /// </summary>
+    public Func<DateOnly, AssociateParkHoursView>? OfficialParkHoursAfterCheckFactory { get; set; }
 
     public IReadOnlyList<RefreshProgress> ProgressToReport { get; set; } = [];
 
@@ -30,6 +53,13 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
     /// <summary>When set, <see cref="CheckAssociateDateOnlineAsync"/> awaits this before returning.</summary>
     public TaskCompletionSource<bool>? CheckOnlineGate { get; set; }
 
+    /// <summary>
+    /// One gate per <see cref="SaveDraftAsync"/> call, consumed in order: the Nth save call awaits
+    /// the Nth queued gate (if any) before completing. Lets a test hold one save in flight while it
+    /// makes further edits, to prove overlapping saves are serialized rather than racing.
+    /// </summary>
+    public Queue<TaskCompletionSource<bool>> SaveGates { get; } = new();
+
     public async Task<AssociateWorkspace> LoadAssociateDateAsync(DateOnly operatingDate, CancellationToken cancellationToken = default)
     {
         LoadCalls.Add(operatingDate);
@@ -38,7 +68,7 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
             await LoadGate.Task;
         }
 
-        return WorkspaceFactory(operatingDate);
+        return BuildWorkspace(operatingDate);
     }
 
     public async Task<AssociateOnlineCheckResult> CheckAssociateDateOnlineAsync(DateOnly operatingDate, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)
@@ -55,16 +85,60 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
             await CheckOnlineGate.Task;
         }
 
-        return CheckOnlineResultFactory?.Invoke(operatingDate) ?? new AssociateOnlineCheckResult(WorkspaceFactory(operatingDate), SuccessSummary(operatingDate));
+        if (CheckOnlineResultFactory is { } resultFactory)
+        {
+            return resultFactory(operatingDate);
+        }
+
+        var workspace = BuildWorkspace(operatingDate);
+        if (OfficialParkHoursAfterCheckFactory is { } parkHoursFactory)
+        {
+            workspace = workspace with { ParkHours = parkHoursFactory(operatingDate) };
+        }
+
+        return new AssociateOnlineCheckResult(workspace, SuccessSummary(operatingDate));
     }
 
-    public Task<AssociateSaveStatus> SaveDraftAsync(DateOnly operatingDate, AssociateDraftPayload draft, CancellationToken cancellationToken = default) =>
-        Task.FromResult(new AssociateSaveStatus(AssociateSaveState.Saved, DateTimeOffset.UtcNow));
+    public async Task<AssociateSaveStatus> SaveDraftAsync(DateOnly operatingDate, AssociateDraftPayload draft, CancellationToken cancellationToken = default)
+    {
+        SaveCalls.Add((operatingDate, draft));
+
+        if (SaveGates.Count > 0)
+        {
+            await SaveGates.Dequeue().Task;
+        }
+
+        _savedDrafts[operatingDate] = draft;
+        var savedAt = DateTimeOffset.UtcNow;
+        _savedAt[operatingDate] = savedAt;
+        return new AssociateSaveStatus(AssociateSaveState.Saved, savedAt);
+    }
+
+    private AssociateWorkspace BuildWorkspace(DateOnly date)
+    {
+        if (WorkspaceFactory is { } factory)
+        {
+            return factory(date);
+        }
+
+        var draft = _savedDrafts.GetValueOrDefault(date, AssociateDraftPayload.CreateDefault());
+        var saveStatus = _savedAt.TryGetValue(date, out var savedAt)
+            ? new AssociateSaveStatus(AssociateSaveState.Saved, savedAt)
+            : AssociateSaveStatus.NeverSaved;
+
+        return new AssociateWorkspace(
+            date,
+            draft,
+            new AssociateParkHoursView(NotCheckedHours, AssociateVerificationInfo.NotCheckedYet, OfficialIsClosed: false, OfficialOpening: null, OfficialClosing: null),
+            Products: [],
+            CategoryStatuses: [],
+            saveStatus);
+    }
 
     public static AssociateWorkspace DefaultWorkspace(DateOnly date) => new(
         date,
         AssociateDraftPayload.CreateDefault(),
-        new AssociateParkHoursView(NotCheckedHours, AssociateVerificationInfo.NotCheckedYet),
+        new AssociateParkHoursView(NotCheckedHours, AssociateVerificationInfo.NotCheckedYet, OfficialIsClosed: false, OfficialOpening: null, OfficialClosing: null),
         Products: [],
         CategoryStatuses: [],
         AssociateSaveStatus.NeverSaved);
