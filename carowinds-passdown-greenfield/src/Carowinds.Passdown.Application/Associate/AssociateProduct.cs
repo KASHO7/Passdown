@@ -1,0 +1,35 @@
+using Carowinds.Passdown.Domain;
+
+namespace Carowinds.Passdown.Application.Associate;
+
+/// <summary>
+/// One UI-neutral product row for the Associate Passdown view (spec §8.1's dynamic product list),
+/// unifying official dated products, official catalog products, and manager-added custom products
+/// (spec §7.5) behind one shape so a future view model does not need three parallel lists. Carries
+/// no Avalonia/formatting concerns.
+///
+/// A product is only ever projected here when it is currently present in cached official/catalog
+/// data (or is a draft-local custom entry) — nothing is hard-coded per category or season (spec
+/// §7.1/§7.4): if the official source has no SCarowinds products for the selected date, no
+/// haunted-attraction rows are projected at all, the same way an empty catalog category simply
+/// contributes zero rows.
+/// </summary>
+/// <param name="Category">Null only for an <see cref="IsCustom"/> entry — a manual product has no official source category.</param>
+public sealed record AssociateProduct(
+    string ProductIdentity,
+    string DisplayName,
+    SourceCategory? Category,
+    bool IsCustom,
+    decimal? OfficialPriceAmount,
+    string? OfficialDisplayPrice,
+    decimal? ComparisonPriceAmount,
+    string? PriceQualifier,
+    bool DateSpecific,
+    DateOnly? ApplicableDate,
+    AssociateVerificationInfo Verification,
+    bool IncludeOnPdf,
+    decimal? DisplayPriceOverride)
+{
+    /// <summary>The price to actually show: the draft's override when present, the official price otherwise (or a custom product's own manually entered price).</summary>
+    public decimal? EffectiveDisplayPrice => DisplayPriceOverride ?? OfficialPriceAmount;
+}
