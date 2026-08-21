@@ -1,8 +1,10 @@
+using System.Collections.ObjectModel;
 using System.Globalization;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Presentation;
+using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Hours;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -11,7 +13,7 @@ using Microsoft.Extensions.Logging;
 namespace Carowinds.Passdown.Desktop.ViewModels;
 
 /// <summary>
-/// Phase 4B/4C's Associate Passdown screen state. Depends only on <see cref="IAssociatePassdownService"/>
+/// Phase 4B–4D's Associate Passdown screen state. Depends only on <see cref="IAssociatePassdownService"/>
 /// (application-layer) and <see cref="IClock"/> (application-layer) — it never queries a
 /// repository, calls HTTP/Playwright, or recomputes effective-hours arithmetic (every effective-hours
 /// value comes from re-running the canonical <see cref="ParkHoursCalculator.Calculate"/> against the
@@ -25,6 +27,11 @@ namespace Carowinds.Passdown.Desktop.ViewModels;
 /// <see cref="AssociateWorkspace"/> by <see cref="ApplyWorkspaceToFields"/> and converted back by
 /// <see cref="BuildDraft"/> — the Application layer's <see cref="IAssociatePassdownService.SaveDraftAsync"/>
 /// remains the only place a draft is actually persisted.
+///
+/// Phase 4D extends the same load/edit/autosave pipeline to products: <see cref="ProductSections"/>
+/// and <see cref="CustomProducts"/> are populated by <see cref="BuildProductSections"/> (part of
+/// <see cref="ApplyWorkspaceToFields"/>) and read back by <see cref="BuildDraft"/> exactly like every
+/// scalar field — there is no second save queue or product-specific persistence path.
 /// </summary>
 public partial class AssociateViewModel : ViewModelBase
 {
@@ -53,13 +60,25 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasWorkspace))]
     [NotifyPropertyChangedFor(nameof(ParkHours))]
-    [NotifyPropertyChangedFor(nameof(CategoryStatuses))]
-    [NotifyPropertyChangedFor(nameof(ProductSummaries))]
     [NotifyPropertyChangedFor(nameof(SaveStatus))]
     [NotifyPropertyChangedFor(nameof(SaveStatusText))]
-    [NotifyPropertyChangedFor(nameof(HasCategoryStatuses))]
-    [NotifyPropertyChangedFor(nameof(HasProductSummaries))]
     public partial AssociateWorkspace? Workspace { get; set; }
+
+    /// <summary>
+    /// Editable, data-driven per-category product sections (spec Phase 4D Part B). Rebuilt only by
+    /// <see cref="BuildProductSections"/> — a load, date switch, or Check Online — never derived as a
+    /// live getter off <see cref="Workspace"/>, so a mid-edit reassignment of <see cref="Workspace"/>
+    /// (e.g. <see cref="SaveDraftNowAsync"/> after an autosave) never resets an in-progress edit or
+    /// steals focus from a control the associate is actively using.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasProductSections))]
+    public partial IReadOnlyList<ProductCategorySectionViewModel> ProductSections { get; set; } = [];
+
+    /// <summary>Manager-added custom/internal products (spec Phase 4D Part F), independent of <see cref="ProductSections"/> — a custom entry has no official source category.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCustomProducts))]
+    public partial ObservableCollection<CustomProductRowViewModel> CustomProducts { get; set; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedDateOffset))]
@@ -239,29 +258,9 @@ public partial class AssociateViewModel : ViewModelBase
 
     public IReadOnlyList<DailyFunTypeOption> DailyFunTypeOptions => DailyFunTypeOption.All;
 
-    public IReadOnlyList<CategoryStatusPresentation> CategoryStatuses
-    {
-        get
-        {
-            if (Workspace is not { } workspace)
-            {
-                return [];
-            }
+    public bool HasProductSections => ProductSections.Count > 0;
 
-            return workspace.CategoryStatuses
-                .Select(status => CategoryStatusPresentation.Build(status, workspace.Products.Count(p => p.Category == status.Category)))
-                .Where(presentation => presentation is not null)
-                .Select(presentation => presentation!)
-                .ToList();
-        }
-    }
-
-    public IReadOnlyList<ProductCategorySummary> ProductSummaries =>
-        Workspace is { } workspace ? ProductCategorySummary.Build(workspace.Products) : [];
-
-    public bool HasCategoryStatuses => CategoryStatuses.Count > 0;
-
-    public bool HasProductSummaries => ProductSummaries.Count > 0;
+    public bool HasCustomProducts => CustomProducts.Count > 0;
 
     public SaveStatusPresentation? SaveStatus => Workspace is { } workspace ? SaveStatusPresentation.Build(workspace.SaveStatus) : null;
 
@@ -379,6 +378,23 @@ public partial class AssociateViewModel : ViewModelBase
     [RelayCommand]
     private void NextDay() => SelectedDate = SelectedDate.AddDays(1);
 
+    /// <summary>Adds a blank custom/internal product row (spec Phase 4D Part F) — always draft-local, never given an official-looking id.</summary>
+    [RelayCommand]
+    private void AddCustomProduct()
+    {
+        var entry = new CustomProductEntry(Guid.NewGuid().ToString("N"), "New custom item", Price: null, Notes: null, IncludeOnPdf: true);
+        CustomProducts.Add(new CustomProductRowViewModel(entry, ScheduleAutosave, RemoveCustomProduct));
+        OnPropertyChanged(nameof(HasCustomProducts));
+        ScheduleAutosave();
+    }
+
+    private void RemoveCustomProduct(CustomProductRowViewModel row)
+    {
+        CustomProducts.Remove(row);
+        OnPropertyChanged(nameof(HasCustomProducts));
+        ScheduleAutosave();
+    }
+
     partial void OnManualHoursOverrideEnabledChanged(bool value) => ScheduleAutosave();
 
     partial void OnManualOpeningTimeChanged(TimeSpan? value) => ScheduleAutosave();
@@ -477,6 +493,8 @@ public partial class AssociateViewModel : ViewModelBase
             SelectedDailyFunTypeOption = DailyFunTypeOption.For(draft.DailyFunType);
             DailyFunText = draft.DailyFunText;
 
+            BuildProductSections(workspace);
+
             _draftDateInEdit = workspace.OperatingDate;
             _isDirty = false;
             AutosaveState = AssociateAutosaveState.Saved;
@@ -489,10 +507,56 @@ public partial class AssociateViewModel : ViewModelBase
         Workspace = workspace;
     }
 
-    /// <summary>Converts the current editable fields into a full <see cref="AssociateDraftPayload"/>, carrying <see cref="AssociateDraftPayload.ProductOverrides"/>/<see cref="AssociateDraftPayload.CustomProducts"/> forward unchanged (Phase 4C does not edit products yet).</summary>
+    /// <summary>
+    /// Groups the composed workspace's official products by category (spec Phase 4D Part B), pairing
+    /// each category with its status banner (Phase 4B Part E) when it currently has zero rows, and
+    /// rebuilds the custom-product rows from the draft's own <see cref="AssociateDraftPayload.CustomProducts"/>
+    /// (never from <see cref="AssociateProduct"/> projections — that is how <see cref="CustomProductEntry.Notes"/>
+    /// stays editable, spec Part G, without forcing a meaningless Notes field onto official products).
+    /// A category with neither product rows nor a status entry is not built at all — no fabricated
+    /// empty section (spec Part B/H).
+    /// </summary>
+    private void BuildProductSections(AssociateWorkspace workspace)
+    {
+        var statusByCategory = workspace.CategoryStatuses.ToDictionary(status => status.Category);
+        var officialByCategory = workspace.Products
+            .Where(product => !product.IsCustom && product.Category is not null)
+            .GroupBy(product => product.Category!.Value)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<AssociateProduct>)group.ToList());
+
+        var categories = officialByCategory.Keys.Concat(statusByCategory.Keys).Distinct().OrderBy(category => (int)category);
+
+        var sections = new List<ProductCategorySectionViewModel>();
+        foreach (var category in categories)
+        {
+            var products = officialByCategory.GetValueOrDefault(category, []);
+            var status = statusByCategory.TryGetValue(category, out var categoryStatus)
+                ? CategoryStatusPresentation.Build(categoryStatus, products.Count)
+                : null;
+
+            if (products.Count == 0 && status is null)
+            {
+                continue;
+            }
+
+            var rows = products.Select(product => new ProductRowViewModel(product, ScheduleAutosave)).ToList();
+            sections.Add(new ProductCategorySectionViewModel(SourceCategoryDisplay.FriendlyName(category), status, rows));
+        }
+
+        ProductSections = sections;
+
+        CustomProducts = new ObservableCollection<CustomProductRowViewModel>(
+            workspace.Draft.CustomProducts.Select(custom => new CustomProductRowViewModel(custom, ScheduleAutosave, RemoveCustomProduct)));
+    }
+
+    /// <summary>Converts the current editable fields into a full <see cref="AssociateDraftPayload"/>, including product overrides/custom products read from the current <see cref="ProductSections"/>/<see cref="CustomProducts"/> row view models (spec Phase 4D Parts D/E/F).</summary>
     private AssociateDraftPayload BuildDraft()
     {
         var existing = Workspace?.Draft ?? AssociateDraftPayload.CreateDefault();
+
+        var productOverrides = ProductSections
+            .SelectMany(section => section.Products)
+            .ToDictionary(row => row.ProductIdentity, row => new ProductDraftOverride(row.IncludeOnPdf, row.DisplayPriceOverride));
 
         return existing with
         {
@@ -504,6 +568,8 @@ public partial class AssociateViewModel : ViewModelBase
             OperationalNotes = ParseLines(OperationalNotesText),
             DailyFunType = SelectedDailyFunTypeOption.Value,
             DailyFunText = NullIfBlank(DailyFunText),
+            ProductOverrides = productOverrides,
+            CustomProducts = CustomProducts.Select(row => row.ToEntry()).ToList(),
         };
     }
 

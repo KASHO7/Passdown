@@ -302,35 +302,131 @@
           </StackPanel>
         </Border>
 
-        <!-- Category-level status (Part E): only rendered for a category with no visible product rows. -->
-        <ItemsControl ItemsSource="{Binding CategoryStatuses}"
-                      IsVisible="{Binding HasCategoryStatuses}">
+        <!-- Products (Part B/C/D/E): editable, data-driven per-category product sections. No product
+             names or category counts are hard-coded — sections and rows come straight from the
+             composed workspace. -->
+        <ItemsControl ItemsSource="{Binding ProductSections}"
+                      IsVisible="{Binding HasProductSections}">
           <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="presentation:CategoryStatusPresentation">
+            <DataTemplate x:DataType="vm:ProductCategorySectionViewModel">
               <Border Classes="section">
-                <StackPanel Spacing="2">
-                  <TextBlock Text="{Binding CategoryDisplayName}" FontWeight="SemiBold" FontSize="15" />
-                  <TextBlock Text="{Binding StatusText}" />
-                  <TextBlock Text="{Binding DetailText}"
-                             IsVisible="{Binding DetailText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                             Classes="muted" />
+                <StackPanel Spacing="6">
+                  <TextBlock Text="{Binding CategoryDisplayName}" Classes="sectionTitle" />
+
+                  <Border Classes="subsection" IsVisible="{Binding HasStatus}">
+                    <StackPanel Spacing="2">
+                      <TextBlock Text="{Binding Status.StatusText}" FontWeight="SemiBold" />
+                      <TextBlock Text="{Binding Status.DetailText}"
+                                 IsVisible="{Binding Status.DetailText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                 Classes="muted" />
+                    </StackPanel>
+                  </Border>
+
+                  <ItemsControl ItemsSource="{Binding Products}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:ProductRowViewModel">
+                        <Grid ColumnDefinitions="Auto,*,220" Margin="0,8">
+                          <CheckBox Grid.Column="0"
+                                    IsChecked="{Binding IncludeOnPdf}"
+                                    VerticalAlignment="Top"
+                                    Margin="0,2,10,0"
+                                    AutomationProperties.Name="{Binding DisplayName, StringFormat='Include {0} on the PDF'}" />
+
+                          <StackPanel Grid.Column="1" Spacing="2" Margin="0,0,16,0">
+                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                              <TextBlock Text="{Binding OfficialPriceText, StringFormat='Official: {0}'}" Classes="muted" />
+                              <TextBlock Text="{Binding ComparisonPriceText, StringFormat='Compare at {0}'}"
+                                         IsVisible="{Binding ComparisonPriceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                         Classes="muted" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding PriceQualifier}"
+                                       IsVisible="{Binding HasPriceQualifier}"
+                                       Classes="muted" FontStyle="Italic" />
+                            <TextBlock Text="{Binding VerificationNoteText}"
+                                       IsVisible="{Binding VerificationNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Classes="fieldWarning" />
+                          </StackPanel>
+
+                          <StackPanel Grid.Column="2" Spacing="2">
+                            <TextBlock Text="Display price" Classes="fieldLabel" />
+                            <TextBox Text="{Binding DisplayPriceOverrideText}"
+                                     PlaceholderText="{Binding OverridePlaceholderText}"
+                                     AutomationProperties.Name="{Binding DisplayName, StringFormat='Display price override for {0}'}" />
+                            <TextBlock Text="{Binding DisplayPriceOverrideError}"
+                                       IsVisible="{Binding DisplayPriceOverrideError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Classes="fieldError" />
+                            <Button Content="Use official price"
+                                    Command="{Binding ResetToOfficialCommand}"
+                                    IsVisible="{Binding HasOverride}"
+                                    Margin="0,2,0,0"
+                                    AutomationProperties.Name="{Binding DisplayName, StringFormat='Use official price for {0}'}" />
+                          </StackPanel>
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
                 </StackPanel>
               </Border>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
 
-        <!-- Read-only product counts (spec: no full editable form yet — this only confirms dynamic data is flowing). -->
-        <Border Classes="section" IsVisible="{Binding HasProductSummaries}">
-          <StackPanel Spacing="6">
-            <TextBlock Text="Products at a Glance" Classes="sectionTitle" />
-            <ItemsControl ItemsSource="{Binding ProductSummaries}">
+        <!-- Custom / internal products (Part F/G): draft-local only, never backed by an official id. -->
+        <Border Classes="section">
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Grid.Column="0" Text="Custom &amp; Internal Items" Classes="sectionTitle" />
+              <Button Grid.Column="1"
+                      Content="Add custom item"
+                      Command="{Binding AddCustomProductCommand}"
+                      AutomationProperties.Name="Add a custom or internal product" />
+            </Grid>
+
+            <TextBlock Text="Add group rates, buyouts, or other items not sold through the normal ticket site."
+                       Classes="muted"
+                       IsVisible="{Binding !HasCustomProducts}" />
+
+            <ItemsControl ItemsSource="{Binding CustomProducts}">
               <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="presentation:ProductCategorySummary">
-                  <Grid ColumnDefinitions="*,Auto" Margin="0,3">
-                    <TextBlock Grid.Column="0" Text="{Binding CategoryDisplayName}" />
-                    <TextBlock Grid.Column="1" Text="{Binding Count}" Classes="muted" />
-                  </Grid>
+                <DataTemplate x:DataType="vm:CustomProductRowViewModel">
+                  <Border Classes="subsection">
+                    <StackPanel Spacing="8">
+                      <Grid ColumnDefinitions="Auto,*,Auto">
+                        <CheckBox Grid.Column="0"
+                                  IsChecked="{Binding IncludeOnPdf}"
+                                  VerticalAlignment="Center"
+                                  Margin="0,0,10,0"
+                                  AutomationProperties.Name="{Binding DisplayNameText, StringFormat='Include {0} on the PDF'}" />
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding DisplayNameText}"
+                                 PlaceholderText="Item name"
+                                 AutomationProperties.Name="Custom item name" />
+                        <Button Grid.Column="2"
+                                Content="Remove"
+                                Command="{Binding RemoveCommand}"
+                                Margin="10,0,0,0"
+                                AutomationProperties.Name="{Binding DisplayNameText, StringFormat='Remove {0}'}" />
+                      </Grid>
+                      <StackPanel Orientation="Horizontal" Spacing="16">
+                        <StackPanel Spacing="0" Width="160">
+                          <TextBlock Text="Price" Classes="fieldLabel" />
+                          <TextBox Text="{Binding PriceText}"
+                                   PlaceholderText="Optional"
+                                   AutomationProperties.Name="Custom item price" />
+                          <TextBlock Text="{Binding PriceError}"
+                                     IsVisible="{Binding PriceError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                     Classes="fieldError" />
+                        </StackPanel>
+                        <StackPanel Spacing="0" HorizontalAlignment="Stretch">
+                          <TextBlock Text="Notes" Classes="fieldLabel" />
+                          <TextBox Text="{Binding NotesText}"
+                                   PlaceholderText="Optional"
+                                   AutomationProperties.Name="Custom item notes" />
+                        </StackPanel>
+                      </StackPanel>
+                    </StackPanel>
+                  </Border>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>

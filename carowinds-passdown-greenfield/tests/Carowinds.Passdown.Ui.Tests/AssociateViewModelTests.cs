@@ -229,10 +229,11 @@ public class AssociateViewModelTests
         var viewModel = CreateViewModel(service);
         await viewModel.PendingLoad;
 
-        var status = Assert.Single(viewModel.CategoryStatuses);
-        Assert.Equal("Daily Admission", status.CategoryDisplayName);
-        Assert.Equal("Unable to verify current pricing", status.StatusText);
-        Assert.NotNull(status.DetailText);
+        var section = Assert.Single(viewModel.ProductSections);
+        Assert.Equal("Daily Admission", section.CategoryDisplayName);
+        Assert.Empty(section.Products);
+        Assert.Equal("Unable to verify current pricing", section.Status!.StatusText);
+        Assert.NotNull(section.Status.DetailText);
     }
 
     // 13. Category-level Unavailable/NotPublished can be displayed.
@@ -251,9 +252,9 @@ public class AssociateViewModelTests
         var viewModel = CreateViewModel(service);
         await viewModel.PendingLoad;
 
-        var status = Assert.Single(viewModel.CategoryStatuses);
-        Assert.Equal("SCarowinds", status.CategoryDisplayName);
-        Assert.Equal(expectedText, status.StatusText);
+        var section = Assert.Single(viewModel.ProductSections);
+        Assert.Equal("SCarowinds", section.CategoryDisplayName);
+        Assert.Equal(expectedText, section.Status!.StatusText);
     }
 
     [Fact]
@@ -269,8 +270,9 @@ public class AssociateViewModelTests
         var viewModel = CreateViewModel(service);
         await viewModel.PendingLoad;
 
-        Assert.Empty(viewModel.ProductSummaries);
-        Assert.Single(viewModel.CategoryStatuses);
+        var section = Assert.Single(viewModel.ProductSections);
+        Assert.Empty(section.Products);
+        Assert.NotNull(section.Status);
     }
 
     // 14. Save-state presentation.
