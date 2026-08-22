@@ -275,10 +275,105 @@ keyboard interaction, native PDF save dialog, generated PDF readability) was
 completed externally by the product owner on a Windows VM — not something
 Claude performed directly.
 
-## Deferred to later phases
+## Phase 6A additions — unattended scheduled-refresh entry point
 
-The Manager Passdown workflow (spec §17 Phase 5) remains explicitly deferred
-by design (CLAUDE.md "current scope decision") — no Manager ViewModel, view,
-PDF, or navigation placeholder exists. The 6 AM scheduler, Windows Task
-Scheduler integration, and resilience work (spec §17 Phase 6) and Windows
-packaging/handoff (spec §17 Phase 7) remain out of scope — Phase 6 is next.
+Phase 6A added a second, headless startup path onto the same executable and
+the same composition root — no second scheduler, no second refresh
+implementation, no second DI setup:
+
+```
+Carowinds.Passdown.Desktop.exe                      normal desktop launch (unchanged)
+Carowinds.Passdown.Desktop.exe --scheduled-refresh   headless unattended refresh, then exit
+```
+
+- **`Program.Main`** (`src/Carowinds.Passdown.Desktop/Program.cs`) parses `args`
+  via `CommandLineArguments.Parse` (`Desktop.ScheduledRefresh`) before anything
+  Avalonia-specific runs. No argument → `StartupMode.Normal` →
+  `BuildAvaloniaApp().StartWithClassicDesktopLifetime(args)`, exactly as
+  before. `--scheduled-refresh` (exactly one argument, exact match) →
+  `StartupMode.ScheduledRefresh` → the headless path below; Avalonia is never
+  initialized on this branch. Anything else → `StartupMode.Invalid`, printed
+  to stderr, exit code 3 — an unrecognized argument never silently falls
+  through to either real mode.
+- **Composition stays single-source**: the headless path calls the exact same
+  `App.BuildServiceProvider()` (`App.axaml.cs`) the normal launch and
+  `CompositionRootTests` already use — no parallel registration method.
+  `IRefreshOrchestrator` and its Phase 3 dependency graph, `MigrationRunner`,
+  `AppPaths`, and configuration are resolved identically either way.
+  `MainWindow`/`MainViewModel`/`AssociateViewModel` remain registered (as
+  before) but the headless path never asks the container for any of them —
+  registering a transient does no work until something resolves it, so this
+  costs nothing and keeps one composition root rather than splitting UI vs.
+  headless registrations.
+- **`Carowinds.Passdown.Application.Refresh.IScheduledRefreshRunner`/`ScheduledRefreshRunner`**
+  (Application layer — it has no Avalonia/SQLite/HTTP/Playwright dependency,
+  only `IRefreshOrchestrator`, `IClock`, and `ILogger`): logs a start line,
+  calls `IRefreshOrchestrator.RunScheduledRefreshAsync` — never
+  `RunManualDateRefreshAsync` — logs a summary/per-failure line, and
+  classifies the result as `ScheduledRefreshOutcome.Success` or
+  `PartialFailure` from `RefreshSummary.Failed` alone. It owns none of the
+  freshness/persistence/retry/partial-failure logic already in
+  `RefreshOrchestrator` — this is a thin logging/classification wrapper, not
+  a second orchestrator. `Unavailable`/`NotPublished`/`Closed` never count as
+  a failure here because they already fold into
+  `SourceOperationOutcomeKind.Success` upstream (spec §5.2) — only a genuine
+  `Failure` outcome can move this past `Success`.
+- **`Carowinds.Passdown.Desktop.ScheduledRefresh.ScheduledRefreshHost`**: the
+  headless host. Takes a `Func<IServiceProvider>` (testable without a real
+  process — a test can substitute a minimal container or a throwing factory).
+  Builds the provider, runs `MigrationRunner.Run()` (spec §17 Phase 1's
+  "storage ready before anything touches the database", same ordering
+  `OnFrameworkInitializationCompleted` already uses for normal mode),
+  resolves `IScheduledRefreshRunner`, awaits it, and maps the outcome to a
+  `ScheduledRefreshExitCode`. Any exception from provider construction,
+  migration, or the runner — including a caller-requested cancellation — is
+  caught and reported as `FatalFailure`, deterministically; nothing throws
+  out of `Main`.
+- **Exit codes** (`ScheduledRefreshExitCode`): `0` Success, `1`
+  PartialFailure (one or more source operations failed, but the job ran to
+  completion), `2` FatalFailure (startup/configuration/database/unhandled
+  failure, or the run was cancelled before producing a summary), `3`
+  InvalidUsage (unrecognized command-line arguments).
+- **Logging**: unattended runs get everything the normal launch's console
+  provider already logs, plus a second sink —
+  `Carowinds.Passdown.Infrastructure.Logging.FileLoggerProvider` — added onto
+  the built `ILoggerFactory` only on the headless path (`Program.cs`), since
+  a scheduled run has no terminal to read console output from. One UTF-8
+  append-only file per UTC day under
+  `AppPaths.LocalApplicationDataDirectory/logs/scheduled-refresh-yyyyMMdd.log`;
+  files older than `FileLoggerOptions.RetainedDays` (default 14) are pruned
+  on first write each run, bounding growth without a third-party logging
+  package. Construction does no I/O — the directory/file are created lazily
+  on first log call, mirroring `SqliteConnectionFactory`'s same "no I/O until
+  first use" contract so building the provider stays side-effect-free in
+  tests.
+- **Tests**: `Carowinds.Passdown.Application.Tests/Refresh/ScheduledRefreshRunnerTests.cs`
+  (runner classification/logging, offline); `Carowinds.Passdown.Ui.Tests/ScheduledRefresh/`
+  (`CommandLineArgumentsTests`, `ScheduledRefreshHostTests` — the latter
+  using small disposable temp-file SQLite databases and a fake
+  `IScheduledRefreshRunner`, never the real network or the real per-user
+  AppPaths database); `Carowinds.Passdown.Infrastructure.Tests/Logging/FileLoggerProviderTests.cs`.
+  `CompositionRootTests` gained one test confirming the normal launch path
+  still resolves `MigrationRunner`/`MainViewModel` unchanged (stops short of
+  constructing `MainWindow` itself, for the same headless-dispatcher-thread
+  reason `AssociateViewTests` already documents).
+
+### Deferred out of Phase 6A
+
+- **Windows Task Scheduler registration** — creating the per-user scheduled
+  task itself is Phase 6C. Phase 6A only makes `--scheduled-refresh` a valid,
+  correct, testable thing for a task (or a person) to invoke; nothing here
+  registers one.
+- **Missed-run-on-launch / offline-retry hardening** (spec §6.6's "if the
+  computer is asleep or off at 6 AM, refresh next time the app opens") is
+  Phase 6B. `IRefreshOrchestrator`'s existing due-source planning already
+  makes a late run harmless — a source just stays due until something
+  actually calls `RunScheduledRefreshAsync` again — but no explicit
+  "catch up on launch" trigger exists yet.
+- **Single-instance/overlap protection**: nothing currently stops two
+  `--scheduled-refresh` processes (or a scheduled run and an interactive
+  Check Online) from running concurrently. `source_state` and dated/catalog
+  writes are per-row upserts, not additive, so a genuine race would mean
+  "last write wins" rather than corruption, but this hasn't been stress-
+  tested under real concurrency. A mutex/lock-file guard is a Phase 6B
+  concern (spec §17 Phase 6 "test offline and failure scenarios").

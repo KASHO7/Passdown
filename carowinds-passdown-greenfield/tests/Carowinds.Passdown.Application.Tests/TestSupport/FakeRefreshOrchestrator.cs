@@ -16,10 +16,13 @@ internal sealed class FakeRefreshOrchestrator : IRefreshOrchestrator
 
     public Func<DateOnly, CancellationToken, Task>? OnManualDateRefresh { get; set; }
 
+    /// <summary>When set, returned by <see cref="RunScheduledRefreshAsync"/> instead of an empty summary — lets a test script a specific success/failure/cancelled mix.</summary>
+    public RefreshSummary? ScheduledRefreshSummaryOverride { get; set; }
+
     public Task<RefreshSummary> RunScheduledRefreshAsync(IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         ScheduledRefreshCallCount++;
-        return Task.FromResult(EmptySummary(RefreshJobType.ScheduledRollingWindow));
+        return Task.FromResult(ScheduledRefreshSummaryOverride ?? EmptySummary(RefreshJobType.ScheduledRollingWindow));
     }
 
     public async Task<RefreshSummary> RunManualDateRefreshAsync(DateOnly date, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)

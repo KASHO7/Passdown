@@ -192,5 +192,11 @@ public partial class App : global::Avalonia.Application
         services.Configure<RefreshOrchestratorOptions>(configuration.GetSection("Refresh"));
         services.AddSingleton(provider => provider.GetRequiredService<IOptions<RefreshOrchestratorOptions>>().Value);
         services.AddSingleton<IRefreshOrchestrator, RefreshOrchestrator>();
+
+        // Phase 6A: the headless --scheduled-refresh entry point's only Application-layer
+        // dependency. Registered here (not conditionally) since registering a type does no I/O and
+        // the normal desktop launch simply never resolves it (Part B "one authoritative
+        // service-registration path").
+        services.AddSingleton<IScheduledRefreshRunner, ScheduledRefreshRunner>();
     }
 }
