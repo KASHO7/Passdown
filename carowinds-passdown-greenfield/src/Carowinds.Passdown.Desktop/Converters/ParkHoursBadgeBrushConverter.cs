@@ -16,7 +16,7 @@ public sealed class ParkHoursBadgeBrushConverter : IValueConverter
 
     private static readonly IBrush NotCheckedBrush = new SolidColorBrush(Color.Parse("#9E9E9E"));
     private static readonly IBrush ClosedBrush = new SolidColorBrush(Color.Parse("#546E7A"));
-    private static readonly IBrush OpenBrush = new SolidColorBrush(Color.Parse("#2E7D32"));
+    private static readonly IBrush OpenBrush = new SolidColorBrush(Color.Parse("#1E5AA8"));
     private static readonly IBrush OverrideBrush = new SolidColorBrush(Color.Parse("#B26A00"));
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value switch

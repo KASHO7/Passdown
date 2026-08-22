@@ -21,8 +21,17 @@
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <Style Selector="TextBlock.sectionTitle">
-      <Setter Property="FontSize" Value="14" />
-      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="FontSize" Value="13.5" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="LetterSpacing" Value="0.4" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="Margin" Value="0,0,0,10" />
+    </Style>
+    <Style Selector="TextBlock.subsectionTitle">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="LetterSpacing" Value="0.5" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
       <Setter Property="Margin" Value="0,0,0,8" />
     </Style>
     <Style Selector="TextBlock.muted">
@@ -52,20 +61,25 @@
       <Setter Property="FontWeight" Value="Medium" />
     </Style>
 
-    <!-- Panels: one restrained container style used everywhere instead of nested cards. -->
+    <!-- Panels: one restrained, brand-tinted container style used everywhere instead of nested cards. -->
     <Style Selector="Border.panel">
       <Setter Property="Padding" Value="18" />
-      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="CornerRadius" Value="8" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}" />
-      <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceTintBrush}" />
+    </Style>
+    <!-- The single strongest panel on the page (Park Hours): same surface, with a brand top rule. -->
+    <Style Selector="Border.heroPanel">
+      <Setter Property="BorderThickness" Value="1,3,1,1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
     </Style>
     <Style Selector="Border.inset">
       <Setter Property="Padding" Value="12" />
       <Setter Property="Margin" Value="0,10,0,0" />
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
       <Setter Property="Background" Value="{DynamicResource PassdownSubtleSurfaceBrush}" />
     </Style>
 
@@ -80,11 +94,33 @@
       <Setter Property="FontWeight" Value="Medium" />
     </Style>
 
+    <!-- Primary/secondary action buttons: Check Online is the one obvious primary action on the
+         screen; Create PDF stays strong but visually secondary (spec §10.2/Part L). -->
+    <Style Selector="Button.primaryAction">
+      <Setter Property="Background" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownHeaderForegroundBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="Padding" Value="16,8" />
+    </Style>
+    <Style Selector="Button.secondaryAction">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="Padding" Value="16,8" />
+    </Style>
+    <Style Selector="Button.secondaryAction:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
+    </Style>
+
     <!-- Hours headline: large when hours are known, quiet when not (Part D — "Not checked yet" must never be a giant headline). -->
     <Style Selector="TextBlock.hoursHeadline">
-      <Setter Property="FontSize" Value="26" />
+      <Setter Property="FontSize" Value="30" />
       <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="Margin" Value="0,2,0,6" />
+      <Setter Property="Margin" Value="0,4,0,6" />
     </Style>
     <Style Selector="TextBlock.hoursHeadline.subtle">
       <Setter Property="FontSize" Value="16" />
@@ -92,10 +128,32 @@
       <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
     </Style>
 
+    <!-- Product category band: a light brand-tinted strip, closer to a rate-sheet section header
+         than a plain bold TextBlock. -->
+    <Style Selector="Border.categoryBand">
+      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="10,6" />
+      <Setter Property="Margin" Value="0,0,0,4" />
+    </Style>
+    <Style Selector="Border.categoryBand TextBlock">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="LetterSpacing" Value="0.4" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
+    </Style>
+
     <Style Selector="Border.productRow">
       <Setter Property="BorderThickness" Value="0,0,0,1" />
-      <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
       <Setter Property="Padding" Value="0,9" />
+    </Style>
+
+    <!-- Glance-panel column divider (Today at a Glance). -->
+    <Style Selector="Rectangle.glanceDivider">
+      <Setter Property="Width" Value="1" />
+      <Setter Property="Fill" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="Margin" Value="16,2" />
     </Style>
 
   </UserControl.Styles>
@@ -103,16 +161,18 @@
   <Grid RowDefinitions="Auto,*">
 
     <!-- Action bar (spec §10.2/Part B/C): identity, date navigation, primary actions, and save/refresh
-         status all live together instead of a separate floating date bar or a developer-style footer. -->
-    <Border Grid.Row="0" Padding="24,16" BorderThickness="0,0,0,1"
-            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
-      <StackPanel Spacing="10">
+         status all live together as one coherent toolbar instead of a separate floating date bar or a
+         developer-style footer. -->
+    <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceTintBrush}"
+            BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
+      <StackPanel Spacing="12">
 
         <Grid ColumnDefinitions="Auto,*,Auto">
           <TextBlock Grid.Column="0" Text="Associate Passdown" Classes="pageTitle" VerticalAlignment="Center" />
 
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-            <Border Classes="chip" AutomationProperties.Name="Save status">
+            <Border Classes="chip" AutomationProperties.Name="Save status"
+                    Background="{Binding AutosaveState, Converter={x:Static converters:SaveStatusBrushConverter.Instance}}">
               <TextBlock Text="{Binding SaveStatusText, FallbackValue='Not saved yet'}" />
             </Border>
           </StackPanel>
@@ -135,12 +195,13 @@
           <Button Grid.Column="3" Content="Check Online"
                   Margin="16,0,0,0"
                   Command="{Binding CheckOnlineCommand}"
-                  Classes="accent"
+                  Classes="primaryAction"
                   AutomationProperties.Name="Check this date online"
                   AutomationProperties.HelpText="Checks official Carowinds sources for this date. Does not run automatically." />
 
           <Button Grid.Column="4" Content="Create PDF" HorizontalAlignment="Right"
                   Command="{Binding CreatePdfCommand}"
+                  Classes="secondaryAction"
                   AutomationProperties.Name="Create PDF"
                   AutomationProperties.HelpText="Builds today's Associate Passdown PDF and lets you choose where to save it." />
         </Grid>
@@ -172,7 +233,7 @@
         <Grid ColumnDefinitions="1.15*,*" ColumnSpacing="16">
 
           <!-- Park hours (Part D): the strongest single operational summary on the page. -->
-          <Border Grid.Column="0" Classes="panel">
+          <Border Grid.Column="0" Classes="panel heroPanel">
             <StackPanel Spacing="2">
               <TextBlock Text="Park Hours" Classes="sectionTitle" />
 
@@ -252,14 +313,19 @@
             </StackPanel>
           </Border>
 
-          <!-- Right column: Attendance, Early Ride Time, Daily Fun (Part E). -->
-          <StackPanel Grid.Column="1" Spacing="16">
+          <!-- Today at a Glance (Part E): Attendance, Early Ride Time, and Daily Fun read as one
+               compact operational summary block with consistent sub-headers, rather than three
+               unrelated stacked forms. -->
+          <Border Grid.Column="1" Classes="panel">
+            <StackPanel Spacing="2">
+              <TextBlock Text="Today at a Glance" Classes="sectionTitle" />
 
-            <Border Classes="panel">
-              <StackPanel Spacing="6">
-                <TextBlock Text="Attendance" Classes="sectionTitle" />
-                <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
-                  <StackPanel Grid.Column="0" Spacing="0">
+              <Grid ColumnDefinitions="*,Auto,*,Auto,*">
+
+                <!-- Attendance -->
+                <StackPanel Grid.Column="0" Spacing="10">
+                  <TextBlock Text="ATTENDANCE" Classes="subsectionTitle" />
+                  <StackPanel Spacing="0">
                     <TextBlock Text="Projected attendance" Classes="fieldLabel" />
                     <TextBox Text="{Binding ProjectedAttendanceText}"
                              PlaceholderText="Not entered"
@@ -268,7 +334,7 @@
                                IsVisible="{Binding ProjectedAttendanceError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                Classes="fieldError" />
                   </StackPanel>
-                  <StackPanel Grid.Column="1" Spacing="0">
+                  <StackPanel Spacing="0">
                     <TextBlock Text="Pre-solds" Classes="fieldLabel" />
                     <TextBox Text="{Binding PreSoldsText}"
                              PlaceholderText="Not entered"
@@ -277,66 +343,69 @@
                                IsVisible="{Binding PreSoldsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                Classes="fieldError" />
                   </StackPanel>
-                </Grid>
-              </StackPanel>
-            </Border>
+                </StackPanel>
 
-            <Border Classes="panel">
-              <StackPanel Spacing="8">
-                <TextBlock Text="Early Ride Time" Classes="sectionTitle" />
-                <CheckBox Content="Early Ride Time is happening today"
-                          IsChecked="{Binding IsEarlyRideTimeEnabled}"
-                          AutomationProperties.Name="Early Ride Time is happening today" />
-                <StackPanel Spacing="8" IsVisible="{Binding IsEarlyRideTimeEnabled}">
-                  <TextBox Text="{Binding EarlyRideTimeDetailsText}"
-                           PlaceholderText="e.g. 9:00 AM – 10:00 AM, first two rows only"
-                           AutomationProperties.Name="Early Ride Time details" />
-                  <StackPanel Spacing="0">
-                    <TextBox Text="{Binding ParticipatingAttractionsText}"
-                             AcceptsReturn="True"
-                             TextWrapping="Wrap"
-                             MinHeight="64"
-                             PlaceholderText="Participating attractions, one per line"
-                             AutomationProperties.Name="Participating attractions" />
-                    <TextBlock Text="One attraction per line." Classes="fieldHint" />
+                <Rectangle Grid.Column="1" Classes="glanceDivider" />
+
+                <!-- Early Ride Time -->
+                <StackPanel Grid.Column="2" Spacing="8">
+                  <TextBlock Text="EARLY RIDE TIME" Classes="subsectionTitle" />
+                  <CheckBox Content="Happening today"
+                            IsChecked="{Binding IsEarlyRideTimeEnabled}"
+                            AutomationProperties.Name="Early Ride Time is happening today" />
+                  <StackPanel Spacing="8" IsVisible="{Binding IsEarlyRideTimeEnabled}">
+                    <TextBox Text="{Binding EarlyRideTimeDetailsText}"
+                             PlaceholderText="e.g. 9:00 AM – 10:00 AM, first two rows only"
+                             AutomationProperties.Name="Early Ride Time details" />
+                    <StackPanel Spacing="0">
+                      <TextBox Text="{Binding ParticipatingAttractionsText}"
+                               AcceptsReturn="True"
+                               TextWrapping="Wrap"
+                               MinHeight="64"
+                               PlaceholderText="Participating attractions, one per line"
+                               AutomationProperties.Name="Participating attractions" />
+                      <TextBlock Text="One attraction per line." Classes="fieldHint" />
+                    </StackPanel>
                   </StackPanel>
                 </StackPanel>
-              </StackPanel>
-            </Border>
 
-            <Border Classes="panel">
-              <StackPanel Spacing="8">
-                <TextBlock Text="Daily Fun" Classes="sectionTitle" />
-                <ComboBox ItemsSource="{Binding DailyFunTypeOptions}"
-                          SelectedItem="{Binding SelectedDailyFunTypeOption}"
-                          HorizontalAlignment="Stretch"
-                          AutomationProperties.Name="Daily Fun type">
-                  <ComboBox.ItemTemplate>
-                    <DataTemplate x:DataType="presentation:DailyFunTypeOption">
-                      <TextBlock Text="{Binding Label}" />
-                    </DataTemplate>
-                  </ComboBox.ItemTemplate>
-                </ComboBox>
-                <TextBox Text="{Binding DailyFunText}"
-                         AcceptsReturn="True"
-                         TextWrapping="Wrap"
-                         MinHeight="56"
-                         PlaceholderText="Enter the question, fact, or quote"
-                         AutomationProperties.Name="Daily Fun text" />
-              </StackPanel>
-            </Border>
+                <Rectangle Grid.Column="3" Classes="glanceDivider" />
 
-          </StackPanel>
+                <!-- Daily Fun -->
+                <StackPanel Grid.Column="4" Spacing="8">
+                  <TextBlock Text="DAILY FUN" Classes="subsectionTitle" />
+                  <ComboBox ItemsSource="{Binding DailyFunTypeOptions}"
+                            SelectedItem="{Binding SelectedDailyFunTypeOption}"
+                            HorizontalAlignment="Stretch"
+                            AutomationProperties.Name="Daily Fun type">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="presentation:DailyFunTypeOption">
+                        <TextBlock Text="{Binding Label}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <TextBox Text="{Binding DailyFunText}"
+                           AcceptsReturn="True"
+                           TextWrapping="Wrap"
+                           MinHeight="56"
+                           PlaceholderText="Enter the question, fact, or quote"
+                           AutomationProperties.Name="Daily Fun text" />
+                </StackPanel>
+              </Grid>
+            </StackPanel>
+          </Border>
+
         </Grid>
 
         <!-- Operational notes (Part E): full width, comfortable multiline entry. -->
         <Border Classes="panel">
-          <StackPanel Spacing="6">
-            <TextBlock Text="Operational Notes" Classes="sectionTitle" />
+          <StackPanel Spacing="8">
+            <TextBlock Text="Operational Notes" Classes="sectionTitle" Margin="0" />
             <TextBox Text="{Binding OperationalNotesText}"
                      AcceptsReturn="True"
                      TextWrapping="Wrap"
                      MinHeight="110"
+                     Background="{DynamicResource PassdownSubtleSurfaceBrush}"
                      PlaceholderText="Important operational notes, one line per note"
                      AutomationProperties.Name="Operational notes" />
           </StackPanel>
@@ -356,7 +425,9 @@
             <DataTemplate x:DataType="vm:ProductCategorySectionViewModel">
               <Border Classes="panel">
                 <StackPanel Spacing="2">
-                  <TextBlock Text="{Binding CategoryDisplayName}" Classes="sectionTitle" />
+                  <Border Classes="categoryBand">
+                    <TextBlock Text="{Binding CategoryDisplayName}" />
+                  </Border>
 
                   <Border Classes="inset" IsVisible="{Binding HasStatus}" Margin="0,0,0,6">
                     <StackPanel Spacing="2">
@@ -384,7 +455,7 @@
                                 <TextBlock Text="{Binding OfficialPriceText, StringFormat='Official {0}'}" Classes="muted" />
                                 <TextBlock Text="{Binding ComparisonPriceText, StringFormat='Compare at {0}'}"
                                            IsVisible="{Binding ComparisonPriceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                           Classes="muted" />
+                                           Foreground="{DynamicResource PassdownComparePriceBrush}" FontSize="12.5" />
                               </StackPanel>
                               <TextBlock Text="{Binding PriceQualifier}"
                                          IsVisible="{Binding HasPriceQualifier}"
@@ -419,13 +490,16 @@
         </ItemsControl>
 
         <!-- Custom / internal products (Part F): draft-local only, never backed by an official id;
-             visually distinct from source-verified official products via the "Custom" tag on each row. -->
+             visually distinct from source-verified official products via the "Custom" tag on each row
+             and a neutral (non-brand-blue) accent, since these are internal entries, not verified
+             catalog items. -->
         <Border Classes="panel">
           <StackPanel Spacing="8">
             <Grid ColumnDefinitions="*,Auto">
-              <TextBlock Grid.Column="0" Text="Custom &amp; Internal Items" Classes="sectionTitle" />
+              <TextBlock Grid.Column="0" Text="Custom &amp; Internal Items" Classes="sectionTitle" Margin="0" />
               <Button Grid.Column="1"
                       Content="Add custom item"
+                      Classes="secondaryAction"
                       Command="{Binding AddCustomProductCommand}"
                       AutomationProperties.Name="Add a custom or internal product" />
             </Grid>

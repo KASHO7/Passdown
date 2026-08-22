@@ -1,11 +1,11 @@
-# Architecture — Phase 1 baseline, updated through Phase 3 (complete)
+# Architecture — Phase 1 baseline, updated through Phase 4 (complete)
 
 Established during Phase 1 (AGENT_BUILD_SPEC.md §17 Phase 1) and extended
-through Phase 2 (§17 Phase 2) and the full Phase 3 (§17 Phase 3 — retrieval
-performance and consistency, now complete through the Phase 3H integrated
-review). UI screens beyond the template placeholder and PDF generation are
-added in later phases; this records the boundaries and infrastructure they
-build on.
+through Phase 2 (§17 Phase 2), the full Phase 3 (§17 Phase 3 — retrieval
+performance and consistency), and the full Phase 4 (§17 Phase 4 — Associate
+workflow and visual system, closed out in the Phase 4G integrated review).
+This records the boundaries and infrastructure the Associate workflow and
+its PDF generation build on.
 
 ## Project boundaries and dependency direction
 
@@ -221,9 +221,64 @@ during a live Phase 3H run):
   (`Carowinds.Passdown.Ui.Tests`) resolves the full graph offline to catch
   a broken registration without needing a live smoke test.
 
+## Phase 4 additions — Associate workflow, visual system, and PDF generation
+
+Phase 4A–4F built the complete Associate Passdown workflow end to end, closed
+out by a Phase 4G integrated audit (regression pass, architecture-boundary
+check, documentation cleanup — no functional changes beyond stale-comment
+fixes):
+
+- **Application** (`Carowinds.Passdown.Application.Associate`, Phase 4A):
+  `IAssociatePassdownService`/`AssociatePassdownService` — the one Avalonia-
+  free workflow surface Desktop binds to. `LoadAssociateDateAsync` composes a
+  date's `AssociateWorkspace` from whatever is already cached (draft +
+  dated/catalog repositories) and never calls `IRefreshOrchestrator`;
+  `CheckAssociateDateOnlineAsync` is the sole explicit-refresh path (spec
+  §6.3); `SaveDraftAsync` is the sole draft-persistence path. Composition
+  re-derives effective park hours via the Domain's `ParkHoursCalculator` and
+  projects official dated/catalog products plus draft-local custom products
+  into one `AssociateProduct` list, keyed by a stable `AssociateProductIdentity`
+  so include/exclude and display-price overrides survive a catalog refresh.
+- **Desktop** (Phase 4B–4D, Phase 4F): `AssociateViewModel` — the only
+  ViewModel the screen has — depends solely on `IAssociatePassdownService`,
+  `IClock`, and the PDF export/save-file abstractions below; it never touches
+  a repository, HTTP, Playwright, or SQL directly, and never re-derives the
+  North Gate (-30 min)/Avenue (-45 min) offset math itself (always re-runs
+  `ParkHoursCalculator.Calculate`). Adds debounced autosave (serialized by a
+  semaphore so an in-flight save and a newer edit can never race), explicit
+  flush points before a date switch/Check Online/Create PDF, editable
+  product sections and custom-product rows, and the blue/white/red
+  "Carowinds Admissions Operations" brand retheme (`App.axaml` resource
+  tokens, `MainWindow.axaml`/`AssociateView.axaml`). `MainViewModel` hosts
+  `AssociateViewModel` directly — no navigation/mode-selection state and no
+  Manager placeholder (CLAUDE.md "current scope decision").
+- **Documents** (`Carowinds.Passdown.Documents.Associate`, Phase 4E–4F):
+  `AssociatePassdownDocumentModelBuilder` turns a composed `AssociateWorkspace`
+  into a presentation-only `AssociatePassdownDocumentModel` (formatting only —
+  no business/hours recalculation); `AssociatePassdownPreflight` validates
+  before generation; `AssociatePassdownPdfGenerator` (QuestPDF) renders it,
+  matching the Desktop shell's brand palette, with a labeled `Supporting
+  Details` continuation page for unusually busy days (spec §11.4) rather than
+  silent truncation. `IAssociatePassdownPdfExportService` is the Documents-side
+  export port; `IPdfSaveFilePicker`/`AvaloniaPdfSaveFilePicker` (Desktop) is
+  the native save-dialog adapter — Documents has no Desktop or Avalonia
+  reference and performs no repository/network access.
+- **Tests**: full contract coverage across all four layers — local-only date
+  load, explicit Check Online, partial-refresh preservation, autosave/
+  debounce/edit-during-save/flush-on-switch, product include/exclude and
+  price-override/reset, custom-item persistence, JSON draft round-trip,
+  category/status presentation, PDF content/page-count/overflow, PDF export
+  picker cancel/success/failure, and accessibility-name assertions.
+
+Windows 11 manual validation (launch, layout, resize, display scaling,
+keyboard interaction, native PDF save dialog, generated PDF readability) was
+completed externally by the product owner on a Windows VM — not something
+Claude performed directly.
+
 ## Deferred to later phases
 
-Avalonia screens/view models beyond the template placeholder (wiring the
-date experience, product display, and manual refresh actions to
-`IRefreshOrchestrator`), PDF generation, the 6 AM scheduler and Windows Task
-Scheduler integration, and packaging remain out of scope — Phase 4 onward.
+The Manager Passdown workflow (spec §17 Phase 5) remains explicitly deferred
+by design (CLAUDE.md "current scope decision") — no Manager ViewModel, view,
+PDF, or navigation placeholder exists. The 6 AM scheduler, Windows Task
+Scheduler integration, and resilience work (spec §17 Phase 6) and Windows
+packaging/handoff (spec §17 Phase 7) remain out of scope — Phase 6 is next.

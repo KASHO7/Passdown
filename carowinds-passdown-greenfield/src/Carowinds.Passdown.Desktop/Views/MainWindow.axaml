@@ -8,25 +8,44 @@
         x:Class="Carowinds.Passdown.Desktop.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="Carowinds Passdown"
+        Title="Carowinds Admissions Operations"
         Width="1280" Height="860" MinWidth="960" MinHeight="640">
 
     <DockPanel LastChildFill="True">
 
-        <!-- App shell header (spec §10.2): a clean top-level identity bar. Associate Passdown is
-             the only workflow this release — no mode selector/nav rail is needed for one item, and
-             no Manager entry point is added as a placeholder (CLAUDE.md "current scope decision"). -->
-        <Border DockPanel.Dock="Top" Padding="20,12" BorderThickness="0,0,0,1"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
-            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                <!-- A small original ascending-track mark (spec §10.1) — plain geometric bars, not a reskin of any existing asset. -->
-                <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Bottom" Height="20">
-                    <Rectangle Width="6" Height="9" Fill="{DynamicResource PassdownAccentBrush}" VerticalAlignment="Bottom" />
-                    <Rectangle Width="6" Height="14" Fill="{DynamicResource PassdownAccentBrush}" VerticalAlignment="Bottom" />
-                    <Rectangle Width="6" Height="20" Fill="{DynamicResource PassdownAccentBrush}" VerticalAlignment="Bottom" />
+        <!-- Brand identity band (spec §10.2): a constant, theme-invariant deep-navy strip so the app
+             reads as "Carowinds Admissions Operations" the instant it opens, independent of the
+             light/dark surfaces underneath. Associate Passdown is the only workflow this release — no
+             mode selector/nav rail is needed for one item, and no Manager entry point is added as a
+             placeholder (CLAUDE.md "current scope decision"). -->
+        <Border DockPanel.Dock="Top" Padding="24,10" Background="{DynamicResource PassdownBrandDarkBrush}"
+                ClipToBounds="True">
+            <Grid ColumnDefinitions="Auto,*">
+
+                <!-- Faint trackline motif: a couple of low-opacity coaster-hill strokes, not an image
+                     asset — kept subtle so it reads as texture, not decoration competing with the text. -->
+                <Canvas Grid.Column="0" Grid.ColumnSpan="2" Opacity="0.10" IsHitTestVisible="False">
+                    <Polyline Points="640,46 690,-4 740,46 800,-14 900,50 980,-10 1120,46"
+                              Stroke="{DynamicResource PassdownHeaderForegroundBrush}" StrokeThickness="2.5" />
+                </Canvas>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                    <!-- A small original ascending-track mark (spec §10.1) — plain geometric bars, not a
+                         reskin of any existing asset. -->
+                    <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Bottom" Height="20">
+                        <Rectangle Width="6" Height="9" Fill="{DynamicResource PassdownHeaderForegroundBrush}" VerticalAlignment="Bottom" />
+                        <Rectangle Width="6" Height="14" Fill="{DynamicResource PassdownHeaderForegroundBrush}" VerticalAlignment="Bottom" />
+                        <Rectangle Width="6" Height="20" Fill="{DynamicResource PassdownHeaderForegroundBrush}" VerticalAlignment="Bottom" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="1" VerticalAlignment="Center">
+                        <TextBlock Text="CAROWINDS" FontSize="15" FontWeight="Bold" LetterSpacing="1.5"
+                                   Foreground="{DynamicResource PassdownHeaderForegroundBrush}" />
+                        <TextBlock Text="ADMISSIONS OPERATIONS" FontSize="10.5" FontWeight="Medium" LetterSpacing="1.5"
+                                   Foreground="{DynamicResource PassdownHeaderMutedForegroundBrush}" />
+                    </StackPanel>
                 </StackPanel>
-                <TextBlock Text="Carowinds Passdown" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
-            </StackPanel>
+            </Grid>
         </Border>
 
         <views:AssociateView DataContext="{Binding Associate}" />

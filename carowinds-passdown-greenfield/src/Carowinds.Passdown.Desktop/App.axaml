@@ -11,25 +11,63 @@
 
     <Application.Resources>
         <ResourceDictionary>
-            <!-- Semantic colors used across the Associate screen (spec §10.4/Part N): kept as named,
-                 theme-varying tokens instead of literal hex scattered through view styles, so
-                 light/dark both stay readable. -->
+
+            <!-- Carowinds Admissions Operations brand identity (blue/white/red retheme): a restrained
+                 navy-and-royal-blue treatment, tuned for an internal operations tool rather than a
+                 public/marketing surface, with red reserved for warning/error accents only. The brand
+                 band itself (deep navy + white text) does not invert with the OS light/dark theme, so
+                 it lives here as plain top-level resources; everything that must stay readable against
+                 the app's own light/dark surfaces lives in the theme dictionaries below. -->
+            <Color x:Key="PassdownBrandDarkColor">#0B2A4A</Color>
+            <Color x:Key="PassdownBrandDarkColor2">#071B30</Color>
+            <SolidColorBrush x:Key="PassdownBrandDarkBrush" Color="{StaticResource PassdownBrandDarkColor}" />
+            <SolidColorBrush x:Key="PassdownBrandDarkBrush2" Color="{StaticResource PassdownBrandDarkColor2}" />
+            <SolidColorBrush x:Key="PassdownHeaderForegroundBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="PassdownHeaderMutedForegroundBrush" Color="#B9CBDE" />
+
+            <!-- Re-theme Fluent's own accent-driven controls (Button.accent, checked CheckBox/RadioButton,
+                 focus rings, selection) to the brand royal blue, so accent usage is consistent everywhere
+                 without hand-styling every control. -->
+            <Color x:Key="SystemAccentColor">#1E5AA8</Color>
+            <Color x:Key="SystemAccentColorLight1">#3E76BE</Color>
+            <Color x:Key="SystemAccentColorLight2">#6693CE</Color>
+            <Color x:Key="SystemAccentColorLight3">#97B7DE</Color>
+            <Color x:Key="SystemAccentColorDark1">#17447E</Color>
+            <Color x:Key="SystemAccentColorDark2">#113259</Color>
+            <Color x:Key="SystemAccentColorDark3">#0B2038</Color>
+
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
-                    <Color x:Key="PassdownAccentColor">#2E7D32</Color>
+                    <Color x:Key="PassdownAccentColor">#1E5AA8</Color>
                     <SolidColorBrush x:Key="PassdownAccentBrush" Color="{StaticResource PassdownAccentColor}" />
-                    <SolidColorBrush x:Key="PassdownErrorBrush" Color="#B3261E" />
+                    <SolidColorBrush x:Key="PassdownErrorBrush" Color="#C0182D" />
                     <SolidColorBrush x:Key="PassdownWarningBrush" Color="#8A5A00" />
-                    <SolidColorBrush x:Key="PassdownSubtleSurfaceBrush" Color="#F4F4F5" />
-                    <SolidColorBrush x:Key="PassdownChipBrush" Color="#E7E7E9" />
+                    <SolidColorBrush x:Key="PassdownSubtleSurfaceBrush" Color="#F4F5F7" />
+                    <SolidColorBrush x:Key="PassdownChipBrush" Color="#E6E9ED" />
+
+                    <!-- Brand surfaces added for the blue/white/red retheme. -->
+                    <SolidColorBrush x:Key="PassdownSurfaceTintBrush" Color="#F5F8FC" />
+                    <SolidColorBrush x:Key="PassdownBandBrush" Color="#E4EDF7" />
+                    <SolidColorBrush x:Key="PassdownDividerBrush" Color="#D8DEE6" />
+                    <SolidColorBrush x:Key="PassdownChipAccentBrush" Color="#DCE8F7" />
+                    <SolidColorBrush x:Key="PassdownChipAccentForegroundBrush" Color="#1D4E8F" />
+                    <SolidColorBrush x:Key="PassdownComparePriceBrush" Color="#8791A0" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
-                    <Color x:Key="PassdownAccentColor">#66BB6A</Color>
+                    <Color x:Key="PassdownAccentColor">#6FA8E0</Color>
                     <SolidColorBrush x:Key="PassdownAccentBrush" Color="{StaticResource PassdownAccentColor}" />
                     <SolidColorBrush x:Key="PassdownErrorBrush" Color="#FF8A80" />
                     <SolidColorBrush x:Key="PassdownWarningBrush" Color="#FFC46B" />
-                    <SolidColorBrush x:Key="PassdownSubtleSurfaceBrush" Color="#26262A" />
-                    <SolidColorBrush x:Key="PassdownChipBrush" Color="#333338" />
+                    <SolidColorBrush x:Key="PassdownSubtleSurfaceBrush" Color="#23262B" />
+                    <SolidColorBrush x:Key="PassdownChipBrush" Color="#31353D" />
+
+                    <!-- Brand surfaces added for the blue/white/red retheme. -->
+                    <SolidColorBrush x:Key="PassdownSurfaceTintBrush" Color="#171B22" />
+                    <SolidColorBrush x:Key="PassdownBandBrush" Color="#1B2836" />
+                    <SolidColorBrush x:Key="PassdownDividerBrush" Color="#32424F" />
+                    <SolidColorBrush x:Key="PassdownChipAccentBrush" Color="#1E3A5A" />
+                    <SolidColorBrush x:Key="PassdownChipAccentForegroundBrush" Color="#8FC1F2" />
+                    <SolidColorBrush x:Key="PassdownComparePriceBrush" Color="#93A1AE" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
