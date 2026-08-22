@@ -10,12 +10,14 @@ using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Retrieval.Browser;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Services;
+using Carowinds.Passdown.Desktop.Startup;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
 using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Retrieval;
 using Carowinds.Passdown.Infrastructure;
+using Carowinds.Passdown.Infrastructure.Concurrency;
 using Carowinds.Passdown.Infrastructure.Retrieval.Browser;
 using Carowinds.Passdown.Infrastructure.Retrieval.Http;
 using Carowinds.Passdown.Infrastructure.Retrieval.Sources;
@@ -58,9 +60,24 @@ public partial class App : global::Avalonia.Application
             var mainWindow = services.GetRequiredService<MainWindow>();
             mainWindow.DataContext = services.GetRequiredService<MainViewModel>();
             desktop.MainWindow = mainWindow;
+
+            StartCatchUpRefresh(services);
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// Phase 6B Part C: fires the missed-run catch-up (spec §6.6) as a detached background task —
+    /// deliberately not awaited, so a slow or failing refresh can never delay or block the window
+    /// that was just assigned above. See <see cref="StartupCatchUpRefresh"/> for the guard/failure
+    /// semantics.
+    /// </summary>
+    private static void StartCatchUpRefresh(IServiceProvider services)
+    {
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("StartupCatchUpRefresh");
+        var scheduledLock = new FileScheduledRefreshLock(FileScheduledRefreshLock.DefaultPath);
+        _ = StartupCatchUpRefresh.RunAsync(services, scheduledLock, logger);
     }
 
     internal static IServiceProvider BuildServiceProvider()

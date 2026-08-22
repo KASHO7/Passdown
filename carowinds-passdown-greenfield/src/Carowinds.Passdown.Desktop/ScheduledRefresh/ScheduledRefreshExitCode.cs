@@ -17,4 +17,11 @@ public enum ScheduledRefreshExitCode
 
     /// <summary>Invalid command-line usage.</summary>
     InvalidUsage = 3,
+
+    /// <summary>
+    /// Skipped: another scheduled-refresh invocation already held the overlap lock (Phase 6B Part
+    /// A). Deliberately distinct from every other code — this run never touched migrations or the
+    /// refresh job at all, so it must never be mistaken for a source failure or a fatal error.
+    /// </summary>
+    Overlap = 4,
 }

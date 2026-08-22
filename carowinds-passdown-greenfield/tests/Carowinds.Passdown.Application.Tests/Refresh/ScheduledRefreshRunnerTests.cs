@@ -82,6 +82,21 @@ public class ScheduledRefreshRunnerTests
         Assert.Equal(4, result.Summary.Succeeded);
     }
 
+    // Phase 6B Part D/E/N (#12): even when every planned operation failed (e.g. the machine is
+    // fully offline, so nothing succeeds at all), this still classifies as PartialFailure, never a
+    // fatal outcome — "fatal" is reserved for startup/database/unhandled failure (ScheduledRefreshHost),
+    // not "every source happened to fail this run."
+    [Fact]
+    public async Task RunAsync_AllOperationsFail_StillClassifiesAsPartialFailure_NotFatal()
+    {
+        var orchestrator = new FakeRefreshOrchestrator { ScheduledRefreshSummaryOverride = Summary(attempted: 4, succeeded: 0, failed: 4, cancelled: 0) };
+        var runner = new ScheduledRefreshRunner(orchestrator, new FakeClock(FixedNow), NullLogger<ScheduledRefreshRunner>.Instance);
+
+        var result = await runner.RunAsync();
+
+        Assert.Equal(ScheduledRefreshOutcome.PartialFailure, result.Outcome);
+    }
+
     // 15. Log summary contains success/failure counts.
     [Fact]
     public async Task RunAsync_LogsSuccessAndFailureCounts()

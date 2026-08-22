@@ -1,6 +1,7 @@
 ﻿using Avalonia;
 using System;
 using Carowinds.Passdown.Desktop.ScheduledRefresh;
+using Carowinds.Passdown.Infrastructure.Concurrency;
 using Carowinds.Passdown.Infrastructure.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -37,8 +38,19 @@ sealed class Program
 
     private static ScheduledRefreshExitCode RunScheduledRefresh()
     {
-        var host = new ScheduledRefreshHost(BuildScheduledRefreshServiceProvider);
-        return host.RunAsync().GetAwaiter().GetResult();
+        // Cooperative cancellation for headless/console execution (Phase 6B Part I): Ctrl+C stops
+        // outstanding retrieval work via the same CancellationToken RunAsync already threads
+        // through the orchestrator, rather than killing the process mid-write. e.Cancel = true
+        // suppresses the runtime's default immediate-terminate behavior so this path gets to run.
+        using var cts = new CancellationTokenSource();
+        Console.CancelKeyPress += (_, e) =>
+        {
+            e.Cancel = true;
+            cts.Cancel();
+        };
+
+        var host = new ScheduledRefreshHost(BuildScheduledRefreshServiceProvider, () => new FileScheduledRefreshLock(FileScheduledRefreshLock.DefaultPath));
+        return host.RunAsync(cts.Token).GetAwaiter().GetResult();
     }
 
     /// <summary>

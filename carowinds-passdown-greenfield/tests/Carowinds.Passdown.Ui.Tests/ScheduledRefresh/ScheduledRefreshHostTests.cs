@@ -198,4 +198,144 @@ public class ScheduledRefreshHostTests
             File.Delete(tempDb);
         }
     }
+
+    // Fatal failure when the database itself cannot be opened/initialized (Phase 6B Part G): here,
+    // the containing directory can never be created because a plain file already occupies that
+    // path segment, so SqliteConnectionFactory.OpenConnection's Directory.CreateDirectory throws
+    // before a single row is ever touched.
+    [Fact]
+    public async Task RunAsync_DatabaseDirectoryCannotBeCreated_ReturnsFatalFailureExitCode_AndNeverInvokesRunner()
+    {
+        var blockingFile = Path.Combine(Path.GetTempPath(), $"carowinds-passdown-6b-blocker-{Guid.NewGuid():N}");
+        File.WriteAllText(blockingFile, "not a directory");
+        try
+        {
+            var runner = new FakeScheduledRefreshRunner();
+            var tempDb = Path.Combine(blockingFile, "sub", "carowinds.db"); // blockingFile can never be a directory
+            var host = new ScheduledRefreshHost(() => BuildMinimalProvider(runner, tempDb));
+
+            var exitCode = await host.RunAsync();
+
+            Assert.Equal(ScheduledRefreshExitCode.FatalFailure, exitCode);
+            Assert.Equal(0, runner.CallCount);
+        }
+        finally
+        {
+            File.Delete(blockingFile);
+        }
+    }
+
+    // Phase 6B Part A/N (#2/#3/#21): a second overlapping invocation detects the active run,
+    // never invokes the refresh runner, is classified as a distinct nonfatal outcome (not a source
+    // failure), and logs an overlap line.
+    [Fact]
+    public async Task RunAsync_LockUnavailable_ReturnsOverlapExitCode_AndNeverInvokesRunner()
+    {
+        var runner = new FakeScheduledRefreshRunner();
+        var scheduledLock = new FakeScheduledRefreshLock { AcquireSucceeds = false };
+        var tempDb = Path.Combine(Path.GetTempPath(), $"carowinds-passdown-6b-{Guid.NewGuid():N}.db");
+        try
+        {
+            var host = new ScheduledRefreshHost(() => BuildMinimalProvider(runner, tempDb), () => scheduledLock);
+
+            var exitCode = await host.RunAsync();
+
+            Assert.Equal(ScheduledRefreshExitCode.Overlap, exitCode);
+            Assert.Equal(0, runner.CallCount);
+        }
+        finally
+        {
+            File.Delete(tempDb);
+        }
+    }
+
+    // Lock acquired and released on a normal successful completion.
+    [Fact]
+    public async Task RunAsync_LockAvailable_AcquiresRunsAndReleasesLock()
+    {
+        var runner = new FakeScheduledRefreshRunner { ResultToReturn = FakeScheduledRefreshRunner.EmptySuccess() };
+        var scheduledLock = new FakeScheduledRefreshLock();
+        var tempDb = Path.Combine(Path.GetTempPath(), $"carowinds-passdown-6b-{Guid.NewGuid():N}.db");
+        try
+        {
+            var host = new ScheduledRefreshHost(() => BuildMinimalProvider(runner, tempDb), () => scheduledLock);
+
+            var exitCode = await host.RunAsync();
+
+            Assert.Equal(ScheduledRefreshExitCode.Success, exitCode);
+            Assert.Equal(1, runner.CallCount);
+            Assert.Equal(1, scheduledLock.TryAcquireCallCount);
+            Assert.Equal(1, scheduledLock.DisposeCallCount);
+        }
+        finally
+        {
+            File.Delete(tempDb);
+        }
+    }
+
+    // Lock is still released when the runner throws unexpectedly (Part A "released after
+    // exception/process cleanup as safely as the platform permits").
+    [Fact]
+    public async Task RunAsync_RunnerThrows_StillReleasesLock()
+    {
+        var runner = new FakeScheduledRefreshRunner { OnRun = _ => throw new InvalidOperationException("simulated failure") };
+        var scheduledLock = new FakeScheduledRefreshLock();
+        var tempDb = Path.Combine(Path.GetTempPath(), $"carowinds-passdown-6b-{Guid.NewGuid():N}.db");
+        try
+        {
+            var host = new ScheduledRefreshHost(() => BuildMinimalProvider(runner, tempDb), () => scheduledLock);
+
+            var exitCode = await host.RunAsync();
+
+            Assert.Equal(ScheduledRefreshExitCode.FatalFailure, exitCode);
+            Assert.Equal(1, scheduledLock.DisposeCallCount);
+        }
+        finally
+        {
+            File.Delete(tempDb);
+        }
+    }
+
+    // Part D/G: even when every source operation failed (e.g. the machine has no usable network at
+    // all), the process must still report PartialFailure — not FatalFailure — because local
+    // infrastructure (migrations, the database) started up healthily; "fatal" is reserved for a
+    // genuine startup/database/unhandled failure.
+    [Fact]
+    public async Task RunAsync_EveryOperationFailed_StillReturnsPartialFailureExitCode_NotFatal()
+    {
+        var allFailed = new ScheduledRefreshResult(
+            ScheduledRefreshOutcome.PartialFailure,
+            new RefreshSummary(RefreshJobType.ScheduledRollingWindow, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, OperationsAttempted: 4, Succeeded: 0, Failed: 4, Cancelled: 0, Results: []));
+        var runner = new FakeScheduledRefreshRunner { ResultToReturn = allFailed };
+        var tempDb = Path.Combine(Path.GetTempPath(), $"carowinds-passdown-6b-{Guid.NewGuid():N}.db");
+        try
+        {
+            var host = new ScheduledRefreshHost(() => BuildMinimalProvider(runner, tempDb));
+
+            var exitCode = await host.RunAsync();
+
+            Assert.Equal(ScheduledRefreshExitCode.PartialFailure, exitCode);
+        }
+        finally
+        {
+            File.Delete(tempDb);
+        }
+    }
+
+    // A lock unavailable never even reaches migrations, so it must never be treated as a fatal DB
+    // failure either — Overlap is its own outcome, distinct from both Success/PartialFailure and
+    // FatalFailure.
+    [Fact]
+    public async Task RunAsync_LockUnavailable_NeverRunsMigrations()
+    {
+        var runner = new FakeScheduledRefreshRunner();
+        var scheduledLock = new FakeScheduledRefreshLock { AcquireSucceeds = false };
+        // No database path at all: if migrations ran, resolving MigrationRunner would throw (it
+        // isn't registered), surfacing as FatalFailure instead of the expected Overlap.
+        var host = new ScheduledRefreshHost(() => BuildMinimalProvider(runner, databasePath: null), () => scheduledLock);
+
+        var exitCode = await host.RunAsync();
+
+        Assert.Equal(ScheduledRefreshExitCode.Overlap, exitCode);
+    }
 }

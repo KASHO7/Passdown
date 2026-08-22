@@ -68,7 +68,13 @@ public sealed class FileLoggerProvider(FileLoggerOptions options) : ILoggerProvi
             }
             catch (IOException)
             {
-                // Best-effort pruning only: a file locked by another process is left for next time.
+                // Best-effort pruning only (Phase 6B Part J): a file locked by another process, or
+                // one that vanished in a race with a concurrent prune, is left for next time — this
+                // must never abort the run or the log line that triggered it.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Same best-effort contract as above — e.g. a transient AV-scan hold on Windows.
             }
         }
     }

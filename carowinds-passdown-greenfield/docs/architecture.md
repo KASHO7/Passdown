@@ -377,3 +377,168 @@ Carowinds.Passdown.Desktop.exe --scheduled-refresh   headless unattended refresh
   "last write wins" rather than corruption, but this hasn't been stress-
   tested under real concurrency. A mutex/lock-file guard is a Phase 6B
   concern (spec §17 Phase 6 "test offline and failure scenarios").
+
+## Phase 6B additions — overlap protection, missed-run catch-up, and offline hardening
+
+Phase 6B hardens the Phase 6A `--scheduled-refresh` path in place — no second
+scheduler, no second refresh implementation, no second DI setup. Every
+addition below either guards the existing `RefreshOrchestrator`/
+`IScheduledRefreshRunner` pipeline from running twice at once, or proves (by
+test, not new logic) that it already does the right thing when invoked late
+or offline.
+
+- **Overlap protection** (`Carowinds.Passdown.Infrastructure.Concurrency`):
+  `IScheduledRefreshLock`/`FileScheduledRefreshLock` — one exclusively-held
+  local file (`AppPaths.LocalApplicationDataDirectory/scheduled-refresh.lock`,
+  `FileScheduledRefreshLock.DefaultPath`) opened with `FileShare.None`. A
+  second attempt to open the same path fails with `IOException` (or, rarely,
+  `UnauthorizedAccessException`) on both Windows and the Unix hosts this was
+  developed/tested on — `TryAcquire()` turns either into a clean
+  `false` rather than a crash. This was chosen over a Windows named `Mutex`
+  because .NET's named-mutex/semaphore support on non-Windows hosts (this
+  project's Fedora dev host among them) has historically been the less
+  portable of the two, while a shared-file exclusive-open check needs nothing
+  OS-specific and was verified empirically here, including a real two-process
+  test (one process holding the file lock while a second, real
+  `--scheduled-refresh` process was launched against it) — see "Manual smoke"
+  below. `ScheduledRefreshHost` acquires this lock (via a factory,
+  `Program.cs` supplies the real one) *before* running migrations or the
+  refresh job; a failed acquire never touches the database and is reported
+  as **`ScheduledRefreshExitCode.Overlap` (exit code 4)** — a distinct,
+  nonfatal outcome, deliberately never folded into `PartialFailure` (a source
+  failure) or `FatalFailure` (a startup failure), since neither happened. The
+  lock is released (`Dispose()`) in a `finally` block covering every path:
+  clean completion, partial failure, cancellation, or an unhandled exception.
+  Normal interactive desktop launch never acquires this lock synchronously at
+  startup — nothing about opening the window can be blocked by it — the only
+  place normal mode touches the lock at all is the best-effort background
+  catch-up below, which never blocks the window either.
+- **Missed-run/late-invocation catch-up** (spec §6.6, Part B): required no
+  new logic. `FreshnessPolicy.IsDue`/`IRefreshOrchestrator`'s existing
+  due-source planning (Phase 2/3G) already computes "is this source due"
+  from the last recorded success and the current instant — never from
+  whatever time the process happens to be invoked — so a process that runs
+  at 8:30 AM because the machine was asleep at 6:00 AM already refreshes
+  exactly the sources that are due and nothing else. This is proved, not
+  reimplemented, by
+  `tests/Carowinds.Passdown.Application.Tests/Refresh/ScheduledRefreshLateInvocationTests.cs`:
+  a daily source with no run yet today stays due at 8:30 AM and at 3:00 PM
+  alike; a weekly (season passes) or biweekly (add-ons) catalog that is
+  already fresh stays skipped regardless of what time the late invocation
+  happens; and a full success→fail→fail→recovery sequence confirms
+  last-known-good survives the failures and only a new success both replaces
+  it and resets the failure count (Part K).
+- **Interactive startup catch-up** (`Carowinds.Passdown.Desktop.Startup.StartupCatchUpRefresh`,
+  Part C): spec §6.6 explicitly asks for "refresh the next time the app
+  opens if that day's job has not successfully run," so
+  `App.OnFrameworkInitializationCompleted` fires this as a **detached,
+  never-awaited background task** immediately after `desktop.MainWindow` is
+  assigned — a slow or failing refresh can never delay the window opening.
+  It acquires the *same* `FileScheduledRefreshLock` a `--scheduled-refresh`
+  process would (so an already-running scheduled process and an interactive
+  catch-up can never run at once — whichever gets there first wins, the
+  other silently skips) and, once acquired, calls the *same*
+  `IScheduledRefreshRunner`/`IRefreshOrchestrator` a scheduled process calls —
+  not a second implementation. Every source it covers is still gated by the
+  same due-ness check, so this never refreshes merely because the app
+  opened, and never because the selected date changed (it has no notion of
+  the selected date at all). Any exception — lock acquisition, resolution,
+  or the runner itself — is caught and logged inside `StartupCatchUpRefresh`
+  and never reaches the caller, so a failure here cannot prevent the UI from
+  opening or affect already-cached data. Logged via the normal
+  `ILoggerFactory` (console in interactive mode) rather than the scheduled
+  path's `FileLoggerProvider` — the authoritative, file-logged audit trail
+  for scheduled work remains `--scheduled-refresh` itself; this is a
+  best-effort supplement, not a second official log.
+- **Offline/source-failure hardening** (Parts D/E/G): also required no new
+  logic, only tests proving existing behavior. `RefreshOrchestrator` already
+  persists every operation independently as it completes, never lets one
+  source's failure (including an unexpected `throw`, not just an `Error`
+  result) cancel another's success, and never lets an `Error` overwrite a
+  prior last-known-good value (Phase 3G's `RefreshOrchestratorTests`, plus
+  Phase 6B's `ScheduledRefreshRunnerTests.RunAsync_AllOperationsFail_...`
+  and `ScheduledRefreshHostTests.RunAsync_EveryOperationFailed_...`, which
+  confirm that even when *every* planned operation fails — the "fully
+  offline" case — the process still reports `PartialFailure`, never
+  `FatalFailure`; that code is reserved for a genuine local
+  startup/database/unhandled failure, proved separately by
+  `RunAsync_DatabaseDirectoryCannotBeCreated_...`).
+- **Retry policy** (Part F): deliberately left alone. All eight current
+  source adapters are `DirectApi`/`Html` (no Playwright adapter exists yet,
+  so spec §6.4's "bounded retries with jitter for transient
+  navigation/hydration failures" has nothing to attach to today), and the
+  three ticket-dated adapters call Accesso's keyword-calendar endpoint via
+  `POST` — its retry-safety under an automatic retry has not been reviewed
+  here, so Part F's explicit conservatism ("never automatically retry ...
+  arbitrary POST operations if repetition could have side effects") applies.
+  A failed attempt already preserves last-known-good and is retried
+  automatically by the very next due scheduled run (daily cadence) or an
+  explicit "Check this date online," so the absence of retry costs at most
+  one day's staleness, not data loss. Adding retry is deferred, not
+  forgotten.
+- **SQLite busy-timeout** (`SqliteConnectionFactory`, Part H): both
+  `OpenConnection`/`OpenConnectionAsync` now set `Default Timeout=5` on the
+  connection string, so a short write-write collision between the
+  interactive UI's autosave and a scheduled/startup-catch-up refresh makes
+  `Microsoft.Data.Sqlite` retry internally for up to 5 seconds instead of
+  raising `SQLITE_BUSY` the instant two writers overlap by a few
+  milliseconds. (Empirically, the driver's own default — 60 seconds — was
+  already enough to make `SqliteConnectionFactoryBusyTimeoutTests` pass even
+  before this change; 5 seconds is a deliberately shorter, explicit,
+  documented value rather than relying on an implicit default, and still
+  comfortably covers this app's short operations.) No other concurrency
+  change was made — operations are already short-lived, and per-row
+  upserts mean draft writes and refresh writes were already not corrupting
+  each other; this is not a redesign of storage.
+- **Cancellation** (Part I): `Program.cs`'s headless entry point now wires
+  `Console.CancelKeyPress` to the same `CancellationToken` already threaded
+  through `ScheduledRefreshHost.RunAsync`/`IRefreshOrchestrator`, so Ctrl+C
+  during a development/console invocation stops outstanding work
+  cooperatively instead of the process being killed mid-write. The
+  cancelled-run exit code (`FatalFailure`) and log line
+  ("Scheduled refresh was cancelled before completion.") are unchanged from
+  Phase 6A — still deterministic, still distinct in the log from a genuine
+  fatal error's `LogCritical` line, and Phase 3G's cancellation tests already
+  prove completed operations survive a mid-job cancellation.
+- **Logging** (Part J): the operational log now clearly distinguishes
+  SUCCESS/PARTIAL/OVERLAP/FATAL/CANCELLED outcomes (see the exit-code list
+  below) — the OVERLAP line was added in this phase; the others already
+  existed. `FileLoggerProvider`'s best-effort pruning now also tolerates
+  `UnauthorizedAccessException` (previously only `IOException`), covering a
+  transient AV-scan/permission hold on an old log file without aborting the
+  log write that triggered pruning or the refresh it belongs to.
+- **Process exit codes** (`ScheduledRefreshExitCode`): `0` Success, `1`
+  PartialFailure, `2` FatalFailure, `3` InvalidUsage (all unchanged from
+  Phase 6A), plus the new `4` **Overlap** — a second overlapping invocation
+  was skipped; never touched migrations or the refresh job.
+- **Tests**: `tests/Carowinds.Passdown.Infrastructure.Tests/Concurrency/FileScheduledRefreshLockTests.cs`
+  (acquire/contend/release, offline, no real process needed);
+  `tests/Carowinds.Passdown.Infrastructure.Tests/Storage/SqliteConnectionFactoryBusyTimeoutTests.cs`;
+  a `FileLoggerProviderTests` addition for the broadened prune-failure catch
+  (Unix-permission-based, skipped on Windows where the same simulation isn't
+  meaningful — the underlying catch clause is platform-agnostic);
+  `ScheduledRefreshHostTests` additions for overlap/fatal-DB-open/lock-release
+  scenarios (`Carowinds.Passdown.Ui.Tests`, extending the existing Phase 6A
+  file rather than duplicating its harness);
+  `tests/Carowinds.Passdown.Ui.Tests/Startup/StartupCatchUpRefreshTests.cs`;
+  and `tests/Carowinds.Passdown.Application.Tests/Refresh/ScheduledRefreshLateInvocationTests.cs`
+  plus one addition to the existing `ScheduledRefreshRunnerTests.cs`. Every
+  pre-existing Phase 6A test still passes unchanged — the new
+  `scheduledRefreshLockFactory` constructor parameter on `ScheduledRefreshHost`
+  defaults to `null` ("no overlap protection"), which is exactly what every
+  pre-6B test still exercises.
+
+### Deferred out of Phase 6B
+
+- **Windows Task Scheduler registration** — still Phase 6C, unchanged from
+  Phase 6A's own deferral. Nothing in this codebase creates, queries, or
+  assumes a Task Scheduler entry exists; "run as soon as possible after a
+  missed start" is a Task Scheduler *setting* 6C will configure, not
+  something Phase 6B reimplements at the application level (this phase's
+  due-source planning already makes a late run correct regardless of *why*
+  it's late).
+- **Automatic retry policy** — reviewed (see above) and deliberately not
+  added; revisit only alongside a specific adapter whose failure mode and
+  request idempotency have been reviewed.
+- **Manager workflow** — out of scope per CLAUDE.md's current scope
+  decision, unaffected by this phase.
