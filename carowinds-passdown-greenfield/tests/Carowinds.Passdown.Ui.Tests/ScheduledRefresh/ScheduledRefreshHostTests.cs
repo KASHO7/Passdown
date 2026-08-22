@@ -225,6 +225,35 @@ public class ScheduledRefreshHostTests
         }
     }
 
+    // Phase 7D Part F: a database file that exists but is not a valid SQLite database (a stray
+    // text file, disk corruption, a previous crash's partial write) must be classified as a fatal
+    // startup failure — the existing FatalFailure exit code — never silently deleted, overwritten,
+    // or replaced with a fresh blank database, and never mistaken for a source/partial failure.
+    [Fact]
+    public async Task RunAsync_DatabaseFileIsNotValidSqlite_ReturnsFatalFailureExitCode_AndLeavesFileUnchanged()
+    {
+        var runner = new FakeScheduledRefreshRunner();
+        var tempDb = Path.Combine(Path.GetTempPath(), $"carowinds-passdown-7d-corrupt-{Guid.NewGuid():N}.db");
+        var originalBytes = "not a sqlite database"u8.ToArray();
+        File.WriteAllBytes(tempDb, originalBytes);
+        try
+        {
+            var host = new ScheduledRefreshHost(() => BuildMinimalProvider(runner, tempDb));
+
+            var exitCode = await host.RunAsync();
+
+            Assert.Equal(ScheduledRefreshExitCode.FatalFailure, exitCode);
+            Assert.Equal(0, runner.CallCount);
+            SqliteConnection.ClearAllPools();
+            Assert.Equal(originalBytes, File.ReadAllBytes(tempDb));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(tempDb);
+        }
+    }
+
     // Phase 6B Part A/N (#2/#3/#21): a second overlapping invocation detects the active run,
     // never invokes the refresh runner, is classified as a distinct nonfatal outcome (not a source
     // failure), and logs an overlap line.

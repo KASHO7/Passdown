@@ -73,4 +73,47 @@ public class MigrationRunnerTests : IDisposable
 
         Assert.Equal(1, rowCount);
     }
+
+    // Phase 7D Part G (#8): a database whose schema is newer than any migration this build knows
+    // about (e.g. this build is an older portable release re-run against data a newer release
+    // already migrated) must fail safely rather than silently downgrade/reinterpret it.
+    [Fact]
+    public void Run_DatabaseVersionNewerThanAnyKnownMigration_ThrowsAndLeavesVersionUnchanged()
+    {
+        SetUserVersion(_databasePath, 99);
+
+        var exception = Assert.Throws<UnsupportedSchemaVersionException>(() => CreateRunner().Run());
+
+        Assert.Equal(99, exception.DatabaseVersion);
+        Assert.Equal(1, exception.HighestKnownVersion); // CreateRunner() only registers Migration0001.
+        Assert.Equal(99, ReadUserVersionDirect(_databasePath)); // untouched, not downgraded.
+    }
+
+    // The guard is exact at the boundary: a database already at the current build's highest
+    // known version is a normal, already-up-to-date state, not an error.
+    [Fact]
+    public void Run_DatabaseVersionEqualToHighestKnownMigration_DoesNotThrow()
+    {
+        SetUserVersion(_databasePath, 1);
+
+        var appliedVersion = CreateRunner().Run();
+
+        Assert.Equal(1, appliedVersion);
+    }
+
+    private static void SetUserVersion(string databasePath, int version)
+    {
+        using var connection = new SqliteConnectionFactory(databasePath).OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"PRAGMA user_version = {version};";
+        command.ExecuteNonQuery();
+    }
+
+    private static int ReadUserVersionDirect(string databasePath)
+    {
+        using var connection = new SqliteConnectionFactory(databasePath).OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA user_version;";
+        return Convert.ToInt32(command.ExecuteScalar());
+    }
 }

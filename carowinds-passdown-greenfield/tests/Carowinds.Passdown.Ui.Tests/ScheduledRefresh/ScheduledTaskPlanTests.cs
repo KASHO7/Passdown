@@ -106,4 +106,21 @@ public class ScheduledTaskPlanTests
 
         Assert.Equal(first, second);
     }
+
+    // Phase 7D Part M/N: rebinding after moving the portable folder (re-running
+    // "Enable Automatic Refresh.cmd" from the new location) must always target the exact same
+    // task name regardless of which path it was last built for — that stable identity is what
+    // lets Install-ScheduledRefresh.ps1's Register-ScheduledTask -Force replace the one existing
+    // task in place rather than ever registering a second, duplicate task at the new path.
+    [Fact]
+    public void Build_DifferentExecutablePaths_ShareTheSameTaskName_ButUpdateTheExecutableAndWorkingDirectory()
+    {
+        var oldLocation = ScheduledTaskPlan.Build(@"C:\Users\User\Downloads\Carowinds Passdown\Carowinds.Passdown.Desktop.exe");
+        var newLocation = ScheduledTaskPlan.Build(@"C:\Users\User\Desktop\Operations\Carowinds Passdown\Carowinds.Passdown.Desktop.exe");
+
+        Assert.Equal(oldLocation.TaskName, newLocation.TaskName);
+        Assert.NotEqual(oldLocation.ExecutablePath, newLocation.ExecutablePath);
+        Assert.NotEqual(oldLocation.WorkingDirectory, newLocation.WorkingDirectory);
+        Assert.Equal(oldLocation.Arguments, newLocation.Arguments);
+    }
 }

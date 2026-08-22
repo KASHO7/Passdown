@@ -679,22 +679,283 @@ running it.
 10. Double-click `Enable Automatic Refresh.cmd` again — confirm it re-registers cleanly.
 11. Move/copy the whole extracted folder to a different path.
 12. Double-click `Enable Automatic Refresh.cmd` from the new location.
-13. Confirm the scheduled task's action now points at the new path (not the old one).
+13. Confirm the scheduled task's action now points at the new path (not the old one), and that
+    only one "Carowinds Passdown Daily Refresh" task exists (no duplicate).
 14. Confirm the app still launches normally from the new location.
+
+**Phase 7D data-preservation cases (added this phase):**
+
+15. On first launch (step 2), enter a small Associate draft and save it. Close the app.
+16. Relaunch the same `.exe`. Confirm the saved draft is still there.
+17. Extract a **second, fresh copy** of the same release ZIP to a different folder. Launch it.
+    Confirm it opens against the *same* draft from step 15/16 (same `%LOCALAPPDATA%`, different
+    app folder).
+18. Delete the *original* extracted folder from step 1 entirely (not the copy from step 17).
+    Relaunch the app from the copy in step 17. Confirm the draft is still present — proving
+    `%LOCALAPPDATA%\Carowinds Passdown` was never touched by deleting the app folder.
+19. (Disposable copy only — never the real user-data folder) Close the app, make a throwaway copy
+    of `carowinds-passdown.db`, corrupt it (e.g. overwrite the first few bytes with a text
+    editor), and confirm the app fails visibly on next launch rather than silently creating a
+    blank database or deleting the corrupt file. Restore the real file afterward.
+20. If a newer portable build is available, repeat steps 15–18 across the two builds (older build
+    first, then the newer one) to confirm the upgrade path preserves the draft and reaches the
+    newer schema version.
+
+## Phase 7D — first-run, upgrade, legacy coexistence, and portable-move guarantees
+
+Phase 7C proved the release ZIP is easy to set up. Phase 7D proves the underlying data-safety
+contract that makes the release safe to *live with* over time: extract-and-run, replace, move, or
+delete the app folder as often as needed, and never lose or corrupt a user's drafts/cache. The
+core invariant, unchanged from anything stated earlier in this document but made explicit and
+tested here:
+
+> **Application binaries are disposable. User data is persistent and independent.**
+
+### Supported lifecycle
+
+```
+FIRST USE
+    Extract ZIP → launch .exe → %LOCALAPPDATA%\Carowinds Passdown created if needed
+        → carowinds-passdown.db created → migrations applied → app opens
+
+RESTART
+    Close app → relaunch same .exe → existing database reused
+        → migrations re-run (idempotent, no-op) → saved drafts/cache remain
+
+PORTABLE APP UPDATE (no installer — "reinstall" = extract a fresh release folder)
+    Close app → replace/re-extract application folder → launch new .exe
+        → same LocalAppData database reused → pending migrations applied → user data preserved
+
+PORTABLE MOVE
+    Move the extracted application folder → launch from the new location
+        → same LocalAppData database reused (AppPaths resolves from
+          Environment.SpecialFolder.LocalApplicationData, never from the .exe's own location)
+    If automatic refresh was enabled: re-run "Enable Automatic Refresh.cmd" from the new location
+        → the one existing scheduled task's action is updated to the new .exe path (no duplicate
+          task — Install-ScheduledRefresh.ps1's Register-ScheduledTask -Force always targets the
+          same fixed ScheduledTaskPlan.TaskName)
+```
+
+Recommended update steps (documented for a nontechnical coworker performing an update):
+
+1. Close the app.
+2. Extract the new release to a fresh folder (or over the old one).
+3. Launch the app — existing drafts/cache are still there; any pending migration applies
+   automatically on this launch.
+4. If automatic refresh was enabled and the app moved to a new folder, double-click
+   `Enable Automatic Refresh.cmd` again from the new location. If the folder path didn't change,
+   this step isn't necessary.
+
+### First-run / restart / upgrade — automated coverage
+
+`tests/Carowinds.Passdown.Infrastructure.Tests/Storage/PortableLifecycleTests.cs` (new this
+phase) exercises this against temp-directory databases standing in for
+`%LOCALAPPDATA%\Carowinds Passdown` — never the developer's real LocalAppData:
+
+- **Clean first run**: target directory absent → `MigrationRunner` (the exact 7-migration list
+  `App.axaml.cs` registers) creates it, creates the database, and reaches schema version 7. A
+  second initialization against the same path is a no-op — no duplicate `schema_version` rows, no
+  error, no assumption that any draft/cache row already exists.
+- **Restart persistence**: one representative row is written to each of `associate_drafts`,
+  `source_state`, `dated_results`, and `catalog_products` via the real repositories; a *new*
+  `SqliteConnectionFactory` over the same file (simulating a process exit) then re-runs
+  `MigrationRunner` (exactly what `App.axaml.cs` does on every launch) before re-reading every row
+  back — proving migrations re-running on restart never reset a table.
+- **Historical-schema upgrade**: the real Migration0001–0005 classes (i.e., the schema as it
+  existed before `associate_drafts`/`manager_drafts` were added) are applied to a temp database,
+  representative `source_state`/`dated_results` rows are written against that older schema via the
+  real repositories, and then the full current 7-migration `MigrationRunner` is run against the
+  same file — proving migrations 6–7 apply in order, the pre-existing rows survive untouched, the
+  newly-added `associate_drafts` table is immediately usable, and a second run of the same runner
+  is idempotent.
+
+### Corrupt / incompatible database (Part F)
+
+`carowinds-passdown.db` existing but not a valid SQLite database this build can open (a stray text
+file, disk corruption, a previous crash's partial write) must never be silently deleted,
+overwritten, or replaced with a fresh blank database.
+
+**Actual behavior, reviewed and tested this phase — no code change was needed:**
+
+- `MigrationRunner.Run()` never writes anything before its first `PRAGMA user_version` read; if
+  the file isn't a valid database, SQLite throws before any write occurs, and the file is left
+  byte-for-byte as found (`CorruptDatabaseTests`).
+- **Headless (`--scheduled-refresh`)**: `ScheduledRefreshHost.RunAsync`'s existing top-level
+  `catch (Exception)` already classifies this as `ScheduledRefreshExitCode.FatalFailure` and logs
+  it (`ScheduledRefreshHostTests.RunAsync_DatabaseFileIsNotValidSqlite_...`, new this phase) — no
+  new code was needed, this was already the correct, tested behavior.
+- **Interactive launch**: `App.OnFrameworkInitializationCompleted` calls `MigrationRunner.Run()`
+  with no surrounding try/catch, so a corrupt database currently surfaces as an unhandled
+  exception (a crash) rather than a friendly in-app message. **Classified as acceptable, not a
+  release blocker**: the file is never touched (confirmed above), the failure is visible (an
+  unhandled-exception crash is loud, not silent), and the spec's Part F bar is "fail visibly/safely
+  enough to preserve user data for diagnosis" — which this already meets. A friendlier in-app error
+  dialog remains a reasonable future polish item, not a data-safety gap.
+
+### Unsupported newer schema version (Part G) — a real gap, fixed this phase
+
+Reviewed `MigrationRunner.Run()`'s original behavior for `PRAGMA user_version` newer than any
+migration this build registers (e.g. an older portable build re-run against data a newer build
+already migrated forward): the loop only ever applies migrations with `Version > currentVersion`,
+so it silently did nothing and returned the newer version as if it were healthy — the app would
+then open normally against a schema it doesn't fully understand, risking a later runtime error or
+worse, a later "upgrade" reinterpreting columns incorrectly.
+
+**Fixed**: `MigrationRunner.Run()` now compares the database's version against the highest version
+in its own registered migration list immediately after reading it, and throws
+`UnsupportedSchemaVersionException` (new type, `Carowinds.Passdown.Infrastructure.Storage`) before
+touching anything else if the database is ahead. This flows through the exact same paths as the
+corrupt-database case above: `ScheduledRefreshHost` reports `FatalFailure`, interactive launch
+crashes loudly rather than silently opening a partially-understood database. Covered by
+`MigrationRunnerTests.Run_DatabaseVersionNewerThanAnyKnownMigration_...` (throws, version left
+unchanged — no downgrade) and `..._DatabaseVersionEqualToHighestKnownMigration_DoesNotThrow` (the
+boundary is exact: already-current is healthy, not an error).
+
+**Downgrade policy**: migrations are forward-only by design (unchanged from Phase 2) — replacing
+the app with an *older* build is safe against a database that older build already understands
+(nothing changed by this phase), and now fails safely rather than silently misbehaving against a
+database a *newer* build already touched. No downgrade migration support was built, per the
+explicit instruction not to.
+
+### Legacy/unknown file coexistence (Part H/J/K)
+
+No real legacy Carowinds Passdown LocalAppData directory is available in this repo, in docs, or in
+this dev environment to diff against directly — carried over from the Phase 6D/7A flag, still
+true. Rather than invent legacy filenames, Phase 7D tests the safety *contract* directly:
+
+- `LocalDataCoexistenceTests` (new) seeds a temp directory with arbitrary unrelated files
+  (`legacy-cache.json`, `old-settings.xml`, `previous-app.log`, `arbitrary-folder\file.txt`,
+  each with a captured byte-for-byte snapshot and a deliberately old timestamp), then initializes
+  the database (`MigrationRunner`) and creates/releases `FileScheduledRefreshLock` alongside them.
+  Every unrelated file's bytes, timestamp, and the arbitrary subfolder itself are asserted
+  unchanged afterward — this app's storage/lock code never enumerates, reads, or deletes anything
+  it doesn't own by exact path.
+- **Log pruning** (`FileLoggerProvider.PruneOldLogs`) was already correctly scoped —
+  `Directory.EnumerateFiles(options.LogDirectory, "scheduled-refresh-*.log")` only ever considers
+  files matching this app's own naming pattern, never every file in `logs\`. No code change was
+  needed; `FileLoggerProviderTests.Log_PruningIgnoresUnrelatedLogFiles_RegardlessOfAge` (new) now
+  proves it directly: an unrelated `previous-app.log`/`old-settings.xml` with a one-year-old
+  timestamp survives pruning, while this app's own stale `scheduled-refresh-*.log` is still
+  pruned.
+- **Lock file** (`FileScheduledRefreshLock`) already only ever opens/creates exactly
+  `scheduled-refresh.lock` at its one fixed `AppPaths`-derived path, is deliberately never deleted
+  (so a second concurrent attempt always contends on the same stable path rather than racing a
+  create/delete cycle — see the type's own doc comment), and a stale file with no active holder
+  never blocks a later acquire (`FileScheduledRefreshLockTests`, pre-existing). Moving the
+  application folder cannot create a second lock namespace, since the lock path is derived from
+  `AppPaths.LocalApplicationDataDirectory`, never from the executable's own location.
+- **Packaging/setup scripts** (`Publish-Windows.ps1`, `Build-PortableRelease.ps1`,
+  `Install-ScheduledRefresh.ps1`, `Uninstall-ScheduledRefresh.ps1`, both `.cmd` helpers): reviewed
+  and confirmed none references `%LOCALAPPDATA%`/`AppData` at all (the two `.ps1` build scripts
+  only ever `Remove-Item` their own `artifacts/publish`/`artifacts/release-staging`/
+  `artifacts/releases` staging output; the Task Scheduler scripts never call any file-delete
+  cmdlet at all). `PortablePackagingDataSafetyTests` (new) asserts this by reading the shipped
+  script text directly.
+
+### Portable move / scheduled-task rebind (Part L/M)
+
+Reviewed every runtime path dependency: `AppPaths.LocalApplicationDataDirectory` resolves from
+`Environment.SpecialFolder.LocalApplicationData` (never `AppContext.BaseDirectory`, never
+`Environment.CurrentDirectory` — see `AppPathsTests`, Phase 7A), and `appsettings.json` loads via
+`ConfigurationBuilder().SetBasePath(AppContext.BaseDirectory)` (the *executable's own* directory,
+correct wherever it's extracted). Moving
+`C:\Users\User\Downloads\Carowinds Passdown\` to
+`C:\Users\User\Desktop\Operations\Carowinds Passdown\` therefore changes nothing about where the
+database, drafts, or logs live — only where the `.exe` and `appsettings.json` are read from.
+
+The scheduled task is the one thing that does need a manual step after a move: its registered
+action is a snapshot of the `.exe` path at the moment `Enable Automatic Refresh.cmd` was last run.
+`ScheduledTaskPlanTests.Build_DifferentExecutablePaths_ShareTheSameTaskName_...` (new) proves the
+rebind contract directly: building the task definition for the old path and the new path always
+produces the *same* `TaskName`, just a different `ExecutablePath`/`WorkingDirectory` — which is
+exactly what makes `Register-ScheduledTask -Force` (Phase 6C, unchanged) replace the one existing
+task in place rather than ever registering a duplicate. `StartupCatchUpRefresh` (Phase 6B) remains
+the safety net for any refresh missed while a task still points at a since-moved location.
+
+### Portable delete / removal semantics (Part N/R)
+
+Unchanged from Phase 7B/7C, restated here as the Phase 7D data-preservation contract:
+
+- **Deleting the extracted portable application folder** does not delete local data — the
+  database, drafts, cache, and logs all live under `%LOCALAPPDATA%\Carowinds Passdown`, entirely
+  outside the extracted folder.
+- **Disabling automatic refresh** (`Disable Automatic Refresh.cmd`) removes only the OS-level
+  Task Scheduler entry; it never touches local data (`Uninstall-ScheduledRefresh.ps1`'s own
+  console output states this explicitly).
+- **Re-extracting/upgrading** reuses the same LocalAppData database; pending migrations apply on
+  the next launch (proved above).
+- No automatic user-data removal / "Reset All Data" feature was added this phase, per the explicit
+  instruction not to — a full reset, if ever needed, remains a manual, documented support
+  operation for a later phase.
+
+### Writable-path audit (Part P)
+
+Reviewed every place this app writes at runtime: the database (+ `-wal`/`-shm`),
+`scheduled-refresh.lock`, and `logs\scheduled-refresh-*.log` are all rooted under
+`AppPaths.LocalApplicationDataDirectory`; PDF export goes wherever the user picks via the native
+save-file dialog (`IPdfSaveFilePicker`); `appsettings.json` is read-only configuration, never
+written to. Nothing in the codebase writes beside the executable — the extracted portable folder
+can be treated as read-only in principle, matching "replace/re-extract at will" being safe.
+
+### Phase 7D test summary
+
+19 new tests added this phase (624 → 643, all non-live):
+`PortableLifecycleTests` (5), `LocalDataCoexistenceTests` (3), `CorruptDatabaseTests` (2),
+`MigrationRunnerTests` (+2, the new-schema guard), `ScheduledRefreshHostTests` (+1, corrupt-DB
+fatal exit code), `FileLoggerProviderTests` (+1, unrelated-log coexistence),
+`ScheduledTaskPlanTests` (+1, rebind contract), `PortablePackagingDataSafetyTests` (4).
+
+### Real legacy specimen comparison (Part I)
+
+No real legacy Carowinds Passdown LocalAppData directory is available in this repository, its
+docs, or this dev environment — unchanged from the Phase 6D/7A flag. This is not treated as a
+blocker: the coexistence contract above (arbitrary unknown files, byte-for-byte, are never
+touched) is proven regardless of what the legacy app's actual filenames turn out to be. If a real
+legacy machine's directory ever becomes available, a direct filename listing/comparison would
+upgrade this from "PASS (reviewed, contract proven)" to "PASS (verified against a real legacy
+directory)" — no code change would be expected either way, since the contract doesn't depend on
+knowing the legacy names in advance.
+
+### Phase 7D verdict
+
+| # | Item | Verdict |
+|---|---|---|
+| 1 | Clean first run | PASS |
+| 2 | Migration initialization | PASS |
+| 3 | Restart persistence | PASS |
+| 4 | Upgrade/re-extract persistence | PASS |
+| 5 | Historical-schema migration | PASS |
+| 6 | Corrupt DB safety | PASS |
+| 7 | Newer-schema/rollback safety | PASS AFTER FIX |
+| 8 | Unknown legacy-file coexistence | PASS |
+| 9 | Scheduled-log coexistence | PASS |
+| 10 | Lock-file coexistence | PASS |
+| 11 | Portable move | PASS |
+| 12 | Scheduled-task rebinding | PASS |
+| 13 | Portable delete semantics | PASS |
+| 14 | Downgrade policy | PASS (documented, no rollback support built) |
+| 15 | Writable-path audit | PASS |
+| 16 | Documentation | PASS |
+| 17 | Automated test coverage | PASS |
+| 18 | Full build/tests | PASS (643/643) |
+| 19 | Real legacy specimen comparison | PARTIAL (none available; contract proven regardless) |
+| 20 | Windows runtime validation | DEFERRED BY DESIGN to 7E |
 
 ## What's deferred (not yet done)
 
 - **7C**: any installer, if one is ever decided to be needed (spec currently only asks for a
   portable ZIP, not an installer) — unchanged from Phase 7A/7B; Phase 7C itself (nontechnical
   scheduled-refresh setup) is now done, see above.
-- **7D**: legacy-machine file-collision verification against a real legacy install (Phase 7A's
-  review found no evidence of collision but had no legacy directory available to diff against
-  directly).
+- **7D**: real legacy-machine file listing comparison (Part I above) — no real legacy directory is
+  available in this environment; the coexistence *contract* is proven instead, and is not blocked
+  by this. Phase 7D itself (first-run/upgrade/coexistence/move data-preservation guarantees) is
+  now done, see above.
 - **7E**: actual Windows-host execution — launching the published `.exe`, running
   `--scheduled-refresh` against it, double-clicking the new `Enable`/`Disable Automatic Refresh.cmd`
-  helpers end-to-end (checklist above), and validating
-  `Publish-Windows.ps1`/`Build-PortableRelease.ps1` under a real PowerShell host. Nothing in Phase
-  7A/7B/7C claims Windows execution was tested; only `dotnet publish`/packaging output and helper
-  file content were inspected from this (non-Windows) dev host.
+  helpers end-to-end (checklist above, now extended with Phase 7D's move/upgrade/corrupt-DB cases),
+  and validating `Publish-Windows.ps1`/`Build-PortableRelease.ps1` under a real PowerShell host.
+  Nothing in Phase 7A/7B/7C/7D claims Windows execution was tested; only `dotnet
+  publish`/packaging output and helper file content were inspected from this (non-Windows) dev
+  host.
 - **7F**: sanitized diagnostic export, tester instructions for a nontechnical coworker beyond the
   short `README.txt` already shipped in the ZIP (spec §19).

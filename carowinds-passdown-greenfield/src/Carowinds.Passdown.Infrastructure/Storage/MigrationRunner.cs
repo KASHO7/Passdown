@@ -19,6 +19,17 @@ public sealed class MigrationRunner(
 
         var currentVersion = ReadUserVersion(connection);
 
+        // Phase 7D Part G: a database reporting a version newer than any migration this build
+        // knows about (e.g. an older portable build re-run against data a newer build already
+        // migrated) must never be silently reinterpreted or downgraded — fail before touching
+        // anything else. highestKnownVersion is 0 (never newer than any real database) if this
+        // build somehow has no migrations registered at all.
+        var highestKnownVersion = migrations.Count == 0 ? 0 : migrations.Max(m => m.Version);
+        if (currentVersion > highestKnownVersion)
+        {
+            throw new UnsupportedSchemaVersionException(currentVersion, highestKnownVersion);
+        }
+
         foreach (var migration in migrations.OrderBy(m => m.Version))
         {
             if (migration.Version <= currentVersion)

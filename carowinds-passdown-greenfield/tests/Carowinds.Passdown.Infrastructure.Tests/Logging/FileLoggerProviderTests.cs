@@ -89,6 +89,47 @@ public class FileLoggerProviderTests
         }
     }
 
+    // Phase 7D Part J: pruning must only ever consider files matching this app's own
+    // "scheduled-refresh-*.log" naming pattern — an unrelated legacy log file sharing the same
+    // logs\ directory (a different app, or a future differently-named file of this app's own)
+    // must never be enumerated or deleted, no matter how old its timestamp is.
+    [Fact]
+    public void Log_PruningIgnoresUnrelatedLogFiles_RegardlessOfAge()
+    {
+        var tempDirectory = Path.Combine(Path.GetTempPath(), $"carowinds-passdown-logs-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDirectory);
+        try
+        {
+            var unrelatedOldLog = Path.Combine(tempDirectory, "previous-app.log");
+            File.WriteAllText(unrelatedOldLog, "legacy content");
+            File.SetLastWriteTimeUtc(unrelatedOldLog, DateTime.UtcNow.AddDays(-365));
+
+            var unrelatedOldFile = Path.Combine(tempDirectory, "old-settings.xml");
+            File.WriteAllText(unrelatedOldFile, "<settings/>");
+            File.SetLastWriteTimeUtc(unrelatedOldFile, DateTime.UtcNow.AddDays(-365));
+
+            var ownStaleLog = Path.Combine(tempDirectory, "scheduled-refresh-20200101.log");
+            File.WriteAllText(ownStaleLog, "stale");
+            File.SetLastWriteTimeUtc(ownStaleLog, DateTime.UtcNow.AddDays(-365));
+
+            using var provider = new FileLoggerProvider(new FileLoggerOptions { LogDirectory = tempDirectory, RetainedDays = 14 });
+            var logger = provider.CreateLogger("Test.Category");
+
+            logger.LogInformation("trigger pruning");
+
+            Assert.True(File.Exists(unrelatedOldLog), "Unrelated legacy log must never be pruned.");
+            Assert.True(File.Exists(unrelatedOldFile), "Unrelated non-log file must never be pruned.");
+            Assert.False(File.Exists(ownStaleLog), "This app's own stale scheduled-refresh log should still be pruned.");
+        }
+        finally
+        {
+            if (Directory.Exists(tempDirectory))
+            {
+                Directory.Delete(tempDirectory, recursive: true);
+            }
+        }
+    }
+
     // Phase 6B Part J (#20): a failure while pruning one stale file must not stop the current
     // log line from being written, and must not abort the caller's refresh. Windows has no direct
     // equivalent of the Unix-permission trick below, but the code path under test (the per-file
