@@ -1032,5 +1032,287 @@ made or needed this phase — no release defect was found.
 - **7E**: itself done, see above — actual Windows-host execution was performed by the product
   owner against the real release ZIP. A native x64 Windows 11 pass without .NET pre-installed
   remains a nice-to-have for full target-architecture confidence, not a blocker.
-- **7F**: sanitized diagnostic export, tester instructions for a nontechnical coworker beyond the
-  short `README.txt` already shipped in the ZIP (spec §19).
+- **7F**: itself done, see below.
+
+## Phase 7F — final release audit, diagnostics, tester handoff, and closeout
+
+Closes out Phase 7: final artifact identity/audit, a sanitized diagnostic export feature, a
+nontechnical tester guide, a support/troubleshooting guide, and a requirements/architecture audit.
+No new product phase, no installer, no Manager workflow, no new retrieval source, and no behavior
+change beyond what's listed here.
+
+### Final artifact identity (Part A)
+
+See [`docs/release-manifest.md`](release-manifest.md) for the authoritative, single-table summary
+(SHA-256, sizes, file count, test count). Short version: `Carowinds-Passdown-0.1.0-dev-win-x64.zip`,
+SHA-256 `01497e17ff2bcacc1ce3b2dd71de6726719406b1914ec50e0b2afd78e9d69f57`, 277 files, 61,258,219 bytes
+compressed / 139,336,742 bytes extracted. This **supersedes** the Phase 7B/7C/7D/7E artifact
+(SHA-256 `94064eee63a2cb7bc0d30e83d45afde946ff02dbb3b5d3b9aeaa9f7d16871ab0`, still recorded above and
+in `docs/phase-7e-windows-validation-checklist.md` as the historical record of what was actually
+validated on Windows) — see "Windows recheck status" below for why the two differ and what that
+means for confidence.
+
+### Release content audit (Part B/C)
+
+Rebuilt and re-inspected the ZIP from scratch this phase (see `docs/release-manifest.md` "How this
+artifact was produced" for the exact staging steps, mirroring `Build-PortableRelease.ps1` manually —
+no `pwsh` on this dev host, same limitation as every prior Phase 7 sub-phase). Forbidden-pattern
+check (`.git`, `.db`/`-wal`/`-shm`, `CLAUDE.md`, `AGENT_BUILD_SPEC.md`, `.pdb`, `*playwright*`,
+`*.Tests.dll`, `.dylib`/`.so`, `.DS_Store`) — clean. Contents match the expected Phase 7C/7D layout
+plus two additions: `TESTER-GUIDE.txt` (new, Part L) and the diagnostic export feature compiled into
+`Carowinds.Passdown.Desktop.dll`/`Carowinds.Passdown.Application.dll`/`Carowinds.Passdown.Infrastructure.dll`
+(no new shipped file for this — it's a button in the existing UI, not a separate executable).
+Version metadata unchanged from Phase 7A/7B: `Directory.Build.props`' single `<Version>0.1.0-dev</Version>`
+remains the only version source; no `1.0.0` was invented (Part C).
+
+### Diagnostic export (Parts D–K)
+
+**Privacy model (Part E), decided before writing any code:**
+
+| Included | Excluded |
+|---|---|
+| App version, schema version, DB file size, WAL presence | Full SQLite database file |
+| Per-source derived status (`Ok`/`Error`/`NeverChecked`), last-attempt/last-success timestamps, consecutive-failure count | Associate drafts, operational notes, custom product text |
+| Recent scheduled-refresh log tail (already-sanitized — see "Log sanitization review" below) | Full HTTP payloads, raw HTML, cookies, tokens |
+| Whether the "Carowinds Passdown Daily Refresh" task is registered (existence only) | Detailed Task Scheduler fields (last-run time, next-run time — available via `Get-ScheduledTaskInfo` or the Task Scheduler UI instead, per Part K's explicit "a full status helper is optional") |
+| Sanitized `%LOCALAPPDATA%\Carowinds Passdown` path (the literal string, not the tester's real home directory) | The tester's actual machine username/home path |
+
+**Implementation shape (Part F), smallest appropriate option chosen:** an Application-layer
+`IDiagnosticReportBuilder` (composes a pure `DiagnosticReport` from already-registered abstractions:
+`ISourceStateRepository`, the existing `IReadOnlyList<SourceRegistration>`, and three new
+Infrastructure-implemented ports — `IDatabaseDiagnosticsProvider`, `IScheduledRefreshLogProvider`,
+`IScheduledTaskStatusProvider`) plus a pure, unit-testable `DiagnosticReportFormatter` (text
+rendering, no I/O) and an Infrastructure `DiagnosticExportService` that zips the formatted text plus
+a log excerpt entirely in memory (`System.IO.Compression.ZipArchive` over a `MemoryStream` — no
+temp file ever touches the app directory). Desktop adds one new button, "Export Diagnostics" (next
+to "Create PDF" on the Associate screen — no new Settings/About subsystem), wired through a new
+`IDiagnosticExportFilePicker` that mirrors the existing `IPdfSaveFilePicker` pattern exactly: the
+destination is always wherever the user's native save dialog says, never a fixed path.
+
+**Task Scheduler status (Part K):** `ScheduledTaskStatusProvider` (Infrastructure) shells to
+`schtasks.exe /Query /TN "Carowinds Passdown Daily Refresh"` on Windows only
+(`OperatingSystem.IsWindows()` guard) and checks only the exit code — existence, not a parse of
+`schtasks`' locale-dependent detailed text output, per the spec's explicit "a status helper is
+optional; existence is enough." Off Windows (this dev host, and any non-Windows CI), it returns
+`NotAvailableOnThisPlatform` without ever invoking a process. Any query failure (missing
+`schtasks.exe`, unexpected error) returns `Unknown` rather than throwing — the whole diagnostic
+export must never fail just because Task Scheduler status couldn't be read. The task name constant
+is hand-synced with `ScheduledTaskPlan.TaskName` (Desktop) rather than shared via a reference,
+because Infrastructure cannot depend on Desktop (CLAUDE.md architecture) — the same approach the
+`.ps1` scripts already use; `ScheduledTaskStatusProviderTaskNameSyncTests` (Ui.Tests, which
+references Desktop and therefore transitively both) asserts the two stay equal.
+
+**Database diagnostics (Part J):** `SqliteDatabaseDiagnosticsProvider` checks `File.Exists` *before*
+ever opening a connection — `SqliteConnectionFactory.OpenConnection()` creates the database file on
+first use, which would otherwise turn "export diagnostics" into a silent side effect that creates a
+0-byte database on a machine that never launched the app. A corrupt/unreadable database is reported
+via a `Note` field, never thrown — exporting diagnostics specifically *because* the database looks
+broken must not itself fail. Only metadata (existence, `PRAGMA user_version`, file size, `-wal`
+presence) is read; no table is queried.
+
+**Log excerpt (Part D/G):** `FileScheduledRefreshLogProvider` reads only the tail of the
+most-recently-dated `scheduled-refresh-*.log` file already written by `FileLoggerProvider` — same
+naming-pattern scoping that `FileLoggerProvider.PruneOldLogs` already relies on, so no unrelated file
+under `logs\` is ever touched or included. Missing log directory → empty list, never an exception
+(Part S).
+
+**Output (Part G):** `Carowinds-Passdown-Diagnostics-YYYYMMDD-HHmm.zip` (digits/dashes only — always
+a filesystem-safe name), containing `summary.txt`, `system.txt`, `source-status.txt`, and
+`logs/scheduled-refresh-YYYYMMDD.log` (omitted entirely if there are no log lines to include — never
+an empty placeholder file). No JSON schema was introduced; all three text files are deterministic,
+human-readable plain text, per the spec's explicit "do not overengineer."
+
+### Log sanitization review (Part H)
+
+Reviewed every `LogXxx` call site that could reach the scheduled-refresh log file directly
+(`ScheduledRefreshRunner`, `MigrationRunner`, `ScheduledRefreshHost`) against
+`RetrievalDiagnostics`/`SourceEvidence`'s own documented contract (`Detail` is always a static,
+human-facing sentence supplied by the calling source adapter — e.g. "We couldn't check park hours
+right now." — never derived from an exception message or a URL; the full exception lives separately
+in `SourceEvidence.TechnicalDetail`, which is persisted to the database for developer troubleshooting
+but is **never** written to this log file or included anywhere in the diagnostic export). Confirmed
+directly by reading the actual log statements, not just the doc comments: `ScheduledRefreshRunner.LogSummary`
+logs `SourceId`/`Category`/`RequestedDate`/`Status`/`Detail` only. **Verdict: already safe. No code
+change was needed for Part H** — see `docs/support-troubleshooting.md` "Log sanitization" for the
+full write-up support staff can rely on.
+
+### Tester guide (Part L)
+
+[`packaging/windows/TESTER-GUIDE.txt`](../packaging/windows/TESTER-GUIDE.txt) — shipped inside the
+ZIP at the release root (next to `README.txt`), staged by `Build-PortableRelease.ps1` exactly like
+`README.txt` (fails loudly if missing, per the script's existing "fail loudly rather than ship
+something wrong" pattern). Covers, in plain language, no architecture terminology: extract, launch,
+pick a date, enter sample data, confirm persistence across a restart, Check Online, Create PDF,
+enable/verify/disable automatic refresh, what to do if the folder moves, how to export diagnostics,
+and what to send support if something fails. `TesterGuidePackagingTests` (Ui.Tests) asserts it exists,
+is staged, mentions "Export Diagnostics," and never contains `RefreshOrchestrator`/`IUnitOfWork`/
+`LastKnownGood`.
+
+### Support/troubleshooting guide (Part M)
+
+[`docs/support-troubleshooting.md`](support-troubleshooting.md) — repo/support-only, not shipped in
+the ZIP (deliberately: it uses real architecture vocabulary the tester guide avoids). Covers: app
+won't open, Check Online fails, automatic refresh doesn't seem to run, PDF doesn't save, data appears
+missing, unsupported/newer database, corrupt database, how to read each file in a diagnostic export,
+and the log-sanitization write-up referenced above.
+
+### User data / removal instructions (Part N)
+
+Unchanged from Phase 7B/7C/7D — restated in both the tester guide and `README.txt`: application
+files live wherever the ZIP was extracted (disposable); user data lives independently at
+`%LOCALAPPDATA%\Carowinds Passdown`; removing the app means disabling automatic refresh (if enabled)
+then deleting the extracted folder, which never touches user data. No destructive "reset all data"
+command was added, per the explicit instruction not to.
+
+### Automatic refresh handoff (Part O)
+
+Unchanged from Phase 7C: `Enable Automatic Refresh.cmd` / `Disable Automatic Refresh.cmd`, no
+PowerShell typing, no admin/UAC. Restated accurately in the new tester guide and cross-checked
+against `README-portable-release.md`.
+
+### Known limitations / confidence gaps (Part P)
+
+Carried forward accurately, classified honestly:
+
+| # | Item | Classification |
+|---|---|---|
+| 1 | Phase 7E Windows validation ran on ARM64 hardware via x64 emulation, not native x64 | Accepted / non-blocking |
+| 2 | .NET was already installed on the Phase 7E test machine — self-contained/no-separate-.NET-install was not independently proven on a runtime-clean image | Accepted / non-blocking |
+| 3 | Phase 7E's reported Windows edition/build info was internally inconsistent (Windows 10 product name, build 26200 which is a Windows 11 build range) | Accepted / non-blocking |
+| 4 | No real legacy Carowinds Passdown LocalAppData directory was ever available to diff filenames against directly; the coexistence *contract* was proven generically instead (Phase 7D) | Accepted / non-blocking |
+| 5 | No generalized retry framework exists, by deliberate design | Deferred by design (not a defect) |
+| 6 | Manager workflow remains deferred and absent | Deferred by design (not a defect; explicitly out of scope per CLAUDE.md "Current scope decision") |
+| 7 | **New this phase:** the diagnostic export feature (Application/Infrastructure/Desktop code, new "Export Diagnostics" button, new `TESTER-GUIDE.txt`) changed the shipped artifact after Phase 7E's Windows validation, and this phase had no Windows host available to re-verify it | **Not validated on Windows** — see "Windows recheck status" immediately below |
+
+None of the above is hidden or presented as a defect where it isn't one.
+
+### Phase 7 requirements matrix (Part Q)
+
+| Requirement (spec §17 Phase 7 / §18 "Windows delivery" / §19) | Evidence | Status |
+|---|---|---|
+| Publish self-contained Windows x64 | `Publish-Windows.ps1`; `docs/release-strategy.md` Phase 7A "Publish validation" | PASS |
+| Create clean portable ZIP | `Build-PortableRelease.ps1`; Part B audit above, rebuilt and re-inspected this phase | PASS |
+| Verify on a clean Windows 11 VM without admin rights | Phase 7E manual pass (product owner, real hardware) | PASS AFTER FIX (Phase 7D's newer-schema guard fix), with the Part A confidence gaps above |
+| Include testing instructions | `packaging/windows/TESTER-GUIDE.txt` (new), `README.txt` | PASS |
+| Include sanitized diagnostic export | In-app "Export Diagnostics"; Parts D–K above | PASS |
+| App launches from extracted ZIP on Windows 11 | Phase 7E Part C | PASS (subject to Part P #1–3 confidence gaps) |
+| No admin/custom server/login/GPT/separate .NET install required | Phase 7E Parts C/I/L/U | PASS (Part P #2: not independently proven on a runtime-clean image) |
+| Generated PDFs open/found easily | Phase 7E Part H | PASS |
+| Offline startup loads drafts and cache | Phase 7D `PortableLifecycleTests`; Phase 7E Part F | PASS |
+| Release ZIP contains no `.git`/source/unrelated output | Part B audit above | PASS |
+| Sanitized diagnostic report, no private data (§19 deliverable 5) | Parts D/E above; `DiagnosticReportBuilderTests`/`DiagnosticExportServiceTests` | PASS |
+| Simple tester instructions for a nontechnical coworker (§19 deliverable 10) | `TESTER-GUIDE.txt` | PASS |
+| Concise list of remaining limitations (§19 deliverable 11) | "Known limitations" above | PASS |
+| Manager workflow | Explicitly deferred (CLAUDE.md) | DEFERRED BY DESIGN |
+
+### Architecture audit (Part R)
+
+- **Domain**: untouched — no Windows packaging concern was ever added there.
+- **Application**: `IDiagnosticReportBuilder`/`DiagnosticReportBuilder` (orchestration only, no I/O)
+  and three new abstractions (`IDatabaseDiagnosticsProvider`, `IScheduledRefreshLogProvider`,
+  `IScheduledTaskStatusProvider`) plus the pure `DiagnosticReportFormatter`. No direct Task Scheduler
+  call, no SQLite call, no filesystem call in this layer.
+- **Infrastructure**: `SqliteDatabaseDiagnosticsProvider`, `FileScheduledRefreshLogProvider`,
+  `ScheduledTaskStatusProvider`, `DiagnosticExportService` — all the actual SQLite/filesystem/process
+  I/O, consistent with every other storage/platform adapter in this layer.
+- **Desktop**: one new button + `IDiagnosticExportFilePicker`/`AvaloniaDiagnosticExportFilePicker`
+  (native save dialog only) + `AssociateViewModel.ExportDiagnosticsCommand` (orchestration, no direct
+  I/O) — no code-behind logic.
+- **Packaging**: `Build-PortableRelease.ps1` gained one more staged file
+  (`TESTER-GUIDE.txt`) via the same fail-loudly-if-missing pattern already used for `README.txt`.
+
+Confirmed absent: no Windows Service, no MSI/MSIX dependency, no new Manager workflow, no duplicated
+scheduling or persistence system, no PowerShell network retrieval, no Playwright reintroduced, no
+user-data write into the release folder (the diagnostic export writes only wherever the user's save
+dialog points, exactly like PDF export).
+
+### Tests added (Part S)
+
+41 new tests (643 → 684, all non-live):
+
+- `DiagnosticReportBuilderTests` (6, Application.Tests) — never-checked/ok/error derivation, distinct
+  display names for sources sharing a category, and (critically) that building a report never calls
+  `SourceRegistration.ExecuteAsync` — i.e. never triggers a network refresh.
+- `DiagnosticReportFormatterTests` (6, Application.Tests) — pure text assertions, including that
+  `system.txt` never contains the machine username.
+- `SqliteDatabaseDiagnosticsProviderTests` (4, Infrastructure.Tests) — missing DB never gets created
+  by inspecting it, schema version/size/WAL detection, corrupt DB reports a note instead of throwing.
+- `FileScheduledRefreshLogProviderTests` (6, Infrastructure.Tests) — missing directory, no log files
+  yet, tail truncation, most-recent-file selection, unrelated files ignored.
+- `ScheduledTaskStatusProviderTests` (2, Infrastructure.Tests) — non-Windows branch (this dev host)
+  reports `NotAvailableOnThisPlatform` without throwing; task-name constant value.
+- `DiagnosticExportServiceTests` (5, Infrastructure.Tests) — safe deterministic file name, expected
+  entries present, database file never included, empty log list omits the `logs/` entry entirely,
+  source display name appears in `source-status.txt`.
+- `ScheduledTaskStatusProviderTaskNameSyncTests` (1, Ui.Tests) — the hand-synced task-name constant
+  matches `ScheduledTaskPlan.TaskName`.
+- `AssociateViewModelDiagnosticsExportTests` (6, Ui.Tests) — mirrors
+  `AssociateViewModelPdfExportTests`: invokes export then picker, success/cancel/failure/exception
+  messaging, never gated on `IsBusy` (diagnostics is local-only and independent of the current date
+  load).
+- `TesterGuidePackagingTests` (5, Ui.Tests) — existence, staging, fail-loudly check, no architecture
+  jargon, mentions "Export Diagnostics."
+
+### Build/test/rebuild (Part T)
+
+1. `dotnet build CarowindsPassdown.slnx` — **PASS**, 0 warnings, 0 errors.
+2. `dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — **PASS**, 684/684.
+3. Shipped content changed (new diagnostic export code, new `TESTER-GUIDE.txt`) → the portable
+   release ZIP was rebuilt from scratch this phase (see `docs/release-manifest.md`), re-inspected,
+   and its SHA-256 recomputed. The prior Phase 7B/7C/7D/7E artifact is superseded, not reused.
+
+### Windows recheck status (Part W) — NOT EXECUTED
+
+This phase's code changes (the diagnostic export feature, the "Export Diagnostics" button, the new
+`TESTER-GUIDE.txt`) are covered by the 36 automated tests above, all passing on this
+(non-Windows) dev host, and by manual review. **They have not been exercised on an actual Windows
+machine.** No Windows host or VM was available to this session. This is recorded honestly rather than
+implied — the artifact identified in `docs/release-manifest.md` is **not** the exact artifact Phase
+7E's manual pass ran against (that was the prior, superseded ZIP); this phase's own changes carry the
+same "not yet Windows-verified" status every other phase records for work performed on this dev host
+before its first real Windows pass. A focused Windows recheck — extract the new ZIP, launch, click
+"Export Diagnostics," open the resulting file, confirm the helpers/tools are still present, confirm
+scheduled-refresh setup still works — remains outstanding and is the right next manual step before
+treating this exact artifact as fully Windows-proven, though nothing about the change (a save-dialog
+button producing a ZIP of text files) touches any of the platform-specific surfaces (Task Scheduler
+registration, self-contained runtime resolution, native library loading) that Phase 7E's pass already
+exercised successfully.
+
+### Phase 7 overall verdict (Part X)
+
+1. Final artifact: `Carowinds-Passdown-0.1.0-dev-win-x64.zip`
+2. Final SHA-256: `01497e17ff2bcacc1ce3b2dd71de6726719406b1914ec50e0b2afd78e9d69f57`
+3. Final compressed size: 61,258,219 bytes (58.4 MiB)
+4. Final extracted size: 139,336,742 bytes (132.9 MiB)
+5. Final file count: 277 (280 zip entries with directories)
+6. Version metadata: `0.1.0-dev`, unchanged, single source (`Directory.Build.props`) — PASS
+7. Release-content audit: PASS
+8. Diagnostic export implementation: PASS
+9. Diagnostic privacy review: PASS
+10. Tester guide: PASS
+11. Support/troubleshooting guide: PASS
+12. Automatic refresh handoff: PASS
+13. User-data/removal instructions: PASS
+14. Known limitations: PASS (documented honestly, see above)
+15. Phase 7 requirements matrix: PASS (Manager workflow DEFERRED BY DESIGN, not a failure)
+16. Architecture audit: PASS
+17. Tests added: 41 (643 → 684)
+18. Final non-live test count: 684/684
+19. Build result: PASS (0 warnings, 0 errors)
+20. Final Windows recheck status: **NOT EXECUTED** (no Windows host available this phase — see above)
+21. Phase 7 overall verdict: **PASS AFTER FIX**, given item 20's honest gap
+22. Remaining deferred work: Manager workflow (DEFERRED BY DESIGN, out of current release scope); a
+    native x64 Windows 11 pass without pre-installed .NET (nice-to-have, Phase 7E carryover); a
+    focused Windows recheck of this phase's own diagnostic-export change (item 20)
+
+### Release readiness decision (Part Y)
+
+**READY WITH ACCEPTED LIMITATIONS.**
+
+The application, Windows packaging, scheduled-refresh setup, and data-safety guarantees were
+independently validated end-to-end on a real Windows machine in Phase 7E with no defect found. This
+phase's own changes (diagnostic export) are small, additive, fully covered by automated tests, and
+touch none of the platform-specific surfaces Phase 7E already proved — but they have not themselves
+been run on Windows, and that gap is recorded above rather than glossed over. `0.1.0-dev` remains an
+explicit pre-release development version, not a production 1.0 release.
+

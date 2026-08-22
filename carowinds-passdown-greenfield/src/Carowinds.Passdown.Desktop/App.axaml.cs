@@ -3,6 +3,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Catalog;
+using Carowinds.Passdown.Application.Diagnostics;
 using Carowinds.Passdown.Application.Freshness;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Refresh;
@@ -18,6 +19,8 @@ using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Retrieval;
 using Carowinds.Passdown.Infrastructure;
 using Carowinds.Passdown.Infrastructure.Concurrency;
+using Carowinds.Passdown.Infrastructure.Diagnostics;
+using Carowinds.Passdown.Infrastructure.Logging;
 using Carowinds.Passdown.Infrastructure.Retrieval.Browser;
 using Carowinds.Passdown.Infrastructure.Retrieval.Http;
 using Carowinds.Passdown.Infrastructure.Retrieval.Sources;
@@ -127,6 +130,20 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IAssociatePassdownPdfGenerator, AssociatePassdownPdfGenerator>();
         services.AddSingleton<IAssociatePassdownPdfExportService, AssociatePassdownPdfExportService>();
         services.AddSingleton<IPdfSaveFilePicker, AvaloniaPdfSaveFilePicker>();
+
+        // Phase 7F Part F/G: the sanitized diagnostic export pipeline. Reuses the already-registered
+        // SqliteConnectionFactory/ISourceStateRepository/IReadOnlyList<SourceRegistration>/IClock —
+        // no second storage or retrieval path. FileLoggerOptions is registered with its own
+        // defaults (never overridden here) so the log excerpt reader looks at the same
+        // %LOCALAPPDATA%\Carowinds Passdown\logs directory the scheduled-refresh host writes to
+        // (see Program.BuildScheduledRefreshServiceProvider).
+        services.AddSingleton<FileLoggerOptions>();
+        services.AddSingleton<IDatabaseDiagnosticsProvider, SqliteDatabaseDiagnosticsProvider>();
+        services.AddSingleton<IScheduledRefreshLogProvider, FileScheduledRefreshLogProvider>();
+        services.AddSingleton<IScheduledTaskStatusProvider, ScheduledTaskStatusProvider>();
+        services.AddSingleton<IDiagnosticReportBuilder, DiagnosticReportBuilder>();
+        services.AddSingleton<IDiagnosticExportService, DiagnosticExportService>();
+        services.AddSingleton<IDiagnosticExportFilePicker, AvaloniaDiagnosticExportFilePicker>();
 
         services.AddTransient<AssociateViewModel>();
 

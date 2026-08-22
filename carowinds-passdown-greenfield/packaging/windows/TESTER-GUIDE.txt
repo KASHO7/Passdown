@@ -1,0 +1,98 @@
+Carowinds Passdown — Tester Guide
+=================================
+
+Thanks for testing this app. You do not need any technical background to do this —
+just follow the steps below in order. If anything looks wrong or doesn't match what
+this guide describes, see "If something goes wrong" at the end.
+
+1. Extract the ZIP
+-------------------
+Right-click the ZIP file and choose "Extract All...". Pick a normal folder you can
+write to (Desktop, Documents, a USB drive). Do NOT run the app from inside the ZIP
+without extracting it first — Windows will complain or the app may not behave
+correctly.
+
+2. Launch the app
+------------------
+Open the extracted folder and double-click Carowinds.Passdown.Desktop.exe. The app
+should open in a few seconds. Nothing else needs to be installed first.
+
+3. Pick a date
+---------------
+Use the date picker (and the ◀ / ▶ arrows) near the top of the window to select a
+date. Changing the date should feel instant — it does not need the internet.
+
+4. Enter some sample information
+----------------------------------
+Type a few things into the fields on the page — for example, a projected attendance
+number, an operational note, or a Daily Fun note. Use made-up/sample values only;
+do not enter anything private or real.
+
+5. Let it save
+---------------
+The app saves automatically a moment after you stop typing. Watch the small status
+chip near the top-right of the window — it should change to say your changes were
+saved.
+
+6. Close and reopen
+---------------------
+Close the app completely, then double-click Carowinds.Passdown.Desktop.exe again to
+reopen it. Go back to the same date and confirm your sample information from step 4
+is still there.
+
+7. Try "Check Online"
+------------------------
+Click the "Check Online" button. This checks the official Carowinds sources for the
+selected date. It may take a few seconds. When it finishes, a short status message
+appears. This step needs an internet connection — if it fails and you have no
+internet, that's expected, not a bug.
+
+8. Create a PDF
+-----------------
+Click "Create PDF". A save dialog will appear — choose anywhere you like (e.g. your
+Desktop) and save it. Open the saved PDF afterward and confirm it looks readable and
+matches what you entered.
+
+9. Turn on automatic daily refresh (optional)
+-----------------------------------------------
+In the extracted folder, double-click "Enable Automatic Refresh.cmd". A small window
+will briefly appear, tell you whether it worked, and wait for a key press before
+closing. No sign-in or admin prompt should appear.
+
+10. Double-check it's on (optional)
+--------------------------------------
+If you're comfortable with it, open Windows' "Task Scheduler" app and look for a
+task named "Carowinds Passdown Daily Refresh". Seeing it there confirms step 9
+worked. This step is optional — most testers can skip it.
+
+11. Turn automatic refresh back off
+--------------------------------------
+Double-click "Disable Automatic Refresh.cmd" in the same folder. Again, a small
+window reports what happened.
+
+12. If you move the app folder
+---------------------------------
+You can move or copy the extracted folder anywhere else at any time — your saved
+information is not stored inside that folder, so it isn't lost. If you had turned on
+automatic refresh (step 9), double-click "Enable Automatic Refresh.cmd" again from
+the NEW location afterward so the schedule points at the right place.
+
+13. Export diagnostics
+-------------------------
+If you want to help troubleshoot something, click "Export Diagnostics" (next to
+"Create PDF"). Choose where to save the file — it creates one ZIP file containing
+version info, app health information, and recent activity logs. It does NOT include
+anything you typed into the app (no drafts, no notes) and does not include your
+saved database.
+
+14. If something goes wrong
+------------------------------
+- Note exactly what you were doing and what you expected to happen instead.
+- Click "Export Diagnostics" (step 13) and save the resulting ZIP file.
+- Send both the diagnostics ZIP and your written notes to whoever asked you to test
+  this app.
+- Do not delete anything under %LOCALAPPDATA%\Carowinds Passdown while
+  troubleshooting — that folder holds your saved data and is separate from the app
+  folder you extracted.
+
+That's the full test. Thank you!

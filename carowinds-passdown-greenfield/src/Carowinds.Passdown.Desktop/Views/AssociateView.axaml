@@ -178,7 +178,7 @@
           </StackPanel>
         </Grid>
 
-        <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*">
+        <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*">
           <Button Grid.Column="0" Content="◀" Width="34"
                   Command="{Binding PreviousDayCommand}"
                   AutomationProperties.Name="Previous day"
@@ -199,7 +199,15 @@
                   AutomationProperties.Name="Check this date online"
                   AutomationProperties.HelpText="Checks official Carowinds sources for this date. Does not run automatically." />
 
-          <Button Grid.Column="4" Content="Create PDF" HorizontalAlignment="Right"
+          <Button Grid.Column="4" Content="Export Diagnostics" HorizontalAlignment="Right"
+                  Margin="16,0,0,0"
+                  Command="{Binding ExportDiagnosticsCommand}"
+                  Classes="secondaryAction"
+                  AutomationProperties.Name="Export Diagnostics"
+                  AutomationProperties.HelpText="Saves a support diagnostic ZIP with version, source status, and recent log information. Contains no drafts or personal data." />
+
+          <Button Grid.Column="5" Content="Create PDF" HorizontalAlignment="Right"
+                  Margin="8,0,0,0"
                   Command="{Binding CreatePdfCommand}"
                   Classes="secondaryAction"
                   AutomationProperties.Name="Create PDF"
@@ -218,6 +226,9 @@
 
         <TextBlock Text="{Binding PdfExportMessage}"
                    IsVisible="{Binding PdfExportMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+        <TextBlock Text="{Binding DiagnosticsExportMessage}"
+                   IsVisible="{Binding DiagnosticsExportMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
         <TextBlock Text="{Binding LoadErrorMessage}"
                    IsVisible="{Binding LoadErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"

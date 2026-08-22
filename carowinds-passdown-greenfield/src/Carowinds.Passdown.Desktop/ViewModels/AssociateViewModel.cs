@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.Diagnostics;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Presentation;
@@ -42,6 +43,8 @@ public partial class AssociateViewModel : ViewModelBase
     private readonly IAssociatePassdownService _service;
     private readonly IAssociatePassdownPdfExportService _pdfExportService;
     private readonly IPdfSaveFilePicker _pdfSavePicker;
+    private readonly IDiagnosticExportService _diagnosticExportService;
+    private readonly IDiagnosticExportFilePicker _diagnosticExportPicker;
     private readonly ILogger<AssociateViewModel>? _logger;
     private readonly TimeSpan _autosaveDebounce;
     private readonly Func<TimeSpan, CancellationToken, Task> _autosaveDelay;
@@ -193,6 +196,14 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     public partial string? PdfExportMessage { get; set; }
 
+    /// <summary>True while <see cref="ExportDiagnosticsCommand"/> is building/saving the diagnostic ZIP (Phase 7F Part F) — mirrors <see cref="IsExportingPdf"/>; kept independent of <see cref="IsBusy"/> so a Check Online/date load doesn't block this local-only export.</summary>
+    [ObservableProperty]
+    public partial bool IsExportingDiagnostics { get; set; }
+
+    /// <summary>Concise post-export feedback for the diagnostics action (mirrors <see cref="PdfExportMessage"/>). A cancelled picker leaves this null.</summary>
+    [ObservableProperty]
+    public partial string? DiagnosticsExportMessage { get; set; }
+
     public AssociateViewModel(
         IAssociatePassdownService service,
         IClock clock,
@@ -200,7 +211,9 @@ public partial class AssociateViewModel : ViewModelBase
         TimeSpan? autosaveDebounce = null,
         Func<TimeSpan, CancellationToken, Task>? autosaveDelay = null,
         IAssociatePassdownPdfExportService? pdfExportService = null,
-        IPdfSaveFilePicker? pdfSavePicker = null)
+        IPdfSaveFilePicker? pdfSavePicker = null,
+        IDiagnosticExportService? diagnosticExportService = null,
+        IDiagnosticExportFilePicker? diagnosticExportPicker = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -211,6 +224,8 @@ public partial class AssociateViewModel : ViewModelBase
         _autosaveDelay = autosaveDelay ?? Task.Delay;
         _pdfExportService = pdfExportService ?? new AssociatePassdownPdfExportService(new AssociatePassdownPdfGenerator());
         _pdfSavePicker = pdfSavePicker ?? new UnavailablePdfSaveFilePicker();
+        _diagnosticExportService = diagnosticExportService ?? new UnavailableDiagnosticExportService();
+        _diagnosticExportPicker = diagnosticExportPicker ?? new UnavailableDiagnosticExportFilePicker();
 
         // "Today" in the park's own wall-clock time (spec §6.5/§6.6 use the same Eastern
         // convention for "today") rather than the host machine's arbitrary local time zone.
@@ -442,6 +457,39 @@ public partial class AssociateViewModel : ViewModelBase
     }
 
     private bool CanCreatePdf() => HasWorkspace && !IsBusy && !IsExportingPdf;
+
+    /// <summary>
+    /// Phase 7F Part F/G: builds the sanitized diagnostic export ZIP (local-only — never triggers a
+    /// network check) and hands it to the native save-file picker. Never flushes/reads draft edits;
+    /// diagnostics are independent of whatever is currently on screen.
+    /// </summary>
+    [RelayCommand]
+    private async Task ExportDiagnosticsAsync()
+    {
+        IsExportingDiagnostics = true;
+        DiagnosticsExportMessage = null;
+        try
+        {
+            var export = await _diagnosticExportService.BuildZipAsync().ConfigureAwait(true);
+            var saveResult = await _diagnosticExportPicker.SaveAsync(export.ZipBytes, export.SuggestedFileName).ConfigureAwait(true);
+
+            DiagnosticsExportMessage = saveResult.Outcome switch
+            {
+                DiagnosticExportOutcome.Saved => "Diagnostics saved.",
+                DiagnosticExportOutcome.Cancelled => null,
+                _ => saveResult.ErrorMessage ?? "Diagnostics could not be saved. Try again.",
+            };
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogError(ex, "Export Diagnostics failed unexpectedly.");
+            DiagnosticsExportMessage = "Diagnostics could not be created. Try again.";
+        }
+        finally
+        {
+            IsExportingDiagnostics = false;
+        }
+    }
 
     [RelayCommand]
     private void PreviousDay() => SelectedDate = SelectedDate.AddDays(-1);
@@ -801,5 +849,19 @@ public partial class AssociateViewModel : ViewModelBase
     {
         public Task<PdfSaveResult> SaveAsync(byte[] pdfBytes, string suggestedFileName, CancellationToken cancellationToken = default) =>
             Task.FromResult(PdfSaveResult.Failed("PDF export is not available."));
+    }
+
+    /// <summary>Default <see cref="IDiagnosticExportService"/> when none is supplied — only reachable if the composition root failed to register the real one; every production path registers <see cref="Infrastructure.Diagnostics.DiagnosticExportService"/>.</summary>
+    private sealed class UnavailableDiagnosticExportService : IDiagnosticExportService
+    {
+        public Task<DiagnosticExportResult> BuildZipAsync(CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Diagnostic export is not available.");
+    }
+
+    /// <summary>Default <see cref="IDiagnosticExportFilePicker"/> when none is supplied — only reachable if the composition root failed to register the real one; every production path registers <see cref="Services.AvaloniaDiagnosticExportFilePicker"/>.</summary>
+    private sealed class UnavailableDiagnosticExportFilePicker : IDiagnosticExportFilePicker
+    {
+        public Task<DiagnosticExportSaveResult> SaveAsync(byte[] zipBytes, string suggestedFileName, CancellationToken cancellationToken = default) =>
+            Task.FromResult(DiagnosticExportSaveResult.Failed("Diagnostic export is not available."));
     }
 }

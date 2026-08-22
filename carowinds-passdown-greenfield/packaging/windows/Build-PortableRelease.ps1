@@ -144,6 +144,15 @@ if (-not (Test-Path -LiteralPath $readmeSource -PathType Leaf)) {
 }
 Copy-Item -Path $readmeSource -Destination (Join-Path $stagingReleaseDirectory 'README.txt') -Force
 
+# Phase 7F Part L/V: the nontechnical tester walkthrough, shipped alongside README.txt at the
+# release root (not under docs/, which stays developer-only per Part V).
+$testerGuideSource = Join-Path $repoRoot 'packaging' 'windows' 'TESTER-GUIDE.txt'
+if (-not (Test-Path -LiteralPath $testerGuideSource -PathType Leaf)) {
+    Write-Error "Tester guide not found at '$testerGuideSource'."
+    exit 1
+}
+Copy-Item -Path $testerGuideSource -Destination $stagingReleaseDirectory -Force
+
 # Fail loudly if anything unexpected snuck into staging (Part M privacy/security review): the
 # staging folder is built solely from Publish-Windows.ps1's own output plus the two additions
 # above, so this is a sanity check, not the primary safeguard.

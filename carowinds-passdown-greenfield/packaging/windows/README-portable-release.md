@@ -32,6 +32,16 @@ Logs live at:
 
     %LOCALAPPDATA%\Carowinds Passdown\logs
 
+New to testing this app? See TESTER-GUIDE.txt in this same folder for a short
+step-by-step walkthrough.
+
+Something not working?
+------------------------
+Click "Export Diagnostics" inside the app (next to "Create PDF") and save the
+resulting ZIP file. It contains version/health information and recent activity logs
+only — never your drafts, notes, or saved database — and is the fastest way to get
+help from whoever supports this app.
+
 Automatic daily refresh (optional)
 ------------------------------------
 The app refreshes park data automatically whenever it's open. If you'd also like it
