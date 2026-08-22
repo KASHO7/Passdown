@@ -1316,3 +1316,96 @@ touch none of the platform-specific surfaces Phase 7E already proved — but the
 been run on Windows, and that gap is recorded above rather than glossed over. `0.1.0-dev` remains an
 explicit pre-release development version, not a production 1.0 release.
 
+## Post-Phase-7F rebuild — Associate UI/date-picker/PDF polish
+
+Not a new numbered phase — a rebuild of the existing Phase 7 release artifact after an Associate UI
+and PDF refinement pass changed shipped Desktop/Documents code. `docs/release-manifest.md` is the
+authoritative record of exactly what this rebuild produced (SHA-256, sizes, file count); this section
+records only the narrative and what was/was not re-verified.
+
+### What changed since the Phase 7F artifact
+
+- Associate screen: new app-shell layout with a left section rail (Overview / Products / Notes),
+  reducing the page to a single long scroll; a `CalendarDatePicker`-based date picker (calendar
+  flyout, friendly long-form date display) replacing the previous spinner-style control; a denser
+  Products presentation; a new "Verification & Save Status" card; a new "Operational Notes" summary
+  card.
+- Associate PDF (`AssociatePassdownPdfGenerator`): darker hairline/comparison-price colors and a
+  strikethrough style on superseded comparison prices, for more reliable grayscale/print legibility.
+  No layout/spacing change — the existing one-page-fit and continuation-page tests are unaffected.
+- No retrieval, scheduling, persistence, or business-rule behavior changed. No Manager workflow was
+  added. The product version was not changed (`0.1.0-dev` remains the single authoritative version,
+  `Directory.Build.props`).
+
+### Artifact status
+
+The Phase 7F artifact (SHA-256 `01497e17ff2bcacc1ce3b2dd71de6726719406b1914ec50e0b2afd78e9d69f57`)
+is **superseded** by this rebuild (SHA-256 `ee553439ba2c70018b5fdbd9b256808891378a775f0411fe1ef1362ff483079d`
+— see `docs/release-manifest.md`). The Phase 7B/7C/7D/7E artifact (SHA-256
+`94064eee63a2cb7bc0d30e83d45afde946ff02dbb3b5d3b9aeaa9f7d16871ab0`) remains further superseded and is
+retained purely as historical record of exactly what Phase 7E's Windows pass validated.
+
+**Phase 7E's full manual Windows validation applies only to the Phase 7B/7C/7D/7E artifact, not to
+this rebuild.** Nothing about that pass (scheduled-task registration, self-contained runtime
+resolution, native library loading, first-run/persistence/portable-move behavior) is expected to be
+affected by a UI-layout/date-picker/PDF-styling change, but it has not been re-run against this exact
+artifact.
+
+### Build/publish/package validation performed this rebuild
+
+1. `dotnet build CarowindsPassdown.slnx` — PASS, 0 warnings, 0 errors.
+2. `dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — PASS, 684/684 (identical
+   count to Phase 7F — the UI/PDF changes added no tests and broke none).
+3. `dotnet publish ... -r win-x64 --self-contained true ...` (mirroring `Publish-Windows.ps1`; no
+   `pwsh` on this dev host, same limitation as every prior Phase 7 sub-phase) — PASS. 271 files,
+   133 MB after `.pdb` removal — same shape as Phase 7B–7F (no new shipped files, only changed
+   content inside existing DLLs).
+4. Before staging, the published `Carowinds.Passdown.Desktop.dll` and `Carowinds.Passdown.Documents.dll`
+   were directly inspected (byte search, not just file timestamps) for strings unique to the new
+   source: `SelectedDateForPicker`/`OnSectionButtonClick` (new Desktop members) and the new PDF
+   colors `#B7C1CC`/`#5C6673`, with the prior `#C9D3DD`/`#7C8794` confirmed absent — proving this
+   publish is not a stale reuse of the Phase 7F build output.
+5. Staging + ZIP built mirroring `Build-PortableRelease.ps1` exactly (same steps documented in
+   `docs/release-manifest.md`); the ZIP was then independently re-extracted to a scratch directory
+   and re-inspected (not just trusted from the staging step) — executable, `appsettings.json`,
+   README/tester-guide/`.cmd` helpers/`tools/` all present; no Playwright, `.pdb`, test assemblies,
+   `.git`/dev docs, database files, non-Windows binaries, or screenshot/harness artifacts found.
+
+### Focused Windows smoke check
+
+**NOT EXECUTED.** No Windows machine or VM was available in this session. This is recorded honestly
+rather than assumed passing. Before treating this rebuilt artifact as equally trustworthy to the
+Phase 7F artifact for a real Windows user, the following focused smoke pass (not a full Phase 7E
+rerun) is the recommended next step, against the rebuilt ZIP itself:
+
+1. Extract the rebuilt ZIP.
+2. Launch `Carowinds.Passdown.Desktop.exe`.
+3. Confirm the new app-shell layout appears (left section rail; Overview above the fold).
+4. Click the date field and confirm the calendar popup opens.
+5. Switch between Overview / Products / Notes.
+6. Confirm the layout is usable at a normal window size.
+7. Generate one PDF via "Create PDF."
+8. Open the PDF and visually confirm the grayscale-safe comparison-price styling (strikethrough on
+   a "was $X" price).
+9. Click "Export Diagnostics" once and confirm a ZIP is produced.
+10. Confirm the automatic-refresh `.cmd` helpers are still present and unchanged in behavior (no
+    regression expected or introduced — not itself re-run this pass).
+
+### Rebuild verdict
+
+| # | Item | Result |
+|---|---|---|
+| 1 | Build | PASS |
+| 2 | Non-live test count | PASS, 684/684 |
+| 3 | Publish (win-x64, self-contained) | PASS |
+| 4 | New UI code confirmed in published Desktop assembly | PASS (byte-level check) |
+| 5 | New PDF code confirmed in published Documents assembly | PASS (byte-level check) |
+| 6 | Portable ZIP rebuilt and re-inspected | PASS |
+| 7 | Release-content audit (forbidden patterns, required files) | PASS |
+| 8 | SHA-256 recomputed and changed from Phase 7F | PASS (confirms this is not the stale artifact) |
+| 9 | `docs/release-manifest.md` updated to point at the new artifact | PASS |
+| 10 | Focused Windows smoke check | **NOT EXECUTED** — no Windows host available |
+
+**Status: artifact rebuilt and internally verified; Windows-side confirmation remains outstanding**,
+same honest posture every prior Phase 7 sub-phase recorded before its own first Windows pass.
+
