@@ -641,3 +641,50 @@ found no defects — no fixes were required.
 design (CLAUDE.md "Current scope decision"). Phase 7 (Windows packaging) is next, carrying forward
 the legacy local-data naming item noted above as something to confirm during first-run/packaging
 work, not a blocker to declaring Phase 6 itself complete.
+
+## Phase 7A — Windows release/publish strategy
+
+Phase 7A defined and validated the exact Windows release shape before building any ZIP or
+installer — no product/UI/business logic changed. Full rationale, the publish command, the
+runtime-dependency audit (including a real Playwright cross-platform-publish bug found and fixed),
+the publish-output content audit, and the legacy local-data collision verdict all live in
+`docs/release-strategy.md`; this section only records what changed in the codebase.
+
+- **`Directory.Build.props`**: added `<Version>0.1.0-dev</Version>` (single authoritative version
+  source for every project — flows into `AssemblyVersion`/`FileVersion`/`InformationalVersion`;
+  explicitly a development version, not an assigned product release number) and
+  `<Product>Carowinds Passdown</Product>` (the built executable's file-properties "Product name,"
+  independent of the `Carowinds.Passdown.Desktop.exe` binary file name, which is unchanged).
+- **`Carowinds.Passdown.Desktop.csproj`**: no build-behavior changes — a comment records the
+  deliberate `PublishSingleFile`/`PublishTrimmed`/`PublishAot` = `false` decision (all already the
+  SDK default; nothing was flipped) so the rationale is discoverable at the point a future reader
+  might consider changing it.
+- **`packaging/windows/Publish-Windows.ps1`** (new): reproducible `dotnet publish` wrapper —
+  `-c Release -r win-x64 --self-contained true -p:PlaywrightPlatform=win-x64`, output to
+  `artifacts/publish/win-x64` (gitignored), plus a post-publish `.pdb` cleanup step. Registers
+  nothing, builds no ZIP/installer, requires no admin rights, never touches user application data.
+  Mirrors `Install-/Uninstall-ScheduledRefresh.ps1`'s existing pattern (repo-root-relative,
+  idempotent, no hard-coded developer path). Written and reviewed this phase but not executed — no
+  `pwsh` runtime is available on this session's dev host; the `dotnet publish` command it wraps
+  *was* executed and validated directly.
+- **`.gitignore`**: added `artifacts/` (the publish staging output).
+- **Tests**: `tests/Carowinds.Passdown.Infrastructure.Tests/AppPathsTests.cs` (`AppPaths` resolves
+  from the OS special-folder API, not the current working directory — matters because the release
+  executable may run from a location ordinary users shouldn't write to); `tests/Carowinds.Passdown.Ui.Tests/Release/ReleaseVersionTests.cs`
+  (the built Desktop assembly's version/product metadata actually reflects the new
+  `Directory.Build.props` values rather than silently falling back to SDK defaults). Both added,
+  none weakened; full suite is 609/609 (603 pre-existing + 6 new).
+- **No code changes** were needed for first-run behavior, release-path independence, or the
+  scheduled-refresh packaging contract — all three were audited and found already correct
+  (`docs/release-strategy.md` "First-run filesystem expectations," "Release path independence"
+  equivalent audit, "Scheduled-refresh packaging contract").
+
+### Deferred out of Phase 7A
+
+Everything covered under "What's deferred" in `docs/release-strategy.md`: the actual portable ZIP,
+any installer decision, real Windows-host execution (launch + `--scheduled-refresh` smoke test of
+the published binary, and running `Publish-Windows.ps1` itself under a real PowerShell host),
+legacy-machine collision verification against a real legacy install, the sanitized diagnostic
+export, nontechnical-tester instructions, and any further reduction of the Playwright package's
+footprint. Manager workflow remains out of scope per CLAUDE.md's current scope decision,
+unaffected by this phase.

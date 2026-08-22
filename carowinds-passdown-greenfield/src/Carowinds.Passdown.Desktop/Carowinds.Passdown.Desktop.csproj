@@ -4,6 +4,16 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
+  <!--
+    Phase 7A release publish target: win-x64, self-contained, normal (non-single-file) publish
+    directory. PublishSingleFile/PublishTrimmed/PublishAot are deliberately left at their SDK
+    defaults (all false) rather than set explicitly here — Avalonia's reflection-based XAML
+    loading, plus native SkiaSharp/HarfBuzzSharp/e_sqlite3 dependencies, make trimming/AOT a real
+    correctness risk for no proven benefit, and a normal publish directory is easier to
+    troubleshoot on a nontechnical user's machine. See docs/release-strategy.md for the full
+    rationale and the exact publish command (packaging/windows/Publish-Windows.ps1).
+  -->
+
   <ItemGroup>
     <Folder Include="Models\" />
     <AvaloniaResource Include="Assets\**" />

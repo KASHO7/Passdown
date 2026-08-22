@@ -5,4 +5,20 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
+
+  <!--
+    Phase 7A: one authoritative version source for every project (AGENT_BUILD_SPEC.md Phase 7,
+    "avoid duplicating version numbers across many scripts"). No official product version has been
+    assigned yet, so this is an explicit pre-release development version, not a product release
+    number — do not read "0.1.0-dev" as a claim about how much of the product is complete. The SDK
+    derives AssemblyVersion/FileVersion (numeric only, e.g. 0.1.0.0) and InformationalVersion
+    (includes the "-dev" suffix) from this single <Version> value; bump it by hand when a real
+    release is cut. <Product> names the built exe's file-properties "Product name" field as the
+    user-facing "Carowinds Passdown" without renaming the Carowinds.Passdown.Desktop.exe binary
+    itself (docs/release-strategy.md "Application name").
+  -->
+  <PropertyGroup>
+    <Version>0.1.0-dev</Version>
+    <Product>Carowinds Passdown</Product>
+  </PropertyGroup>
 </Project>

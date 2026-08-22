@@ -2,3 +2,6 @@ bin/
 obj/
 *.user
 .vs/
+
+# Phase 7A: generated Windows release publish output (packaging/windows/Publish-Windows.ps1)
+artifacts/
