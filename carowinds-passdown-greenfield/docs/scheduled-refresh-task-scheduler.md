@@ -213,10 +213,10 @@ handled entirely by the existing `FileScheduledRefreshLock`, not by anything new
 
 ## Manual Windows VM validation checklist
 
-This integration has not been exercised against a real Windows Task Scheduler by Claude — only
-inspected by code review and covered by the cross-platform unit tests above (`ScheduledTaskPlanTests`).
-The following steps are for the product owner to run on the Windows 11 VM; none of them have been
-performed here.
+This integration was not exercised against a real Windows Task Scheduler by Claude — only inspected
+by code review and covered by the cross-platform unit tests above (`ScheduledTaskPlanTests`). The
+checklist below was run on a Windows 11 VM and **manually validated by the user on Windows 11**
+(not something Claude performed directly).
 
 1. Build/publish or locate the Windows executable.
 2. `.\Install-ScheduledRefresh.ps1 -ExecutablePath "<actual path>"`.
@@ -242,3 +242,21 @@ performed here.
    the missed-start setting causes it to run shortly after. A full sleep/wake automation test is
    optional — at minimum, step 3's inspection of "run as soon as possible after a missed start"
    already confirms the setting is registered correctly.
+
+### Result — manually validated by the user on Windows 11 (Phase 6D)
+
+Every step above was performed and passed. Recorded results (no usernames or machine-specific
+absolute paths — see `docs/architecture.md` "Phase 6D" for the full record):
+
+- Task registered successfully; task state was `Ready`.
+- Action pointed to the correct `Carowinds.Passdown.Desktop.exe`; arguments were exactly
+  `--scheduled-refresh`; working directory matched the executable's own directory.
+- Manual `Start-ScheduledTask` completed; `LastTaskResult = 0`.
+- `NextRunTime` was 06:00; `StartWhenAvailable = True`; `MultipleInstances = IgnoreNew`;
+  `RunOnlyIfNetworkAvailable = False`; `DisallowStartIfOnBatteries = False`;
+  `StopIfGoingOnBatteries = False`.
+- Uninstall removed only the scheduled task; application data/cache/drafts/logs were preserved.
+- Reinstall succeeded cleanly.
+
+Step 8 (missed-start simulation) was covered by step 3's registration inspection, per the checklist's
+own "optional" note above; a full sleep/wake automation run was not separately recorded.

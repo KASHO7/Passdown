@@ -582,12 +582,62 @@ only records what was added and where.
 
 ### Deferred out of Phase 6C
 
-- **Real Windows Task Scheduler registration/execution** — the PowerShell scripts have been
-  reviewed but not run against a live Windows Task Scheduler by Claude; see
-  `docs/scheduled-refresh-task-scheduler.md`'s manual VM validation checklist for the product
-  owner to execute.
+- **Real Windows Task Scheduler registration/execution** — the PowerShell scripts were reviewed but
+  not run against a live Windows Task Scheduler by Claude; see `docs/scheduled-refresh-task-scheduler.md`'s
+  manual VM validation checklist. This was subsequently executed and closed out in Phase 6D — see
+  below.
 - **Phase 7 packaging** — nothing here publishes a self-contained Windows build or a release ZIP;
   Phase 7 is expected to call `Install-ScheduledRefresh.ps1` with the packaged installation's path,
   unchanged.
 - **Manager workflow** — out of scope per CLAUDE.md's current scope decision, unaffected by this
   phase.
+
+## Phase 6D — final Phase 6 audit and completion checkpoint
+
+Phase 6D was a review-only pass over Phase 6A–6C (no new scheduling/resilience logic; CLAUDE.md
+"do not redesign working behavior merely for preference"). It re-read the full unattended-refresh
+path end to end (`Program.cs` → `ScheduledRefreshHost` → `ScheduledRefreshRunner` →
+`RefreshOrchestrator` → persistence/logging → exit code), the normal interactive-startup path
+(`App.axaml.cs` → `StartupCatchUpRefresh`), the Task Scheduler integration
+(`ScheduledTaskPlan`, `Install-/Uninstall-ScheduledRefresh.ps1`), and every Phase 6A–6C test, and
+found no defects — no fixes were required.
+
+- **Architecture**: confirmed a single `RefreshOrchestrator`, a single freshness planner, and one
+  composition root are reused by both the normal launch and `--scheduled-refresh`; no duplicate
+  scheduling/freshness/persistence/failure-classification logic exists; no Windows Task Scheduler
+  logic leaked into Domain/Application; the PowerShell scripts contain no SQL/HTTP and register only
+  the one named task.
+- **Exit codes / overlap / offline resilience / cancellation / SQLite concurrency / logging**: all
+  match `docs/architecture.md`'s Phase 6A/6B descriptions above and this document's/`docs/scheduled-refresh-task-scheduler.md`'s
+  operational docs; verified directly against `ScheduledRefreshHost`, `RefreshOrchestrator`,
+  `FileScheduledRefreshLock`, `SqliteConnectionFactory`, and `FileLoggerProvider` source, not just
+  prior-phase notes.
+- **Test coverage**: reviewed as one suite across 6A–6C (argument parsing, headless-vs-normal
+  startup, migration-before-refresh, exit codes, overlap acquire/contend/release, late/missed-run
+  due-ness, all-sources-offline still `PartialFailure` not `FatalFailure`, fatal DB-open failure,
+  cancellation, repeated failure→recovery, log pruning, startup catch-up, task-name/argument/path
+  stability). No coverage gaps were found; no tests were added or weakened.
+- **Pre-existing test flake** (spec Part L): the previously-observed intermittent
+  `NoManagerWorkflowTests` Avalonia XAML parallelism failure did not reproduce across repeated runs
+  of `Carowinds.Passdown.Ui.Tests` during this phase. Recorded here as a known historical flake only
+  — no action taken, no test weakened.
+- **Legacy local-data collision review** (spec Part M): the greenfield app's database file is
+  `carowinds-passdown.db` (`appsettings.json` → `Storage:DatabaseFileName`), a name distinct from
+  whatever file the previous application used, under the same `%LOCALAPPDATA%\Carowinds Passdown`
+  directory (`AppPaths`). Because the filename differs, the new app's `MigrationRunner`/
+  `PRAGMA user_version` versioning cannot read or misinterpret a legacy database file, and
+  `Uninstall-ScheduledRefresh.ps1` never touches anything under that directory by content, only the
+  scheduled task by name. This was a review only — nothing was deleted or migrated. **Flagged as a
+  Phase 7 packaging/first-run item**: confirm during Windows packaging that no other file this app
+  writes (logs, lock file) can collide by name with anything the legacy app left in the same
+  directory, since neither application's directory layout was cross-checked file-by-file here.
+- **Windows Task Scheduler validation**: the full manual VM checklist in
+  `docs/scheduled-refresh-task-scheduler.md` was executed and passed — **manually validated by the
+  user on Windows 11**, not performed by Claude. See that document's "Result" section for the
+  recorded outcomes (task registration, manual run, `LastTaskResult = 0`, settings verification,
+  uninstall/reinstall safety).
+
+**Phase 6 (Scheduling and resilience) is complete.** Phase 5 (Manager workflow) remains deferred by
+design (CLAUDE.md "Current scope decision"). Phase 7 (Windows packaging) is next, carrying forward
+the legacy local-data naming item noted above as something to confirm during first-run/packaging
+work, not a blocker to declaring Phase 6 itself complete.
