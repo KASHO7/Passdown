@@ -1,0 +1,5 @@
+# Windows batch launchers must keep CRLF line endings regardless of the
+# committer's platform/core.autocrlf setting (target platform is Windows 11 x64 —
+# CLAUDE.md "Platform"). This is the nontechnical double-click setup helpers from
+# Phase 7C (packaging/windows/*.cmd).
+*.cmd text eol=crlf

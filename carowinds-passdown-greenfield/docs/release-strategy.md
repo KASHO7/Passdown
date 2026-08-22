@@ -462,16 +462,239 @@ under a real PowerShell host all remain **Phase 7E**, exactly as Phase 7A scoped
 ZIP was validated by extracting it into a fresh local temp directory and inspecting the resulting
 file tree (Part P of the Phase 7B task) — not by running the Windows binary.
 
+## Phase 7C — nontechnical scheduled-refresh setup helpers
+
+Phase 7B's portable ZIP worked, but enabling optional background refresh still required a
+nontechnical user to open PowerShell, resolve their own extracted path, and (per a real problem
+hit during Phase 6C manual validation) possibly fight a "running scripts is disabled on this
+system" execution-policy error. Phase 7C closes that gap without turning the release into an
+installer.
+
+### Chosen mechanism: double-clickable `.cmd` wrappers
+
+Evaluated against Part B's options: a small compiled setup executable and an in-app "Enable
+Automatic Refresh" button were both rejected as disproportionate to the problem — a compiled
+helper adds a second thing to build/sign/version for one Task Scheduler call, and an in-app button
+would mean either a new Windows-only Infrastructure abstraction over Task Scheduler plus Desktop
+settings UI (real architectural surface for a portable, no-service app) or shelling out to the
+same `.ps1` scripts from inside the running app for no real benefit over a direct double-click
+(see "In-app setup: rejected" below). A `.cmd` wrapper is the smallest mechanism that is still
+genuinely one double-click, needs no compiler/signing step, and reuses 100% of the existing,
+already-tested Phase 6C Task Scheduler logic (`ScheduledTaskPlan`,
+`Install-ScheduledRefresh.ps1`/`Uninstall-ScheduledRefresh.ps1`) completely unmodified.
+
+Two new files, both staged at the release root (next to the `.exe`, not under `tools\`, so they're
+the first thing a user sees):
+
+- `packaging/windows/Enable Automatic Refresh.cmd`
+- `packaging/windows/Disable Automatic Refresh.cmd`
+
+Each one:
+
+1. Resolves its own directory via `%~dp0` (never a hard-coded or developer-specific path).
+2. (Enable only) Builds `Carowinds.Passdown.Desktop.exe`'s path relative to itself and verifies
+   the file exists with a clear message — not a PowerShell stack trace — before doing anything
+   else.
+3. Invokes the existing `tools\Install-ScheduledRefresh.ps1` / `tools\Uninstall-ScheduledRefresh.ps1`
+   (also resolved relative to `%~dp0`) via
+   `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<script>" ...`, passing only the
+   resolved absolute executable path (Enable) or no extra arguments at all (Disable — the
+   uninstall script takes none and only ever targets the one fixed task name).
+4. Prints a concise result and `pause`s so a double-click user (no visible console otherwise) can
+   read it before the window closes.
+
+### Execution-policy handling (Part D)
+
+`-ExecutionPolicy Bypass` on the `powershell.exe -File` invocation is scoped to that one child
+process only — it is a process-launch flag, not a call to `Set-ExecutionPolicy`, and neither
+helper ever calls `Set-ExecutionPolicy` (verified by `PortableSetupHelperTests.Helper_UsesProcessScopedExecutionPolicyBypassOnly`,
+which asserts the string is present and `Set-ExecutionPolicy` is not). Nothing about the machine's
+or user's persistent execution-policy setting is read, written, or needs to change — a user whose
+policy would otherwise block double-clicking a `.ps1` directly (the Phase 6C symptom) is
+unaffected, because they never invoke a `.ps1` directly; the `.cmd` is what they double-click, and
+`.cmd` files are unaffected by PowerShell's execution policy in the first place.
+
+### No admin, no elevation (Part D/J)
+
+Neither helper requests elevation: no `runas`, no elevated manifest, no `RunLevel Highest`. This
+matches the underlying scripts unchanged from Phase 6C — `Install-ScheduledRefresh.ps1` already
+registers a per-user task (`LogonType Interactive`, `RunLevel Limited`, no stored password), which
+needs no admin rights on a normal Windows 11 account.
+
+### Portable relocation (Part G)
+
+No automatic move-detection was added — deliberately, per Part G's explicit "do NOT add complex
+automatic relocation detection unless clearly supported." The scheduled task's registered action
+always points at the absolute path that existed at the moment `Enable Automatic Refresh.cmd` was
+last run (`Install-ScheduledRefresh.ps1`'s `-Force` already makes re-registration idempotent —
+Phase 6C). The documented recovery path is simply: after moving the extracted folder, double-click
+`Enable Automatic Refresh.cmd` again from the new location; this replaces the existing
+"Carowinds Passdown Daily Refresh" task with one pointing at the new path. No in-app stale-path
+detection was added either — the spec explicitly discourages complexity here, and the app's
+existing `StartupCatchUpRefresh` (Phase 6B) already provides a safety net for any refresh missed
+while a task briefly points at a since-moved location.
+
+### Removal (Part H)
+
+Unchanged from Phase 7B, now easier to act on: disable automatic refresh (if enabled) via the new
+`Disable Automatic Refresh.cmd`, close the app, delete the extracted folder. User data under
+`%LOCALAPPDATA%\Carowinds Passdown` (database, drafts, cache, logs) is never touched by either
+helper or by deleting the app folder — nothing in this phase changed what those scripts read or
+write beyond the two new `.cmd` wrappers calling them.
+
+### In-app setup: rejected (Part I)
+
+A settings-style "Automatic Refresh: Enabled/Disabled" toggle in the Desktop UI was evaluated and
+rejected for Phase 7C. It would require either a new Windows-only Infrastructure abstraction over
+Task Scheduler (crossing the CLAUDE.md Domain/Application/Infrastructure boundary for a feature
+that exists purely to configure an OS-level trigger) plus new Desktop settings UI/ViewModel, or
+having the running app shell out to the same PowerShell scripts the `.cmd` helpers already call —
+which adds UI surface without removing any complexity the double-click helpers don't already
+solve. Per Part I's explicit guidance ("if it requires significant new settings UI... prefer the
+double-click helper files instead and document that choice"), the double-click helpers are the
+Phase 7C answer; an in-app toggle remains available to reconsider in a later phase if a real
+product need (not just convenience) emerges.
+
+### Status inspection: deferred (Part K)
+
+A `Check Automatic Refresh Status.cmd` helper was considered and not added this phase. The task
+name is already duplicated by hand across `ScheduledTaskPlan.TaskName` (C#),
+`Install-ScheduledRefresh.ps1`, and `Uninstall-ScheduledRefresh.ps1` (each carries a comment
+flagging this); a fourth hand-synced copy embedded in a new `.cmd` was judged not worth the
+drift risk for a read-only convenience the spec explicitly marks optional ("Do not overcomplicate
+this. A status helper is optional."). `Install-ScheduledRefresh.ps1`'s own console output already
+states the resolved trigger time on every run (an implicit status check: re-running "Enable
+Automatic Refresh.cmd" harmlessly reports "Updated existing scheduled task" if one was already
+registered), and Windows' own Task Scheduler UI remains available for anyone who wants
+`LastTaskResult`/next-run detail. Can be added later if real usage shows it's needed.
+
+### Security review (Part J)
+
+- No user-provided shell command fragments: both `.cmd` files take no arguments and build the two
+  paths they need (`%APP_DIR%`-relative) purely from `%~dp0`, never from user input or an
+  environment variable an attacker could pre-seed.
+- Both path variables are double-quoted at every use (`"%APP_EXE%"`, `"%INSTALL_SCRIPT%"`,
+  `"%UNINSTALL_SCRIPT%"`), which is what actually protects a path containing spaces, `&`, `(`, `)`,
+  etc. under `cmd.exe`'s parser — quotes suppress those characters' special meaning for the
+  duration of the quoted token.
+- Fixed, non-overridable task name and argument: neither helper ever passes `-TaskName` or any
+  override to the PowerShell scripts, so they can only ever act on
+  `"Carowinds Passdown Daily Refresh"` / `--scheduled-refresh` — the same constants
+  `ScheduledTaskPlan.TaskName` / `CommandLineArguments.ScheduledRefreshFlag` already guard
+  elsewhere. `PortableSetupHelperTests` asserts this by string-matching the actual shipped files
+  rather than by inspection alone.
+- No elevation, no `RunLevel Highest`, no `runas` in either file.
+- No credentials, no stored password — same as the unmodified Phase 6C scripts.
+- No permanent execution-policy modification — see above.
+- Only the trusted script shipped in this exact release's `tools\` folder is ever executed; the
+  `.cmd` never downloads, generates, or executes anything else.
+
+### Tests added
+
+`tests/Carowinds.Passdown.Ui.Tests/Release/PortableSetupHelperTests.cs` (17 tests) — static content
+contracts read directly from the shipped `packaging/windows/*.cmd`/`*.ps1` files and
+`Build-PortableRelease.ps1`, matching Part P: both helpers exist and are staged at the release
+root; both resolve their own directory via `%~dp0`; the enable helper resolves and verifies the app
+executable relative to itself; neither helper contains a developer-specific path fragment; neither
+permanently changes execution policy; the task name and `--scheduled-refresh` argument stay in
+sync with the `ScheduledTaskPlan`/`CommandLineArguments` C# constants; the disable helper passes no
+extra arguments to the uninstall script; `Build-PortableRelease.ps1` fails loudly if either helper
+file is missing. No test asserts brittle line-by-line `.cmd` syntax, per Part P's guidance.
+
+### Release layout (Part L)
+
+```
+Carowinds-Passdown-0.1.0-dev-win-x64/
+    Carowinds.Passdown.Desktop.exe
+    README.txt
+    Enable Automatic Refresh.cmd
+    Disable Automatic Refresh.cmd
+    appsettings.json
+    *.dll  (managed + native runtime files)
+    LatoFont/
+    tools/
+        Install-ScheduledRefresh.ps1
+        Uninstall-ScheduledRefresh.ps1
+```
+
+### README (Part M)
+
+`packaging/windows/README-portable-release.md` (shipped as `README.txt`) was rewritten to lead
+with the double-click helpers as the primary path — "double-click Enable/Disable Automatic
+Refresh.cmd" — with a new "Moving this folder" section documenting the relocation recovery step,
+and a "How the setup helpers work" section explaining (in plain language, no architecture detail)
+that the helpers call the `tools\` scripts automatically and touch no persistent Windows setting.
+The underlying `tools\*.ps1` scripts are still shipped unmodified for anyone who prefers to run
+them directly.
+
+### Build-PortableRelease.ps1 integration (Part N)
+
+`Build-PortableRelease.ps1` now copies both `.cmd` helpers from `packaging/windows/` to the release
+staging root (alongside the existing `tools\` and `README.txt` copy steps) and fails the build with
+a clear error if either source file is missing, rather than silently shipping a ZIP without them —
+consistent with the script's existing "fail loudly rather than ship something wrong" pattern for
+the README/Publish-Windows.ps1 checks. No publish configuration was duplicated; the script still
+delegates the actual `dotnet publish` step to `Publish-Windows.ps1` exactly as before.
+
+### Windows execution status (Part O/Q)
+
+No `pwsh` is available on this session's dev host (same limitation Phase 7A/7B recorded). The
+underlying `dotnet publish` and the full staging/zip sequence `Build-PortableRelease.ps1` performs
+were run manually this phase (shell commands mirroring the script's own logic exactly, the same
+approach Phase 7B used) to produce and directly inspect a real ZIP with the new layout:
+
+- **Files staged**: 276 (271 publish output files + `tools/Install-ScheduledRefresh.ps1` +
+  `tools/Uninstall-ScheduledRefresh.ps1` + the 2 new `.cmd` helpers + `README.txt`)
+- **Uncompressed size**: 132.8 MB
+- **ZIP size**: 58.6 MB
+- **ZIP filename**: `Carowinds-Passdown-0.1.0-dev-win-x64.zip`
+- Forbidden-pattern check (`.git`, `.db`/`-wal`/`-shm`, `CLAUDE.md`, `AGENT_BUILD_SPEC.md`, `.pdb`)
+  — clean.
+- No test assemblies, no `.playwright`/Playwright content, no stray non-Windows (`.dylib`/`.so`)
+  binaries — all clean, same as Phase 7B.
+- Both new helper files confirmed present in the ZIP with their spaced filenames intact
+  (`Enable Automatic Refresh.cmd`, `Disable Automatic Refresh.cmd`), 1830 and 1506 bytes
+  respectively.
+
+**Actually double-clicking either `.cmd` on a real Windows machine, confirming the no-admin/no-UAC
+behavior end-to-end, confirming `LastTaskResult = 0` after a manual task run, and confirming the
+relocate-and-re-enable path all remain Phase 7E**, exactly as Windows execution of
+`Publish-Windows.ps1`/`Build-PortableRelease.ps1` themselves has been deferred since Phase 7A. This
+phase's `.cmd` content was validated by static review plus the automated tests above, not by
+running it.
+
+### Phase 7E manual validation checklist (prepared, not executed — Part R)
+
+1. Extract the actual Phase 7C ZIP on a clean Windows 11 machine.
+2. Launch the app by double-clicking `Carowinds.Passdown.Desktop.exe`.
+3. Double-click `Enable Automatic Refresh.cmd`.
+4. Confirm no admin/UAC prompt appears.
+5. Inspect the registered task (`Get-ScheduledTask -TaskName "Carowinds Passdown Daily Refresh" |
+   Get-ScheduledTaskInfo`, or Task Scheduler's UI).
+6. Manually run the task (`Start-ScheduledTask -TaskName "Carowinds Passdown Daily Refresh"`, or
+   "Run" from the UI).
+7. Confirm `LastTaskResult = 0`.
+8. Double-click `Disable Automatic Refresh.cmd`.
+9. Confirm the task is removed (`Get-ScheduledTask` returns nothing for that name).
+10. Double-click `Enable Automatic Refresh.cmd` again — confirm it re-registers cleanly.
+11. Move/copy the whole extracted folder to a different path.
+12. Double-click `Enable Automatic Refresh.cmd` from the new location.
+13. Confirm the scheduled task's action now points at the new path (not the old one).
+14. Confirm the app still launches normally from the new location.
+
 ## What's deferred (not yet done)
 
 - **7C**: any installer, if one is ever decided to be needed (spec currently only asks for a
-  portable ZIP, not an installer).
+  portable ZIP, not an installer) — unchanged from Phase 7A/7B; Phase 7C itself (nontechnical
+  scheduled-refresh setup) is now done, see above.
 - **7D**: legacy-machine file-collision verification against a real legacy install (Phase 7A's
   review found no evidence of collision but had no legacy directory available to diff against
   directly).
 - **7E**: actual Windows-host execution — launching the published `.exe`, running
-  `--scheduled-refresh` against it, and validating `Publish-Windows.ps1`/`Build-PortableRelease.ps1`
-  under a real PowerShell host. Nothing in Phase 7A or 7B claims Windows execution was tested; only
-  `dotnet publish`/packaging output was inspected from this (non-Windows) dev host.
+  `--scheduled-refresh` against it, double-clicking the new `Enable`/`Disable Automatic Refresh.cmd`
+  helpers end-to-end (checklist above), and validating
+  `Publish-Windows.ps1`/`Build-PortableRelease.ps1` under a real PowerShell host. Nothing in Phase
+  7A/7B/7C claims Windows execution was tested; only `dotnet publish`/packaging output and helper
+  file content were inspected from this (non-Windows) dev host.
 - **7F**: sanitized diagnostic export, tester instructions for a nontechnical coworker beyond the
   short `README.txt` already shipped in the ZIP (spec §19).

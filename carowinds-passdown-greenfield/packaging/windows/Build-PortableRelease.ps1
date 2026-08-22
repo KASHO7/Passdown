@@ -108,14 +108,33 @@ if ($strayPdbs.Count -gt 0) {
     Write-Host "Removed $($strayPdbs.Count) stray .pdb file(s) from staging."
 }
 
-# User-facing scheduled-refresh helper scripts (Part E). These already accept an absolute
+# Developer-oriented scheduled-refresh scripts (Part E/F/L). These already accept an absolute
 # -ExecutablePath and never hard-code a developer path, so they work unmodified against the
-# extracted location. Placed under tools\ so a nontechnical user isn't asked to run anything just
-# to launch the app normally.
+# extracted location. Placed under tools\ (not the release root) so a nontechnical user isn't
+# asked to run anything just to launch the app normally, and isn't tempted to open a raw .ps1
+# directly (see the double-click helpers below for the actual user-facing entry point).
 $toolsDirectory = Join-Path $stagingReleaseDirectory 'tools'
 New-Item -ItemType Directory -Path $toolsDirectory -Force | Out-Null
 Copy-Item -Path (Join-Path $repoRoot 'packaging' 'windows' 'Install-ScheduledRefresh.ps1') -Destination $toolsDirectory -Force
 Copy-Item -Path (Join-Path $repoRoot 'packaging' 'windows' 'Uninstall-ScheduledRefresh.ps1') -Destination $toolsDirectory -Force
+
+# User-facing double-click setup helpers (Phase 7C Part E/F/L). These live at the release root,
+# next to the .exe, so a nontechnical user finds them immediately without opening tools\ or
+# PowerShell. Each resolves its own directory and the app's tools\*.ps1 scripts relative to
+# itself (Part C) — nothing here is copied from a developer-specific path, and the build fails
+# loudly below if either file is missing rather than silently shipping a ZIP without them.
+$enableHelperSource = Join-Path $repoRoot 'packaging' 'windows' 'Enable Automatic Refresh.cmd'
+$disableHelperSource = Join-Path $repoRoot 'packaging' 'windows' 'Disable Automatic Refresh.cmd'
+if (-not (Test-Path -LiteralPath $enableHelperSource -PathType Leaf)) {
+    Write-Error "Enable Automatic Refresh.cmd not found at '$enableHelperSource'."
+    exit 1
+}
+if (-not (Test-Path -LiteralPath $disableHelperSource -PathType Leaf)) {
+    Write-Error "Disable Automatic Refresh.cmd not found at '$disableHelperSource'."
+    exit 1
+}
+Copy-Item -Path $enableHelperSource -Destination $stagingReleaseDirectory -Force
+Copy-Item -Path $disableHelperSource -Destination $stagingReleaseDirectory -Force
 
 # User-facing README (Part F). Not the developer/architecture docs under docs/.
 $readmeSource = Join-Path $repoRoot 'packaging' 'windows' 'README-portable-release.md'
@@ -165,4 +184,6 @@ Write-Host "  ZIP size:            $zipMegabytes MB"
 Write-Host "  File count:          $fileCount"
 Write-Host ""
 Write-Host "Extract the ZIP anywhere writable and launch Carowinds.Passdown.Desktop.exe directly."
+Write-Host "Double-click 'Enable Automatic Refresh.cmd' / 'Disable Automatic Refresh.cmd' at the"
+Write-Host "release root for optional background refresh setup (no PowerShell typing required)."
 Write-Host "Windows-host runtime validation is deferred to Phase 7E (docs/release-strategy.md)."

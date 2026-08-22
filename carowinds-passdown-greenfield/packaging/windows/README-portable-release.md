@@ -35,31 +35,51 @@ Logs live at:
 Automatic daily refresh (optional)
 ------------------------------------
 The app refreshes park data automatically whenever it's open. If you'd also like it
-to refresh once a day even when the app isn't running, two optional helper scripts
-are included in the "tools" folder inside this release:
+to refresh once a day even when the app isn't running, double-click:
 
-    tools\Install-ScheduledRefresh.ps1
-    tools\Uninstall-ScheduledRefresh.ps1
+    Enable Automatic Refresh.cmd
 
-Extracting the ZIP does NOT set this up automatically — it's opt-in. To enable it,
-open PowerShell in the extracted folder and run:
+Extracting the ZIP does NOT set this up automatically — it's opt-in. Double-clicking
+this file sets it up for THIS extracted copy of the app; nothing to type, no
+PowerShell window to configure. A window will briefly open, show whether it worked,
+and wait for you to press a key before closing.
 
-    tools\Install-ScheduledRefresh.ps1 -ExecutablePath "<full path to Carowinds.Passdown.Desktop.exe in this folder>"
+To turn it back off later, double-click:
 
-To turn it back off later, run:
+    Disable Automatic Refresh.cmd
 
-    tools\Uninstall-ScheduledRefresh.ps1
+No admin rights are needed for either one, and neither changes any Windows security
+setting on your computer — see "How the setup helpers work" below if you're curious.
 
-No admin rights are needed for either script.
+Moving this folder
+-------------------
+If you move or copy this extracted folder somewhere else (a different drive, a new
+USB stick, etc.) and you had automatic refresh enabled, double-click
+"Enable Automatic Refresh.cmd" again from the new location. It safely replaces the
+old schedule with one that points at the new location — you don't need to disable
+the old one first.
 
 Removing the app
 -----------------
-Just delete the extracted folder. There is no separate uninstaller.
+1. If you enabled automatic refresh, double-click "Disable Automatic Refresh.cmd"
+   first (safe to run even if you're not sure it's enabled).
+2. Close the app if it's open.
+3. Delete the extracted folder. There is no separate uninstaller.
 
 Deleting the folder does NOT delete your data — your drafts and cached park data
 stay at %LOCALAPPDATA%\Carowinds Passdown until you delete that folder yourself. If
-you also want to remove your saved data, delete that folder too.
+you also want to remove your saved data, delete that folder too. Deleting the app
+folder by itself does not remove a scheduled refresh you set up — disable it first
+as described above.
 
-If you enabled the automatic daily refresh above, run
-tools\Uninstall-ScheduledRefresh.ps1 before (or after) deleting the folder — deleting
-the folder by itself does not remove the scheduled task.
+How the setup helpers work
+-----------------------------
+"Enable Automatic Refresh.cmd" and "Disable Automatic Refresh.cmd" are the
+nontechnical entry points; behind the scenes they call the scripts in the "tools"
+folder (tools\Install-ScheduledRefresh.ps1 / tools\Uninstall-ScheduledRefresh.ps1),
+using the exact folder you extracted — you never need to type a file path. If your
+copy of Windows normally blocks PowerShell scripts from running, these helpers avoid
+that prompt for themselves only, for this one action; they do not change any
+script-running setting on your computer, permanently or otherwise. If you prefer to
+run the underlying scripts directly, they're still there in "tools" and accept the
+same options as before.
