@@ -542,3 +542,52 @@ or offline.
   request idempotency have been reviewed.
 - **Manager workflow** — out of scope per CLAUDE.md's current scope
   decision, unaffected by this phase.
+
+## Phase 6C additions — Windows Task Scheduler integration
+
+Phase 6C adds the operating-system trigger for the existing `--scheduled-refresh` command — no new
+refresh/freshness/overlap logic. Full design rationale, install/uninstall commands, and the manual
+Windows VM validation checklist live in `docs/scheduled-refresh-task-scheduler.md`; this section
+only records what was added and where.
+
+- **`Carowinds.Passdown.Desktop.ScheduledRefresh.ScheduledTaskPlan`/`ScheduledTaskDefinition`**
+  (`src/Carowinds.Passdown.Desktop/ScheduledRefresh/ScheduledTaskPlan.cs`): a pure, Windows-API-free
+  description of the task's action fields (stable `TaskName`, the executable path a caller
+  supplies, the fixed `CommandLineArguments.ScheduledRefreshFlag` argument — reused, not
+  duplicated — and a working directory derived from the executable path). Exists solely so the
+  task-definition rules Part J asks to keep testable (stable name, exact argument, absolute-path
+  validation, safe quoting for a path containing spaces, no hard-coded user path) are covered by
+  ordinary cross-platform unit tests (`ScheduledTaskPlanTests`,
+  `tests/Carowinds.Passdown.Ui.Tests/ScheduledRefresh/`) rather than requiring a Windows host to
+  exercise. Deliberately avoids `System.IO.Path.IsPathRooted`/`GetDirectoryName` for its own
+  validation/splitting, since those only recognize the *host* platform's path conventions — this
+  runs the same on the Fedora dev host and on Windows.
+- **`packaging/windows/Install-ScheduledRefresh.ps1` / `Uninstall-ScheduledRefresh.ps1`**: the only
+  things that actually call the Windows Task Scheduler APIs (`Register-ScheduledTask`/
+  `Unregister-ScheduledTask`). Register a per-user task (`LogonType Interactive`, `RunLevel
+  Limited` — no administrator rights, no stored password, never `SYSTEM`) named `Carowinds Passdown
+  Daily Refresh`, whose action is the caller-supplied executable path plus
+  `--scheduled-refresh`, triggered daily at a configurable local time (default 06:00). Install is
+  idempotent (`Register-ScheduledTask -Force` replaces only that exact task name); uninstall
+  targets only that name and never touches application data/cache/logs. Task Scheduler's own
+  `-MultipleInstances IgnoreNew` and `-StartWhenAvailable` settings are configured as a first line
+  of defense; the Phase 6B `FileScheduledRefreshLock` remains the authoritative overlap guard and
+  is untouched by this phase.
+- **Tests**: `ScheduledTaskPlanTests` (12 cases — task-name stability, argument correctness against
+  the shared `CommandLineArguments.ScheduledRefreshFlag` constant, path-with-spaces quoting,
+  rejection of null/blank/relative executable paths, working-directory derivation for both
+  Windows-drive-rooted and UNC paths, and that repeated calls are deterministic). All existing
+  Phase 6A/6B tests are unaffected — this phase added no changes to `ScheduledRefreshHost`,
+  `ScheduledRefreshRunner`, or `FileScheduledRefreshLock`.
+
+### Deferred out of Phase 6C
+
+- **Real Windows Task Scheduler registration/execution** — the PowerShell scripts have been
+  reviewed but not run against a live Windows Task Scheduler by Claude; see
+  `docs/scheduled-refresh-task-scheduler.md`'s manual VM validation checklist for the product
+  owner to execute.
+- **Phase 7 packaging** — nothing here publishes a self-contained Windows build or a release ZIP;
+  Phase 7 is expected to call `Install-ScheduledRefresh.ps1` with the packaged installation's path,
+  unchanged.
+- **Manager workflow** — out of scope per CLAUDE.md's current scope decision, unaffected by this
+  phase.
