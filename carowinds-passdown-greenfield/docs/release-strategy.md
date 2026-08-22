@@ -941,6 +941,85 @@ knowing the legacy names in advance.
 | 19 | Real legacy specimen comparison | PARTIAL (none available; contract proven regardless) |
 | 20 | Windows runtime validation | DEFERRED BY DESIGN to 7E |
 
+## Phase 7E — Windows 11 manual validation
+
+Executed by the product owner on a real Windows machine, against the actual portable release
+ZIP (not `dotnet run`, not a repo-relative execution path), following the step-by-step
+[`docs/phase-7e-windows-validation-checklist.md`](phase-7e-windows-validation-checklist.md).
+This is **user-performed manual validation** — Claude had no Windows machine/VM access this
+phase and did not independently observe any of the following; results below are as reported by
+the tester.
+
+### Artifact verified
+
+`Carowinds-Passdown-0.1.0-dev-win-x64.zip`, SHA-256
+`94064eee63a2cb7bc0d30e83d45afde946ff02dbb3b5d3b9aeaa9f7d16871ab0` — confirmed matching via
+`Get-FileHash` on the test machine before extraction.
+
+### Test environment (as reported)
+
+- `Get-ComputerInfo`: `WindowsProductName: Windows 10 Pro`, `WindowsVersion: 2009`,
+  `OsBuildNumber: 26200`. **Internally inconsistent as reported** — build 26200 falls in the
+  Windows 11 24H2/25H2 range, not Windows 10 (which tops out around build 19045). Not
+  independently re-verified via Settings → System → About; actual OS edition is unconfirmed.
+- Architecture: `ARM64` (`$env:PROCESSOR_ARCHITECTURE`; `dotnet --info` also reports RID
+  `win-arm64`). **This is not the documented supported target** — this doc's own "Supported
+  target" table above states x64 only, "no win-arm64." The win-x64 self-contained binaries
+  evidently ran via Windows 11 ARM's built-in x64 emulation. This confirms the app *functions*
+  under x64 emulation on ARM64; it does not substitute for a native x64 Windows 11 run, which
+  remains recommended before treating the primary target architecture as fully verified.
+- `.NET SDK 10.0.400` and the `Microsoft.WindowsDesktop.App`/`Microsoft.NETCore.App` 10.0.11
+  runtimes were **already installed** on this machine before testing (confirmed via `dotnet
+  --info` output captured during the run). This means the "no separate .NET installation
+  required" claim was **not independently proven** by this pass — a machine without .NET
+  pre-installed still hasn't exercised this path end to end.
+
+### Results
+
+| Part | Item | Verdict | Notes |
+|---|---|---|---|
+| A | Test environment | PARTIAL | Recorded, but self-contained/no-.NET claim not proven (.NET pre-installed) and architecture is ARM64, not the documented x64 target |
+| B | Extract real ZIP | PASS | Extracted under Downloads; exact sub-path/size not recorded |
+| C | Clean first launch | PASS | App opened; LocalAppData created |
+| D | UI smoke | PASS | No itemized notes beyond top-line result |
+| E | Display scaling (100/125/150%) | PASS | Full table completed: no clipping, overflow, or unreadable text at any scale |
+| F | First-run persistence | PASS | Test draft entered and confirmed persisted after restart |
+| G | Check Online | PASS | No explicit confirmation captured of absence of Playwright-related errors |
+| H | PDF generation | PASS | No itemized notes beyond top-line result |
+| I | Enable Automatic Refresh | PASS | No itemized notes beyond top-line result |
+| J | Manual scheduled refresh | PASS | `LastRunTime` / `LastTaskResult` / `NextRunTime` captured directly from `Get-ScheduledTaskInfo`; `LastTaskResult = 0` |
+| K | Scheduled log location | PASS | No log excerpt captured |
+| L | Disable Automatic Refresh | PASS | No itemized notes beyond top-line result |
+| M | Re-enable / idempotency | PASS | No itemized notes beyond top-line result |
+| N | Portable move + task rebind | PASS | No itemized notes beyond top-line result |
+| O | Re-extract / update persistence | PASS | No itemized notes beyond top-line result |
+| P | Portable delete semantics | PASS | No itemized notes beyond top-line result |
+| Q | Unknown legacy-file coexistence | PASS | No itemized notes beyond top-line result |
+| R | Corrupt DB safety | PASS | Specific on-screen failure behavior not captured |
+| S | Newer-schema guard | PASS | Specific on-screen failure behavior not captured |
+| T | Startup catch-up/overlap coexistence | PASS | Checklist flags this case as often impractical to reproduce reliably; reported PASS rather than NOT EXECUTED |
+| U | No .NET/dev dependency | PASS | Qualified by the Part A finding that .NET was already present on this machine |
+| V | Release content inspection | PASS | No itemized notes beyond top-line result |
+| W | PowerShell build scripts (`Publish-Windows.ps1`/`Build-PortableRelease.ps1`) | PASS | Unclear whether the source repository (required separately from the ZIP) was actually present on the test machine |
+| X | README usability | PASS | No itemized notes beyond top-line result |
+
+### Caveats
+
+This pass confirms the release **functions correctly end-to-end** for a real Windows user
+following the documented workflow, with **no defect reported**. It does not fully close out
+every claim in `AGENT_BUILD_SPEC.md` §18 "Windows delivery" at full confidence:
+
+- Run under ARM64/x64 emulation, not natively on the documented x64 target.
+- Self-contained/no-separate-.NET-install was not independently proven (.NET was pre-installed
+  on the test machine).
+- Windows 11 vs Windows 10 could not be confirmed from the reported environment output.
+- Most individual parts were reported as PASS without itemized supporting detail beyond the
+  top-line result.
+
+A native x64 Windows 11 machine with no .NET pre-installed remains the strongest remaining
+validation gap if higher confidence on the primary target is later needed. No code change was
+made or needed this phase — no release defect was found.
+
 ## What's deferred (not yet done)
 
 - **7C**: any installer, if one is ever decided to be needed (spec currently only asks for a
@@ -950,12 +1029,8 @@ knowing the legacy names in advance.
   available in this environment; the coexistence *contract* is proven instead, and is not blocked
   by this. Phase 7D itself (first-run/upgrade/coexistence/move data-preservation guarantees) is
   now done, see above.
-- **7E**: actual Windows-host execution — launching the published `.exe`, running
-  `--scheduled-refresh` against it, double-clicking the new `Enable`/`Disable Automatic Refresh.cmd`
-  helpers end-to-end (checklist above, now extended with Phase 7D's move/upgrade/corrupt-DB cases),
-  and validating `Publish-Windows.ps1`/`Build-PortableRelease.ps1` under a real PowerShell host.
-  Nothing in Phase 7A/7B/7C/7D claims Windows execution was tested; only `dotnet
-  publish`/packaging output and helper file content were inspected from this (non-Windows) dev
-  host.
+- **7E**: itself done, see above — actual Windows-host execution was performed by the product
+  owner against the real release ZIP. A native x64 Windows 11 pass without .NET pre-installed
+  remains a nice-to-have for full target-architecture confidence, not a blocker.
 - **7F**: sanitized diagnostic export, tester instructions for a nontechnical coworker beyond the
   short `README.txt` already shipped in the ZIP (spec §19).
