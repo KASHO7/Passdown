@@ -7,6 +7,7 @@ Authoritative product specification: `AGENT_BUILD_SPEC.md`.
 The product owner does not write or debug source code.
 
 Handle:
+
 - source creation and editing
 - dependency setup
 - builds
@@ -65,6 +66,7 @@ Do not automatically start the next phase.
 Official Carowinds/Six Flags sources only.
 
 Prefer:
+
 1. official structured HTTP/API data
 2. direct HTTP/HTML
 3. Playwright only when necessary
@@ -114,3 +116,22 @@ Do not scan unrelated directories unless necessary.
 
 Prefer focused tests over repeatedly running the entire suite during
 implementation. Run the full suite before phase completion.
+
+## Current scope decision
+
+The Manager workflow is deferred.
+
+Do not implement Phase 5 / Manager Passdown unless explicitly requested later.
+
+For the current release:
+
+- complete the Associate workflow
+- complete Associate PDF generation
+- complete scheduling/resilience
+- complete Windows packaging and validation
+
+Do not create placeholder Manager UI, Manager PDF, Manager ViewModels,
+or Manager navigation merely to satisfy the original phase numbering.
+
+
+For Phase 4F visual/layout work, use `.claude/skills/ui-polish/SKILL.md`.
