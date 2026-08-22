@@ -47,7 +47,7 @@ public class RefreshOrchestratorLiveSmokeTests(ITestOutputHelper output)
         var sourceStateRepository = new NullSourceStateRepository();
         var freshnessPlanner = new FreshnessPlanner(sourceStateRepository, clock, policies);
         var rollingDatePlanner = new RollingDatePlanner(clock, new RollingWindowOptions());
-        var browserSessionFactory = new PlaywrightJobBrowserSessionFactory(new PlaywrightBrowserSessionFactory(new PlaywrightBrowserSessionOptions()));
+        var browserSessionFactory = new UnavailableJobBrowserSessionFactory();
 
         var orchestrator = new RefreshOrchestrator(
             registrations, freshnessPlanner, rollingDatePlanner, sourceStateRepository, policies,

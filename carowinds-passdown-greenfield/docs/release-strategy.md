@@ -1,8 +1,11 @@
-# Windows release strategy (Phase 7A)
+# Windows release strategy (Phase 7A/7B)
 
 This document defines the supported Windows release shape for Carowinds Passdown
-(AGENT_BUILD_SPEC.md Phase 7 / §18 "Windows delivery"), before any ZIP or installer is built. It
-does not describe end-user installer instructions — there is no installer yet (Phase 7B+).
+(AGENT_BUILD_SPEC.md Phase 7 / §18 "Windows delivery"). Phase 7A defined and validated the publish
+strategy before any ZIP existed; Phase 7B (below) resolves the Playwright dependency question left
+open by 7A and builds the actual portable release ZIP. There is still no installer — the release
+model is portable extract-and-run (see "Phase 7B — Playwright removal and the portable release
+ZIP" below), and none is planned unless a later phase decides otherwise.
 
 ## Supported target
 
@@ -161,14 +164,17 @@ after `.pdb` removal):
 - `LatoFont/` (Avalonia's bundled `Inter` font assets... actually shipped under Avalonia's own
   resource path; present because `Avalonia.Fonts.Inter` is referenced)
 
-**OPTIONAL (present, acceptable, not required for the app to run):**
+**OPTIONAL, as of Phase 7A (removed in Phase 7B — see below):**
 - `.playwright/` — the unused-today Playwright Node driver; see above. Left in for now (a
   `PackageReference` removal is out of scope for a publish-strategy phase), tracked as a Phase 7B
-  candidate for size reduction.
+  candidate for size reduction. **Phase 7B update: removed.** The `Microsoft.Playwright`
+  `PackageReference` was dropped after confirming zero production code path could reach it (see
+  "Phase 7B — Playwright removal and the portable release ZIP" below); `.playwright/` no longer
+  appears in the publish output at all.
 - Third-party `README.md`/`SKILL.md` files bundled *inside* `.playwright/package/` by the
   Playwright npm package itself — not this repo's own docs, not a leak of `CLAUDE.md`/
   `AGENT_BUILD_SPEC.md` (confirmed: a `find . -iname "*.md"` over the publish output returned only
-  these third-party files).
+  these third-party files). Gone along with `.playwright/` itself as of Phase 7B.
 
 **Confirmed absent (correctly excluded):**
 - `.pdb` files — the compiler-generated managed `.pdb`s never reach the staging output
@@ -302,8 +308,8 @@ things it writes are under `AppPaths.LocalApplicationDataDirectory`, confirmed b
 
 Unaffected by any Phase 7A change. `dotnet build CarowindsPassdown.slnx` and
 `dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` still build/run with no RID
-specified and no Windows dependency — verified this phase (603 → 606 tests, see "Publish
-validation" below; the 3 added are this phase's own new tests). Nothing in `Directory.Build.props`
+specified and no Windows dependency — verified this phase (603 → 609 tests, see "Publish
+validation" below; the 6 added are this phase's own new tests). Nothing in `Directory.Build.props`
 or the Desktop `.csproj` forces a RID onto the ordinary build; `win-x64` is only ever requested
 explicitly via `-r win-x64` on the publish command.
 
@@ -320,19 +326,152 @@ Performed this phase, on this (non-Windows) dev host:
    removal, no test assemblies, no stray non-Windows native binaries, no repo source/doc files, no
    `.DS_Store`.
 
-## What's deferred (not this phase)
+## Phase 7B — Playwright removal and the portable release ZIP
 
-- **7B**: decide whether/how to reduce the Playwright driver's footprint; build the actual
-  portable ZIP.
+### Playwright dependency decision
+
+**Decision: removed.** The `Microsoft.Playwright` `PackageReference` was removed from
+`Carowinds.Passdown.Infrastructure.csproj` entirely, along with every Playwright-typed class that
+existed only to support it (`PlaywrightBrowserSession`, `PlaywrightBrowserSessionFactory`,
+`PlaywrightBrowserSessionOptions`, `PlaywrightJobBrowserSession`, `PlaywrightJobBrowserSessionFactory`,
+and the Infrastructure-internal `IBrowserSession`/`IBrowserSessionFactory` abstractions, which were
+typed directly against Playwright's `IPage` and had no consumer outside that cluster).
+
+This was a code-reachability decision, not a size-only one. Tracing the actual runtime path:
+
+- `RefreshOrchestrator` only calls `browserSessionFactory.Create()` when
+  `plannedOperations.Any(p => p.Registration.RequiresBrowserSession)` is true
+  (`src/Carowinds.Passdown.Application/Refresh/RefreshOrchestrator.cs`).
+- Every one of the 8 production `SourceRegistration`s wired up in
+  `App.axaml.cs`/`AddRefreshOrchestration` uses `DatedSourceRegistration`/`CatalogSourceRegistration`'s
+  default `requiresBrowserSession: false` — none passes `true`.
+- Therefore `needsBrowserSession` is always `false` in production, `Create()` is never called, and
+  the Playwright-backed `StartAsync()` that actually launches a browser process was never reachable
+  — confirmed by reading the call sites, not inferred from package size alone.
+
+`Application`'s `IJobBrowserSessionFactory`/`IJobBrowserSession` abstractions
+(`src/Carowinds.Passdown.Application/Retrieval/Browser/IJobBrowserSession.cs`) are untouched —
+`RefreshOrchestrator` still depends only on those, never on a concrete browser implementation, so
+the architecture boundary (CLAUDE.md "Architecture": Application has no Playwright dependency) was
+already correct and stays correct.
+
+**Replacement** (`src/Carowinds.Passdown.Infrastructure/Retrieval/Browser/UnavailableJobBrowserSession.cs`):
+`UnavailableJobBrowserSessionFactory` implements `IJobBrowserSessionFactory` and is registered in
+its place in `App.axaml.cs`. Its `Create()` does no I/O (matching the interface contract); the
+returned session's `EnsureStartedAsync()` throws `NotSupportedException` with a message pointing at
+this decision, rather than either (a) silently pretending browser support exists, or (b) being
+unreachable dead code with no signal if it ever *were* reached. Nothing in production ever triggers
+this throw today. A new regression test
+(`tests/Carowinds.Passdown.Infrastructure.Tests/PlaywrightDependencyTests.cs`) asserts the
+`Carowinds.Passdown.Infrastructure` assembly no longer references `Microsoft.Playwright`, so the
+dependency can't silently come back through an unrelated package bump.
+
+If a future phase adds a genuine browser-backed source adapter, it needs its own real
+`IJobBrowserSessionFactory` implementation (Playwright or otherwise) and to flip that source's
+registration to `requiresBrowserSession: true` — this is unchanged, deliberate, future work, not
+something this phase blocks.
+
+### Retrieval sources: unaffected
+
+All 8 production sources (Park Hours, Dated Admission, Dated Fast Lane, Haunted Attractions, Season
+Passes, Season Pass Add-ons, Promotions, General Add-ons) are `DirectApi`/`Html` strategy and were
+not modified. They only ever mentioned Playwright in doc comments ("no Playwright needed") — no
+production adapter file imports the `Microsoft.Playwright` namespace. Build and the full
+`Category!=LiveSmoke` suite both pass after the removal (see "Publish validation," updated below).
+
+### Publish size, before vs. after
+
+| | Files (pre-.pdb-removal) | Size (pre-.pdb-removal) | Files (final) | Size (final) |
+|---|---|---|---|---|
+| Phase 7A (with Playwright) | — | — | 387 | 236 MB |
+| Phase 7B (without Playwright) | 278 | 234 MB | 271 | 133 MB |
+
+**~103 MB saved** (236 MB → 133 MB), all of it the Playwright Node driver tree (`.playwright/`,
+`playwright.ps1`) — confirmed absent by direct inspection (`find . -iname "*playwright*"` over the
+new publish output returns nothing). No other publish content changed: same executable, same
+managed DLLs, same native Windows runtime files (`e_sqlite3.dll`, `libSkiaSharp.dll`,
+`libHarfBuzzSharp.dll`, `qpdf.dll`, `QuestPdfSkia.dll`, `av_libglesv2.dll`), no stray non-Windows
+binaries, no test assemblies.
+
+### Release ZIP
+
+Built by `packaging/windows/Build-PortableRelease.ps1`, which reuses `Publish-Windows.ps1` for the
+actual publish (never duplicates its publish rules) and reads the release version from
+`Directory.Build.props`' single authoritative `<Version>` — no second version source.
+
+- **Filename**: `Carowinds-Passdown-0.1.0-dev-win-x64.zip`
+- **Layout**: one top-level folder, `Carowinds-Passdown-0.1.0-dev-win-x64/`, containing the
+  publish output directly (`Carowinds.Passdown.Desktop.exe`, `appsettings.json`, managed DLLs,
+  native runtime files, `LatoFont/OFL.txt`) plus two additions:
+  - `tools/Install-ScheduledRefresh.ps1`, `tools/Uninstall-ScheduledRefresh.ps1` — unmodified
+    copies of the existing scheduled-refresh helpers (already accept an absolute
+    `-ExecutablePath`, never hard-code a developer path). Extracting the ZIP does not register the
+    task; a user runs the install script deliberately, and the normal app launch is unaffected
+    either way.
+  - `README.txt` — a short, nontechnical extract/launch/data-location/removal guide (source:
+    `packaging/windows/README-portable-release.md`), distinct from the developer docs under
+    `docs/`.
+- **File count**: 277 zip entries (274 files + 3 directory entries: the release root, `LatoFont/`,
+  `tools/`).
+- **Sizes**: 133 MB uncompressed staged folder, 59 MB compressed ZIP.
+
+Portable semantics (spec §18, no installer):
+
+- **Install**: extract anywhere writable; no admin rights; no Program Files assumption.
+- **Uninstall**: delete the extracted folder. There is no separate uninstaller.
+- **User data**: lives outside the extracted folder, at `%LOCALAPPDATA%\Carowinds Passdown`
+  (`carowinds-passdown.db` + `-wal`/`-shm`, `logs\`, `scheduled-refresh.lock` — see "Legacy
+  local-data collision review" above). Deleting the extracted app folder never touches this.
+- **Scheduled task**: if `Install-ScheduledRefresh.ps1` was run, it is a separate OS-level
+  registration and is not removed by deleting the app folder — `Uninstall-ScheduledRefresh.ps1`
+  must be run separately.
+
+### License/notice and privacy review
+
+- `LatoFont/OFL.txt` (SIL Open Font License, bundled by `Avalonia.Fonts.Inter`'s publish content)
+  was retained — it's a required third-party notice, not an internal doc, and nothing else in the
+  publish output carries a license/notice file (`find . -iname "*.md" -o -iname "*.txt"` over the
+  staged release returns only this one file plus the new `README.txt`).
+- `appsettings.json` contains only `Logging`/`Storage:DatabaseFileName` — no secret or
+  machine-specific value.
+- The staged/zipped release was inspected directly for `.git`, source, `CLAUDE.md`,
+  `AGENT_BUILD_SPEC.md`, `.DS_Store`, `.pdb`, test assemblies, non-Windows binaries, and any
+  `.db`/`.db-wal`/`.db-shm` file — none found. `Build-PortableRelease.ps1` also runs this same
+  forbidden-pattern check itself before zipping, failing the build if any match.
+
+### Build/test/publish validation (Phase 7B)
+
+1. `dotnet build CarowindsPassdown.slnx` — **PASS**, 0 warnings, 0 errors.
+2. `dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — **PASS**, 607/607 (609
+   Phase 7A total − 6 tests deleted with the removed Playwright classes they exercised + 4 new:
+   3 `UnavailableJobBrowserSessionTests` + 1 `PlaywrightDependencyTests`).
+3. `dotnet publish ... -r win-x64 --self-contained true ...` — **PASS**. Output inspected directly:
+   271 files, 133 MB after `.pdb` removal, no `.playwright`, no stray non-Windows binaries.
+4. `packaging/windows/Build-PortableRelease.ps1` — **written and reviewed, not executed**; no
+   PowerShell runtime (`pwsh`) is available on this dev host, the same limitation Phase 7A recorded
+   for `Publish-Windows.ps1`. Its exact staging/zip logic was run manually (shell + `zip`) to
+   produce and inspect the real `Carowinds-Passdown-0.1.0-dev-win-x64.zip` reported above. Running
+   the actual `.ps1` on Windows or a host with PowerShell installed remains a Phase 7B/7E follow-up,
+   same as `Publish-Windows.ps1` was in Phase 7A.
+
+### Windows runtime validation: deferred by design
+
+No clean Windows 11 VM was used this phase. Launching the built `.exe`, running
+`--scheduled-refresh` against it, and executing `Publish-Windows.ps1`/`Build-PortableRelease.ps1`
+under a real PowerShell host all remain **Phase 7E**, exactly as Phase 7A scoped it. This phase's
+ZIP was validated by extracting it into a fresh local temp directory and inspecting the resulting
+file tree (Part P of the Phase 7B task) — not by running the Windows binary.
+
+## What's deferred (not yet done)
+
 - **7C**: any installer, if one is ever decided to be needed (spec currently only asks for a
   portable ZIP, not an installer).
-- **7D**: legacy-machine file-collision verification against a real legacy install (this phase's
+- **7D**: legacy-machine file-collision verification against a real legacy install (Phase 7A's
   review found no evidence of collision but had no legacy directory available to diff against
   directly).
 - **7E**: actual Windows-host execution — launching the published `.exe`, running
-  `--scheduled-refresh` against the published binary, and validating `Publish-Windows.ps1` itself
-  runs correctly under a real PowerShell host. Nothing in this phase claims Windows execution was
-  tested; only the `dotnet publish` output was inspected from this dev host.
-- **7F**: sanitized diagnostic export, tester instructions for a nontechnical coworker (spec §19).
-- Reducing the Playwright package footprint further, or removing it while unused, if a future
-  phase decides that's worth the dependency-graph change.
+  `--scheduled-refresh` against it, and validating `Publish-Windows.ps1`/`Build-PortableRelease.ps1`
+  under a real PowerShell host. Nothing in Phase 7A or 7B claims Windows execution was tested; only
+  `dotnet publish`/packaging output was inspected from this (non-Windows) dev host.
+- **7F**: sanitized diagnostic export, tester instructions for a nontechnical coworker beyond the
+  short `README.txt` already shipped in the ZIP (spec §19).

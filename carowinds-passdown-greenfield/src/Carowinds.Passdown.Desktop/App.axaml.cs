@@ -169,10 +169,11 @@ public partial class App : global::Avalonia.Application
             provider.GetRequiredService<HttpClient>(),
             provider.GetRequiredService<IOptions<RetrievalHttpOptions>>().Value));
 
-        services.Configure<PlaywrightBrowserSessionOptions>(configuration.GetSection("Browser"));
-        services.AddSingleton(provider => provider.GetRequiredService<IOptions<PlaywrightBrowserSessionOptions>>().Value);
-        services.AddSingleton<IBrowserSessionFactory, PlaywrightBrowserSessionFactory>();
-        services.AddSingleton<IJobBrowserSessionFactory, PlaywrightJobBrowserSessionFactory>();
+        // Phase 7B: Microsoft.Playwright was removed from the production dependency graph (no
+        // source adapter used it — see docs/release-strategy.md "Playwright dependency decision").
+        // UnavailableJobBrowserSessionFactory keeps the IJobBrowserSessionFactory contract intact
+        // for RefreshOrchestrator without pulling in the Playwright package.
+        services.AddSingleton<IJobBrowserSessionFactory, UnavailableJobBrowserSessionFactory>();
 
         // Completed Phase 3 source adapters (Part A "completed sources currently include").
         services.AddSingleton<ParkHoursSource>();

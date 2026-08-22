@@ -8,9 +8,16 @@
          unlike the JSON DTOs other sources keep internal — tests need direct access. -->
     <InternalsVisibleTo Include="Carowinds.Passdown.Infrastructure.Tests" />
   </ItemGroup>
+  <!--
+    Phase 7B: Microsoft.Playwright was removed (docs/release-strategy.md "Playwright dependency
+    decision"). Every currently-implemented source adapter is DirectApi or Html strategy; the
+    package contributed no working feature but added ~88 MB of Windows Node driver content to
+    every publish (verified via a real dotnet publish in Phase 7A). See
+    Retrieval/Browser/UnavailableJobBrowserSession.cs for the IJobBrowserSessionFactory
+    replacement that keeps the abstraction/contract intact for a future browser-backed source.
+  -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
-    <PackageReference Include="Microsoft.Playwright" Version="1.62.0" />
   </ItemGroup>
 </Project>
