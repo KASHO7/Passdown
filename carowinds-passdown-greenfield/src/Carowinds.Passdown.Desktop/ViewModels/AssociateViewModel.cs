@@ -89,7 +89,7 @@ public partial class AssociateViewModel : ViewModelBase
     public partial ObservableCollection<CustomProductRowViewModel> CustomProducts { get; set; } = [];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SelectedDateOffset))]
+    [NotifyPropertyChangedFor(nameof(SelectedDateForPicker))]
     public partial DateOnly SelectedDate { get; set; }
 
     [ObservableProperty]
@@ -235,16 +235,16 @@ public partial class AssociateViewModel : ViewModelBase
     public bool IsBusy => IsLoadingDate || IsCheckingOnline;
 
     /// <summary>
-    /// A <see cref="DateTimeOffset"/>-shaped view of <see cref="SelectedDate"/> for Avalonia's
-    /// <c>DatePicker</c> (spec §10.2's "professional Windows control"), which has no
-    /// <see cref="DateOnly"/>-typed control. Setting it goes through the same
-    /// <see cref="SelectedDate"/> setter as every other date change, so it is still exactly one
-    /// local-only load path (spec §6.3) — this is purely a binding-shape adapter, not a second way
-    /// to change the date.
+    /// A <see cref="DateTime"/>-shaped view of <see cref="SelectedDate"/> for Avalonia's
+    /// <c>CalendarDatePicker</c> (spec §10.2's "professional Windows control" with a calendar
+    /// flyout), which has no <see cref="DateOnly"/>-typed <c>SelectedDate</c>. Setting it goes
+    /// through the same <see cref="SelectedDate"/> setter as every other date change, so it is
+    /// still exactly one local-only load path (spec §6.3) — this is purely a binding-shape
+    /// adapter, not a second way to change the date.
     /// </summary>
-    public DateTimeOffset? SelectedDateOffset
+    public DateTime? SelectedDateForPicker
     {
-        get => new(SelectedDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        get => SelectedDate.ToDateTime(TimeOnly.MinValue);
         set
         {
             if (value is { } picked)

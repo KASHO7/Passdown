@@ -27,8 +27,8 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
     private static readonly string HeaderMutedColor = "#B9CBDE";
     private static readonly string PanelFill = "#F2F6FB";
     private static readonly string BandFill = "#E4EDF7";
-    private static readonly string HairlineColor = "#C9D3DD";
-    private static readonly string ComparePriceColor = "#7C8794";
+    private static readonly string HairlineColor = "#B7C1CC";
+    private static readonly string ComparePriceColor = "#5C6673";
     private static readonly string MutedTextColor = "#57626D";
 
     private readonly IAssociatePassdownPreflightService _preflightService;
@@ -313,7 +313,27 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
                         });
 
                         row.ConstantItem(60).AlignRight().Text(product.EffectivePriceText ?? "-").FontSize(9.5f).Bold().FontColor(AccentColor);
-                        row.RelativeItem(2).AlignRight().Text(BuildSecondaryPriceText(product)).FontSize(8).FontColor(ComparePriceColor);
+
+                        // Comparison price gets a strikethrough (spec §11.1 "do not rely on
+                        // colored backgrounds to convey meaning" / Part 5 "typography... not
+                        // color alone") in addition to its "was" prefix, so it still reads
+                        // clearly as a superseded price under strict grayscale conversion.
+                        row.RelativeItem(2).AlignRight().Text(text =>
+                        {
+                            if (product.ComparisonPriceText is { } comparison)
+                            {
+                                text.Span("was ").FontSize(8).FontColor(ComparePriceColor);
+                                text.Span(comparison).FontSize(8).FontColor(ComparePriceColor).Strikethrough();
+                                if (product.Qualifier is { } withQualifier)
+                                {
+                                    text.Span($" - {withQualifier}").FontSize(8).FontColor(ComparePriceColor);
+                                }
+                            }
+                            else if (product.Qualifier is { } qualifierOnly)
+                            {
+                                text.Span(qualifierOnly).FontSize(8).FontColor(ComparePriceColor);
+                            }
+                        });
                     });
                 }
             }
@@ -378,21 +398,6 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
                 text.TotalPages().FontSize(7.5f);
             });
         });
-    }
-
-    private static string BuildSecondaryPriceText(PdfProductRow product)
-    {
-        if (product.ComparisonPriceText is { } comparison && product.Qualifier is { } qualifier)
-        {
-            return $"was {comparison} - {qualifier}";
-        }
-
-        if (product.ComparisonPriceText is { } comparisonOnly)
-        {
-            return $"was {comparisonOnly}";
-        }
-
-        return product.Qualifier ?? string.Empty;
     }
 
     private static string FormatCount(int? value) => value?.ToString("N0", CultureInfo.InvariantCulture) ?? "Not entered";
