@@ -17,4 +17,22 @@ public interface IFinalizedPassdownSnapshotBuilder
 {
     /// <summary>Builds a snapshot of <paramref name="workspace"/> as of <paramref name="asOf"/> (used only for the snapshot's own "generated at" display text, not for any retrieval).</summary>
     FinalizedPassdownSnapshot Build(AssociateWorkspace workspace, DateTimeOffset asOf);
+
+    /// <summary>
+    /// Builds the print-ready document model exactly once from <paramref name="workspace"/>/
+    /// <paramref name="asOf"/> and derives both the frozen <see cref="FinalizedPassdownSnapshot"/> and
+    /// the frozen PDF bytes from that single in-memory build (spec Phase 9C Part E) — the snapshot and
+    /// the PDF must never risk representing different passdown state by being composed from two
+    /// separate reads/builds. Throws if PDF generation cannot proceed for this workspace (spec Part
+    /// I) — callers must treat that as "finalization failed" and write no row, exactly like a
+    /// serialization/hash failure.
+    /// </summary>
+    FinalizedPassdownProjection BuildProjection(AssociateWorkspace workspace, DateTimeOffset asOf);
 }
+
+/// <summary>
+/// The paired result of one <see cref="IFinalizedPassdownSnapshotBuilder.BuildProjection"/> call (spec
+/// Phase 9C Part E/W) — <see cref="Snapshot"/> and <see cref="PdfBytes"/> are guaranteed to derive from
+/// the exact same canonical document-model build, never two independent ones.
+/// </summary>
+public sealed record FinalizedPassdownProjection(FinalizedPassdownSnapshot Snapshot, byte[] PdfBytes);

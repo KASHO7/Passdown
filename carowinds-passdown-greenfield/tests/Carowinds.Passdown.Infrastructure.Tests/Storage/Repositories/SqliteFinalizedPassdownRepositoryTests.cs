@@ -15,6 +15,9 @@ public class SqliteFinalizedPassdownRepositoryTests : IDisposable
 
     private SqliteFinalizedPassdownRepository CreateRepository() => new(_fixture.ConnectionFactory);
 
+    // PdfBytes/PdfSha256/PdfSizeBytes default to null here (a legacy pre-9C-shaped row) so existing
+    // full-record equality assertions below stay valid (null == null) — PDF-specific tests construct
+    // their own sample with explicit PDF fields instead (spec Phase 9C Part J).
     private static FinalizedPassdown Sample(DateOnly? date = null, FinalizationOrigin origin = FinalizationOrigin.Scheduled) => new(
         Guid.NewGuid(),
         date ?? Halloween,
@@ -22,7 +25,21 @@ public class SqliteFinalizedPassdownRepositoryTests : IDisposable
         FinalizedPassdownSnapshot.CurrentSchemaVersion,
         """{"PassdownDate":"2026-10-31"}""",
         "abc123def456",
-        origin);
+        origin,
+        null,
+        null,
+        null);
+
+    private static FinalizedPassdown SampleWithPdf(DateOnly? date = null, byte[]? pdfBytes = null)
+    {
+        var bytes = pdfBytes ?? [0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34]; // "%PDF-1.4"
+        return Sample(date) with
+        {
+            PdfBytes = bytes,
+            PdfSha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes)),
+            PdfSizeBytes = bytes.LongLength,
+        };
+    }
 
     [Fact]
     public async Task GetByDateAsync_MissingDate_ReturnsNull()
@@ -131,5 +148,64 @@ public class SqliteFinalizedPassdownRepositoryTests : IDisposable
         var loaded = await repository.GetByDateAsync(Halloween);
 
         Assert.Equal(maliciousLookingJson, loaded!.SnapshotJson);
+    }
+
+    // Phase 9C Part M: the exact PDF bytes generated at finalization round-trip byte-for-byte — no
+    // re-generation, just storage and retrieval.
+    [Fact]
+    public async Task AddAsync_ThenGetByDateAsync_RoundTripsPdfBytesExactly()
+    {
+        var repository = CreateRepository();
+        var pdfBytes = new byte[] { 0x25, 0x50, 0x44, 0x46, 0x00, 0xFF, 0x10, 0x20 };
+        var record = SampleWithPdf(pdfBytes: pdfBytes);
+
+        await repository.AddAsync(record);
+        var loaded = await repository.GetByDateAsync(Halloween);
+
+        Assert.NotNull(loaded);
+        Assert.True(loaded!.HasFrozenPdf);
+        Assert.Equal(pdfBytes, loaded.PdfBytes);
+        Assert.Equal(record.PdfSha256, loaded.PdfSha256);
+        Assert.Equal(record.PdfSizeBytes, loaded.PdfSizeBytes);
+    }
+
+    // Phase 9C Part J: a pre-9C row (finalized before the PDF columns existed) reads back safely with
+    // every PDF field null, and is clearly distinguishable via HasFrozenPdf rather than silently
+    // treated as having an exact frozen PDF.
+    [Fact]
+    public async Task GetByDateAsync_LegacyRowWithNoPdfColumns_ReadsSafelyWithHasFrozenPdfFalse()
+    {
+        var repository = CreateRepository();
+        await repository.AddAsync(Sample()); // PdfBytes/PdfSha256/PdfSizeBytes all null by default.
+
+        var loaded = await repository.GetByDateAsync(Halloween);
+
+        Assert.NotNull(loaded);
+        Assert.False(loaded!.HasFrozenPdf);
+        Assert.Null(loaded.PdfBytes);
+        Assert.Null(loaded.PdfSha256);
+        Assert.Null(loaded.PdfSizeBytes);
+    }
+
+    // Phase 9C Part L: history-list metadata exposes HasFrozenPdf/PdfSizeBytes without ever selecting
+    // the pdf_bytes blob column (see SqliteFinalizedPassdownRepository.ListAsync).
+    [Fact]
+    public async Task ListAsync_MixOfLegacyAndFrozenPdfRows_ExposesHasFrozenPdfAndSizePerRow()
+    {
+        var repository = CreateRepository();
+        var withPdf = new DateOnly(2026, 11, 1);
+        var legacy = new DateOnly(2026, 11, 2);
+        var pdfBytes = new byte[] { 1, 2, 3, 4, 5 };
+        await repository.AddAsync(SampleWithPdf(withPdf, pdfBytes));
+        await repository.AddAsync(Sample(legacy));
+
+        var summaries = await repository.ListAsync();
+
+        var withPdfSummary = summaries.Single(s => s.PassdownDate == withPdf);
+        var legacySummary = summaries.Single(s => s.PassdownDate == legacy);
+        Assert.True(withPdfSummary.HasFrozenPdf);
+        Assert.Equal(pdfBytes.LongLength, withPdfSummary.PdfSizeBytes);
+        Assert.False(legacySummary.HasFrozenPdf);
+        Assert.Null(legacySummary.PdfSizeBytes);
     }
 }

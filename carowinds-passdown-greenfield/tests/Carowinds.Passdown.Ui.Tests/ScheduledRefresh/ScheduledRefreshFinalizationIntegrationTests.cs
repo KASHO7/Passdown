@@ -65,6 +65,7 @@ public class ScheduledRefreshFinalizationIntegrationTests
             new Migration0006CreateAssociateDraftsTable(),
             new Migration0007CreateManagerDraftsTable(),
             new Migration0008CreateFinalizedPassdownsTable(),
+            new Migration0009AddFinalizedPassdownPdfColumns(),
         ]);
         services.AddSingleton<MigrationRunner>();
         services.AddSingleton<IScheduledPassdownFinalizer>(finalizer);
@@ -93,6 +94,7 @@ public class ScheduledRefreshFinalizationIntegrationTests
                     new Migration0003CreateDatedResultsTable(), new Migration0004CreateCatalogProductsTable(),
                     new Migration0005CreateProductHistoryTable(), new Migration0006CreateAssociateDraftsTable(),
                     new Migration0007CreateManagerDraftsTable(), new Migration0008CreateFinalizedPassdownsTable(),
+                    new Migration0009AddFinalizedPassdownPdfColumns(),
                 ],
                 NullLogger<MigrationRunner>.Instance).Run();
             await new SqliteAssociateDraftRepository(seedConnectionFactory).SaveAsync(new AssociateDraft(
@@ -110,6 +112,14 @@ public class ScheduledRefreshFinalizationIntegrationTests
             Assert.NotNull(finalized);
             Assert.Equal(FinalizationOrigin.Scheduled, finalized!.Origin);
             Assert.Equal(clock.UtcNow, finalized.FinalizedAtUtc);
+
+            // Phase 9C: the real end-to-end scheduled pipeline now freezes a real PDF alongside the
+            // snapshot, atomically, in the same insert.
+            Assert.True(finalized.HasFrozenPdf);
+            Assert.NotNull(finalized.PdfBytes);
+            Assert.NotEmpty(finalized.PdfBytes!);
+            Assert.Equal(finalized.PdfBytes!.LongLength, finalized.PdfSizeBytes);
+            Assert.Matches("^[0-9a-f]{64}$", finalized.PdfSha256);
         }
         finally
         {

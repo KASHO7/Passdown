@@ -13,6 +13,17 @@ namespace Carowinds.Passdown.Application.Persistence;
 /// <see cref="PassdownDate"/> so a future revision design (explicitly not built yet — spec Part B)
 /// would not require redefining this table's identity.
 /// </summary>
+/// <param name="PdfBytes">
+/// The exact frozen PDF bytes produced at finalization time (spec Phase 9C Parts A/E/M), derived from
+/// the same canonical document-model build as <see cref="SnapshotJson"/> — never regenerated later.
+/// Null only for a legacy pre-9C row finalized before this column existed (spec Part J); every row
+/// created by <see cref="Finalization.FinalizedPassdownFinalizationService"/> from Phase 9C onward
+/// always populates it. The repository is responsible for never letting a caller's later mutation of
+/// this array reach a previously-stored row: <c>GetByDateAsync</c> always materializes a fresh array
+/// from SQLite rather than returning any cached/shared buffer.
+/// </param>
+/// <param name="PdfSha256">Lowercase-hex SHA-256 of <see cref="PdfBytes"/> (spec Part C) — integrity/diagnostic metadata only, never security/authentication. Null exactly when <see cref="PdfBytes"/> is null.</param>
+/// <param name="PdfSizeBytes">Byte length of <see cref="PdfBytes"/> (spec Part C), stored alongside it for diagnostics/history display without re-measuring the blob. Null exactly when <see cref="PdfBytes"/> is null.</param>
 public sealed record FinalizedPassdown(
     Guid Id,
     DateOnly PassdownDate,
@@ -20,13 +31,22 @@ public sealed record FinalizedPassdown(
     int SnapshotSchemaVersion,
     string SnapshotJson,
     string ContentHash,
-    FinalizationOrigin Origin);
+    FinalizationOrigin Origin,
+    byte[]? PdfBytes,
+    string? PdfSha256,
+    long? PdfSizeBytes)
+{
+    /// <summary>True for a complete post-9C row with an exact frozen PDF; false for a legacy pre-9C row (spec Part J) — never backfilled by regenerating a PDF under current styling, since that would not be the exact historical PDF.</summary>
+    public bool HasFrozenPdf => PdfBytes is not null;
+}
 
-/// <summary>Lightweight metadata for one finalized passdown (spec Phase 9 Part T) — enough for a future History UI list without deserializing every row's <see cref="FinalizedPassdown.SnapshotJson"/>.</summary>
+/// <summary>Lightweight metadata for one finalized passdown (spec Phase 9 Part T; PDF fields added Phase 9C Part L) — enough for a future History UI list without deserializing every row's <see cref="FinalizedPassdown.SnapshotJson"/> or loading its <see cref="FinalizedPassdown.PdfBytes"/> blob.</summary>
 public sealed record FinalizedPassdownSummary(
     DateOnly PassdownDate,
     DateTimeOffset FinalizedAtUtc,
-    FinalizationOrigin Origin);
+    FinalizationOrigin Origin,
+    bool HasFrozenPdf,
+    long? PdfSizeBytes);
 
 /// <summary>
 /// Narrow, insert-only persistence contract for finalized passdowns (spec Phase 9 Part M). Exposes

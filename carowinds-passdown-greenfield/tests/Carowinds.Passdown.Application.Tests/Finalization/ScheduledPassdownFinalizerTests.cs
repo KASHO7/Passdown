@@ -126,7 +126,7 @@ public class ScheduledPassdownFinalizerTests
         var env = CreateEnvironment(cutoff.AddDays(1));
         await SaveDraftAsync(env.Drafts, Date0825, cutoff.AddDays(-1));
         await env.FinalizedRepository.AddAsync(new FinalizedPassdown(
-            Guid.NewGuid(), Date0825, cutoff, FinalizedPassdownSnapshot.CurrentSchemaVersion, "{}", "hash", FinalizationOrigin.Scheduled));
+            Guid.NewGuid(), Date0825, cutoff, FinalizedPassdownSnapshot.CurrentSchemaVersion, "{}", "hash", FinalizationOrigin.Scheduled, null, null, null));
 
         var summary = await env.Finalizer.FinalizeEligibleAsync();
 
@@ -170,7 +170,7 @@ public class ScheduledPassdownFinalizerTests
         }
 
         await env.FinalizedRepository.AddAsync(new FinalizedPassdown(
-            Guid.NewGuid(), new DateOnly(2026, 8, 25), now.AddDays(-1), FinalizedPassdownSnapshot.CurrentSchemaVersion, "{}", "hash", FinalizationOrigin.Recovery));
+            Guid.NewGuid(), new DateOnly(2026, 8, 25), now.AddDays(-1), FinalizedPassdownSnapshot.CurrentSchemaVersion, "{}", "hash", FinalizationOrigin.Recovery, null, null, null));
 
         var summary = await env.Finalizer.FinalizeEligibleAsync();
 
@@ -289,7 +289,7 @@ public class ScheduledPassdownFinalizerTests
         await SaveDraftAsync(env.Drafts, earlier, now.AddDays(-3));
         await SaveDraftAsync(env.Drafts, later, now.AddDays(-3));
         await env.FinalizedRepository.AddAsync(new FinalizedPassdown(
-            Guid.NewGuid(), earlier, now.AddHours(-1), FinalizedPassdownSnapshot.CurrentSchemaVersion, "{}", "hash", FinalizationOrigin.Recovery));
+            Guid.NewGuid(), earlier, now.AddHours(-1), FinalizedPassdownSnapshot.CurrentSchemaVersion, "{}", "hash", FinalizationOrigin.Recovery, null, null, null));
 
         var summary = await env.Finalizer.FinalizeEligibleAsync();
 
@@ -297,5 +297,23 @@ public class ScheduledPassdownFinalizerTests
         Assert.Equal(1, summary.FinalizedCount);
         Assert.Equal(1, summary.AlreadyFinalizedCount);
         Assert.Equal(summary.EligibleCount, summary.FinalizedCount + summary.AlreadyFinalizedCount);
+    }
+
+    // Phase 9C Part I: a frozen-PDF generation failure (now part of finalization) must propagate out
+    // of FinalizeEligibleAsync exactly like any other pre-9C build/serialize/hash failure already
+    // did, so the caller (ScheduledRefreshHost/StartupCatchUpRefresh) never proceeds to a refresh —
+    // see ScheduledRefreshHostTests.RunAsync_FinalizationThrows_ReturnsFatalFailureExitCode_AndNeverInvokesRefreshRunner
+    // for the host-level half of this invariant.
+    [Fact]
+    public async Task FinalizeEligibleAsync_PdfGenerationFailsForEligibleDate_ThrowsAndWritesNoRecord()
+    {
+        var cutoff = FinalizationEligibility.EligibleForFinalizationAt(Date0825);
+        var env = CreateEnvironment(cutoff);
+        await SaveDraftAsync(env.Drafts, Date0825, cutoff.AddDays(-1));
+        env.SnapshotBuilder.ThrowOnBuildProjection = true;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => env.Finalizer.FinalizeEligibleAsync());
+
+        Assert.False(await env.FinalizedRepository.ExistsForDateAsync(Date0825));
     }
 }

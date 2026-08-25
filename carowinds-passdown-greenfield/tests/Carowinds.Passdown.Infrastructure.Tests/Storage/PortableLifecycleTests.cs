@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Catalog;
@@ -41,9 +42,10 @@ public class PortableLifecycleTests : IDisposable
         new Migration0006CreateAssociateDraftsTable(),
         new Migration0007CreateManagerDraftsTable(),
         new Migration0008CreateFinalizedPassdownsTable(),
+        new Migration0009AddFinalizedPassdownPdfColumns(),
     ];
 
-    private const int CurrentSchemaVersion = 8;
+    private const int CurrentSchemaVersion = 9;
 
     // ------------------------------------------------------------------
     // Part B: clean first run.
@@ -255,7 +257,7 @@ public class PortableLifecycleTests : IDisposable
             {
                 versions.Add(reader.GetInt64(0));
             }
-            Assert.Equal([1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L], versions);
+            Assert.Equal([1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L], versions);
         }
 
         // Re-running the current runner again is idempotent.
@@ -263,6 +265,63 @@ public class PortableLifecycleTests : IDisposable
         Assert.Equal(CurrentSchemaVersion, reappliedVersion);
         using var finalConnection = connectionFactory.OpenConnection();
         Assert.Equal(AllMigrations.Count, CountRows(finalConnection, "schema_version"));
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 9C Part X: schema 8 -> 9 (frozen PDF columns) preserves an existing Phase 9A/9B finalized
+    // row, reading back safely with null PDF columns rather than failing or fabricating a PDF.
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public async Task Schema8ToSchema9_ExistingFinalizedRow_SurvivesWithNullPdfColumns()
+    {
+        var databasePath = Path.Combine(_tempDirectory, "carowinds-passdown.db");
+        var connectionFactory = new SqliteConnectionFactory(databasePath);
+
+        IReadOnlyList<IMigration> schema8Migrations =
+        [
+            new Migration0001CreateSchemaVersionTable(),
+            new Migration0002CreateSourceStateTable(),
+            new Migration0003CreateDatedResultsTable(),
+            new Migration0004CreateCatalogProductsTable(),
+            new Migration0005CreateProductHistoryTable(),
+            new Migration0006CreateAssociateDraftsTable(),
+            new Migration0007CreateManagerDraftsTable(),
+            new Migration0008CreateFinalizedPassdownsTable(),
+        ];
+        var schema8Version = new MigrationRunner(connectionFactory, schema8Migrations, NullLogger<MigrationRunner>.Instance).Run();
+        Assert.Equal(8, schema8Version);
+
+        // Inserted with a raw statement matching the actual pre-9C 7-column table shape — the
+        // *current* SqliteFinalizedPassdownRepository.AddAsync always targets the post-9C columns, so
+        // it cannot be used here to simulate a row that predates this migration.
+        var passdownDate = new DateOnly(2026, 8, 20);
+        using (var seedConnection = connectionFactory.OpenConnection())
+        using (var seedCommand = seedConnection.CreateCommand())
+        {
+            seedCommand.CommandText =
+                """
+                INSERT INTO finalized_passdowns (id, passdown_date, finalized_at_utc, snapshot_schema_version, snapshot_json, content_hash, origin)
+                VALUES ($id, $passdownDate, $finalizedAt, $schemaVersion, $snapshotJson, $contentHash, $origin);
+                """;
+            seedCommand.Parameters.AddWithValue("$id", Guid.NewGuid().ToString());
+            seedCommand.Parameters.AddWithValue("$passdownDate", passdownDate.ToString("yyyy-MM-dd"));
+            seedCommand.Parameters.AddWithValue("$finalizedAt", new DateTimeOffset(2026, 8, 21, 10, 0, 0, TimeSpan.Zero).ToString("O"));
+            seedCommand.Parameters.AddWithValue("$schemaVersion", FinalizedPassdownSnapshot.CurrentSchemaVersion);
+            seedCommand.Parameters.AddWithValue("$snapshotJson", "{}");
+            seedCommand.Parameters.AddWithValue("$contentHash", "pre-9c-hash");
+            seedCommand.Parameters.AddWithValue("$origin", FinalizationOrigin.Scheduled.ToString());
+            seedCommand.ExecuteNonQuery();
+        }
+
+        var upgradedVersion = new MigrationRunner(connectionFactory, AllMigrations, NullLogger<MigrationRunner>.Instance).Run();
+        Assert.Equal(CurrentSchemaVersion, upgradedVersion);
+
+        var reloaded = await new SqliteFinalizedPassdownRepository(connectionFactory).GetByDateAsync(passdownDate);
+        Assert.NotNull(reloaded);
+        Assert.False(reloaded!.HasFrozenPdf);
+        Assert.Null(reloaded.PdfBytes);
+        Assert.Equal("pre-9c-hash", reloaded.ContentHash);
     }
 
     private static long CountRows(SqliteConnection connection, string tableName)

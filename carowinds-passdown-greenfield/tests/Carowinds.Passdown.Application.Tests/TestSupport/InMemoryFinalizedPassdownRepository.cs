@@ -27,7 +27,7 @@ internal sealed class InMemoryFinalizedPassdownRepository : IFinalizedPassdownRe
     {
         IReadOnlyList<FinalizedPassdownSummary> summaries = _records.Values
             .OrderByDescending(r => r.PassdownDate)
-            .Select(r => new FinalizedPassdownSummary(r.PassdownDate, r.FinalizedAtUtc, r.Origin))
+            .Select(r => new FinalizedPassdownSummary(r.PassdownDate, r.FinalizedAtUtc, r.Origin, r.HasFrozenPdf, r.PdfSizeBytes))
             .ToList();
 
         return Task.FromResult(summaries);

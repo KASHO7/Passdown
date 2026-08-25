@@ -115,6 +115,7 @@ public partial class App : global::Avalonia.Application
             new Migration0006CreateAssociateDraftsTable(),
             new Migration0007CreateManagerDraftsTable(),
             new Migration0008CreateFinalizedPassdownsTable(),
+            new Migration0009AddFinalizedPassdownPdfColumns(),
         ]);
         services.AddSingleton<MigrationRunner>();
 
@@ -137,6 +138,11 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IFinalizedPassdownRepository, SqliteFinalizedPassdownRepository>();
         services.AddSingleton<IFinalizedPassdownSnapshotBuilder, FinalizedPassdownSnapshotBuilder>();
         services.AddSingleton<IFinalizedPassdownFinalizationService, FinalizedPassdownFinalizationService>();
+
+        // Phase 9C Part V: the smallest seam a future History UI needs to retrieve an already-frozen
+        // PDF. Reads IFinalizedPassdownRepository only — never invokes the PDF generator. Not wired
+        // to any UI yet.
+        services.AddSingleton<IFinalizedPassdownPdfRetrievalService, FinalizedPassdownPdfRetrievalService>();
 
         // Phase 9B: the 6:00 AM automatic finalization coordinator, invoked by ScheduledRefreshHost
         // and StartupCatchUpRefresh before either ever runs a source refresh.

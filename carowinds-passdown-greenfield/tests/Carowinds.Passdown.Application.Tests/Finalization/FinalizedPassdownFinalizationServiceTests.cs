@@ -108,4 +108,39 @@ public class FinalizedPassdownFinalizationServiceTests
         Assert.Equal(1, builder.CallCount);
         Assert.Equal(Date, builder.ReceivedWorkspaces[0].OperatingDate);
     }
+
+    // Phase 9C Part H/M: the frozen PDF bytes/hash/size are populated as part of the same insert.
+    [Fact]
+    public async Task FinalizeAsync_PopulatesPdfBytesHashAndSize()
+    {
+        var (service, _, _) = CreateService();
+
+        var result = await service.FinalizeAsync(Date, Workspace(Date), FinalizationOrigin.Manual, FinalizedAt);
+
+        var finalized = result.FinalizedPassdown;
+        Assert.True(finalized.HasFrozenPdf);
+        Assert.NotNull(finalized.PdfBytes);
+        Assert.NotEmpty(finalized.PdfBytes!);
+        Assert.Equal(finalized.PdfBytes!.LongLength, finalized.PdfSizeBytes);
+        Assert.Matches("^[0-9a-f]{64}$", finalized.PdfSha256);
+
+        var expectedPdfHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(finalized.PdfBytes));
+        Assert.Equal(expectedPdfHash, finalized.PdfSha256);
+    }
+
+    // Phase 9C Part I: a frozen-PDF generation failure must fail finalization outright — no row
+    // written — exactly like a snapshot build/serialize/hash failure already did in Phase 9A.
+    [Fact]
+    public async Task FinalizeAsync_PdfGenerationFails_NoRecordIsWritten()
+    {
+        var repository = new InMemoryFinalizedPassdownRepository();
+        var builder = new FakeFinalizedPassdownSnapshotBuilder { ThrowOnBuildProjection = true };
+        var service = new FinalizedPassdownFinalizationService(repository, builder);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.FinalizeAsync(Date, Workspace(Date), FinalizationOrigin.Manual, FinalizedAt));
+
+        Assert.Null(await repository.GetByDateAsync(Date));
+        Assert.Empty(await repository.ListAsync());
+    }
 }

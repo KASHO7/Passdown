@@ -11,15 +11,48 @@ namespace Carowinds.Passdown.Documents.Associate;
 /// workspace; it only 1:1-maps <see cref="AssociatePassdownDocumentModel"/>'s already-frozen display
 /// values onto the Application-layer <see cref="FinalizedPassdownSnapshot"/> shape, so Application/
 /// Infrastructure code that persists/serializes snapshots never needs to reference this project.
+/// <see cref="BuildProjection"/> (spec Phase 9C Part E) additionally owns generating the frozen PDF,
+/// building <see cref="AssociatePassdownDocumentModel"/> exactly once and deriving both outputs from
+/// that single instance, so the snapshot and the PDF can never disagree with each other either.
 /// </summary>
-public sealed class FinalizedPassdownSnapshotBuilder : IFinalizedPassdownSnapshotBuilder
+public sealed class FinalizedPassdownSnapshotBuilder(IAssociatePassdownPdfGenerator? pdfGenerator = null) : IFinalizedPassdownSnapshotBuilder
 {
+    private readonly IAssociatePassdownPdfGenerator _pdfGenerator = pdfGenerator ?? new AssociatePassdownPdfGenerator();
+
     public FinalizedPassdownSnapshot Build(AssociateWorkspace workspace, DateTimeOffset asOf)
     {
         ArgumentNullException.ThrowIfNull(workspace);
 
         var model = AssociatePassdownDocumentModelBuilder.Build(workspace, asOf);
+        return MapSnapshot(model);
+    }
 
+    public FinalizedPassdownProjection BuildProjection(AssociateWorkspace workspace, DateTimeOffset asOf)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+
+        // Built exactly once (spec Part E) — both the snapshot mapping below and the PDF generation
+        // read from this same in-memory model, never from two independent builds of the workspace.
+        var model = AssociatePassdownDocumentModelBuilder.Build(workspace, asOf);
+        var snapshot = MapSnapshot(model);
+
+        var pdfResult = _pdfGenerator.Generate(model);
+        if (pdfResult.Status != AssociatePassdownPdfStatus.Generated || pdfResult.PdfBytes is not { } pdfBytes)
+        {
+            // Part I: a PDF-generation failure must fail finalization outright rather than produce a
+            // snapshot-only row — the caller (FinalizedPassdownFinalizationService) writes nothing
+            // when this throws.
+            var reasons = pdfResult.Preflight.Reasons.Count > 0
+                ? string.Join(" ", pdfResult.Preflight.Reasons)
+                : $"PDF generation status was {pdfResult.Status}.";
+            throw new InvalidOperationException($"Cannot finalize {workspace.OperatingDate:yyyy-MM-dd}: the frozen PDF could not be generated. {reasons}");
+        }
+
+        return new FinalizedPassdownProjection(snapshot, pdfBytes);
+    }
+
+    private static FinalizedPassdownSnapshot MapSnapshot(AssociatePassdownDocumentModel model)
+    {
         if (model.OperatingDate is not { } passdownDate)
         {
             throw new InvalidOperationException(

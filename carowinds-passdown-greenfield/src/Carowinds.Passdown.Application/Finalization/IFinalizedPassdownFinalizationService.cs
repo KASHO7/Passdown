@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Persistence;
 
@@ -61,21 +62,29 @@ public sealed class FinalizedPassdownFinalizationService(
             return new FinalizationResult(FinalizationOutcome.AlreadyFinalized, existing);
         }
 
-        // Building/serializing/hashing all happen before any write (Part O: "if serialization/hash
-        // creation fails: no row should be inserted"). A single subsequent AddAsync is itself one
-        // atomic SQLite statement, so there is no window where a partially-written row could exist.
-        var snapshot = snapshotBuilder.Build(workspace, finalizedAt);
-        var snapshotJson = FinalizedPassdownSnapshotSerializer.Serialize(snapshot);
+        // Building the projection (document model built once, per Part E), serializing, and hashing
+        // all happen before any write (Part H/O: "if serialization/hash creation fails: no row should
+        // be inserted"). This now includes PDF generation (Part I): if BuildProjection throws because
+        // the frozen PDF cannot be generated for this workspace, this method throws too, and no row is
+        // ever inserted — indistinguishable to callers from any other pre-insert failure. A single
+        // subsequent AddAsync is itself one atomic SQLite statement, so there is no window where a
+        // partially-written row (e.g. snapshot without its PDF) could exist.
+        var projection = snapshotBuilder.BuildProjection(workspace, finalizedAt);
+        var snapshotJson = FinalizedPassdownSnapshotSerializer.Serialize(projection.Snapshot);
         var contentHash = FinalizedPassdownSnapshotSerializer.ComputeContentHash(snapshotJson);
+        var pdfHash = Convert.ToHexStringLower(SHA256.HashData(projection.PdfBytes));
 
         var finalizedPassdown = new FinalizedPassdown(
             Guid.NewGuid(),
             passdownDate,
             finalizedAt,
-            snapshot.SchemaVersion,
+            projection.Snapshot.SchemaVersion,
             snapshotJson,
             contentHash,
-            origin);
+            origin,
+            projection.PdfBytes,
+            pdfHash,
+            projection.PdfBytes.LongLength);
 
         await repository.AddAsync(finalizedPassdown, cancellationToken).ConfigureAwait(false);
         return new FinalizationResult(FinalizationOutcome.Created, finalizedPassdown);

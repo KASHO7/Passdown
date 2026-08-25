@@ -1,12 +1,14 @@
 # Phase 9 — Passdown History & Finalization
 
 Phase 9A established the immutable finalized-passdown domain/storage
-model. Phase 9B (this document's current scope) adds *automatic*
-finalization: a 6:00 AM Eastern cutoff, evaluated by the existing
-scheduled task and the interactive startup catch-up path, always before
-either ever runs a source refresh. Neither phase builds the History UI,
-implements revisions, or touches the Manager workflow. Phase 9B does not
-add frozen PDF storage — see "PDF storage" below.
+model. Phase 9B added *automatic* finalization: a 6:00 AM Eastern
+cutoff, evaluated by the existing scheduled task and the interactive
+startup catch-up path, always before either ever runs a source refresh.
+Phase 9C (this document's current scope) extends every finalized record
+to also freeze the exact PDF bytes an associate would have printed at
+finalization time, atomically alongside the structured snapshot. No
+phase through 9C builds the History UI, implements revisions, or
+touches the Manager workflow.
 
 ## Concept
 
@@ -20,7 +22,7 @@ finalization                     <- Phase 9A model; Phase 9B automates it
 immutable historical snapshot
     |
     v
-frozen PDF                       <- Phase 9C
+frozen PDF                       <- Phase 9C (this document)
     |
     v
 Passdown History UI              <- Phase 9D
@@ -131,14 +133,27 @@ SnapshotSchemaVersion       int
 SnapshotJson                string (opaque to persistence)
 ContentHash                  string (lowercase hex SHA-256)
 Origin                       FinalizationOrigin (Scheduled | Manual | Recovery)
+PdfBytes                     byte[]? (Phase 9C — the exact frozen PDF; null for a pre-9C row)
+PdfSha256                    string? (Phase 9C — lowercase hex SHA-256 of PdfBytes)
+PdfSizeBytes                 long? (Phase 9C — byte length of PdfBytes)
 ```
 
 No `FinalizedBy`/account identity — accounts are Phase 16+, and there is
 no authenticated user to record yet.
 
-`FinalizedPassdownSummary` (`PassdownDate`, `FinalizedAtUtc`, `Origin`) is
-a lightweight read model for a future History UI listing, without
-deserializing every row's `SnapshotJson`.
+`FinalizedPassdown.HasFrozenPdf` (`PdfBytes is not null`) is the one
+place code should check "does this record have an exact historical PDF"
+rather than testing `PdfBytes`/`PdfSha256`/`PdfSizeBytes` individually —
+all three are always populated together or all three are null (Phase
+9A/9B rows predating this migration; see "Frozen PDF storage" below).
+
+`FinalizedPassdownSummary` (`PassdownDate`, `FinalizedAtUtc`, `Origin`,
+`HasFrozenPdf`, `PdfSizeBytes`) is a lightweight read model for a future
+History UI listing, without deserializing every row's `SnapshotJson` or
+loading its `PdfBytes` blob — `SqliteFinalizedPassdownRepository.ListAsync`
+deliberately selects `pdf_sha256`/`pdf_size_bytes` only, never
+`pdf_bytes`, so listing every finalized passdown never materializes
+every row's PDF into memory at once.
 
 ## Repository contract
 
@@ -155,25 +170,118 @@ support/database concern, not a normal application operation.
 
 `Migration0008CreateFinalizedPassdownsTable` (schema version 8) creates
 `finalized_passdowns` and its unique index. It does not touch any
-existing migration or table. No PDF blob column yet — see below.
+existing migration or table.
 
-## PDF storage — deferred to Phase 9C
+`Migration0009AddFinalizedPassdownPdfColumns` (schema version 9, Phase
+9C) additively adds `pdf_bytes BLOB`, `pdf_sha256 TEXT`, and
+`pdf_size_bytes INTEGER` — all nullable at the database level, and it
+does not rewrite Migration0008. Nullability is deliberate: a
+development/test database can already contain Phase 9A/9B rows created
+before this migration existed, and those rows must keep applying
+cleanly with `NULL` PDF columns rather than the migration attempting (and
+failing) to backfill an "exact" historical PDF it cannot honestly
+produce — see "Frozen PDF storage" below.
 
-Phase 9A does not add a `pdf_bytes`/`pdf_blob` column. The migration's
-fields match the spec's minimal example (`id`, `passdown_date`,
-`finalized_at_utc`, `snapshot_schema_version`, `snapshot_json`,
-`content_hash`, `origin`) with nothing extra. Reasoning: a later
-`ALTER TABLE finalized_passdowns ADD COLUMN pdf_bytes BLOB NULL` is
-itself a safe, additive, forward-only migration under the existing
-`MigrationRunner` model, and adding the column now would leave an unused
-nullable column with no code ever writing or testing it through Phase
-9A/9B. The table's identity (`Id`/`PassdownDate`/unique index) does not
-change when that column arrives, so nothing about Phase 9A's design is
-invalidated by deferring it. SQLite BLOB storage is expected to be more
-than adequate for a one-page PDF (tens to low hundreds of KB) stored
-alongside its own metadata/snapshot row, transactionally, rather than an
-external file path that can silently disappear if a folder moves — that
-remains the intended Phase 9C direction.
+## Frozen PDF storage (Phase 9C)
+
+Every finalized passdown now freezes two things atomically in the same
+row: the structured `SnapshotJson` (Phase 9A) and the exact PDF bytes an
+associate would have received at finalization time (`PdfBytes`).
+Storage is a SQLite `BLOB` on the same `finalized_passdowns` row, not an
+external file path — this keeps one historical record fully
+self-contained (portable app-folder moves and DB backups carry the PDF
+with its snapshot automatically), and lets the insert stay one atomic
+SQLite statement (see "Transactional creation" below). Measured
+representative sizes for the current one-page Associate Passdown layout
+are roughly 40–55 KB (`FinalizedPassdownProjectionTests`, Documents.Tests)
+— comfortably within SQLite's BLOB capabilities; at a rough 50 KB/day,
+365 finalized passdowns is on the order of 18 MB/year, so no
+archival/compression scheme is needed at this scale.
+
+**Same canonical state for both outputs.** `IFinalizedPassdownSnapshotBuilder.BuildProjection`
+(`Application/Finalization/IFinalizedPassdownSnapshotBuilder.cs`) is the
+one seam that produces both frozen artifacts. Its Documents
+implementation (`FinalizedPassdownSnapshotBuilder.BuildProjection`)
+builds `AssociatePassdownDocumentModelBuilder.Build(workspace, asOf)`
+**exactly once**, then derives the snapshot (the same mapping `Build`
+already used) and the PDF (`IAssociatePassdownPdfGenerator.Generate`)
+from that single in-memory model — never two independent
+recompositions of the workspace that could theoretically diverge. The
+existing single-`Build`-returning-just-a-snapshot method is unchanged
+and still covered by `FinalizedPassdownSnapshotBuilderTests`.
+
+**PDF generator has no filesystem/dialog dependency.**
+`AssociatePassdownPdfGenerator.Generate(AssociatePassdownDocumentModel)`
+already returned in-memory bytes before Phase 9C (used by the existing
+Create-PDF-and-save flow via `AssociatePassdownPdfExportService`); Phase
+9C reuses that same method for finalization rather than adding a second
+generation path. Scheduled/catch-up finalization never opens a save
+dialog and never requires user interaction.
+
+**PDF hash/size.** `PdfSha256` is a lowercase-hex SHA-256 of the exact
+`PdfBytes` (same integrity/diagnostic-only convention as
+`ContentHash`/`FinalizedPassdownSnapshotSerializer.ComputeContentHash` —
+never used for security/authentication). `PdfSizeBytes` is
+`PdfBytes.LongLength`, stored alongside so history/diagnostics never
+need to re-measure the blob.
+
+**Transactional creation now includes the PDF.**
+`FinalizedPassdownFinalizationService.FinalizeAsync` calls
+`BuildProjection` (building the model, the snapshot, and the PDF),
+serializes the snapshot, computes both hashes, and only then constructs
+the complete `FinalizedPassdown` (all ten fields, PDF included) and
+calls `IFinalizedPassdownRepository.AddAsync` once. If building the
+model, generating the PDF, serializing, or hashing throws, nothing is
+written — a PDF-generation failure (e.g. content that cannot fit
+`AssociatePassdownPdfGenerator`'s strict one-page layout) is
+indistinguishable from any other pre-insert failure to every existing
+caller. This is exactly the same "everything in memory before the one
+`AddAsync`" guarantee Phase 9A established for the snapshot alone; Phase
+9C does not add a second write.
+
+**Failure still blocks scheduled refresh.** Because PDF generation now
+happens inside `FinalizeAsync`, a PDF-generation failure propagates out
+of `ScheduledPassdownFinalizer.FinalizeEligibleAsync` exactly like any
+other Phase 9A/9B failure already did, so `ScheduledRefreshHost`/
+`StartupCatchUpRefresh` still never proceed to a source refresh for that
+invocation (Phase 9B's ordering/failure-blocks-refresh behavior is
+unchanged — see `ScheduledRefreshHostTests.RunAsync_FinalizationThrows_ReturnsFatalFailureExitCode_AndNeverInvokesRefreshRunner`
+and `ScheduledPassdownFinalizerTests.FinalizeEligibleAsync_PdfGenerationFailsForEligibleDate_ThrowsAndWritesNoRecord`).
+
+**Pre-9C rows are never backfilled.** A row finalized before this
+migration has `PdfBytes`/`PdfSha256`/`PdfSizeBytes` all `null` and
+`HasFrozenPdf == false`. Nothing regenerates a PDF for it: doing so
+would use the *current* `AssociatePassdownPdfGenerator` styling and
+possibly-changed product/catalog data, so it would not be the exact
+historical PDF and must never be labeled as one (spec Part J). The
+repository reads such a row without error; only the read model's
+`HasFrozenPdf` distinguishes it from a complete post-9C row.
+
+**Repository/read-model shape.** `GetByDateAsync` returns the full row,
+PDF included — appropriate for the "one record" detail read a future
+History UI's "open this PDF" action needs. `ListAsync` never selects
+`pdf_bytes`, only `pdf_sha256`/`pdf_size_bytes`, keeping a full-history
+listing cheap regardless of how many rows exist.
+
+**PDF retrieval seam for Phase 9D.**
+`IFinalizedPassdownPdfRetrievalService.GetPdfAsync(passdownDate)`
+(`Application/Finalization/FinalizedPassdownPdfRetrieval.cs`) is the
+smallest operation a future History UI needs: it reads
+`IFinalizedPassdownRepository.GetByDateAsync` and returns `PdfBytes`,
+a suggested filename (`Carowinds-Passdown-yyyy-MM-dd.pdf`), and the
+hash/size — nothing else, and it depends on nothing that could generate
+a PDF (no `IAssociatePassdownPdfGenerator`/`IFinalizedPassdownSnapshotBuilder`
+reference exists on this type), so "retrieval never regenerates" is true
+by construction, not just by test coverage. Registered in DI
+(`App.axaml.cs`) but not wired to any UI yet.
+
+**Diagnostics stay sanitized.** `SqliteDatabaseDiagnosticsProvider`
+never queried `finalized_passdowns` before Phase 9C and still doesn't —
+it only reports `PRAGMA user_version`, file size, and WAL presence.
+`SqliteDatabaseDiagnosticsProviderTests` adds a regression test seeding a
+finalized row with a distinctive secret snapshot-note string and PDF
+marker bytes and asserting neither ever appears in the reported
+`DatabaseDiagnostics`.
 
 ## Automatic finalization (Phase 9B)
 
@@ -332,15 +440,16 @@ enough for Phase 9A.
 
 ## Transactional creation
 
-`FinalizedPassdownFinalizationService.FinalizeAsync` builds the snapshot,
-serializes it, and computes its content hash entirely in memory before
-ever calling `IFinalizedPassdownRepository.AddAsync`. If building,
-serializing, or hashing throws, no row is written. The subsequent
-`AddAsync` is a single `INSERT` statement, which SQLite itself commits
-atomically — there is no window in which a partially-written finalized
-row can exist. (Phase 9C's PDF blob is expected to become another column
-on the same single-row insert, not a second statement, preserving this
-guarantee.)
+`FinalizedPassdownFinalizationService.FinalizeAsync` builds the
+projection (document model built once — see "Frozen PDF storage"
+above), serializes the snapshot, and computes both the snapshot content
+hash and the PDF hash entirely in memory before ever calling
+`IFinalizedPassdownRepository.AddAsync`. If building the model,
+generating the PDF, serializing, or hashing throws, no row is written.
+The subsequent `AddAsync` is a single `INSERT` statement (now with the
+PDF columns included), which SQLite itself commits atomically — there is
+no window in which a partially-written finalized row (e.g. a snapshot
+with no PDF) can exist.
 
 ## Not implemented in Phase 9A (by design)
 
@@ -349,7 +458,7 @@ guarantee.)
   existing Phase 6C task/trigger rather than adding one.
 - The Passdown History UI/screen.
 - Reading a finalized snapshot back into any UI.
-- Frozen PDF storage (`pdf_bytes` column and the code that populates it).
+- Frozen PDF storage (`pdf_bytes` column and the code that populates it) — added in Phase 9C.
 - Revisions/version chains for a `PassdownDate` finalized more than once.
 - Any change to the Manager workflow.
 - Locking/read-only behavior for a finalized date's Associate draft — the
@@ -365,8 +474,24 @@ guarantee.)
   `Carowinds.Passdown.Desktop.exe --scheduled-refresh`,
   `FileScheduledRefreshLock`, and the existing 6:00 AM trigger unchanged.
 - Routing interactive "Check Online" through the scheduled finalizer.
-- Frozen PDF blob storage, revisions, History UI, and the Manager
-  workflow — same as Phase 9A, still deferred to Phase 9C/9D/later.
+- Frozen PDF blob storage — added in Phase 9C. Revisions, History UI, and
+  the Manager workflow are still deferred to Phase 9D/later.
+
+## Not implemented in Phase 9C (by design)
+
+- The Passdown History UI/screen — Phase 9D. `IFinalizedPassdownPdfRetrievalService`
+  exists as the retrieval seam Phase 9D will call, but nothing wires it
+  to any UI yet.
+- Revisions/version chains for a `PassdownDate` finalized more than once.
+- Manual finalization UI/command — `FinalizationOrigin.Manual` still has
+  no producer.
+- Any change to the Manager workflow.
+- Backfilling `PdfBytes` for pre-9C rows — deliberately never done; see
+  "Frozen PDF storage" above.
+- Any change to the 6:00 AM cutoff or the finalize-before-refresh
+  ordering Phase 9B established — Phase 9C only adds PDF generation
+  inside the existing `FinalizeAsync` call, it does not resequence
+  anything around it.
 
 ## Persistence additions (Phase 9B)
 
