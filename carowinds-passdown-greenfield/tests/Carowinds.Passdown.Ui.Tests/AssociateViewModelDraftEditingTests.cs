@@ -108,6 +108,44 @@ public class AssociateViewModelDraftEditingTests
         Assert.True(selection.IncludePromotions);
         Assert.True(selection.IncludeSeasonPasses);
         Assert.True(selection.IncludeAddOns);
+        Assert.True(selection.IncludeHauntedAttractions);
+    }
+
+    // Phase 8B: SCarowinds/Haunt behaves exactly like the other optional sections — defaults to
+    // included, and hiding it persists.
+    [Fact]
+    public async Task SCarowinds_Edit_PersistsToDraft()
+    {
+        var (viewModel, service, scheduler) = CreateViewModel();
+        await viewModel.PendingLoad;
+
+        Assert.True(viewModel.IncludeHauntedAttractions); // default before any edit.
+
+        viewModel.IncludeHauntedAttractions = false;
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        Assert.False(service.SaveCalls.Last().Draft.SectionSelection.IncludeHauntedAttractions);
+    }
+
+    // Phase 8B: reopening a saved date restores its SCarowinds/Haunt selection, matching every other
+    // optional section.
+    [Fact]
+    public async Task SCarowinds_SurvivesDateSwitchAndReload()
+    {
+        var (viewModel, _, scheduler) = CreateViewModel();
+        await viewModel.PendingLoad;
+
+        viewModel.IncludeHauntedAttractions = false;
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var otherDate = Today.AddDays(1);
+        viewModel.SelectedDate = otherDate;
+        await viewModel.PendingLoad;
+        viewModel.SelectedDate = Today;
+        await viewModel.PendingLoad;
+
+        Assert.False(viewModel.IncludeHauntedAttractions);
+        Assert.False(viewModel.Workspace!.Draft.SectionSelection.IncludeHauntedAttractions);
     }
 
     // Phase 8A: reopening a saved date restores its section selection.

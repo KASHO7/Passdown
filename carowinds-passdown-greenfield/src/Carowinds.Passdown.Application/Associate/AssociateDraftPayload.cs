@@ -15,9 +15,10 @@ public enum DailyFeatureType
 
 /// <summary>
 /// Which optional Passdown sections a supervisor has chosen to include (Phase 8A's Passdown
-/// Builder). Day of week, date, Park Hours, Attendance, Early Ride Time, and Daily Feature are
-/// mandatory and have no corresponding flag here — the Documents project's document-model builder
-/// always renders them regardless of this selection.
+/// Builder; <see cref="IncludeHauntedAttractions"/> added Phase 8B to correct a Phase 8A omission).
+/// Day of week, date, Park Hours, Attendance, Early Ride Time, and Daily Feature are mandatory and
+/// have no corresponding flag here — the Documents project's document-model builder always renders
+/// them regardless of this selection.
 /// </summary>
 public sealed record PassdownSectionSelection(
     bool IncludeDailyAdmission,
@@ -25,10 +26,11 @@ public sealed record PassdownSectionSelection(
     bool IncludePromotions,
     bool IncludeSeasonPasses,
     bool IncludeAddOns,
-    bool IncludeOperationalNotes)
+    bool IncludeOperationalNotes,
+    bool IncludeHauntedAttractions)
 {
     /// <summary>Every optional section included — the default for a new draft and for a schema-v1 draft migrated forward, matching what the PDF already rendered before Phase 8A existed.</summary>
-    public static PassdownSectionSelection AllIncluded { get; } = new(true, true, true, true, true, true);
+    public static PassdownSectionSelection AllIncluded { get; } = new(true, true, true, true, true, true, true);
 }
 
 /// <summary>Manual correction to the official park hours (spec §8.1/§8.2) — distinct from a private-buyout override, see <see cref="PrivateBuyoutOverride"/>.</summary>

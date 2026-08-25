@@ -534,9 +534,10 @@
 
             </Grid>
 
-            <!-- Passdown Builder section selection (Phase 8A): Day of week, Date, Park Hours,
-                 Attendance, Early Ride Time, and Daily Feature above always print and have no
-                 checkbox here — only these six sections can be independently shown/hidden. -->
+            <!-- Passdown Builder section selection (Phase 8A; SCarowinds/Haunt added Phase 8B): Day
+                 of week, Date, Park Hours, Attendance, Early Ride Time, and Daily Feature above
+                 always print and have no checkbox here — only these seven sections can be
+                 independently shown/hidden. -->
             <Border Classes="panel">
               <StackPanel Spacing="8">
                 <TextBlock Text="Include in Passdown" Classes="sectionTitle" Margin="0,0,0,4" />
@@ -553,6 +554,8 @@
                             Margin="0,0,24,4" AutomationProperties.Name="Include Season Passes in the Passdown" />
                   <CheckBox Content="Add-Ons" IsChecked="{Binding IncludeAddOns}"
                             Margin="0,0,24,4" AutomationProperties.Name="Include Add-Ons in the Passdown" />
+                  <CheckBox Content="SCarowinds / Haunt" IsChecked="{Binding IncludeHauntedAttractions}"
+                            Margin="0,0,24,4" AutomationProperties.Name="Include SCarowinds / Haunt in the Passdown" />
                   <CheckBox Content="Operational Notes" IsChecked="{Binding IncludeOperationalNotes}"
                             Margin="0,0,24,4" AutomationProperties.Name="Include Operational Notes in the Passdown" />
                 </WrapPanel>

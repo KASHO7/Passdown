@@ -48,8 +48,25 @@ public sealed record PdfProductRow(
     string? Qualifier,
     string? Notes);
 
+/// <summary>
+/// Phase 8B's presentation tier for one <see cref="PdfProductCategory"/> (spec Parts 3/5): which
+/// visual treatment the PDF gives it, from the associate's-eye view of "must remember quickly" down
+/// to "reference only". Purely a rendering decision — never persisted, never seen outside Documents.
+/// </summary>
+public enum PdfProductSectionTier
+{
+    /// <summary>Daily Admission / Fast Lane (spec Part 3 Level 3) — rendered as price tiles, one product's name and price immediately identifiable per tile.</summary>
+    KeySelling,
+
+    /// <summary>Promotions (spec Part 4) — rendered as promotional callout cards with the current price emphasized over any comparison price.</summary>
+    Promotional,
+
+    /// <summary>Season Passes, Add-Ons, SCarowinds/Haunt, and custom/internal entries (spec Part 5) — rendered as compact reference rows, more information-dense than the other two tiers.</summary>
+    Reference,
+}
+
 /// <summary>One product category section (spec §11.2's "grouped cleanly by category"). Only built when it has at least one included row — an empty category never appears (spec Part B/§11.2's "do not reserve empty space for hidden categories").</summary>
-public sealed record PdfProductCategory(string CategoryName, IReadOnlyList<PdfProductRow> Products);
+public sealed record PdfProductCategory(string CategoryName, PdfProductSectionTier Tier, IReadOnlyList<PdfProductRow> Products);
 
 /// <summary>
 /// The complete, print-ready content for one Associate Passdown PDF (spec §11.2) — everything

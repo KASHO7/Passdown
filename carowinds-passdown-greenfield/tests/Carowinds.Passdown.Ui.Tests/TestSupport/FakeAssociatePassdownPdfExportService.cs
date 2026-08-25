@@ -19,10 +19,10 @@ internal sealed class FakeAssociatePassdownPdfExportService : IAssociatePassdown
     public static AssociatePassdownPdfResult Generated() => new(
         AssociatePassdownPdfStatus.Generated,
         [1, 2, 3],
-        new AssociatePassdownPreflightResult(AssociatePassdownPreflightStatus.FitsOnePage, [], [], [], [], []));
+        new AssociatePassdownPreflightResult(AssociatePassdownPreflightStatus.FitsOnePage, []));
 
     public static AssociatePassdownPdfResult ValidationFailed() => new(
         AssociatePassdownPdfStatus.ValidationFailed,
         null,
-        new AssociatePassdownPreflightResult(AssociatePassdownPreflightStatus.MissingOperatingDate, ["An operating date is required."], [], [], [], []));
+        new AssociatePassdownPreflightResult(AssociatePassdownPreflightStatus.MissingOperatingDate, ["An operating date is required."]));
 }

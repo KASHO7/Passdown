@@ -123,7 +123,7 @@ public static class AssociatePassdownDocumentModelBuilder
         return new PdfDailyFeature(label, string.IsNullOrWhiteSpace(draft.DailyFeatureText) ? null : draft.DailyFeatureText.Trim());
     }
 
-    /// <summary>Spec Phase 8A: Park Hours/product-category-less content is unaffected by <see cref="PassdownSectionSelection"/> — only the six named optional categories can be hidden; every other category (e.g. Haunted Attractions) is unaffected by this phase and always included, matching current behavior.</summary>
+    /// <summary>Spec Phase 8A/8B: every product-bearing <see cref="SourceCategory"/> maps to its own <see cref="PassdownSectionSelection"/> flag; Phase 8B added <see cref="SourceCategory.HauntedAttractions"/> (SCarowinds/Haunt), correcting a Phase 8A omission that left it always included. <see cref="SourceCategory.ParkHours"/> never reaches here — it produces no <see cref="Application.Associate.AssociateProduct"/> rows — so the fallback below is unreachable in practice, kept only so a future category fails open rather than throwing.</summary>
     private static bool IsOptionalCategoryIncluded(SourceCategory category, PassdownSectionSelection selection) => category switch
     {
         SourceCategory.DatedAdmissionTickets => selection.IncludeDailyAdmission,
@@ -131,6 +131,7 @@ public static class AssociatePassdownDocumentModelBuilder
         SourceCategory.Promotions => selection.IncludePromotions,
         SourceCategory.SeasonPasses => selection.IncludeSeasonPasses,
         SourceCategory.AddOns => selection.IncludeAddOns,
+        SourceCategory.HauntedAttractions => selection.IncludeHauntedAttractions,
         _ => true,
     };
 
@@ -149,7 +150,7 @@ public static class AssociatePassdownDocumentModelBuilder
             var rows = group.Select(BuildOfficialRow).ToList();
             if (rows.Count > 0)
             {
-                categories.Add(new PdfProductCategory(PdfCategoryDisplayNames.For(group.Key), rows));
+                categories.Add(new PdfProductCategory(PdfCategoryDisplayNames.For(group.Key), TierFor(group.Key), rows));
             }
         }
 
@@ -160,11 +161,20 @@ public static class AssociatePassdownDocumentModelBuilder
 
         if (customRows.Count > 0)
         {
-            categories.Add(new PdfProductCategory(CustomProductCategoryName, customRows));
+            categories.Add(new PdfProductCategory(CustomProductCategoryName, PdfProductSectionTier.Reference, customRows));
         }
 
         return categories;
     }
+
+    /// <summary>Spec Parts 3/4/5's tier assignment — Daily Admission/Fast Lane are what an associate needs to remember quickly (Key Selling), Promotions get their own callout treatment, and everything else (Season Passes, Add-Ons, SCarowinds/Haunt) is reference-oriented and rendered compactly.</summary>
+    private static PdfProductSectionTier TierFor(SourceCategory category) => category switch
+    {
+        SourceCategory.DatedAdmissionTickets => PdfProductSectionTier.KeySelling,
+        SourceCategory.DatedFastLane => PdfProductSectionTier.KeySelling,
+        SourceCategory.Promotions => PdfProductSectionTier.Promotional,
+        _ => PdfProductSectionTier.Reference,
+    };
 
     private static PdfProductRow BuildOfficialRow(AssociateProduct product) => new(
         product.DisplayName,

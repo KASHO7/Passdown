@@ -1,15 +1,12 @@
 namespace Carowinds.Passdown.Documents.Associate;
 
-/// <summary>What actually happened when <see cref="IAssociatePassdownPdfGenerator.Generate"/> ran.</summary>
+/// <summary>What actually happened when <see cref="IAssociatePassdownPdfGenerator.Generate"/> ran. The Associate Passdown is a strict one-page document — there is no continuation-page outcome; content that would not fit on one page fails validation instead (see <see cref="ValidationFailed"/>).</summary>
 public enum AssociatePassdownPdfStatus
 {
     /// <summary>Rendered as exactly one Letter page.</summary>
     Generated,
 
-    /// <summary>Rendered as a page-one executive summary plus a labeled "Supporting Details" continuation page (spec §11.4) — content still fits, nothing was dropped or truncated.</summary>
-    GeneratedWithContinuationPage,
-
-    /// <summary>Generation did not run at all — see <see cref="Preflight"/> for why (spec Part G).</summary>
+    /// <summary>Generation did not run at all — see <see cref="Preflight"/> for why (spec Part G). Includes content that would not fit on one page (spec correction: refused rather than spilling to a second page).</summary>
     ValidationFailed,
 }
 

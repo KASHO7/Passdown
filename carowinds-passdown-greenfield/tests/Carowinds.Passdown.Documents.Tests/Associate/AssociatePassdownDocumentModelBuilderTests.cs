@@ -26,6 +26,7 @@ public sealed class AssociatePassdownDocumentModelBuilderTests
             SourceCategory.Promotions => PassdownSectionSelection.AllIncluded with { IncludePromotions = included },
             SourceCategory.SeasonPasses => PassdownSectionSelection.AllIncluded with { IncludeSeasonPasses = included },
             SourceCategory.AddOns => PassdownSectionSelection.AllIncluded with { IncludeAddOns = included },
+            SourceCategory.HauntedAttractions => PassdownSectionSelection.AllIncluded with { IncludeHauntedAttractions = included },
             _ => throw new ArgumentOutOfRangeException(nameof(category)),
         };
 
@@ -80,6 +81,31 @@ public sealed class AssociatePassdownDocumentModelBuilderTests
         Assert.False(HasCategory(Build(SourceCategory.AddOns, included: false), "Add-Ons"));
     }
 
+    // Phase 8B: corrects the Phase 8A omission that left SCarowinds/Haunt always included with no
+    // visibility flag of its own.
+    [Fact]
+    public void SCarowinds_CanBeHidden()
+    {
+        // NormalDay carries no Haunted Attractions products of its own; add one so hiding it is observable.
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        workspace = workspace with { Products = [.. workspace.Products, HauntedAttractionProduct()] };
+
+        var shown = AssociatePassdownDocumentModelBuilder.Build(
+            workspace with { Draft = workspace.Draft with { SectionSelection = PassdownSectionSelection.AllIncluded } }, GeneratedAt);
+        var hidden = AssociatePassdownDocumentModelBuilder.Build(
+            workspace with { Draft = workspace.Draft with { SectionSelection = PassdownSectionSelection.AllIncluded with { IncludeHauntedAttractions = false } } }, GeneratedAt);
+
+        Assert.True(HasCategory(shown, "SCarowinds"));
+        Assert.False(HasCategory(hidden, "SCarowinds"));
+    }
+
+    /// <summary>Phase 8B: SCarowinds defaults to included, matching every other optional section.</summary>
+    [Fact]
+    public void SCarowinds_DefaultsToIncluded()
+    {
+        Assert.True(PassdownSectionSelection.AllIncluded.IncludeHauntedAttractions);
+    }
+
     [Fact]
     public void OperationalNotes_CanBeHidden()
     {
@@ -98,7 +124,7 @@ public sealed class AssociatePassdownDocumentModelBuilderTests
     public void MandatoryContent_IsUnaffectedByAnySectionSelection()
     {
         var workspace = AssociateWorkspaceFixtures.NormalDay();
-        var allExcluded = new PassdownSectionSelection(false, false, false, false, false, false);
+        var allExcluded = new PassdownSectionSelection(false, false, false, false, false, false, false); // Daily Admission, Fast Lane, Promotions, Season Passes, Add-Ons, Operational Notes, SCarowinds.
         workspace = workspace with { Draft = workspace.Draft with { SectionSelection = allExcluded } };
 
         var model = AssociatePassdownDocumentModelBuilder.Build(workspace, GeneratedAt);
@@ -109,6 +135,21 @@ public sealed class AssociatePassdownDocumentModelBuilderTests
         Assert.True(model.EarlyRideTime.Enabled);
         Assert.True(model.DailyFeature.HasContent);
     }
+
+    private static AssociateProduct HauntedAttractionProduct() => new(
+        "catalog|haunted|test",
+        "Test Haunted Attraction",
+        SourceCategory.HauntedAttractions,
+        IsCustom: false,
+        OfficialPriceAmount: 15m,
+        OfficialDisplayPrice: null,
+        ComparisonPriceAmount: null,
+        PriceQualifier: null,
+        DateSpecific: false,
+        ApplicableDate: null,
+        Verification: AssociateVerificationInfo.NotCheckedYet,
+        IncludeOnPdf: true,
+        DisplayPriceOverride: null);
 
     private static AssociateProduct PromotionProduct() => new(
         "catalog|promo|test",

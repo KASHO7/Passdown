@@ -6,17 +6,33 @@ using QuestPDF.Infrastructure;
 namespace Carowinds.Passdown.Documents.Associate;
 
 /// <summary>
-/// QuestPDF-backed <see cref="IAssociatePassdownPdfGenerator"/> (spec Part H). No network, database,
-/// filesystem, or Desktop dependency — every value it prints comes from the
-/// <see cref="AssociatePassdownDocumentModel"/> passed in, so the same model always produces the
-/// same bytes. Layout follows spec §11.1/§11.2: US Letter portrait, black/white-safe (text, weight,
-/// and hairline borders only — no color-coded meaning), one page for normal content, a labeled
-/// "Supporting Details" continuation page for the spec §11.4 overflow case.
+/// QuestPDF-backed <see cref="IAssociatePassdownPdfGenerator"/> (spec Part H; Phase 8B redesign,
+/// corrected to a strict one-page document). No network, database, filesystem, or Desktop
+/// dependency — every value it prints comes from the <see cref="AssociatePassdownDocumentModel"/>
+/// passed in, so the same model always produces the same bytes. Layout follows spec §11.1/§11.2 and
+/// Phase 8B Parts 2-11: US Letter portrait, black/white-safe (text, weight, and hairline borders
+/// only — no color-coded meaning), exactly one page — there is no continuation page for this
+/// document type; <see cref="IAssociatePassdownPreflightService"/> refuses generation outright
+/// rather than ever producing a second page. Content is organized by visual hierarchy tier (spec
+/// Part 3) rather than as a flat table: an operational summary strip, a distinct Daily Feature
+/// panel, Key Selling price tiles, Promotion callout cards, compact adaptive Reference columns, and
+/// an Operational Notes panel — each its own small reusable composer method below rather than one
+/// large method of arbitrary coordinates (spec Part 11).
 /// </summary>
 public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerator
 {
     private const float PageMargin = 32f;
-    private const float BoxSpacing = 6f;
+    private const float BoxSpacing = 8f;
+
+    // Caps applied only when a single tile/card would otherwise stretch across the entire row width
+    // (spec Phase 8B polish Parts 1/2) — centered instead, so a lone product/promotion reads as a
+    // deliberately wider, balanced card rather than an awkwardly empty full-width box. Two or more
+    // items per row instead divide the full row width evenly via QuestPDF <c>RelativeItem</c>, with
+    // no cap, matching the spec's 50/50 and thirds mockups.
+    private const float KeySellingSingleTileMaxWidth = 230f;
+    private const float PromotionalSingleCardMaxWidth = 300f;
+    private const float KeySellingTileGap = 8f;
+    private const float PromotionalCardGap = 10f;
 
     // Carowinds Admissions Operations brand palette (blue/white/red retheme), matching the Desktop
     // shell's tokens (App.axaml) so the on-screen draft and the printed handoff read as the same
@@ -27,9 +43,11 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
     private static readonly string HeaderMutedColor = "#B9CBDE";
     private static readonly string PanelFill = "#F2F6FB";
     private static readonly string BandFill = "#E4EDF7";
+    private static readonly string FeatureFill = "#EAF0F8";
     private static readonly string HairlineColor = "#B7C1CC";
     private static readonly string ComparePriceColor = "#5C6673";
     private static readonly string MutedTextColor = "#57626D";
+    private static readonly string DealPriceColor = "#9A2A2A";
 
     private readonly IAssociatePassdownPreflightService _preflightService;
 
@@ -58,74 +76,59 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        var document = Document.Create(container =>
-        {
-            container.Page(page => ComposePrimaryPage(page, model, preflight, cancellationToken));
-
-            if (preflight.NeedsContinuationPage)
-            {
-                container.Page(page => ComposeContinuationPage(page, model, preflight, cancellationToken));
-            }
-        });
-
+        // Exactly one page, always — no continuation page exists for this document type (spec
+        // correction). Preflight above is a cheap estimate-based gate; it is not a QuestPDF layout
+        // pass, so it can in principle be wrong. QuestPDF itself does not throw when a single
+        // Page()'s content overflows it — it silently continues drawing onto additional physical
+        // pages — so an estimate that was ever too generous would otherwise ship a multi-page PDF
+        // unnoticed. CountGeneratedPdfPages below is the actual safety net: it verifies what was
+        // really produced and refuses to hand back more than one page under any circumstance.
+        var document = Document.Create(container => container.Page(page => ComposePage(page, model, cancellationToken)));
         var bytes = document.GeneratePdf();
 
-        var status = preflight.NeedsContinuationPage
-            ? AssociatePassdownPdfStatus.GeneratedWithContinuationPage
-            : AssociatePassdownPdfStatus.Generated;
+        if (CountGeneratedPdfPages(bytes) > 1)
+        {
+            var overflowPreflight = new AssociatePassdownPreflightResult(
+                AssociatePassdownPreflightStatus.ExceedsOnePage,
+                [AssociatePassdownPreflightService.ExceedsOnePageMessage]);
+            return new AssociatePassdownPdfResult(AssociatePassdownPdfStatus.ValidationFailed, null, overflowPreflight);
+        }
 
-        return new AssociatePassdownPdfResult(status, bytes, preflight);
+        return new AssociatePassdownPdfResult(AssociatePassdownPdfStatus.Generated, bytes, preflight);
     }
 
-    private static void ComposePrimaryPage(PageDescriptor page, AssociatePassdownDocumentModel model, AssociatePassdownPreflightResult preflight, CancellationToken cancellationToken)
+    /// <summary>
+    /// Reads the page count directly out of QuestPDF's own generated bytes rather than pulling in a
+    /// PDF-parsing library as a production dependency — safe to do only because this is trusted
+    /// output from our own well-formed writer (never an externally supplied PDF), whose page tree
+    /// root object always looks like <c>&lt;&lt;/Type /Pages ... /Count N&gt;&gt;</c> in
+    /// uncompressed object bytes. Falls back to trusting the estimate (1) if that shape is ever not
+    /// found, so a parsing quirk in this narrow safety net can never itself cause a spurious
+    /// rejection of an otherwise-valid one-page document.
+    /// </summary>
+    private static int CountGeneratedPdfPages(byte[] pdfBytes)
+    {
+        var text = System.Text.Encoding.Latin1.GetString(pdfBytes);
+        var match = System.Text.RegularExpressions.Regex.Match(text, @"/Type\s*/Pages\b.*?/Count\s+(\d+)", System.Text.RegularExpressions.RegexOptions.Singleline);
+        return match.Success ? int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) : 1;
+    }
+
+    private static void ComposePage(PageDescriptor page, AssociatePassdownDocumentModel model, CancellationToken cancellationToken)
     {
         ConfigurePage(page);
-        page.Header().Element(header => ComposeHeader(header, model, isContinuation: false));
+        page.Header().Element(header => ComposeHeader(header, model));
 
         page.Content().PaddingTop(6).Column(column =>
         {
             column.Spacing(BoxSpacing);
 
-            column.Item().Row(row =>
-            {
-                row.RelativeItem().Column(left =>
-                {
-                    left.Spacing(BoxSpacing);
-                    left.Item().Element(box => ComposeHoursBox(box, model));
-                    left.Item().Element(box => ComposeEarlyRideTimeBox(box, model));
-                });
-
-                row.ConstantItem(10);
-
-                row.RelativeItem().Column(right =>
-                {
-                    right.Spacing(BoxSpacing);
-                    right.Item().Element(box => ComposeAttendanceBox(box, model));
-                    right.Item().Element(box => ComposeDailyFeatureBox(box, model));
-                });
-            });
+            ComposeOperationalSummary(column, model);
+            ComposeDailyFeaturePanel(column, model);
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            ComposeProducts(column, preflight.PageOneProductCategories, "Products");
-            ComposeNotes(column, preflight.PageOneNotes, "Operational Notes");
-        });
-
-        page.Footer().Element(footer => ComposeFooter(footer, model));
-    }
-
-    private static void ComposeContinuationPage(PageDescriptor page, AssociatePassdownDocumentModel model, AssociatePassdownPreflightResult preflight, CancellationToken cancellationToken)
-    {
-        ConfigurePage(page);
-        page.Header().Element(header => ComposeHeader(header, model, isContinuation: true));
-
-        page.Content().PaddingTop(6).Column(column =>
-        {
-            column.Spacing(BoxSpacing);
-            cancellationToken.ThrowIfCancellationRequested();
-
-            ComposeProducts(column, preflight.ContinuationProductCategories, "Additional Products");
-            ComposeNotes(column, preflight.ContinuationNotes, "Additional Operational Notes");
+            ComposeProductTiers(column, model.ProductCategories);
+            ComposeNotes(column, model.OperationalNotes, "Operational Notes");
         });
 
         page.Footer().Element(footer => ComposeFooter(footer, model));
@@ -138,11 +141,13 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
         page.DefaultTextStyle(x => x.FontSize(10).FontColor(Colors.Black));
     }
 
-    private static void ComposeHeader(IContainer container, AssociatePassdownDocumentModel model, bool isContinuation)
+    private static void ComposeHeader(IContainer container, AssociatePassdownDocumentModel model)
     {
         // A full-width brand band (spec Part L visual-polish pass) rather than a thin accent bar on
         // white — this is the strongest single identity element on the page, mirroring the Desktop
-        // shell's own brand band (MainWindow.axaml).
+        // shell's own brand band (MainWindow.axaml). Day/date carries the strongest single piece of
+        // Level 1 information (spec Phase 8B Part 3), so it sits large and right-aligned here rather
+        // than buried in the body.
         container.Background(BrandDarkColor).PaddingHorizontal(14).PaddingVertical(10).Column(column =>
         {
             column.Item().Row(row =>
@@ -166,11 +171,6 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
                         .LetterSpacing(0.12f).FontColor(HeaderMutedColor);
 
                     left.Item().PaddingTop(2).Text("Associate Passdown").FontSize(21).Bold().FontColor(Colors.White);
-
-                    if (isContinuation)
-                    {
-                        left.Item().Text("Supporting Details").FontSize(9.5f).Italic().FontColor(HeaderMutedColor);
-                    }
                 });
 
                 row.ConstantItem(170).AlignRight().AlignMiddle()
@@ -190,6 +190,27 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
             column.Spacing(2);
             column.Item().Text(heading).Bold().FontSize(8.5f).LetterSpacing(0.06f).FontColor(AccentColor);
             content(column);
+        });
+    }
+
+    /// <summary>
+    /// Level 1 (spec Phase 8B Part 3): Park Hours, Attendance, and Early Ride Time as three visually
+    /// distinct blocks in a single row — the highest-priority "what's happening today" content,
+    /// immediately recognizable when an associate picks up the sheet. Park Hours gets the widest
+    /// share since it carries the most content (headline, badge, gate times, verification/buyout
+    /// text). The Daily Feature (Level 2) deliberately does not share this row — it gets its own
+    /// full-width panel below (<see cref="ComposeDailyFeaturePanel"/>) so operational facts and the
+    /// "personality" content stay visually distinct, matching Part 3's tier separation.
+    /// </summary>
+    private static void ComposeOperationalSummary(ColumnDescriptor column, AssociatePassdownDocumentModel model)
+    {
+        column.Item().Row(row =>
+        {
+            row.RelativeItem(3).Element(box => ComposeHoursBox(box, model));
+            row.ConstantItem(8);
+            row.RelativeItem(2).Element(box => ComposeAttendanceBox(box, model));
+            row.ConstantItem(8);
+            row.RelativeItem(2).Element(box => ComposeEarlyRideTimeBox(box, model));
         });
     }
 
@@ -228,12 +249,12 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
             column.Item().PaddingTop(1).Text(text =>
             {
                 text.Span("Projected  ").FontSize(9).FontColor(MutedTextColor);
-                text.Span(FormatCount(model.Attendance.ProjectedAttendance)).FontSize(11).Bold();
+                text.Span(FormatCount(model.Attendance.ProjectedAttendance)).FontSize(13).Bold();
             });
             column.Item().Text(text =>
             {
                 text.Span("Pre-solds  ").FontSize(9).FontColor(MutedTextColor);
-                text.Span(FormatCount(model.Attendance.PreSolds)).FontSize(11).Bold();
+                text.Span(FormatCount(model.Attendance.PreSolds)).FontSize(13).Bold();
             });
         });
 
@@ -257,28 +278,43 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
             }
         });
 
-    // Spec Phase 8A: the panel heading is the selected Daily Feature type itself (e.g. "USELESS FACT
-    // OF THE DAY") rather than a generic "Daily Feature" label — falls back to that generic heading
-    // only when no type has been chosen yet.
-    private static void ComposeDailyFeatureBox(IContainer container, AssociatePassdownDocumentModel model) =>
-        ComposePanel(container, model.DailyFeature.TypeLabel?.ToUpperInvariant() ?? "DAILY FEATURE", column =>
+    /// <summary>
+    /// Level 2 (spec Phase 8B Part 3): the Daily Feature gets its own full-width panel, visually
+    /// distinct from the operational-fact strip above and the product/reference content below — a
+    /// thick accent rule and a heading that IS the selected type (e.g. "USELESS FACT OF THE DAY")
+    /// rather than a generic "Daily Feature" label give the page a moment of personality without any
+    /// emoji or icon (spec's explicit "do not use" list).
+    /// </summary>
+    private static void ComposeDailyFeaturePanel(ColumnDescriptor column, AssociatePassdownDocumentModel model)
+    {
+        column.Item().Background(FeatureFill).BorderLeft(4).BorderColor(AccentColor)
+            .Padding(9).Column(inner =>
         {
+            inner.Spacing(2);
+            inner.Item().Text(model.DailyFeature.TypeLabel?.ToUpperInvariant() ?? "DAILY FEATURE")
+                .Bold().FontSize(10).LetterSpacing(0.06f).FontColor(BrandDarkColor);
+
             if (!model.DailyFeature.HasContent)
             {
-                column.Item().Text("Not entered.").FontSize(9.5f).Italic().FontColor(MutedTextColor);
+                inner.Item().Text("Not entered.").FontSize(10).Italic().FontColor(MutedTextColor);
                 return;
             }
 
             if (model.DailyFeature.Text is { } text)
             {
-                column.Item().Text(text).FontSize(9.5f);
+                inner.Item().PaddingTop(2).Text(text).FontSize(11.5f).Italic();
             }
         });
+    }
 
-    // Rows/notes are laid out in their own tightly-spaced inner column, added to the outer content
-    // column as a single item — the outer column's spacing is meant to separate major sections
-    // (chrome / products / notes), not add a gap before every individual product row or note line.
-    private static void ComposeProducts(ColumnDescriptor column, IReadOnlyList<PdfProductCategory> categories, string heading)
+    /// <summary>
+    /// Groups the already-ordered categories by <see cref="PdfProductSectionTier"/> and renders each
+    /// tier with its own reusable composer (spec Part 11) — Key Selling tiles, Promotion callout
+    /// cards, then compact Reference columns. A tier with no categories renders nothing at all
+    /// (spec Part 7's "zero layout space when hidden"), so hiding every category in a tier collapses
+    /// that entire block rather than leaving a labeled gap.
+    /// </summary>
+    private static void ComposeProductTiers(ColumnDescriptor column, IReadOnlyList<PdfProductCategory> categories)
     {
         if (categories.Count == 0)
         {
@@ -287,57 +323,244 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
 
         column.Item().Column(section =>
         {
-            section.Spacing(1);
-            SectionHeading(section, heading);
+            section.Spacing(6);
 
-            foreach (var category in categories)
+            var keySelling = categories.Where(c => c.Tier == PdfProductSectionTier.KeySelling).ToList();
+            var promotional = categories.Where(c => c.Tier == PdfProductSectionTier.Promotional).ToList();
+            var reference = categories.Where(c => c.Tier == PdfProductSectionTier.Reference).ToList();
+
+            ComposeKeySellingSection(section, keySelling);
+            ComposePromotionalSection(section, promotional);
+            ComposeReferenceSection(section, reference);
+        });
+    }
+
+    /// <summary>
+    /// Level 3 (spec Part 3): Daily Admission / Fast Lane as a labeled band per category followed by
+    /// an adaptive grid of price tiles (spec Phase 8B polish Part 1) — a product's name and price are
+    /// each their own visual unit instead of one column in a spreadsheet-style row, and the price
+    /// itself carries far more weight (spec's "$59" example) than the product name above it. The
+    /// grid responds to how many products the category actually has (<see cref="AdaptiveGridLayout"/>)
+    /// rather than using a fixed tile width, so a category with only one or two products fills the
+    /// row width appropriately instead of leaving most of it empty.
+    /// </summary>
+    private static void ComposeKeySellingSection(ColumnDescriptor column, IReadOnlyList<PdfProductCategory> categories)
+    {
+        if (categories.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var category in categories)
+        {
+            column.Item().Column(section =>
             {
-                // A tinted rate-sheet-style band rather than a bare bold label, matching the
-                // Desktop shell's category band treatment (AssociateView.axaml "categoryBand").
-                section.Item().PaddingTop(4).Background(BandFill).PaddingHorizontal(4).PaddingVertical(2)
-                    .Text(category.CategoryName.ToUpperInvariant()).Bold().FontSize(8.5f).LetterSpacing(0.05f).FontColor(AccentColor);
+                section.Spacing(3);
+                CategoryBand(section, category.CategoryName);
 
-                foreach (var product in category.Products)
+                section.Item().Column(grid =>
                 {
-                    section.Item().PaddingBottom(1).BorderBottom(0.6f).BorderColor(HairlineColor).Row(row =>
+                    grid.Spacing(6);
+                    ComposeAdaptiveGrid(grid, category.Products, KeySellingTileGap, KeySellingSingleTileMaxWidth, ComposePriceTile);
+                });
+            });
+        }
+    }
+
+    /// <summary>
+    /// Renders <paramref name="items"/> as rows of evenly-divided cards, row size chosen by
+    /// <see cref="AdaptiveGridLayout"/> for the collection's total count (spec Phase 8B polish Parts
+    /// 1/2). A row with two or more items divides the full row width between them via QuestPDF
+    /// <c>RelativeItem</c> — no fixed card width, so the cards always use the space actually
+    /// available. A row left with exactly one item (whether the whole collection is a singleton, or
+    /// it is the trailing remainder of a larger one) is centered and width-capped instead of
+    /// stretched edge-to-edge, per the spec's explicit "do not stretch a tiny amount of content into
+    /// an awkward giant card" guidance.
+    /// </summary>
+    private static void ComposeAdaptiveGrid(
+        ColumnDescriptor column,
+        IReadOnlyList<PdfProductRow> items,
+        float gap,
+        float singleItemMaxWidth,
+        Action<IContainer, PdfProductRow> composeItem)
+    {
+        var itemsPerRow = AdaptiveGridLayout.ItemsPerRow(items.Count);
+
+        foreach (var row in items.Chunk(itemsPerRow))
+        {
+            if (row.Length == 1)
+            {
+                column.Item().AlignCenter().MaxWidth(singleItemMaxWidth).Element(el => composeItem(el, row[0]));
+                continue;
+            }
+
+            column.Item().Row(rowDescriptor =>
+            {
+                for (var i = 0; i < row.Length; i++)
+                {
+                    if (i > 0)
                     {
-                        row.RelativeItem(3).Column(nameColumn =>
-                        {
-                            nameColumn.Item().Text(product.DisplayName).FontSize(9.5f);
-                            if (product.Notes is { } notes)
-                            {
-                                nameColumn.Item().Text(notes).FontSize(8).Italic().FontColor(MutedTextColor);
-                            }
-                        });
+                        rowDescriptor.ConstantItem(gap);
+                    }
 
-                        row.ConstantItem(60).AlignRight().Text(product.EffectivePriceText ?? "-").FontSize(9.5f).Bold().FontColor(AccentColor);
-
-                        // Comparison price gets a strikethrough (spec §11.1 "do not rely on
-                        // colored backgrounds to convey meaning" / Part 5 "typography... not
-                        // color alone") in addition to its "was" prefix, so it still reads
-                        // clearly as a superseded price under strict grayscale conversion.
-                        row.RelativeItem(2).AlignRight().Text(text =>
-                        {
-                            if (product.ComparisonPriceText is { } comparison)
-                            {
-                                text.Span("was ").FontSize(8).FontColor(ComparePriceColor);
-                                text.Span(comparison).FontSize(8).FontColor(ComparePriceColor).Strikethrough();
-                                if (product.Qualifier is { } withQualifier)
-                                {
-                                    text.Span($" - {withQualifier}").FontSize(8).FontColor(ComparePriceColor);
-                                }
-                            }
-                            else if (product.Qualifier is { } qualifierOnly)
-                            {
-                                text.Span(qualifierOnly).FontSize(8).FontColor(ComparePriceColor);
-                            }
-                        });
-                    });
+                    rowDescriptor.RelativeItem().Element(el => composeItem(el, row[i]));
                 }
+            });
+        }
+    }
+
+    private static void ComposePriceTile(IContainer container, PdfProductRow product) =>
+        container.Border(1).BorderColor(HairlineColor).Background(Colors.White).Padding(7).Column(tile =>
+        {
+            tile.Spacing(1);
+            tile.Item().Text(product.DisplayName).FontSize(8.5f).Bold().FontColor(MutedTextColor);
+            tile.Item().Text(product.EffectivePriceText ?? "-").FontSize(19).Bold().FontColor(AccentColor);
+
+            if (product.ComparisonPriceText is { } comparison)
+            {
+                tile.Item().Text(text =>
+                {
+                    text.Span("was ").FontSize(7.5f).FontColor(ComparePriceColor);
+                    text.Span(comparison).FontSize(7.5f).FontColor(ComparePriceColor).Strikethrough();
+                });
+            }
+            else if (product.Qualifier is { } qualifier)
+            {
+                tile.Item().Text(qualifier).FontSize(7.5f).FontColor(ComparePriceColor);
+            }
+        });
+
+    /// <summary>
+    /// Level 3/4 (spec Part 4): Promotions render as compact callout cards, distinct from ordinary
+    /// reference products. The current price is the strongest element on the card; any comparison
+    /// price is visibly de-emphasized (muted, struck through), and a source-backed qualifier is
+    /// preserved alongside — never fabricated, never dropped just because a comparison price also
+    /// exists (spec's "preserve qualifiers when the model contains legitimate qualifier information").
+    /// </summary>
+    private static void ComposePromotionalSection(ColumnDescriptor column, IReadOnlyList<PdfProductCategory> categories)
+    {
+        if (categories.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var category in categories)
+        {
+            column.Item().Column(section =>
+            {
+                section.Spacing(3);
+                CategoryBand(section, category.CategoryName);
+
+                section.Item().Column(grid =>
+                {
+                    grid.Spacing(8);
+                    ComposeAdaptiveGrid(grid, category.Products, PromotionalCardGap, PromotionalSingleCardMaxWidth, ComposePromotionCard);
+                });
+            });
+        }
+    }
+
+    private static void ComposePromotionCard(IContainer container, PdfProductRow product) =>
+        container.Border(1.25f).BorderColor(AccentColor).Background(PanelFill).Padding(8).Column(card =>
+        {
+            card.Spacing(1);
+            card.Item().Text(product.DisplayName).FontSize(9.5f).Bold().FontColor(BrandDarkColor);
+            card.Item().Text(product.EffectivePriceText ?? "-").FontSize(18).Bold().FontColor(DealPriceColor);
+
+            if (product.ComparisonPriceText is { } comparison)
+            {
+                card.Item().Text(text =>
+                {
+                    text.Span("was ").FontSize(8).FontColor(ComparePriceColor);
+                    text.Span(comparison).FontSize(8).FontColor(ComparePriceColor).Strikethrough();
+                });
+            }
+
+            if (product.Qualifier is { } qualifier)
+            {
+                card.Item().Text(qualifier).FontSize(7.5f).Italic().FontColor(MutedTextColor);
+            }
+        });
+
+    /// <summary>
+    /// Level 5 (spec Part 5/8): Season Passes, Add-Ons, SCarowinds/Haunt, and custom/internal entries
+    /// are reference-oriented rather than "remember this now" — rendered as compact single-line rows,
+    /// two categories sharing a row where the content allows (spec Part 8's adaptive layout). Pairing
+    /// is formed only from whichever reference categories are actually present, so hiding one never
+    /// leaves the other's half of the row empty — the remaining category simply takes the full row
+    /// width via <c>RelativeItem</c>, and an odd category out does the same on its own row.
+    /// </summary>
+    private static void ComposeReferenceSection(ColumnDescriptor column, IReadOnlyList<PdfProductCategory> categories)
+    {
+        if (categories.Count == 0)
+        {
+            return;
+        }
+
+        // A dedicated sub-column with its own (slightly more generous) spacing, distinct from the
+        // gap between tiers above — spec Phase 8B polish Part 5's "modest additional separation
+        // between rows of reference categories" so consecutive pairs read as clearly separate rows
+        // rather than running together.
+        column.Item().Column(section =>
+        {
+            section.Spacing(8);
+
+            foreach (var pair in categories.Chunk(2))
+            {
+                section.Item().Row(row =>
+                {
+                    for (var i = 0; i < pair.Length; i++)
+                    {
+                        if (i > 0)
+                        {
+                            row.ConstantItem(14);
+                        }
+
+                        row.RelativeItem().Element(el => ComposeReferenceColumn(el, pair[i]));
+                    }
+                });
             }
         });
     }
 
+    private static void ComposeReferenceColumn(IContainer container, PdfProductCategory category) =>
+        container.Column(section =>
+        {
+            section.Spacing(1);
+            CategoryBand(section, category.CategoryName);
+
+            foreach (var product in category.Products)
+            {
+                section.Item().PaddingTop(1).BorderBottom(0.6f).BorderColor(HairlineColor).Row(row =>
+                {
+                    row.RelativeItem().Text(product.DisplayName).FontSize(8.5f);
+                    row.ConstantItem(55).AlignRight().Text(product.EffectivePriceText ?? "-").FontSize(8.5f).Bold();
+                });
+
+                if (product.Notes is { } notes)
+                {
+                    section.Item().Text(notes).FontSize(7.5f).Italic().FontColor(MutedTextColor);
+                }
+
+                if (product.Qualifier is { } qualifier)
+                {
+                    section.Item().Text(qualifier).FontSize(7.5f).FontColor(ComparePriceColor);
+                }
+            }
+        });
+
+    private static void CategoryBand(ColumnDescriptor column, string categoryName) =>
+        // A tinted rate-sheet-style band rather than a bare bold label, matching the Desktop shell's
+        // category band treatment (AssociateView.axaml "categoryBand").
+        column.Item().Background(BandFill).PaddingHorizontal(4).PaddingVertical(2)
+            .Text(categoryName.ToUpperInvariant()).Bold().FontSize(8.5f).LetterSpacing(0.05f).FontColor(AccentColor);
+
+    /// <summary>
+    /// Level 6 (spec Part 6): Operational Notes get their own clearly bordered panel with a stronger
+    /// left accent than an ordinary hairline, so supervisor-provided notes read as distinctly
+    /// separated from product/reference content. Disappears entirely when hidden or empty
+    /// (spec Part 7) — no empty box.
+    /// </summary>
     private static void ComposeNotes(ColumnDescriptor column, IReadOnlyList<string> notes, string heading)
     {
         if (notes.Count == 0)
@@ -345,13 +568,15 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
             return;
         }
 
-        column.Item().Background(PanelFill).Border(1).BorderColor(HairlineColor).Padding(6).Column(section =>
+        column.Item().Background(PanelFill).BorderLeft(4).BorderColor(BrandDarkColor).Padding(8).Column(section =>
         {
-            section.Spacing(1);
-            SectionHeading(section, heading);
+            section.Spacing(3);
+            section.Item().Text(heading.ToUpperInvariant()).Bold().FontSize(10).LetterSpacing(0.04f).FontColor(BrandDarkColor);
 
             foreach (var note in notes)
             {
+                // A standard typographic bullet (spec Phase 8B polish Part 4) rather than a raw
+                // hyphen — not an emoji, no icon meaning attached to it.
                 section.Item().Row(row =>
                 {
                     row.ConstantItem(12).Text("•").FontSize(9.5f).Bold().FontColor(AccentColor);
@@ -360,9 +585,6 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
             }
         });
     }
-
-    private static void SectionHeading(ColumnDescriptor column, string title) =>
-        column.Item().PaddingBottom(2).BorderBottom(1.25f).BorderColor(AccentColor).Text(title.ToUpperInvariant()).Bold().FontSize(10).LetterSpacing(0.04f).FontColor(BrandDarkColor);
 
     private static void ComposeFooter(IContainer container, AssociatePassdownDocumentModel model)
     {
@@ -379,6 +601,9 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
 
             row.ConstantItem(6);
 
+            // Spec Phase 8B polish Part 6: no page-number indicator — the Associate Passdown is
+            // strictly one page, so "1 of 1" communicates nothing. The now-unused right side of the
+            // footer is deliberately left clean rather than filled with anything decorative.
             row.RelativeItem().Text(text =>
             {
                 text.Span($"Generated {model.GeneratedAtText}").FontSize(7.5f).FontColor(MutedTextColor);
@@ -387,13 +612,6 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
                 {
                     text.Span("  -  Some product pricing has not been recently verified.").FontSize(7.5f).FontColor(MutedTextColor);
                 }
-            });
-
-            row.ConstantItem(70).AlignRight().Text(text =>
-            {
-                text.CurrentPageNumber().FontSize(7.5f);
-                text.Span(" of ").FontSize(7.5f);
-                text.TotalPages().FontSize(7.5f);
             });
         });
     }

@@ -2,16 +2,23 @@ namespace Carowinds.Passdown.Documents.Associate;
 
 /// <summary>
 /// Whether <see cref="AssociatePassdownDocumentModel"/> content is expected to fit on one Letter
-/// page (spec Part E/F/G). Never itself a rendering result — see <see cref="AssociatePassdownPdfResult"/>
-/// for what was actually generated.
+/// page (spec Part E/F/G; Phase 8B-correction: the Associate Passdown is a strict one-page document
+/// with no continuation page — see <see cref="AssociatePassdownPdfGenerator"/>). Never itself a
+/// rendering result — see <see cref="AssociatePassdownPdfResult"/> for what was actually generated.
 /// </summary>
 public enum AssociatePassdownPreflightStatus
 {
     /// <summary>Everything fits on one page — the normal, expected case.</summary>
     FitsOnePage,
 
-    /// <summary>Content exceeds one page's estimated capacity (spec §11.4's "unusually busy days"). Nothing is dropped: <see cref="AssociatePassdownPreflightResult.ContinuationProductCategories"/>/<see cref="AssociatePassdownPreflightResult.ContinuationNotes"/> hold what spills to the "Supporting Details" continuation page.</summary>
-    RequiresContinuationPage,
+    /// <summary>
+    /// Content exceeds one page's estimated capacity. Unlike Phase 8B's original design, this is not
+    /// a "move the rest to a continuation page" signal — the Associate Passdown never has a second
+    /// page, so this means generation is refused outright (spec correction Part "Required behavior").
+    /// Nothing is silently dropped or shrunk to force a fit; the supervisor must shorten Operational
+    /// Notes or hide an optional section and try again.
+    /// </summary>
+    ExceedsOnePage,
 
     /// <summary>The model has no operating date — generation cannot proceed at all (spec Part G).</summary>
     MissingOperatingDate,
@@ -19,22 +26,18 @@ public enum AssociatePassdownPreflightStatus
 
 /// <summary>
 /// The outcome of checking an <see cref="AssociatePassdownDocumentModel"/> for one-page fit (spec
-/// Part F/G), including the exact page split <see cref="AssociatePassdownPdfGenerator"/> renders
-/// from — computed once here so the generator never re-derives its own, possibly inconsistent,
+/// Part F/G) — computed once here so the generator never re-derives its own, possibly inconsistent,
 /// notion of what fits. Deterministic and presentation-neutral: this is a line-count estimate over
-/// already-final display strings, never an actual QuestPDF layout pass.
+/// already-final display strings, never an actual QuestPDF layout pass. There is no page-one/
+/// continuation split here (Phase 8B-correction removed the continuation page entirely) — the
+/// generator either renders the model's full content on the single page, or nothing at all.
 /// </summary>
 public sealed record AssociatePassdownPreflightResult(
     AssociatePassdownPreflightStatus Status,
-    IReadOnlyList<string> Reasons,
-    IReadOnlyList<PdfProductCategory> PageOneProductCategories,
-    IReadOnlyList<string> PageOneNotes,
-    IReadOnlyList<PdfProductCategory> ContinuationProductCategories,
-    IReadOnlyList<string> ContinuationNotes)
+    IReadOnlyList<string> Reasons)
 {
-    public bool CanGenerate => Status != AssociatePassdownPreflightStatus.MissingOperatingDate;
-
-    public bool NeedsContinuationPage => Status == AssociatePassdownPreflightStatus.RequiresContinuationPage;
+    /// <summary>True only when the content is expected to render as exactly one page — <see cref="AssociatePassdownPdfGenerator"/> refuses to generate anything otherwise (spec correction: never a second page).</summary>
+    public bool CanGenerate => Status == AssociatePassdownPreflightStatus.FitsOnePage;
 }
 
 public interface IAssociatePassdownPreflightService
@@ -44,17 +47,34 @@ public interface IAssociatePassdownPreflightService
 
 /// <summary>
 /// Line-budget based one-page fit estimate (spec Part F/G). The budget constants below are tuned
-/// against real rendered output (Phase 4E's visual sample-PDF review) rather than derived from font
-/// metrics — this class intentionally stays a cheap, deterministic estimate rather than an actual
-/// QuestPDF layout pass, so preflight can run instantly and independent of the PDF engine.
+/// against real rendered output (visual sample-PDF review, verified with actual QuestPDF page
+/// counts) rather than derived from font metrics — this class intentionally stays a cheap,
+/// deterministic estimate rather than an actual QuestPDF layout pass, so preflight can run instantly
+/// and independent of the PDF engine. Its job is strictly binary: can this content safely render on
+/// exactly one page, yes or no — it no longer decides what would move to a continuation page,
+/// because there is no continuation page.
 /// </summary>
 public sealed class AssociatePassdownPreflightService : IAssociatePassdownPreflightService
 {
-    /// <summary>Estimated printable body lines available on one Letter page beneath the fixed header/hours/attendance/ERT/Daily Fun block, tuned so the associate/dense fixtures in Documents.Tests render as exactly one real QuestPDF page.</summary>
-    private const int TotalBodyLineBudget = 46;
+    /// <summary>Estimated printable body lines available on one Letter page beneath the fixed header/hours/attendance/ERT/Daily Feature block, tuned so the associate/dense fixtures in Documents.Tests render as exactly one real QuestPDF page.</summary>
+    private const int TotalBodyLineBudget = 55;
 
     private const int WrapCharsPerLine = 95;
     private const int ProductNoteWrapCharsPerLine = 70;
+
+    /// <summary>Estimated line-equivalent height of one row of Key Selling price tiles (spec Part 3) — row *count* comes from the shared <see cref="AdaptiveGridLayout"/> (so preflight and the generator can never disagree about how many rows a given product count produces), but the per-row height stays a preflight-only estimate, tuned against real rendered output same as <see cref="TotalBodyLineBudget"/>.</summary>
+    private const int KeySellingRowLines = 4;
+
+    /// <summary>Same idea as <see cref="KeySellingRowLines"/> but for Promotions' taller callout cards (spec Part 4).</summary>
+    private const int PromotionalRowLines = 5;
+
+    /// <summary>
+    /// Shared with <see cref="AssociatePassdownPdfGenerator"/>'s post-generation page-count safety
+    /// net, so both the fast estimate-based rejection and the rare actual-overflow rejection report
+    /// the same actionable reason.
+    /// </summary>
+    internal const string ExceedsOnePageMessage =
+        "The Associate Passdown cannot fit on one page. Shorten Operational Notes, reduce the number of included products, or hide an optional section, then try again.";
 
     public AssociatePassdownPreflightResult Evaluate(AssociatePassdownDocumentModel model)
     {
@@ -64,49 +84,16 @@ public sealed class AssociatePassdownPreflightService : IAssociatePassdownPrefli
         {
             return new AssociatePassdownPreflightResult(
                 AssociatePassdownPreflightStatus.MissingOperatingDate,
-                ["An operating date is required to generate the Associate Passdown PDF."],
-                [], [], [], []);
+                ["An operating date is required to generate the Associate Passdown PDF."]);
         }
 
         var remaining = TotalBodyLineBudget - EstimateFixedLines(model);
+        remaining -= EstimateProductLines(model.ProductCategories);
+        remaining -= EstimateNotesLines(model.OperationalNotes);
 
-        var (productsFit, pageOneCategories, continuationCategories, remainingAfterProducts) = SplitProducts(model.ProductCategories, remaining);
-
-        List<string> pageOneNotes;
-        List<string> continuationNotes;
-        bool notesFit;
-
-        if (!productsFit)
-        {
-            // Products alone already exceeded the page — notes (which print after products, spec
-            // §11.2) have no room left and move to the continuation page in full.
-            pageOneNotes = [];
-            continuationNotes = model.OperationalNotes.ToList();
-            notesFit = model.OperationalNotes.Count == 0;
-        }
-        else
-        {
-            (notesFit, pageOneNotes, continuationNotes) = SplitNotes(model.OperationalNotes, remainingAfterProducts);
-        }
-
-        if (productsFit && notesFit)
-        {
-            return new AssociatePassdownPreflightResult(
-                AssociatePassdownPreflightStatus.FitsOnePage,
-                [],
-                model.ProductCategories,
-                model.OperationalNotes,
-                [],
-                []);
-        }
-
-        return new AssociatePassdownPreflightResult(
-            AssociatePassdownPreflightStatus.RequiresContinuationPage,
-            ["Product and/or operational-notes content exceeds one page. Additional items are printed on a Supporting Details continuation page."],
-            pageOneCategories,
-            pageOneNotes,
-            continuationCategories,
-            continuationNotes);
+        return remaining >= 0
+            ? new AssociatePassdownPreflightResult(AssociatePassdownPreflightStatus.FitsOnePage, [])
+            : new AssociatePassdownPreflightResult(AssociatePassdownPreflightStatus.ExceedsOnePage, [ExceedsOnePageMessage]);
     }
 
     private static int EstimateFixedLines(AssociatePassdownDocumentModel model)
@@ -136,74 +123,50 @@ public sealed class AssociatePassdownPreflightService : IAssociatePassdownPrefli
         return lines;
     }
 
-    private static (bool Fits, List<PdfProductCategory> PageOne, List<PdfProductCategory> Continuation, int RemainingBudget) SplitProducts(
-        IReadOnlyList<PdfProductCategory> categories, int budget)
+    /// <summary>
+    /// Total estimated line-equivalent cost of every product category (spec Parts 3/4/5). Key
+    /// Selling/Promotional categories render as tile/card grids rather than one row per product, so
+    /// their cost is estimated per grid row (<see cref="EstimateGridCategoryLines"/>) rather than per
+    /// item; Reference categories are still a compact one-line-per-item list.
+    /// </summary>
+    private static int EstimateProductLines(IReadOnlyList<PdfProductCategory> categories)
     {
-        var remaining = budget;
-        if (categories.Count > 0)
+        var total = 0;
+
+        foreach (var category in categories)
         {
-            remaining -= 1; // "Products" section heading
+            total += IsGridTier(category.Tier)
+                ? EstimateGridCategoryLines(category)
+                : 1 + category.Products.Sum(product => 1 + EstimateWrappedLines(product.Notes, ProductNoteWrapCharsPerLine));
         }
 
-        for (var categoryIndex = 0; categoryIndex < categories.Count; categoryIndex++)
-        {
-            var category = categories[categoryIndex];
-
-            if (remaining <= 0)
-            {
-                return (false, categories.Take(categoryIndex).ToList(), categories.Skip(categoryIndex).ToList(), remaining);
-            }
-
-            remaining -= 1; // category heading line
-
-            for (var rowIndex = 0; rowIndex < category.Products.Count; rowIndex++)
-            {
-                var rowLines = 1 + EstimateWrappedLines(category.Products[rowIndex].Notes, ProductNoteWrapCharsPerLine);
-                if (remaining < rowLines)
-                {
-                    var pageOne = categories.Take(categoryIndex).ToList();
-                    var continuation = categories.Skip(categoryIndex + 1).ToList();
-
-                    if (rowIndex > 0)
-                    {
-                        pageOne.Add(category with { Products = category.Products.Take(rowIndex).ToList() });
-                        continuation.Insert(0, category with { Products = category.Products.Skip(rowIndex).ToList() });
-                    }
-                    else
-                    {
-                        continuation.Insert(0, category);
-                    }
-
-                    return (false, pageOne, continuation, remaining);
-                }
-
-                remaining -= rowLines;
-            }
-        }
-
-        return (true, categories.ToList(), [], remaining);
+        return total;
     }
 
-    private static (bool Fits, List<string> PageOne, List<string> Continuation) SplitNotes(IReadOnlyList<string> notes, int budget)
+    private static bool IsGridTier(PdfProductSectionTier tier) =>
+        tier is PdfProductSectionTier.KeySelling or PdfProductSectionTier.Promotional;
+
+    private static int EstimateGridCategoryLines(PdfProductCategory category)
     {
-        var remaining = budget;
-        if (notes.Count > 0)
+        var rowLines = category.Tier switch
         {
-            remaining -= 1; // "Operational Notes" heading
+            PdfProductSectionTier.KeySelling => KeySellingRowLines,
+            PdfProductSectionTier.Promotional => PromotionalRowLines,
+            _ => throw new ArgumentOutOfRangeException(nameof(category), category.Tier, "Not a grid tier."),
+        };
+
+        var rows = AdaptiveGridLayout.RowCount(category.Products.Count);
+        return 1 + (rows * rowLines); // +1 for the category heading/band line.
+    }
+
+    private static int EstimateNotesLines(IReadOnlyList<string> notes)
+    {
+        if (notes.Count == 0)
+        {
+            return 0;
         }
 
-        for (var noteIndex = 0; noteIndex < notes.Count; noteIndex++)
-        {
-            var noteLines = Math.Max(1, EstimateWrappedLines(notes[noteIndex], WrapCharsPerLine));
-            if (remaining < noteLines)
-            {
-                return (false, notes.Take(noteIndex).ToList(), notes.Skip(noteIndex).ToList());
-            }
-
-            remaining -= noteLines;
-        }
-
-        return (true, notes.ToList(), []);
+        return 1 + notes.Sum(note => Math.Max(1, EstimateWrappedLines(note, WrapCharsPerLine))); // +1 for the "Operational Notes" heading.
     }
 
     private static int EstimateWrappedLines(string? text, int charsPerLine) =>

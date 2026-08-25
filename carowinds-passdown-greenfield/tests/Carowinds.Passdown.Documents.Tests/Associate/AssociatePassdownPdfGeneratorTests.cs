@@ -49,6 +49,194 @@ public sealed class AssociatePassdownPdfGeneratorTests
         yield return [(Func<AssociateWorkspace>)AssociateWorkspaceFixtures.DenseDay];
         yield return [(Func<AssociateWorkspace>)AssociateWorkspaceFixtures.PrivateBuyoutDay];
         yield return [(Func<AssociateWorkspace>)AssociateWorkspaceFixtures.SparseDay];
+        yield return [(Func<AssociateWorkspace>)AssociateWorkspaceFixtures.MinimalValid];
+    }
+
+    // Spec correction: the Associate Passdown never has a continuation page, however sections are
+    // hidden — every hidden-section combination below must still render as exactly one real page.
+    [Theory]
+    [MemberData(nameof(HiddenSectionCombinationFixtures))]
+    public void HiddenSectionCombinations_RenderExactlyOnePage(PassdownSectionSelection selection)
+    {
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        workspace = workspace with { Draft = workspace.Draft with { SectionSelection = selection } };
+
+        var result = Generator.Generate(BuildModel(workspace));
+
+        Assert.Equal(AssociatePassdownPdfStatus.Generated, result.Status);
+        Assert.Equal(AssociatePassdownPreflightStatus.FitsOnePage, result.Preflight.Status);
+        Assert.Equal(1, PdfInspector.CountPages(result.PdfBytes!));
+    }
+
+    public static IEnumerable<object[]> HiddenSectionCombinationFixtures()
+    {
+        yield return [new PassdownSectionSelection(false, false, false, false, false, false, false)]; // every optional section hidden.
+        yield return [new PassdownSectionSelection(true, false, false, false, false, false, false)]; // only Daily Admission visible.
+        yield return [new PassdownSectionSelection(false, true, false, false, false, false, false)]; // only Fast Lane visible.
+        yield return [new PassdownSectionSelection(false, false, false, false, false, true, false)]; // only Operational Notes visible.
+        yield return [PassdownSectionSelection.AllIncluded with { IncludePromotions = false }];
+        yield return [PassdownSectionSelection.AllIncluded with { IncludeSeasonPasses = false, IncludeAddOns = false }];
+        yield return [PassdownSectionSelection.AllIncluded with { IncludeHauntedAttractions = false }];
+        yield return [PassdownSectionSelection.AllIncluded with { IncludeOperationalNotes = false }];
+    }
+
+    // Spec Phase 8B polish Part 1: the Key Selling tile grid adapts to how many products a category
+    // has (1, 2, 3, and 4+ each use a different row arrangement — see AdaptiveGridLayout) rather than
+    // a fixed tile width. Every arrangement must still generate successfully as one page, and every
+    // product's name and price must still appear regardless of how many share the row.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(7)]
+    public void KeySellingSection_AnyProductCount_RendersSuccessfullyAsOnePage(int productCount)
+    {
+        var workspace = AssociateWorkspaceFixtures.MinimalValid() with
+        {
+            Products = KeySellingProducts(productCount),
+        };
+
+        var result = Generator.Generate(BuildModel(workspace));
+
+        Assert.Equal(AssociatePassdownPdfStatus.Generated, result.Status);
+        Assert.Equal(1, PdfInspector.CountPages(result.PdfBytes!));
+
+        var text = PdfInspector.ExtractAllText(result.PdfBytes!);
+        for (var i = 1; i <= productCount; i++)
+        {
+            Assert.Contains($"Ticket {i}", text);
+            Assert.Contains($"${40 + i}.99", text);
+        }
+    }
+
+    // Spec Phase 8B polish Part 2: Promotion callout cards adapt the same way — 1 promotion should
+    // no longer be stranded as a narrow card, 2 split roughly in half, 3 roughly in thirds. Preserve
+    // the current price/comparison-price/qualifier hierarchy regardless of count.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void PromotionalSection_AnyPromotionCount_RendersSuccessfullyAsOnePage(int promotionCount)
+    {
+        var workspace = AssociateWorkspaceFixtures.MinimalValid() with
+        {
+            Products = PromotionProducts(promotionCount),
+        };
+
+        var result = Generator.Generate(BuildModel(workspace));
+
+        Assert.Equal(AssociatePassdownPdfStatus.Generated, result.Status);
+        Assert.Equal(1, PdfInspector.CountPages(result.PdfBytes!));
+
+        var text = PdfInspector.ExtractAllText(result.PdfBytes!);
+        for (var i = 1; i <= promotionCount; i++)
+        {
+            Assert.Contains($"Promo {i}", text);
+            Assert.Contains($"${20 + i}.00", text);
+            Assert.Contains($"${60 + i}.00", text); // comparison ("was") price.
+            Assert.Contains("Online only", text); // qualifier, preserved for every card.
+        }
+    }
+
+    private static List<AssociateProduct> KeySellingProducts(int count) =>
+        Enumerable.Range(1, count).Select(i => new AssociateProduct(
+            $"dated|DatedAdmissionTickets|t{i}",
+            $"Ticket {i}",
+            SourceCategory.DatedAdmissionTickets,
+            IsCustom: false,
+            OfficialPriceAmount: 40m + i + 0.99m,
+            OfficialDisplayPrice: null,
+            ComparisonPriceAmount: null,
+            PriceQualifier: null,
+            DateSpecific: true,
+            ApplicableDate: new DateOnly(2026, 8, 21),
+            Verification: AssociateVerificationInfo.NotCheckedYet,
+            IncludeOnPdf: true,
+            DisplayPriceOverride: null)).ToList();
+
+    private static List<AssociateProduct> PromotionProducts(int count) =>
+        Enumerable.Range(1, count).Select(i => new AssociateProduct(
+            $"catalog|promo|p{i}",
+            $"Promo {i}",
+            SourceCategory.Promotions,
+            IsCustom: false,
+            OfficialPriceAmount: 20m + i,
+            OfficialDisplayPrice: null,
+            ComparisonPriceAmount: 60m + i,
+            PriceQualifier: "Online only",
+            DateSpecific: false,
+            ApplicableDate: null,
+            Verification: AssociateVerificationInfo.NotCheckedYet,
+            IncludeOnPdf: true,
+            DisplayPriceOverride: null)).ToList();
+
+    // Long but realistic Operational Notes (spec: a supervisor writing several full sentences, not a
+    // pathological stress test) must still fit on one page.
+    [Fact]
+    public void LongButReasonableOperationalNotes_RenderExactlyOnePage()
+    {
+        var workspace = AssociateWorkspaceFixtures.NormalDay() with
+        {
+            Draft = AssociateWorkspaceFixtures.NormalDay().Draft with
+            {
+                OperationalNotes =
+                [
+                    "Fury 325 closed for scheduled maintenance until approximately 11 AM; direct guests to Intimidator or Copperhead Strike in the meantime.",
+                    "Extra staffing scheduled at North Gate ahead of a school group of roughly 200 students arriving at 9:15 AM.",
+                    "Guest Services has been relocated temporarily to the Carolina Harbor breezeway while the main building undergoes repairs.",
+                    "Reminder: associates should direct all season pass processing questions to the front plaza tent today only.",
+                ],
+            },
+        };
+
+        var result = Generator.Generate(BuildModel(workspace));
+
+        Assert.Equal(AssociatePassdownPdfStatus.Generated, result.Status);
+        Assert.Equal(AssociatePassdownPreflightStatus.FitsOnePage, result.Preflight.Status);
+        Assert.Equal(1, PdfInspector.CountPages(result.PdfBytes!));
+
+        // These notes are long enough to visually wrap across two lines in the rendered panel.
+        // PdfPig's naive text extraction does not insert a space at a QuestPDF-internal line-wrap
+        // boundary (the two lines are separate glyph runs with no space glyph between them), so an
+        // exact or whitespace-normalized substring match would spuriously fail even though every
+        // word rendered correctly and in order. Stripping whitespace entirely from both sides
+        // sidesteps that extraction quirk while still proving no word/character was dropped.
+        var text = RemoveWhitespace(PdfInspector.ExtractAllText(result.PdfBytes!));
+        foreach (var note in workspace.Draft.OperationalNotes)
+        {
+            Assert.Contains(RemoveWhitespace(note), text);
+        }
+    }
+
+    private static string RemoveWhitespace(string value) => new(value.Where(c => !char.IsWhiteSpace(c)).ToArray());
+
+    // Spec correction: a realistic heavy day still renders every included product and note in full
+    // on the single page — nothing is silently dropped or truncated to force a one-page fit.
+    [Fact]
+    public void DenseDay_RendersEveryProductAndNote_OnTheSinglePage()
+    {
+        var workspace = AssociateWorkspaceFixtures.DenseDay();
+        var model = BuildModel(workspace);
+
+        var result = Generator.Generate(model);
+
+        Assert.Equal(1, PdfInspector.CountPages(result.PdfBytes!));
+
+        var text = PdfInspector.ExtractAllText(result.PdfBytes!);
+        foreach (var category in model.ProductCategories)
+        {
+            foreach (var product in category.Products)
+            {
+                Assert.Contains(product.DisplayName, text);
+            }
+        }
+
+        foreach (var note in model.OperationalNotes)
+        {
+            Assert.Contains(note, text);
+        }
     }
 
     // 3. Operating date appears.
@@ -282,40 +470,48 @@ public sealed class AssociatePassdownPdfGeneratorTests
         Assert.DoesNotContain("PRODUCTS", text);
     }
 
-    // 24. Excessive content follows the explicit overflow behavior: nothing is dropped, a labeled continuation page appears.
+    // Spec correction: the Associate Passdown never has a second page. Content that would not fit on
+    // one page is refused by preflight — with a useful, actionable reason — rather than spilling to
+    // a continuation page.
     [Fact]
-    public void ExcessiveContent_SpillsToLabeledContinuationPage()
+    public void ExcessiveContent_FailsPreflightRatherThanGeneratingASecondPage()
     {
         var workspace = AssociateWorkspaceFixtures.ExcessiveDay();
         var model = BuildModel(workspace);
 
         var result = Generator.Generate(model);
 
-        Assert.Equal(AssociatePassdownPdfStatus.GeneratedWithContinuationPage, result.Status);
-        Assert.Equal(AssociatePassdownPreflightStatus.RequiresContinuationPage, result.Preflight.Status);
-        Assert.Equal(2, PdfInspector.CountPages(result.PdfBytes!));
+        Assert.Equal(AssociatePassdownPdfStatus.ValidationFailed, result.Status);
+        Assert.Null(result.PdfBytes);
+        Assert.Equal(AssociatePassdownPreflightStatus.ExceedsOnePage, result.Preflight.Status);
+        Assert.NotEmpty(result.Preflight.Reasons);
+        Assert.Contains(result.Preflight.Reasons, reason => reason.Contains("one page", StringComparison.OrdinalIgnoreCase));
+    }
 
-        var page2Text = PdfInspector.ExtractPageText(result.PdfBytes!, 2);
-        Assert.Contains("Supporting Details", page2Text);
-
-        // Nothing is dropped: every included product row is present somewhere across both pages.
-        var fullText = PdfInspector.ExtractAllText(result.PdfBytes!);
-        foreach (var category in model.ProductCategories)
+    // No Associate Passdown generation path can ever produce more than one physical page: a
+    // successful generation is always exactly one page (asserted throughout this file via
+    // PdfInspector.CountPages), and a too-large model fails validation instead of rendering at all.
+    [Fact]
+    public void SuccessfulGeneration_NeverProducesMoreThanOnePage()
+    {
+        foreach (var fixture in new Func<AssociateWorkspace>[]
         {
-            foreach (var product in category.Products)
-            {
-                Assert.Contains(product.DisplayName, fullText);
-            }
+            AssociateWorkspaceFixtures.MinimalValid,
+            AssociateWorkspaceFixtures.SparseDay,
+            AssociateWorkspaceFixtures.NormalDay,
+            AssociateWorkspaceFixtures.DenseDay,
+            AssociateWorkspaceFixtures.PrivateBuyoutDay,
+        })
+        {
+            var result = Generator.Generate(BuildModel(fixture()));
+
+            Assert.Equal(AssociatePassdownPdfStatus.Generated, result.Status);
+            Assert.Equal(1, PdfInspector.CountPages(result.PdfBytes!));
         }
 
-        foreach (var note in model.OperationalNotes)
-        {
-            Assert.Contains(note, fullText);
-        }
-
-        var pageOneCount = result.Preflight.PageOneProductCategories.Sum(c => c.Products.Count);
-        var continuationCount = result.Preflight.ContinuationProductCategories.Sum(c => c.Products.Count);
-        Assert.Equal(model.TotalProductCount, pageOneCount + continuationCount);
+        var excessiveResult = Generator.Generate(BuildModel(AssociateWorkspaceFixtures.ExcessiveDay()));
+        Assert.Equal(AssociatePassdownPdfStatus.ValidationFailed, excessiveResult.Status);
+        Assert.Null(excessiveResult.PdfBytes);
     }
 
     // 25. PDF begins with valid PDF bytes.
@@ -360,6 +556,33 @@ public sealed class AssociatePassdownPdfGeneratorTests
         Assert.Contains("DAILY ADMISSION", text); // category heading; every other included optional section is unaffected.
     }
 
+    // Phase 8B: correcting the Phase 8A omission — hiding SCarowinds/Haunt removes it from the
+    // generated PDF and consumes no space, matching every other optional section.
+    [Fact]
+    public void ExcludedSCarowinds_DoesNotAppearInGeneratedPdf()
+    {
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        var hauntedProduct = workspace.Products[0] with
+        {
+            ProductIdentity = "dated|HauntedAttractions|scaretest",
+            DisplayName = "SCarowinds Haunted House",
+            Category = SourceCategory.HauntedAttractions,
+        };
+        workspace = workspace with { Products = [.. workspace.Products, hauntedProduct] };
+
+        var shownText = GenerateText(BuildModel(workspace with
+        {
+            Draft = workspace.Draft with { SectionSelection = PassdownSectionSelection.AllIncluded },
+        }));
+        Assert.Contains("SCarowinds Haunted House", shownText);
+
+        var hiddenText = GenerateText(BuildModel(workspace with
+        {
+            Draft = workspace.Draft with { SectionSelection = PassdownSectionSelection.AllIncluded with { IncludeHauntedAttractions = false } },
+        }));
+        Assert.DoesNotContain("SCarowinds Haunted House", hiddenText);
+    }
+
     // Phase 8A: excluding Operational Notes means the section prints nothing at all, not an empty box.
     [Fact]
     public void ExcludedOperationalNotes_DoesNotAppearInGeneratedPdf()
@@ -386,7 +609,7 @@ public sealed class AssociatePassdownPdfGeneratorTests
         {
             Draft = workspace.Draft with
             {
-                SectionSelection = new PassdownSectionSelection(false, false, false, false, false, false),
+                SectionSelection = new PassdownSectionSelection(false, false, false, false, false, false, false),
             },
         };
 

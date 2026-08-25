@@ -209,6 +209,9 @@ public partial class AssociateViewModel : ViewModelBase
     public partial bool IncludeAddOns { get; set; } = true;
 
     [ObservableProperty]
+    public partial bool IncludeHauntedAttractions { get; set; } = true;
+
+    [ObservableProperty]
     public partial bool IncludeOperationalNotes { get; set; } = true;
 
     /// <summary>True while <see cref="CreatePdfCommand"/> is building/saving the PDF (spec Part I) — kept separate from <see cref="IsBusy"/> so a load/Check Online in progress is the only thing that disables the export action itself.</summary>
@@ -455,7 +458,9 @@ public partial class AssociateViewModel : ViewModelBase
             if (result.PdfBytes is not { } pdfBytes)
             {
                 _logger?.LogWarning("Associate PDF failed validation for {OperatingDate}: {Status}", workspace.OperatingDate, result.Preflight.Status);
-                PdfExportMessage = "The PDF could not be created for this date yet.";
+                PdfExportMessage = result.Preflight.Reasons.Count > 0
+                    ? string.Join(" ", result.Preflight.Reasons)
+                    : "The PDF could not be created for this date yet.";
                 return;
             }
 
@@ -612,6 +617,8 @@ public partial class AssociateViewModel : ViewModelBase
 
     partial void OnIncludeAddOnsChanged(bool value) => ScheduleAutosave();
 
+    partial void OnIncludeHauntedAttractionsChanged(bool value) => ScheduleAutosave();
+
     partial void OnIncludeOperationalNotesChanged(bool value) => ScheduleAutosave();
 
     /// <summary>Pushes a freshly loaded/refreshed workspace's draft into the editable fields without treating that as a user edit (see <see cref="_isApplyingWorkspace"/>), then publishes the workspace itself.</summary>
@@ -653,6 +660,7 @@ public partial class AssociateViewModel : ViewModelBase
             IncludePromotions = draft.SectionSelection.IncludePromotions;
             IncludeSeasonPasses = draft.SectionSelection.IncludeSeasonPasses;
             IncludeAddOns = draft.SectionSelection.IncludeAddOns;
+            IncludeHauntedAttractions = draft.SectionSelection.IncludeHauntedAttractions;
             IncludeOperationalNotes = draft.SectionSelection.IncludeOperationalNotes;
 
             BuildProductSections(workspace);
@@ -738,7 +746,8 @@ public partial class AssociateViewModel : ViewModelBase
                 IncludePromotions,
                 IncludeSeasonPasses,
                 IncludeAddOns,
-                IncludeOperationalNotes),
+                IncludeOperationalNotes,
+                IncludeHauntedAttractions),
         };
     }
 

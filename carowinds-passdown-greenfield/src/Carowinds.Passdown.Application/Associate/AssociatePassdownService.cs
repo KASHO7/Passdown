@@ -116,16 +116,22 @@ public sealed class AssociatePassdownService(
     }
 
     /// <summary>
-    /// Deserializes a persisted draft, migrating a schema-v1 payload forward (Phase 8A). v1 predates
+    /// Deserializes a persisted draft, migrating older payload shapes forward. Schema-v1 predates
     /// both the Daily Fun -> Daily Feature rename and <see cref="PassdownSectionSelection"/>, so its
     /// JSON has neither "DailyFeatureType"/"DailyFeatureText" (only the old "DailyFunType"/
     /// "DailyFunText" names) nor a "SectionSelection" object at all — both come back null from the
     /// plain deserialize below, which this fills in from the legacy property names (the enum's
     /// underlying integer values are unchanged by the rename, so no value translation is needed,
-    /// just reading it under its old key) or the all-included default. This is presence-based rather
-    /// than gated on the record's own <c>SchemaVersion</c> field, matching how this method already
-    /// ignored that field before Phase 8A — it only ever needs to backfill whatever the plain
-    /// deserialize left null, regardless of what schema_version happens to say.
+    /// just reading it under its old key) or the all-included default. Phase 8A's own persisted
+    /// "SectionSelection" object predates <see cref="PassdownSectionSelection.IncludeHauntedAttractions"/>
+    /// (added Phase 8B), so that one property comes back <see langword="false"/> — the JSON
+    /// deserializer's own missing-bool default, not an associate's real choice to hide it — from an
+    /// otherwise-present "SectionSelection" object; <see cref="HasIncludeHauntedAttractionsProperty"/>
+    /// distinguishes that case from an explicit "false" so it can be corrected to included, matching
+    /// how every other Phase 8A section already defaults to included when missing entirely. This is
+    /// presence-based rather than gated on the record's own <c>SchemaVersion</c> field, matching how
+    /// this method already ignored that field before Phase 8A — it only ever needs to backfill
+    /// whatever the plain deserialize left null/default, regardless of what schema_version says.
     /// </summary>
     private static AssociateDraftPayload DeserializeDraft(string payloadJson)
     {
@@ -137,7 +143,21 @@ public sealed class AssociatePassdownService(
             payload = payload with { DailyFeatureType = legacyType, DailyFeatureText = legacyText };
         }
 
-        return payload with { SectionSelection = payload.SectionSelection ?? PassdownSectionSelection.AllIncluded };
+        var sectionSelection = payload.SectionSelection ?? PassdownSectionSelection.AllIncluded;
+        if (!HasIncludeHauntedAttractionsProperty(payloadJson))
+        {
+            sectionSelection = sectionSelection with { IncludeHauntedAttractions = true };
+        }
+
+        return payload with { SectionSelection = sectionSelection };
+    }
+
+    private static bool HasIncludeHauntedAttractionsProperty(string payloadJson)
+    {
+        using var document = JsonDocument.Parse(payloadJson);
+        return document.RootElement.TryGetProperty("SectionSelection", out var section)
+            && section.ValueKind == JsonValueKind.Object
+            && section.TryGetProperty("IncludeHauntedAttractions", out _);
     }
 
     private static (DailyFeatureType? Type, string? Text) ReadLegacyDailyFun(string payloadJson)

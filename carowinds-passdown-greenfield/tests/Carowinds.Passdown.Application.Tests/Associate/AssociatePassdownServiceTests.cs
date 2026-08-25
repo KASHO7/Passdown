@@ -154,6 +154,44 @@ public class AssociatePassdownServiceTests
         Assert.Equal(["Legacy note"], workspace.Draft.OperationalNotes);
     }
 
+    // Phase 8B: a Phase 8A draft already has a "SectionSelection" object, but that object predates
+    // "IncludeHauntedAttractions" — loading it must default SCarowinds to included, not silently
+    // hide it via the JSON deserializer's own missing-bool-defaults-to-false behavior.
+    [Fact]
+    public async Task LoadAssociateDateAsync_Phase8ADraftWithoutHauntedSelection_DefaultsSCarowindsToIncluded()
+    {
+        var env = CreateEnvironment();
+        var phase8AJson = """
+            {
+                "ManualHoursOverride": { "Enabled": false, "OpeningTime": null, "ClosingTime": null },
+                "PrivateBuyout": { "Enabled": false, "OpeningTime": null, "ClosingTime": null, "Details": null },
+                "ProjectedAttendance": null,
+                "PreSolds": null,
+                "EarlyRideTime": { "Details": null, "ParticipatingAttractions": [] },
+                "OperationalNotes": [],
+                "DailyFeatureType": null,
+                "DailyFeatureText": null,
+                "ProductOverrides": {},
+                "CustomProducts": [],
+                "SectionSelection": {
+                    "IncludeDailyAdmission": true,
+                    "IncludeFastLane": false,
+                    "IncludePromotions": true,
+                    "IncludeSeasonPasses": true,
+                    "IncludeAddOns": true,
+                    "IncludeOperationalNotes": true
+                }
+            }
+            """;
+        await env.Drafts.SaveAsync(new AssociateDraft(Date, SchemaVersion: 2, PayloadJson: phase8AJson, UpdatedAt: FixedNow));
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+
+        Assert.True(workspace.Draft.SectionSelection.IncludeHauntedAttractions);
+        Assert.False(workspace.Draft.SectionSelection.IncludeFastLane); // the draft's real, explicit choices are preserved.
+        Assert.True(workspace.Draft.SectionSelection.IncludeDailyAdmission);
+    }
+
     // ===================== Draft behavior (1-5) =====================
 
     [Fact]
@@ -201,7 +239,7 @@ public class AssociatePassdownServiceTests
                 ["dated|DatedAdmissionTickets|PKG1"] = new ProductDraftOverride(false, 42.50m),
             },
             CustomProducts: [new CustomProductEntry("custom-1", "Group Rate", 10m, "Ask manager", true)],
-            SectionSelection: new PassdownSectionSelection(true, false, true, false, true, false));
+            SectionSelection: new PassdownSectionSelection(true, false, true, false, true, false, true));
 
         await env.Service.SaveDraftAsync(Date, draft);
         var workspace = await env.Service.LoadAssociateDateAsync(Date);
