@@ -1409,3 +1409,100 @@ rerun) is the recommended next step, against the rebuilt ZIP itself:
 **Status: artifact rebuilt and internally verified; Windows-side confirmation remains outstanding**,
 same honest posture every prior Phase 7 sub-phase recorded before its own first Windows pass.
 
+## Post-Phase-8 rebuild — Associate Daily Feature, section visibility, and PDF redesign
+
+Not a new numbered phase — a packaging-only rebuild of the existing Phase 7 release artifact after
+the Phase 8A/8B Associate Passdown work landed on `feature/passdown-redesign`
+(`1e31b28` "Add passdown section selection and daily feature", `2e280f5` "Redesign associate
+passdown PDF"). `docs/release-manifest.md` is the authoritative record of exactly what this rebuild
+produced (SHA-256, sizes, file count, test count); this section records only the narrative and what
+was/was not re-verified. No source code was changed to produce this rebuild — packaging only.
+
+### What changed since the Post-Phase-7F artifact
+
+- **Phase 8A**: `Daily Fun` replaced by `Daily Feature`, restricted to exactly three types (Useless
+  Fact of the Day / Question of the Day / Quote of the Day); section-level "Include in Passdown"
+  controls for Daily Admission, Fast Lane, Promotions, Season Passes, Add-Ons, SCarowinds/Haunt, and
+  Operational Notes; persisted section visibility; compatibility/migration for existing Associate
+  drafts.
+- **Phase 8B**: redesigned one-page Associate Passdown PDF — operational-summary hierarchy, a
+  visually distinct Daily Feature panel, adaptive Daily Admission/Fast Lane price tiles, adaptive
+  Promotion cards, a compact reference-section layout, improved Operational Notes presentation,
+  dynamic reflow when optional sections are hidden, grayscale/print-safe styling, strict one-page
+  behavior (oversized content fails preflight rather than producing a continuation page), and removal
+  of the `1 of 1` footer indicator.
+- Mandatory Passdown information is unchanged: Day, Date, Park Hours, Attendance, Early Ride Time,
+  Daily Feature.
+- No retrieval, scheduling, persistence-layer, or business-rule behavior outside the Associate
+  draft/PDF surface changed. No Manager workflow was added. The product version was not changed
+  (`0.1.0-dev` remains the single authoritative version, `Directory.Build.props`).
+
+### Artifact status
+
+The Post-Phase-7F artifact (SHA-256 `ee553439ba2c70018b5fdbd9b256808891378a775f0411fe1ef1362ff483079d`)
+is **superseded** by this rebuild (SHA-256 `eb44854b11ca3e280c814a97d64cfeee8538aa37287c9d88cd5a7717af8b7b31`
+— see `docs/release-manifest.md`). The Phase 7F artifact (SHA-256
+`01497e17ff2bcacc1ce3b2dd71de6726719406b1914ec50e0b2afd78e9d69f57`) and the Phase 7B/7C/7D/7E artifact
+(SHA-256 `94064eee63a2cb7bc0d30e83d45afde946ff02dbb3b5d3b9aeaa9f7d16871ab0`) remain further superseded
+and are retained purely as historical record of exactly what Phase 7E's Windows pass validated.
+
+**Phase 7E's full manual Windows validation applies only to the original Phase 7B/7C/7D/7E artifact,
+not to this rebuild.** Nothing about that pass (scheduled-task registration, self-contained runtime
+resolution, native library loading, first-run/persistence/portable-move behavior) is expected to be
+affected by an Associate UI/section-visibility/PDF-layout change, but it has not been re-run against
+this exact artifact.
+
+### Build/publish/package validation performed this rebuild
+
+1. `dotnet build CarowindsPassdown.slnx` — PASS, 0 warnings, 0 errors.
+2. `dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — PASS, 725/725 (up from
+   684/684 at the Post-Phase-7F artifact: 66 Domain + 179 Application + 154 Ui + 60 Documents + 266
+   Infrastructure; the Phase 8A/8B work added tests, none were removed or skipped).
+3. `dotnet publish ... -r win-x64 --self-contained true ...` (mirroring `Publish-Windows.ps1`; no
+   `pwsh` on this dev host, same limitation as every prior Phase 7 sub-phase) — PASS. 271 files,
+   133 MB after `.pdb` removal — same shape as every prior rebuild (no new shipped files, only
+   changed content inside existing DLLs).
+4. Before staging, the freshly published `Carowinds.Passdown.Desktop.dll` was directly inspected
+   (byte-string search of the actual built assembly, not file timestamps alone) and confirmed to
+   contain `DailyFeatureTypeOption`, `SelectedDateForPicker`, `OnIncludeHauntedAttractionsChanged`,
+   and the other six `OnInclude*Changed` section-visibility handlers (`OnIncludeDailyAdmissionChanged`,
+   `OnIncludeFastLaneChanged`, `OnIncludePromotionsChanged`, `OnIncludeSeasonPassesChanged`,
+   `OnIncludeAddOnsChanged`, `OnIncludeOperationalNotesChanged`) — proving this publish is not a stale
+   reuse of the Post-Phase-7F build output.
+5. Staging + ZIP built mirroring `Build-PortableRelease.ps1` exactly (same steps documented in
+   `docs/release-manifest.md`); the staged folder and the zip listing were both inspected directly —
+   executable, `appsettings.json`, README/tester-guide/`.cmd` helpers/`tools/` all present; no
+   Playwright, `.pdb`, test assemblies, `.git`/dev docs, database files, non-Windows binaries, or
+   preview/screenshot-harness artifacts (the `passdown-preview*.png`/`.pdf` files used for Phase 8B's
+   visual review live under the gitignored `artifacts/` root, outside the publish output, and were
+   confirmed absent from the staged folder and the ZIP).
+
+### Focused Windows smoke check
+
+**NOT EXECUTED.** No Windows machine or VM was available in this session. This is recorded honestly
+rather than assumed passing. The product owner intends to perform this validation manually. Before
+treating this rebuilt artifact as equally trustworthy to the original Phase 7B/7C/7D/7E artifact for
+a real Windows user, the focused smoke pass specified in the task that produced this rebuild (extract,
+launch, confirm app-shell/date-picker/section navigation, exercise the Phase 8 Daily
+Feature/section-visibility workflow, generate a one-page PDF with sections hidden and again with all
+sections shown, restart and confirm persisted state, export diagnostics) is the recommended next step
+against this exact ZIP.
+
+### Rebuild verdict
+
+| # | Item | Result |
+|---|---|---|
+| 1 | Build | PASS |
+| 2 | Non-live test count | PASS, 725/725 (up from 684/684) |
+| 3 | Publish (win-x64, self-contained) | PASS |
+| 4 | Phase 8 Daily Feature / section-visibility code confirmed in published Desktop assembly | PASS (byte-level check) |
+| 5 | Phase 8 redesigned PDF code confirmed in published Documents assembly | PASS (string-presence check on `AssociatePassdownDocumentModelBuilder`/`AssociatePassdownPreflight`) |
+| 6 | Portable ZIP rebuilt and re-inspected | PASS |
+| 7 | Release-content audit (forbidden patterns, required files, no preview artifacts) | PASS |
+| 8 | SHA-256 recomputed and changed from the Post-Phase-7F artifact | PASS (confirms this is not the stale artifact) |
+| 9 | `docs/release-manifest.md` updated to point at the new artifact | PASS |
+| 10 | Focused Windows smoke check | **NOT EXECUTED** — no Windows host available; product owner to run manually |
+
+**Status: artifact rebuilt and internally verified; Windows-side confirmation remains outstanding**,
+same honest posture every prior rebuild recorded before its own first Windows pass.
+
