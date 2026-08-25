@@ -11,6 +11,35 @@
         Title="Carowinds Admissions Operations"
         Width="1280" Height="860" MinWidth="960" MinHeight="640">
 
+    <Window.Styles>
+        <!-- Top-level app-shell section switcher (spec Phase 9D Part A): a slim horizontal strip
+             below the brand band, not a subsection inside AssociateView's own rail — History is a
+             sibling app section, not something that could be mistaken for an editable Associate
+             subsection (spec Part E). Plain Button + a data-bound "active" class, deliberately not
+             ToggleButton: nothing here needs two-way IsChecked state, and one-way Classes binding to
+             MainViewModel.IsAssociateSectionSelected/IsHistorySectionSelected can never drift out of
+             sync the way a ToggleButton's own click-toggled IsChecked could. -->
+        <Style Selector="Button.appSectionItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0,0,0,3" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="18,11" />
+            <Setter Property="FontSize" Value="13.5" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.appSectionItem.active">
+            <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <Style Selector="Button.appSectionItem:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource PassdownSubtleSurfaceBrush}" />
+        </Style>
+    </Window.Styles>
+
     <DockPanel LastChildFill="True">
 
         <!-- Brand identity band (spec §10.2): a constant, theme-invariant deep-navy strip so the app
@@ -48,7 +77,36 @@
             </Grid>
         </Border>
 
-        <views:AssociateView DataContext="{Binding Associate}" />
+        <!-- App-shell section strip (spec Phase 9D Part A): the only top-level navigation this app
+             has — Associate Passdown (the only editable workflow) and History (Phase 9D's read-only
+             archive). No Manager entry (CLAUDE.md "current scope decision"). -->
+        <Border DockPanel.Dock="Top" Background="{DynamicResource PassdownSurfaceTintBrush}"
+                BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
+            <StackPanel Orientation="Horizontal">
+                <Button Classes="appSectionItem" Classes.active="{Binding IsAssociateSectionSelected}"
+                        Content="Associate Passdown" Command="{Binding ShowAssociateSectionCommand}"
+                        AutomationProperties.Name="Associate Passdown section" />
+                <Button Classes="appSectionItem" Classes.active="{Binding IsHistorySectionSelected}"
+                        Content="History" Command="{Binding ShowHistorySectionCommand}"
+                        AutomationProperties.Name="History section" />
+            </StackPanel>
+        </Border>
+
+        <!-- Both sections are constructed once and stay alive for the app's lifetime (spec Part T):
+             switching which one is visible never recreates the Associate screen's in-progress
+             edits/autosave state and never touches AssociateViewModel.SelectedDate. -->
+        <Grid>
+            <!-- IsVisible is bound on the wrapping Border (still MainViewModel's own DataContext) —
+                 the inner view's DataContext reassignment below changes the compiled-binding type for
+                 its own subtree, so IsAssociateSectionSelected/IsHistorySectionSelected must not be
+                 bound on the same element as that DataContext switch. -->
+            <Border IsVisible="{Binding IsAssociateSectionSelected}">
+                <views:AssociateView DataContext="{Binding Associate}" />
+            </Border>
+            <Border IsVisible="{Binding IsHistorySectionSelected}">
+                <views:HistoryView DataContext="{Binding History}" />
+            </Border>
+        </Grid>
 
     </DockPanel>
 

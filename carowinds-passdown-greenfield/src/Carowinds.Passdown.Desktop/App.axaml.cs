@@ -6,6 +6,7 @@ using Carowinds.Passdown.Application.Catalog;
 using Carowinds.Passdown.Application.Diagnostics;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Freshness;
+using Carowinds.Passdown.Application.History;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
@@ -147,6 +148,14 @@ public partial class App : global::Avalonia.Application
         // Phase 9B: the 6:00 AM automatic finalization coordinator, invoked by ScheduledRefreshHost
         // and StartupCatchUpRefresh before either ever runs a source refresh.
         services.AddSingleton<IScheduledPassdownFinalizer, ScheduledPassdownFinalizer>();
+
+        // Phase 9D: the read-only Passdown History screen. IPassdownHistoryService reads
+        // IFinalizedPassdownRepository/FinalizedPassdownSnapshotSerializer only — it never generates a
+        // PDF or touches the current Associate draft/catalog. IFinalizedPdfLauncher is the "Open Final
+        // PDF" seam; Save PDF Copy reuses the already-registered IPdfSaveFilePicker.
+        services.AddSingleton<IPassdownHistoryService, PassdownHistoryService>();
+        services.AddSingleton<IFinalizedPdfLauncher, TempFileFinalizedPdfLauncher>();
+        services.AddTransient<PassdownHistoryViewModel>();
 
         // Phase 7F Part F/G: the sanitized diagnostic export pipeline. Reuses the already-registered
         // SqliteConnectionFactory/ISourceStateRepository/IReadOnlyList<SourceRegistration>/IClock —

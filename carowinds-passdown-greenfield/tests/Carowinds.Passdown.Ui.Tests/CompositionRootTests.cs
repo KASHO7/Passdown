@@ -1,5 +1,7 @@
+using Carowinds.Passdown.Application.History;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Desktop;
+using Carowinds.Passdown.Desktop.Services;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Infrastructure.Storage;
 using Microsoft.Extensions.DependencyInjection;
@@ -58,5 +60,18 @@ public class CompositionRootTests
 
         Assert.NotNull(migrationRunner);
         Assert.NotNull(mainViewModel);
+    }
+
+    // Phase 9D: the History screen's Application/Desktop seams resolve from the same composition
+    // root — proves IPassdownHistoryService/IFinalizedPdfLauncher/PassdownHistoryViewModel are wired,
+    // without doing any I/O (registering a singleton/transient does none by itself).
+    [Fact]
+    public void BuildServiceProvider_ResolvesPassdownHistoryServices()
+    {
+        var provider = App.BuildServiceProvider();
+
+        Assert.NotNull(provider.GetRequiredService<IPassdownHistoryService>());
+        Assert.NotNull(provider.GetRequiredService<IFinalizedPdfLauncher>());
+        Assert.NotNull(provider.GetRequiredService<PassdownHistoryViewModel>());
     }
 }

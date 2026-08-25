@@ -4,11 +4,12 @@ Phase 9A established the immutable finalized-passdown domain/storage
 model. Phase 9B added *automatic* finalization: a 6:00 AM Eastern
 cutoff, evaluated by the existing scheduled task and the interactive
 startup catch-up path, always before either ever runs a source refresh.
-Phase 9C (this document's current scope) extends every finalized record
-to also freeze the exact PDF bytes an associate would have printed at
-finalization time, atomically alongside the structured snapshot. No
-phase through 9C builds the History UI, implements revisions, or
-touches the Manager workflow.
+Phase 9C extends every finalized record to also freeze the exact PDF
+bytes an associate would have printed at finalization time, atomically
+alongside the structured snapshot. Phase 9D (this document's current
+scope) adds the read-only Passdown History UI that browses those
+frozen records. No phase through 9D implements revisions, manual
+finalization, delete-history, or touches the Manager workflow.
 
 ## Concept
 
@@ -22,10 +23,10 @@ finalization                     <- Phase 9A model; Phase 9B automates it
 immutable historical snapshot
     |
     v
-frozen PDF                       <- Phase 9C (this document)
+frozen PDF                       <- Phase 9C
     |
     v
-Passdown History UI              <- Phase 9D
+Passdown History UI              <- Phase 9D (this document)
 ```
 
 **Finalized passdown**: an immutable historical record of exactly what
@@ -479,9 +480,9 @@ with no PDF) can exist.
 
 ## Not implemented in Phase 9C (by design)
 
-- The Passdown History UI/screen — Phase 9D. `IFinalizedPassdownPdfRetrievalService`
-  exists as the retrieval seam Phase 9D will call, but nothing wires it
-  to any UI yet.
+- The Passdown History UI/screen — Phase 9D (see below).
+  `IFinalizedPassdownPdfRetrievalService` exists as the retrieval seam
+  Phase 9D calls, but Phase 9C itself does not wire it to any UI.
 - Revisions/version chains for a `PassdownDate` finalized more than once.
 - Manual finalization UI/command — `FinalizationOrigin.Manual` still has
   no producer.
@@ -492,6 +493,140 @@ with no PDF) can exist.
   ordering Phase 9B established — Phase 9C only adds PDF generation
   inside the existing `FinalizeAsync` call, it does not resequence
   anything around it.
+
+## Passdown History UI (Phase 9D)
+
+A read-only screen that lets a supervisor browse every finalized
+passdown, view its exact frozen content, and open/save its exact frozen
+PDF. **Read-only** is load-bearing: History never edits finalized
+content, never regenerates a PDF, never resolves historical prices from
+the current catalog, never refreshes the website, and never mutates a
+historical row. No delete-history, no manual finalization, and no
+Manager workflow were added — those stay deferred exactly as before.
+
+**Navigation placement.** History is a top-level app-shell section, a
+sibling of the existing Associate Passdown screen — not a subsection
+inside `AssociateView`'s own Overview/Products/Notes rail, which would
+make it look like part of the editable workflow. `MainWindow.axaml`
+gained a slim horizontal section strip ("Associate Passdown" / "History")
+below the brand band; `MainViewModel` (`Carowinds.Passdown.Desktop.ViewModels`)
+gained an `AppSection SelectedSection` property and
+`ShowAssociateSectionCommand`/`ShowHistorySectionCommand`. Both
+`AssociateViewModel` and the new `PassdownHistoryViewModel` are
+constructed once, at composition-root time, and stay alive for the
+app's whole lifetime — `MainWindow.axaml` keeps both `AssociateView` and
+`HistoryView` mounted simultaneously and only toggles `IsVisible`, so
+switching sections never recreates Associate's in-progress edit/autosave
+state and never touches `AssociateViewModel.SelectedDate` (spec Parts
+O/P/T; `MainViewModelNavigationTests`).
+
+**Application-layer read model.** `IPassdownHistoryService`
+(`Application/History/PassdownHistoryService.cs`) is the seam the UI
+uses: `ListAsync()` is a thin pass-through of
+`IFinalizedPassdownRepository.ListAsync` (metadata only, never a PDF
+blob); `GetAsync(date)` reads one full row via `GetByDateAsync` and
+returns a `PassdownHistoryDetail` (`Summary` +
+`FinalizedPassdownSnapshot? Snapshot` + `string? UnavailableReason`).
+`GetAsync` never throws for a bad historical row: if
+`SnapshotSchemaVersion` is newer than
+`FinalizedPassdownSnapshot.CurrentSchemaVersion`, or
+`FinalizedPassdownSnapshotSerializer.Deserialize` throws on malformed
+JSON, `Snapshot` is `null` and `UnavailableReason` carries a plain-English
+explanation while `Summary` (including `HasFrozenPdf`) is still returned
+— the metadata row and PDF actions stay usable even when the structured
+detail can't be read (`PassdownHistoryServiceTests`).
+
+**Desktop read model / view model.** `PassdownHistorySummaryPresentation`
+(`Desktop/Presentation/PassdownHistorySummaryPresentation.cs`) formats one
+list row's display text ("August 25, 2026" / "Finalized Aug 26, 2026 at
+6:02 AM" / "Scheduled"/"Recovery" / "PDF available") from
+`FinalizedPassdownSummary` metadata only — it never touches the frozen
+snapshot, so rendering the list never deserializes every row
+(`FinalizedText` uses `EasternTimeZone`, matching the app's existing
+Eastern wall-clock convention and the 6:00 AM cutoff itself).
+`PassdownHistoryViewModel` (`Desktop/ViewModels/PassdownHistoryViewModel.cs`)
+owns `HistoryItems`, `SelectedItem`/`SelectedDetail`,
+loading/error state for both the list and the detail, and the
+`OpenFinalPdfCommand`/`SavePdfCopyCommand` async commands. It depends
+only on `IPassdownHistoryService`, `IFinalizedPassdownPdfRetrievalService`,
+`IPdfSaveFilePicker` (the same picker Associate's Create PDF already
+uses), and the new `IFinalizedPdfLauncher` — no
+`IAssociatePassdownService`, no refresh orchestrator, no PDF generator,
+so "History never regenerates a PDF or calls the network" is true by
+constructor signature, not just by test coverage
+(`PassdownHistoryViewModelTests`).
+
+**Detail rendering — frozen, never live.** `HistoryView.axaml` binds its
+detail sections (Park Hours, Attendance, Early Ride Time, Daily Feature,
+product categories/rows, operational notes) directly to
+`SelectedDetail.Snapshot.*` — every one of those values is already a
+resolved display string/number from `FinalizedPassdownSnapshot`, never
+recomputed from `AssociateWorkspace`, the current product catalog, or
+any live park-hours calculation. Selecting a History row never loads an
+`AssociateWorkspace` at all.
+
+**PDF actions.** `Open Final PDF` and `Save PDF Copy` both start by
+calling `IFinalizedPassdownPdfRetrievalService.GetPdfAsync` (Phase 9C;
+reads stored bytes only, never generates). Before acting on the result,
+`PassdownHistoryViewModel` verifies the retrieved byte length matches
+`PdfSizeBytes` and its SHA-256 matches `PdfSha256` (spec Part U) — a
+mismatch surfaces a support-facing error and never opens/saves/"repairs"
+anything. `Save PDF Copy` reuses the existing `IPdfSaveFilePicker`
+abstraction (no new save-picker type). `Open Final PDF` uses the new
+`IFinalizedPdfLauncher` (`Desktop/Services/IFinalizedPdfLauncher.cs`);
+its production implementation, `TempFileFinalizedPdfLauncher`, writes
+the exact bytes to a per-filename temp file under the OS temp directory
+and opens it with `Process.Start(UseShellExecute = true)`, i.e. whatever
+the OS has associated with `.pdf`. It reuses the same temp path per
+suggested filename (overwriting it) rather than minting a new file every
+open, and deliberately never deletes the file afterward — the OS viewer
+may still be reading it.
+
+**Pre-9C / `HasFrozenPdf == false` records.** The structured detail still
+renders normally (it comes from `SnapshotJson`, independent of the PDF
+columns). `Open Final PDF`/`Save PDF Copy` are hidden and replaced with
+"Exact historical PDF unavailable" text; nothing calls
+`IAssociatePassdownPdfGenerator` or any other PDF-generation path for
+these rows.
+
+**Unknown/future snapshot schema and malformed JSON.** Handled entirely
+in `IPassdownHistoryService.GetAsync` (see above) — the History screen
+never crashes for one bad row. `HistoryView.axaml` shows the row's
+metadata (date, finalized time, origin, PDF badge) plus
+`DetailErrorMessage` in place of the structured sections, and PDF
+actions remain available whenever `HasFrozenPdf` is true.
+
+**List/BLOB loading efficiency.** The list path is
+`HistoryView` → `PassdownHistoryViewModel.HistoryItems` →
+`IPassdownHistoryService.ListAsync` → `IFinalizedPassdownRepository.ListAsync`,
+which (Phase 9C) already selects `pdf_sha256`/`pdf_size_bytes` only,
+never `pdf_bytes`. Selecting one row calls `GetAsync`/`GetByDateAsync`
+(the single-row query) for that date's structured detail; a PDF action
+separately calls `GetPdfAsync` for that date only. No code path loads
+every row's PDF bytes at once.
+
+**Empty state.** When `IPassdownHistoryService.ListAsync` returns no
+rows (and the load didn't fail), the list column shows: "No finalized
+passdowns yet." plus a one-line explanation of the 6:00 AM cutoff — no
+fabricated sample rows.
+
+**Read-only enforcement.** `HistoryView.axaml` contains no `TextBox`,
+no include/exclude `CheckBox`, no Reset Override/Remove Custom Product,
+no autosave indicator, no Check Online, no date-edit control, no Save
+Draft, and no finalization control — only read-only text, chips, and the
+two PDF-copy actions. A "Finalized — Read Only" badge sits in the detail
+header. `PassdownHistoryViewModel` defines no delete/update/finalize
+command (`PassdownHistoryViewModelTests`).
+
+**Tests.** `Carowinds.Passdown.Application.Tests/History/PassdownHistoryServiceTests.cs`
+covers the read model (newest-first, current-schema detail, newer-schema
+handling, malformed JSON, legacy no-PDF rows). `Carowinds.Passdown.Ui.Tests`
+adds `PassdownHistoryViewModelTests`, `HistoryViewTests`, and
+`MainViewModelNavigationTests` (empty state, PDF-action gating,
+integrity-mismatch handling, History/Associate date independence,
+navigation-preserves-Associate-state, no mutating command, no
+refresh/generator dependency) plus a `CompositionRootTests` addition
+resolving the new DI registrations.
 
 ## Persistence additions (Phase 9B)
 
