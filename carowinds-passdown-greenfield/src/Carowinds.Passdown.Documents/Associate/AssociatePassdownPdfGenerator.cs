@@ -101,7 +101,7 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
                 {
                     right.Spacing(BoxSpacing);
                     right.Item().Element(box => ComposeAttendanceBox(box, model));
-                    right.Item().Element(box => ComposeDailyFunBox(box, model));
+                    right.Item().Element(box => ComposeDailyFeatureBox(box, model));
                 });
             });
 
@@ -257,21 +257,19 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
             }
         });
 
-    private static void ComposeDailyFunBox(IContainer container, AssociatePassdownDocumentModel model) =>
-        ComposePanel(container, "DAILY FUN", column =>
+    // Spec Phase 8A: the panel heading is the selected Daily Feature type itself (e.g. "USELESS FACT
+    // OF THE DAY") rather than a generic "Daily Feature" label — falls back to that generic heading
+    // only when no type has been chosen yet.
+    private static void ComposeDailyFeatureBox(IContainer container, AssociatePassdownDocumentModel model) =>
+        ComposePanel(container, model.DailyFeature.TypeLabel?.ToUpperInvariant() ?? "DAILY FEATURE", column =>
         {
-            if (!model.DailyFun.HasContent)
+            if (!model.DailyFeature.HasContent)
             {
                 column.Item().Text("Not entered.").FontSize(9.5f).Italic().FontColor(MutedTextColor);
                 return;
             }
 
-            if (model.DailyFun.TypeLabel is { } label)
-            {
-                column.Item().Text(label).FontSize(9).Italic().FontColor(MutedTextColor);
-            }
-
-            if (model.DailyFun.Text is { } text)
+            if (model.DailyFeature.Text is { } text)
             {
                 column.Item().Text(text).FontSize(9.5f);
             }

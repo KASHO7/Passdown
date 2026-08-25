@@ -459,25 +459,25 @@
 
                     <Rectangle Grid.Column="3" Classes="glanceDivider" />
 
-                    <!-- Daily Fun -->
+                    <!-- Daily Feature (Phase 8A; formerly "Daily Fun") -->
                     <StackPanel Grid.Column="4" Spacing="8">
-                      <TextBlock Text="DAILY FUN" Classes="subsectionTitle" />
-                      <ComboBox ItemsSource="{Binding DailyFunTypeOptions}"
-                                SelectedItem="{Binding SelectedDailyFunTypeOption}"
+                      <TextBlock Text="DAILY FEATURE" Classes="subsectionTitle" />
+                      <ComboBox ItemsSource="{Binding DailyFeatureTypeOptions}"
+                                SelectedItem="{Binding SelectedDailyFeatureTypeOption}"
                                 HorizontalAlignment="Stretch"
-                                AutomationProperties.Name="Daily Fun type">
+                                AutomationProperties.Name="Daily Feature type">
                         <ComboBox.ItemTemplate>
-                          <DataTemplate x:DataType="presentation:DailyFunTypeOption">
+                          <DataTemplate x:DataType="presentation:DailyFeatureTypeOption">
                             <TextBlock Text="{Binding Label}" />
                           </DataTemplate>
                         </ComboBox.ItemTemplate>
                       </ComboBox>
-                      <TextBox Text="{Binding DailyFunText}"
+                      <TextBox Text="{Binding DailyFeatureText}"
                                AcceptsReturn="True"
                                TextWrapping="Wrap"
                                MinHeight="56"
                                PlaceholderText="Enter the question, fact, or quote"
-                               AutomationProperties.Name="Daily Fun text" />
+                               AutomationProperties.Name="Daily Feature text" />
                     </StackPanel>
                   </Grid>
                 </StackPanel>
@@ -533,6 +533,31 @@
               </Border>
 
             </Grid>
+
+            <!-- Passdown Builder section selection (Phase 8A): Day of week, Date, Park Hours,
+                 Attendance, Early Ride Time, and Daily Feature above always print and have no
+                 checkbox here — only these six sections can be independently shown/hidden. -->
+            <Border Classes="panel">
+              <StackPanel Spacing="8">
+                <TextBlock Text="Include in Passdown" Classes="sectionTitle" Margin="0,0,0,4" />
+                <TextBlock Text="Day, date, park hours, attendance, Early Ride Time, and the Daily Feature always print. Choose which additional sections appear on the PDF."
+                           Classes="muted" TextWrapping="Wrap" />
+                <WrapPanel>
+                  <CheckBox Content="Daily Admission" IsChecked="{Binding IncludeDailyAdmission}"
+                            Margin="0,0,24,4" AutomationProperties.Name="Include Daily Admission in the Passdown" />
+                  <CheckBox Content="Fast Lane" IsChecked="{Binding IncludeFastLane}"
+                            Margin="0,0,24,4" AutomationProperties.Name="Include Fast Lane in the Passdown" />
+                  <CheckBox Content="Promotions" IsChecked="{Binding IncludePromotions}"
+                            Margin="0,0,24,4" AutomationProperties.Name="Include Promotions in the Passdown" />
+                  <CheckBox Content="Season Passes" IsChecked="{Binding IncludeSeasonPasses}"
+                            Margin="0,0,24,4" AutomationProperties.Name="Include Season Passes in the Passdown" />
+                  <CheckBox Content="Add-Ons" IsChecked="{Binding IncludeAddOns}"
+                            Margin="0,0,24,4" AutomationProperties.Name="Include Add-Ons in the Passdown" />
+                  <CheckBox Content="Operational Notes" IsChecked="{Binding IncludeOperationalNotes}"
+                            Margin="0,0,24,4" AutomationProperties.Name="Include Operational Notes in the Passdown" />
+                </WrapPanel>
+              </StackPanel>
+            </Border>
 
           </StackPanel>
       </ScrollViewer>

@@ -129,8 +129,8 @@ public sealed class AssociatePassdownPreflightService : IAssociatePassdownPrefli
                     : 0)
             : 2; // heading + "Not applicable for this date."
 
-        lines += model.DailyFun.HasContent
-            ? 1 + Math.Max(1, EstimateWrappedLines(model.DailyFun.Text, WrapCharsPerLine))
+        lines += model.DailyFeature.HasContent
+            ? 1 + Math.Max(1, EstimateWrappedLines(model.DailyFeature.Text, WrapCharsPerLine))
             : 0;
 
         return lines;

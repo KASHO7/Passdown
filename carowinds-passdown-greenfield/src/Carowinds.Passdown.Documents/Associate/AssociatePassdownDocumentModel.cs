@@ -29,8 +29,8 @@ public sealed record PdfAttendance(int? ProjectedAttendance, int? PreSolds);
 /// <summary>Early Ride Time content (spec §8.1). <see cref="Enabled"/> false means "not applicable" for this date, not merely "no details entered".</summary>
 public sealed record PdfEarlyRideTime(bool Enabled, string? Details, IReadOnlyList<string> ParticipatingAttractions);
 
-/// <summary>One of the three Daily Fun types (spec §8.1), pre-labeled by the builder — Documents never decides how <c>DailyFunType</c> reads as text.</summary>
-public sealed record PdfDailyFun(string? TypeLabel, string? Text)
+/// <summary>One of the three Daily Feature types (Phase 8A; formerly "Daily Fun"), pre-labeled by the builder — Documents never decides how <c>DailyFeatureType</c> reads as text.</summary>
+public sealed record PdfDailyFeature(string? TypeLabel, string? Text)
 {
     public bool HasContent => TypeLabel is not null || !string.IsNullOrWhiteSpace(Text);
 }
@@ -64,7 +64,7 @@ public sealed record AssociatePassdownDocumentModel(
     PdfParkHours ParkHours,
     PdfAttendance Attendance,
     PdfEarlyRideTime EarlyRideTime,
-    PdfDailyFun DailyFun,
+    PdfDailyFeature DailyFeature,
     IReadOnlyList<string> OperationalNotes,
     IReadOnlyList<PdfProductCategory> ProductCategories,
     bool HasUnverifiedProductPricing,

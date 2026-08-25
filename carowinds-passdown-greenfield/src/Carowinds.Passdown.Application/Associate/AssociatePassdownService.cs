@@ -115,8 +115,46 @@ public sealed class AssociatePassdownService(
         return new AssociateWorkspace(operatingDate, draft, parkHours, products, categoryStatuses, saveStatus);
     }
 
-    private static AssociateDraftPayload DeserializeDraft(string payloadJson) =>
-        JsonSerializer.Deserialize<AssociateDraftPayload>(payloadJson) ?? AssociateDraftPayload.CreateDefault();
+    /// <summary>
+    /// Deserializes a persisted draft, migrating a schema-v1 payload forward (Phase 8A). v1 predates
+    /// both the Daily Fun -> Daily Feature rename and <see cref="PassdownSectionSelection"/>, so its
+    /// JSON has neither "DailyFeatureType"/"DailyFeatureText" (only the old "DailyFunType"/
+    /// "DailyFunText" names) nor a "SectionSelection" object at all — both come back null from the
+    /// plain deserialize below, which this fills in from the legacy property names (the enum's
+    /// underlying integer values are unchanged by the rename, so no value translation is needed,
+    /// just reading it under its old key) or the all-included default. This is presence-based rather
+    /// than gated on the record's own <c>SchemaVersion</c> field, matching how this method already
+    /// ignored that field before Phase 8A — it only ever needs to backfill whatever the plain
+    /// deserialize left null, regardless of what schema_version happens to say.
+    /// </summary>
+    private static AssociateDraftPayload DeserializeDraft(string payloadJson)
+    {
+        var payload = JsonSerializer.Deserialize<AssociateDraftPayload>(payloadJson) ?? AssociateDraftPayload.CreateDefault();
+
+        if (payload.DailyFeatureType is null && payload.DailyFeatureText is null)
+        {
+            var (legacyType, legacyText) = ReadLegacyDailyFun(payloadJson);
+            payload = payload with { DailyFeatureType = legacyType, DailyFeatureText = legacyText };
+        }
+
+        return payload with { SectionSelection = payload.SectionSelection ?? PassdownSectionSelection.AllIncluded };
+    }
+
+    private static (DailyFeatureType? Type, string? Text) ReadLegacyDailyFun(string payloadJson)
+    {
+        using var document = JsonDocument.Parse(payloadJson);
+        var root = document.RootElement;
+
+        var type = root.TryGetProperty("DailyFunType", out var typeElement) && typeElement.ValueKind != JsonValueKind.Null
+            ? typeElement.Deserialize<DailyFeatureType?>()
+            : null;
+
+        var text = root.TryGetProperty("DailyFunText", out var textElement) && textElement.ValueKind != JsonValueKind.Null
+            ? textElement.GetString()
+            : null;
+
+        return (type, text);
+    }
 
     private static AssociateParkHoursView ComposeParkHours(DatedResultRecord? record, AssociateDraftPayload draft, DateTimeOffset asOf)
     {

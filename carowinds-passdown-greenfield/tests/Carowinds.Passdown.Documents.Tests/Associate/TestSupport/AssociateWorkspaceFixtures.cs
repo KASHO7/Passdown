@@ -59,8 +59,8 @@ internal static class AssociateWorkspaceFixtures
                 "Extra staffing at North Gate for a school group arriving at 9:15 AM.",
                 "Guest Services relocated temporarily to the Carolina Harbor breezeway.",
             ],
-            DailyFunType = DailyFunType.QuestionOfTheDay,
-            DailyFunText = "What year did Carowinds open?",
+            DailyFeatureType = DailyFeatureType.QuestionOfTheDay,
+            DailyFeatureText = "What year did Carowinds open?",
             CustomProducts =
             [
                 new CustomProductEntry("c1", "Team Member Meal Voucher", 8.00m, "Cafeteria only, associates present ID.", true),
@@ -99,8 +99,8 @@ internal static class AssociateWorkspaceFixtures
                 "Peak-day staffing plan in effect at all gates.",
                 "Season pass processing tent open at the front plaza.",
             ],
-            DailyFunType = DailyFunType.FactOfTheDay,
-            DailyFunText = "Fury 325 is one of the tallest and fastest giga coasters in the world.",
+            DailyFeatureType = DailyFeatureType.UselessFactOfTheDay,
+            DailyFeatureText = "Fury 325 is one of the tallest and fastest giga coasters in the world.",
         };
 
         var products = new List<AssociateProduct>();
@@ -170,8 +170,8 @@ internal static class AssociateWorkspaceFixtures
             PreSolds = 15000,
             EarlyRideTime = new EarlyRideTimeDetails("Early Ride Time from 8:00 AM for all pass members and Fast Lane Plus guests.", ["Fury 325", "Intimidator", "Copperhead Strike", "Afterburn", "Nighthawk"]),
             OperationalNotes = Enumerable.Range(1, 6).Select(i => $"Operational note number {i} describing a staffing or guest-service situation for the day in enough detail to take up a full line.").ToList(),
-            DailyFunType = DailyFunType.QuoteOfTheDay,
-            DailyFunText = "\"The best way to predict the future is to create it.\"",
+            DailyFeatureType = DailyFeatureType.QuoteOfTheDay,
+            DailyFeatureText = "\"The best way to predict the future is to create it.\"",
         };
 
         var products = new List<AssociateProduct>();

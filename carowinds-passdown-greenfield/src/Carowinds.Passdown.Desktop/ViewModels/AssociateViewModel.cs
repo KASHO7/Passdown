@@ -182,10 +182,34 @@ public partial class AssociateViewModel : ViewModelBase
     public partial string? OperationalNotesText { get; set; }
 
     [ObservableProperty]
-    public partial DailyFunTypeOption SelectedDailyFunTypeOption { get; set; } = DailyFunTypeOption.All[0];
+    public partial DailyFeatureTypeOption SelectedDailyFeatureTypeOption { get; set; } = DailyFeatureTypeOption.All[0];
 
     [ObservableProperty]
-    public partial string? DailyFunText { get; set; }
+    public partial string? DailyFeatureText { get; set; }
+
+    /// <summary>
+    /// Optional-section visibility for the Passdown Builder (Phase 8A) — all default to included,
+    /// mirroring <see cref="PassdownSectionSelection.AllIncluded"/>. Day of week, date, Park Hours,
+    /// Attendance, Early Ride Time, and Daily Feature are mandatory and have no corresponding
+    /// property here.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IncludeDailyAdmission { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool IncludeFastLane { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool IncludePromotions { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool IncludeSeasonPasses { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool IncludeAddOns { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool IncludeOperationalNotes { get; set; } = true;
 
     /// <summary>True while <see cref="CreatePdfCommand"/> is building/saving the PDF (spec Part I) — kept separate from <see cref="IsBusy"/> so a load/Check Online in progress is the only thing that disables the export action itself.</summary>
     [ObservableProperty]
@@ -291,7 +315,7 @@ public partial class AssociateViewModel : ViewModelBase
             ? "Closing time should be after opening time."
             : null;
 
-    public IReadOnlyList<DailyFunTypeOption> DailyFunTypeOptions => DailyFunTypeOption.All;
+    public IReadOnlyList<DailyFeatureTypeOption> DailyFeatureTypeOptions => DailyFeatureTypeOption.All;
 
     public bool HasProductSections => ProductSections.Count > 0;
 
@@ -574,9 +598,21 @@ public partial class AssociateViewModel : ViewModelBase
 
     partial void OnOperationalNotesTextChanged(string? value) => ScheduleAutosave();
 
-    partial void OnSelectedDailyFunTypeOptionChanged(DailyFunTypeOption value) => ScheduleAutosave();
+    partial void OnSelectedDailyFeatureTypeOptionChanged(DailyFeatureTypeOption value) => ScheduleAutosave();
 
-    partial void OnDailyFunTextChanged(string? value) => ScheduleAutosave();
+    partial void OnDailyFeatureTextChanged(string? value) => ScheduleAutosave();
+
+    partial void OnIncludeDailyAdmissionChanged(bool value) => ScheduleAutosave();
+
+    partial void OnIncludeFastLaneChanged(bool value) => ScheduleAutosave();
+
+    partial void OnIncludePromotionsChanged(bool value) => ScheduleAutosave();
+
+    partial void OnIncludeSeasonPassesChanged(bool value) => ScheduleAutosave();
+
+    partial void OnIncludeAddOnsChanged(bool value) => ScheduleAutosave();
+
+    partial void OnIncludeOperationalNotesChanged(bool value) => ScheduleAutosave();
 
     /// <summary>Pushes a freshly loaded/refreshed workspace's draft into the editable fields without treating that as a user edit (see <see cref="_isApplyingWorkspace"/>), then publishes the workspace itself.</summary>
     private void ApplyWorkspaceToFields(AssociateWorkspace workspace)
@@ -609,8 +645,15 @@ public partial class AssociateViewModel : ViewModelBase
 
             OperationalNotesText = string.Join(Environment.NewLine, draft.OperationalNotes);
 
-            SelectedDailyFunTypeOption = DailyFunTypeOption.For(draft.DailyFunType);
-            DailyFunText = draft.DailyFunText;
+            SelectedDailyFeatureTypeOption = DailyFeatureTypeOption.For(draft.DailyFeatureType);
+            DailyFeatureText = draft.DailyFeatureText;
+
+            IncludeDailyAdmission = draft.SectionSelection.IncludeDailyAdmission;
+            IncludeFastLane = draft.SectionSelection.IncludeFastLane;
+            IncludePromotions = draft.SectionSelection.IncludePromotions;
+            IncludeSeasonPasses = draft.SectionSelection.IncludeSeasonPasses;
+            IncludeAddOns = draft.SectionSelection.IncludeAddOns;
+            IncludeOperationalNotes = draft.SectionSelection.IncludeOperationalNotes;
 
             BuildProductSections(workspace);
 
@@ -685,10 +728,17 @@ public partial class AssociateViewModel : ViewModelBase
             PreSolds = _preSolds,
             EarlyRideTime = new EarlyRideTimeDetails(NullIfBlank(EarlyRideTimeDetailsText), ParseLines(ParticipatingAttractionsText)),
             OperationalNotes = ParseLines(OperationalNotesText),
-            DailyFunType = SelectedDailyFunTypeOption.Value,
-            DailyFunText = NullIfBlank(DailyFunText),
+            DailyFeatureType = SelectedDailyFeatureTypeOption.Value,
+            DailyFeatureText = NullIfBlank(DailyFeatureText),
             ProductOverrides = productOverrides,
             CustomProducts = CustomProducts.Select(row => row.ToEntry()).ToList(),
+            SectionSelection = new PassdownSectionSelection(
+                IncludeDailyAdmission,
+                IncludeFastLane,
+                IncludePromotions,
+                IncludeSeasonPasses,
+                IncludeAddOns,
+                IncludeOperationalNotes),
         };
     }
 

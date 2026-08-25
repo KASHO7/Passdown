@@ -127,14 +127,14 @@ public sealed class AssociatePassdownPdfGeneratorTests
         Assert.Contains("Copperhead Strike", text);
     }
 
-    // 10. Daily Fun appears.
+    // 10. Daily Feature appears, headed by the selected type itself.
     [Fact]
-    public void DailyFun_Appears()
+    public void DailyFeature_Appears()
     {
         var model = BuildModel(AssociateWorkspaceFixtures.NormalDay());
         var text = GenerateText(model);
 
-        Assert.Contains("Question of the Day", text);
+        Assert.Contains("QUESTION OF THE DAY", text);
         Assert.Contains("What year did Carowinds open?", text);
     }
 
@@ -341,6 +341,63 @@ public sealed class AssociatePassdownPdfGeneratorTests
         Assert.Equal(AssociatePassdownPdfStatus.ValidationFailed, result.Status);
         Assert.Null(result.PdfBytes);
         Assert.Equal(AssociatePassdownPreflightStatus.MissingOperatingDate, result.Preflight.Status);
+    }
+
+    // Phase 8A: an excluded optional section's category heading and products never appear, and
+    // consume no space — nothing prints where the hidden category would have been.
+    [Fact]
+    public void ExcludedOptionalSection_DoesNotAppearInGeneratedPdf()
+    {
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        workspace = workspace with
+        {
+            Draft = workspace.Draft with { SectionSelection = PassdownSectionSelection.AllIncluded with { IncludeFastLane = false } },
+        };
+
+        var text = GenerateText(BuildModel(workspace));
+
+        Assert.DoesNotContain("Fast Lane", text);
+        Assert.Contains("DAILY ADMISSION", text); // category heading; every other included optional section is unaffected.
+    }
+
+    // Phase 8A: excluding Operational Notes means the section prints nothing at all, not an empty box.
+    [Fact]
+    public void ExcludedOperationalNotes_DoesNotAppearInGeneratedPdf()
+    {
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        workspace = workspace with
+        {
+            Draft = workspace.Draft with { SectionSelection = PassdownSectionSelection.AllIncluded with { IncludeOperationalNotes = false } },
+        };
+
+        var text = GenerateText(BuildModel(workspace));
+
+        Assert.DoesNotContain("OPERATIONAL NOTES", text);
+        Assert.DoesNotContain("Fury 325 closed for scheduled maintenance", text);
+    }
+
+    // Phase 8A: mandatory content always renders regardless of what SectionSelection says — there is
+    // no flag that can hide it in the first place.
+    [Fact]
+    public void MandatoryContent_AlwaysAppears_EvenWithEveryOptionalSectionExcluded()
+    {
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        workspace = workspace with
+        {
+            Draft = workspace.Draft with
+            {
+                SectionSelection = new PassdownSectionSelection(false, false, false, false, false, false),
+            },
+        };
+
+        var model = BuildModel(workspace);
+        var text = GenerateText(model);
+
+        Assert.Contains(model.OperatingDateText, text);
+        Assert.Contains(model.ParkHours.HeadlineText, text);
+        Assert.Contains("18,500", text); // attendance
+        Assert.Contains("Early Ride Time from 8:30 AM", text);
+        Assert.Contains("QUESTION OF THE DAY", text); // Daily Feature
     }
 
     private static string GenerateText(AssociatePassdownDocumentModel model)

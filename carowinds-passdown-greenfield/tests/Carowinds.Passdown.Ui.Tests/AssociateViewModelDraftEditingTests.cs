@@ -74,20 +74,60 @@ public class AssociateViewModelDraftEditingTests
             service.SaveCalls.Single().Draft.OperationalNotes);
     }
 
-    // 4. Daily Fun fields persist.
+    // 4. Daily Feature fields persist.
     [Fact]
-    public async Task DailyFun_Edit_PersistsTypeAndText()
+    public async Task DailyFeature_Edit_PersistsTypeAndText()
     {
         var (viewModel, service, scheduler) = CreateViewModel();
         await viewModel.PendingLoad;
 
-        viewModel.SelectedDailyFunTypeOption = DailyFunTypeOption.For(DailyFunType.QuoteOfTheDay);
-        viewModel.DailyFunText = "\"Ride on!\" — Park motto";
+        viewModel.SelectedDailyFeatureTypeOption = DailyFeatureTypeOption.For(DailyFeatureType.QuoteOfTheDay);
+        viewModel.DailyFeatureText = "\"Ride on!\" — Park motto";
         await ElapseAndAwaitSaveAsync(viewModel, scheduler);
 
         var draft = service.SaveCalls.Last().Draft;
-        Assert.Equal(DailyFunType.QuoteOfTheDay, draft.DailyFunType);
-        Assert.Equal("\"Ride on!\" — Park motto", draft.DailyFunText);
+        Assert.Equal(DailyFeatureType.QuoteOfTheDay, draft.DailyFeatureType);
+        Assert.Equal("\"Ride on!\" — Park motto", draft.DailyFeatureText);
+    }
+
+    // Phase 8A: optional-section selection persists.
+    [Fact]
+    public async Task SectionSelection_Edit_PersistsToDraft()
+    {
+        var (viewModel, service, scheduler) = CreateViewModel();
+        await viewModel.PendingLoad;
+
+        viewModel.IncludeFastLane = false;
+        viewModel.IncludeOperationalNotes = false;
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var selection = service.SaveCalls.Last().Draft.SectionSelection;
+        Assert.False(selection.IncludeFastLane);
+        Assert.False(selection.IncludeOperationalNotes);
+        Assert.True(selection.IncludeDailyAdmission); // every other section stays included by default.
+        Assert.True(selection.IncludePromotions);
+        Assert.True(selection.IncludeSeasonPasses);
+        Assert.True(selection.IncludeAddOns);
+    }
+
+    // Phase 8A: reopening a saved date restores its section selection.
+    [Fact]
+    public async Task SectionSelection_SurvivesDateSwitchAndReload()
+    {
+        var (viewModel, _, scheduler) = CreateViewModel();
+        await viewModel.PendingLoad;
+
+        viewModel.IncludeSeasonPasses = false;
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var otherDate = Today.AddDays(1);
+        viewModel.SelectedDate = otherDate;
+        await viewModel.PendingLoad;
+        viewModel.SelectedDate = Today;
+        await viewModel.PendingLoad;
+
+        Assert.False(viewModel.IncludeSeasonPasses);
+        Assert.False(viewModel.Workspace!.Draft.SectionSelection.IncludeSeasonPasses);
     }
 
     // 5. Early Ride Time fields persist.

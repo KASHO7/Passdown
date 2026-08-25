@@ -1,11 +1,34 @@
 namespace Carowinds.Passdown.Application.Associate;
 
-/// <summary>Spec §8.1's three Daily Fun content types. Plain manual text — never AI-generated (spec §8.1).</summary>
-public enum DailyFunType
+/// <summary>
+/// The three Daily Feature content types (Phase 8A; formerly "Daily Fun"). Plain manual text — never
+/// AI-generated. Underlying values are unchanged from the original <c>DailyFunType</c> enum so a
+/// schema-v1 draft's persisted integer still decodes correctly after the rename — see
+/// <see cref="AssociatePassdownService.DeserializeDraft"/>.
+/// </summary>
+public enum DailyFeatureType
 {
     QuestionOfTheDay,
-    FactOfTheDay,
+    UselessFactOfTheDay,
     QuoteOfTheDay,
+}
+
+/// <summary>
+/// Which optional Passdown sections a supervisor has chosen to include (Phase 8A's Passdown
+/// Builder). Day of week, date, Park Hours, Attendance, Early Ride Time, and Daily Feature are
+/// mandatory and have no corresponding flag here — the Documents project's document-model builder
+/// always renders them regardless of this selection.
+/// </summary>
+public sealed record PassdownSectionSelection(
+    bool IncludeDailyAdmission,
+    bool IncludeFastLane,
+    bool IncludePromotions,
+    bool IncludeSeasonPasses,
+    bool IncludeAddOns,
+    bool IncludeOperationalNotes)
+{
+    /// <summary>Every optional section included — the default for a new draft and for a schema-v1 draft migrated forward, matching what the PDF already rendered before Phase 8A existed.</summary>
+    public static PassdownSectionSelection AllIncluded { get; } = new(true, true, true, true, true, true);
 }
 
 /// <summary>Manual correction to the official park hours (spec §8.1/§8.2) — distinct from a private-buyout override, see <see cref="PrivateBuyoutOverride"/>.</summary>
@@ -58,13 +81,19 @@ public sealed record AssociateDraftPayload(
     int? PreSolds,
     EarlyRideTimeDetails EarlyRideTime,
     IReadOnlyList<string> OperationalNotes,
-    DailyFunType? DailyFunType,
-    string? DailyFunText,
+    DailyFeatureType? DailyFeatureType,
+    string? DailyFeatureText,
     IReadOnlyDictionary<string, ProductDraftOverride> ProductOverrides,
-    IReadOnlyList<CustomProductEntry> CustomProducts)
+    IReadOnlyList<CustomProductEntry> CustomProducts,
+    PassdownSectionSelection SectionSelection)
 {
-    /// <summary>Current schema version for <see cref="Persistence.AssociateDraft.SchemaVersion"/> — bump when this shape changes incompatibly.</summary>
-    public const int CurrentSchemaVersion = 1;
+    /// <summary>
+    /// Current schema version for <see cref="Persistence.AssociateDraft.SchemaVersion"/> — bump when
+    /// this shape changes incompatibly. Phase 8A bumped 1 -> 2 for the Daily Fun -> Daily Feature
+    /// rename plus <see cref="SectionSelection"/>; see <see cref="AssociatePassdownService.DeserializeDraft"/>
+    /// for how an older persisted payload is migrated forward on read.
+    /// </summary>
+    public const int CurrentSchemaVersion = 2;
 
     /// <summary>The draft an operating date starts with before an associate has entered anything (spec §8.3's "no draft -> default draft").</summary>
     public static AssociateDraftPayload CreateDefault() => new(
@@ -74,8 +103,9 @@ public sealed record AssociateDraftPayload(
         PreSolds: null,
         EarlyRideTimeDetails.Empty,
         OperationalNotes: [],
-        DailyFunType: null,
-        DailyFunText: null,
+        DailyFeatureType: null,
+        DailyFeatureText: null,
         ProductOverrides: new Dictionary<string, ProductDraftOverride>(),
-        CustomProducts: []);
+        CustomProducts: [],
+        SectionSelection: PassdownSectionSelection.AllIncluded);
 }

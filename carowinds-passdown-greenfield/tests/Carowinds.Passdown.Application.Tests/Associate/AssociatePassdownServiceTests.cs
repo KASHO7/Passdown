@@ -101,10 +101,57 @@ public class AssociatePassdownServiceTests
         Assert.Equal(expected.EarlyRideTime.Details, actual.EarlyRideTime.Details);
         Assert.Equal(expected.EarlyRideTime.ParticipatingAttractions, actual.EarlyRideTime.ParticipatingAttractions);
         Assert.Equal(expected.OperationalNotes, actual.OperationalNotes);
-        Assert.Equal(expected.DailyFunType, actual.DailyFunType);
-        Assert.Equal(expected.DailyFunText, actual.DailyFunText);
+        Assert.Equal(expected.DailyFeatureType, actual.DailyFeatureType);
+        Assert.Equal(expected.DailyFeatureText, actual.DailyFeatureText);
         Assert.Equal(expected.ProductOverrides, actual.ProductOverrides);
         Assert.Equal(expected.CustomProducts, actual.CustomProducts);
+        Assert.Equal(expected.SectionSelection, actual.SectionSelection);
+    }
+
+    // ===================== Phase 8A: Daily Feature / section selection =====================
+
+    // Spec Phase 8A: Daily Feature supports exactly the three intended types.
+    [Fact]
+    public void DailyFeatureType_HasExactlyTheThreeIntendedValues()
+    {
+        var values = Enum.GetValues<DailyFeatureType>();
+
+        Assert.Equal(3, values.Length);
+        Assert.Contains(DailyFeatureType.QuestionOfTheDay, values);
+        Assert.Contains(DailyFeatureType.UselessFactOfTheDay, values);
+        Assert.Contains(DailyFeatureType.QuoteOfTheDay, values);
+    }
+
+    // Schema-v1 drafts (pre-Phase 8A) persisted "DailyFunType"/"DailyFunText" under their old names
+    // and had no section-selection concept at all; loading one must not lose that data or silently
+    // hide every optional section.
+    [Fact]
+    public async Task LoadAssociateDateAsync_LegacySchemaV1Payload_MigratesDailyFunAndDefaultsSectionsToIncluded()
+    {
+        var env = CreateEnvironment();
+        var legacyJson = """
+            {
+                "ManualHoursOverride": { "Enabled": false, "OpeningTime": null, "ClosingTime": null },
+                "PrivateBuyout": { "Enabled": false, "OpeningTime": null, "ClosingTime": null, "Details": null },
+                "ProjectedAttendance": 9000,
+                "PreSolds": null,
+                "EarlyRideTime": { "Details": null, "ParticipatingAttractions": [] },
+                "OperationalNotes": ["Legacy note"],
+                "DailyFunType": 1,
+                "DailyFunText": "Carowinds opened in 1973.",
+                "ProductOverrides": {},
+                "CustomProducts": []
+            }
+            """;
+        await env.Drafts.SaveAsync(new AssociateDraft(Date, SchemaVersion: 1, PayloadJson: legacyJson, UpdatedAt: FixedNow));
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+
+        Assert.Equal(DailyFeatureType.UselessFactOfTheDay, workspace.Draft.DailyFeatureType); // legacy int 1 == FactOfTheDay's old position == UselessFactOfTheDay's new position.
+        Assert.Equal("Carowinds opened in 1973.", workspace.Draft.DailyFeatureText);
+        Assert.Equal(PassdownSectionSelection.AllIncluded, workspace.Draft.SectionSelection);
+        Assert.Equal(9000, workspace.Draft.ProjectedAttendance);
+        Assert.Equal(["Legacy note"], workspace.Draft.OperationalNotes);
     }
 
     // ===================== Draft behavior (1-5) =====================
@@ -147,13 +194,14 @@ public class AssociatePassdownServiceTests
             PreSolds: 678,
             EarlyRideTime: new EarlyRideTimeDetails("Gates open early", ["Fury 325", "Intimidator"]),
             OperationalNotes: ["Note one", "Note two"],
-            DailyFunType: DailyFunType.FactOfTheDay,
-            DailyFunText: "Carowinds opened in 1973.",
+            DailyFeatureType: DailyFeatureType.UselessFactOfTheDay,
+            DailyFeatureText: "Carowinds opened in 1973.",
             ProductOverrides: new Dictionary<string, ProductDraftOverride>
             {
                 ["dated|DatedAdmissionTickets|PKG1"] = new ProductDraftOverride(false, 42.50m),
             },
-            CustomProducts: [new CustomProductEntry("custom-1", "Group Rate", 10m, "Ask manager", true)]);
+            CustomProducts: [new CustomProductEntry("custom-1", "Group Rate", 10m, "Ask manager", true)],
+            SectionSelection: new PassdownSectionSelection(true, false, true, false, true, false));
 
         await env.Service.SaveDraftAsync(Date, draft);
         var workspace = await env.Service.LoadAssociateDateAsync(Date);
@@ -779,8 +827,8 @@ public class AssociatePassdownServiceTests
             PreSolds: 4200,
             EarlyRideTime: new EarlyRideTimeDetails("7:30-8:30 AM, wristband required", ["Fury 325", "Copperhead Strike", "Intimidator"]),
             OperationalNotes: ["Rain expected after 3 PM", "VIP tour group at 10 AM", "Short-staffed at North Gate"],
-            DailyFunType: DailyFunType.QuestionOfTheDay,
-            DailyFunText: "What year did Carowinds open?",
+            DailyFeatureType: DailyFeatureType.QuestionOfTheDay,
+            DailyFeatureText: "What year did Carowinds open?",
             ProductOverrides: new Dictionary<string, ProductDraftOverride>
             {
                 [AssociateProductIdentity.ForDatedProduct(SourceCategory.DatedAdmissionTickets, "PKG-A")] = new(true, null),
@@ -791,7 +839,8 @@ public class AssociatePassdownServiceTests
             [
                 new CustomProductEntry("group-1", "School Group Rate", 25m, "Contact groups desk", true),
                 new CustomProductEntry("promo-1", "Employee Family Day", null, null, false),
-            ]);
+            ],
+            SectionSelection: PassdownSectionSelection.AllIncluded with { IncludeSeasonPasses = false });
 
         await env.Service.SaveDraftAsync(Date, draft);
         var persisted = await env.Drafts.GetAsync(Date);

@@ -1,5 +1,6 @@
 using System.Globalization;
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Hours;
 
 namespace Carowinds.Passdown.Documents.Associate;
@@ -28,8 +29,8 @@ public static class AssociatePassdownDocumentModelBuilder
             BuildParkHours(workspace),
             new PdfAttendance(workspace.Draft.ProjectedAttendance, workspace.Draft.PreSolds),
             BuildEarlyRideTime(workspace.Draft.EarlyRideTime),
-            BuildDailyFun(workspace.Draft),
-            workspace.Draft.OperationalNotes,
+            BuildDailyFeature(workspace.Draft),
+            workspace.Draft.SectionSelection.IncludeOperationalNotes ? workspace.Draft.OperationalNotes : [],
             productCategories,
             HasUnverifiedProductPricing(workspace),
             FormatTimestamp(generatedAt));
@@ -109,25 +110,37 @@ public static class AssociatePassdownDocumentModelBuilder
         return new PdfEarlyRideTime(enabled, string.IsNullOrWhiteSpace(details.Details) ? null : details.Details.Trim(), details.ParticipatingAttractions);
     }
 
-    private static PdfDailyFun BuildDailyFun(AssociateDraftPayload draft)
+    private static PdfDailyFeature BuildDailyFeature(AssociateDraftPayload draft)
     {
-        var label = draft.DailyFunType switch
+        var label = draft.DailyFeatureType switch
         {
-            DailyFunType.QuestionOfTheDay => "Question of the Day",
-            DailyFunType.FactOfTheDay => "Fact of the Day",
-            DailyFunType.QuoteOfTheDay => "Quote of the Day",
+            DailyFeatureType.QuestionOfTheDay => "Question of the Day",
+            DailyFeatureType.UselessFactOfTheDay => "Useless Fact of the Day",
+            DailyFeatureType.QuoteOfTheDay => "Quote of the Day",
             _ => null,
         };
 
-        return new PdfDailyFun(label, string.IsNullOrWhiteSpace(draft.DailyFunText) ? null : draft.DailyFunText.Trim());
+        return new PdfDailyFeature(label, string.IsNullOrWhiteSpace(draft.DailyFeatureText) ? null : draft.DailyFeatureText.Trim());
     }
+
+    /// <summary>Spec Phase 8A: Park Hours/product-category-less content is unaffected by <see cref="PassdownSectionSelection"/> — only the six named optional categories can be hidden; every other category (e.g. Haunted Attractions) is unaffected by this phase and always included, matching current behavior.</summary>
+    private static bool IsOptionalCategoryIncluded(SourceCategory category, PassdownSectionSelection selection) => category switch
+    {
+        SourceCategory.DatedAdmissionTickets => selection.IncludeDailyAdmission,
+        SourceCategory.DatedFastLane => selection.IncludeFastLane,
+        SourceCategory.Promotions => selection.IncludePromotions,
+        SourceCategory.SeasonPasses => selection.IncludeSeasonPasses,
+        SourceCategory.AddOns => selection.IncludeAddOns,
+        _ => true,
+    };
 
     private static IReadOnlyList<PdfProductCategory> BuildProductCategories(AssociateWorkspace workspace)
     {
         var categories = new List<PdfProductCategory>();
 
         var officialByCategory = workspace.Products
-            .Where(product => !product.IsCustom && product.Category is not null && product.IncludeOnPdf)
+            .Where(product => !product.IsCustom && product.Category is not null && product.IncludeOnPdf
+                && IsOptionalCategoryIncluded(product.Category!.Value, workspace.Draft.SectionSelection))
             .GroupBy(product => product.Category!.Value)
             .OrderBy(group => (int)group.Key);
 
