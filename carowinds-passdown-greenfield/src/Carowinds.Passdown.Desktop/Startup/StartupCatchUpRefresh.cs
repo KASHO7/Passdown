@@ -1,4 +1,6 @@
+using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Refresh;
+using Carowinds.Passdown.Desktop.ScheduledRefresh;
 using Carowinds.Passdown.Infrastructure.Concurrency;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -18,6 +20,12 @@ namespace Carowinds.Passdown.Desktop.Startup;
 /// the startup path — run it as a detached background task so it can never delay the window
 /// opening — and any failure is caught and logged here, never allowed to reach the caller, so
 /// cached data and the already-open UI are unaffected either way.
+///
+/// Phase 9B Part T: this naturally performs finalize-then-refresh ordering too, using the same
+/// <see cref="IScheduledPassdownFinalizer"/> and the same lock/failure semantics as
+/// <see cref="ScheduledRefresh.ScheduledRefreshHost"/> — a finalization failure here is caught by
+/// the same outer catch below (never propagated, UI stays open) but still prevents the refresh
+/// runner from being invoked for this catch-up attempt.
 /// </summary>
 public static class StartupCatchUpRefresh
 {
@@ -37,6 +45,10 @@ public static class StartupCatchUpRefresh
 
             try
             {
+                var finalizer = services.GetRequiredService<IScheduledPassdownFinalizer>();
+                var finalizationSummary = await finalizer.FinalizeEligibleAsync(cancellationToken).ConfigureAwait(false);
+                ScheduledRefreshHost.LogFinalizationSummary(logger, finalizationSummary);
+
                 var runner = services.GetRequiredService<IScheduledRefreshRunner>();
                 await runner.RunAsync(cancellationToken).ConfigureAwait(false);
             }
@@ -48,7 +60,9 @@ public static class StartupCatchUpRefresh
         catch (Exception ex)
         {
             // Best-effort only: a failure here must never affect the already-open UI or its cached
-            // data (Part C "failures should not prevent the UI from opening").
+            // data (Part C "failures should not prevent the UI from opening") — this also covers a
+            // Phase 9B finalization failure, which must still block the refresh runner call above
+            // without propagating (Part T).
             logger.LogWarning(ex, "Startup catch-up refresh failed; cached data remains usable.");
         }
     }

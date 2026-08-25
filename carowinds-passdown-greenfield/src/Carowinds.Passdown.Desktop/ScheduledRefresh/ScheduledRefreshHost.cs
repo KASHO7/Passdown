@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Infrastructure.Concurrency;
 using Carowinds.Passdown.Infrastructure.Storage;
@@ -7,10 +8,12 @@ using Microsoft.Extensions.Logging;
 namespace Carowinds.Passdown.Desktop.ScheduledRefresh;
 
 /// <summary>
-/// The headless host for <c>--scheduled-refresh</c> (Phase 6A Parts C/D/E/H; Phase 6B Part A):
-/// builds the same composition root the desktop UI uses, guards against a second overlapping
-/// invocation, initializes the database, invokes <see cref="IScheduledRefreshRunner"/>, and
-/// classifies the outcome into a process exit code. Never resolves
+/// The headless host for <c>--scheduled-refresh</c> (Phase 6A Parts C/D/E/H; Phase 6B Part A; Phase
+/// 9B Part B): builds the same composition root the desktop UI uses, guards against a second
+/// overlapping invocation, initializes the database, finalizes any eligible previous passdown
+/// (<see cref="IScheduledPassdownFinalizer"/>) <em>before</em> invoking
+/// <see cref="IScheduledRefreshRunner"/> — a finalization failure blocks that invocation's refresh
+/// entirely (Phase 9B Part H) — and classifies the outcome into a process exit code. Never resolves
 /// <c>MainWindow</c>/<c>MainViewModel</c>/<c>AssociateViewModel</c> — those types are registered in
 /// the shared composition root but this class deliberately never asks for them (Part H).
 /// </summary>
@@ -60,6 +63,21 @@ public sealed class ScheduledRefreshHost(
             // App.OnFrameworkInitializationCompleted's normal-mode ordering, Part C).
             services.GetRequiredService<MigrationRunner>().Run();
 
+            // Phase 9B Part B/H: finalization always runs before refresh, and a finalization failure
+            // blocks this invocation's refresh entirely — refreshing first could alter the local
+            // source/product state a retry would need to capture the exact pre-refresh snapshot.
+            try
+            {
+                var finalizer = services.GetRequiredService<IScheduledPassdownFinalizer>();
+                var finalizationSummary = await finalizer.FinalizeEligibleAsync(cancellationToken).ConfigureAwait(false);
+                LogFinalizationSummary(logger, finalizationSummary);
+            }
+            catch (Exception ex)
+            {
+                logger.LogCritical(ex, "Fatal: scheduled passdown finalization failed unexpectedly; refresh was not invoked.");
+                return ScheduledRefreshExitCode.FatalFailure;
+            }
+
             var runner = services.GetRequiredService<IScheduledRefreshRunner>();
             var result = await runner.RunAsync(cancellationToken).ConfigureAwait(false);
 
@@ -91,5 +109,18 @@ public sealed class ScheduledRefreshHost(
             scheduledLock?.Dispose();
             (services as IDisposable)?.Dispose();
         }
+    }
+
+    /// <summary>Concise counts only (Phase 9B Part R) — never the snapshot JSON or any operational-note text.</summary>
+    internal static void LogFinalizationSummary(ILogger logger, ScheduledFinalizationSummary summary)
+    {
+        if (summary.EligibleCount == 0)
+        {
+            return;
+        }
+
+        logger.LogInformation(
+            "Scheduled passdown finalization: {Eligible} eligible, {Finalized} finalized, {AlreadyFinalized} already finalized.",
+            summary.EligibleCount, summary.FinalizedCount, summary.AlreadyFinalizedCount);
     }
 }

@@ -133,12 +133,14 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IAssociatePassdownPdfExportService, AssociatePassdownPdfExportService>();
         services.AddSingleton<IPdfSaveFilePicker, AvaloniaPdfSaveFilePicker>();
 
-        // Phase 9A: the immutable finalized-passdown foundation. Nothing in the app calls
-        // IFinalizedPassdownFinalizationService yet (Phase 9B owns the 6:00 AM scheduler that will) —
-        // registered now so that later phase has nothing left to wire up.
+        // Phase 9A: the immutable finalized-passdown foundation.
         services.AddSingleton<IFinalizedPassdownRepository, SqliteFinalizedPassdownRepository>();
         services.AddSingleton<IFinalizedPassdownSnapshotBuilder, FinalizedPassdownSnapshotBuilder>();
         services.AddSingleton<IFinalizedPassdownFinalizationService, FinalizedPassdownFinalizationService>();
+
+        // Phase 9B: the 6:00 AM automatic finalization coordinator, invoked by ScheduledRefreshHost
+        // and StartupCatchUpRefresh before either ever runs a source refresh.
+        services.AddSingleton<IScheduledPassdownFinalizer, ScheduledPassdownFinalizer>();
 
         // Phase 7F Part F/G: the sanitized diagnostic export pipeline. Reuses the already-registered
         // SqliteConnectionFactory/ISourceStateRepository/IReadOnlyList<SourceRegistration>/IClock —

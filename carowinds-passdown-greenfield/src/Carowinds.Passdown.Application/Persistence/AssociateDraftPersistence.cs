@@ -18,4 +18,13 @@ public interface IAssociateDraftRepository
 
     /// <summary>Inserts or fully replaces the draft for <paramref name="draft"/>'s operating date.</summary>
     Task SaveAsync(AssociateDraft draft, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every <see cref="AssociateDraft.OperatingDate"/> with a persisted row, ascending. Used by
+    /// Phase 9B's scheduled finalizer to find finalization candidates without deserializing every
+    /// draft's <see cref="AssociateDraft.PayloadJson"/> (spec Phase 9B Part L) — "a saved draft row
+    /// exists" is the eligibility signal (Part D), not "a workspace can be composed for this date"
+    /// (which is true for every date, saved or not).
+    /// </summary>
+    Task<IReadOnlyList<DateOnly>> ListSavedDraftDatesAsync(CancellationToken cancellationToken = default);
 }

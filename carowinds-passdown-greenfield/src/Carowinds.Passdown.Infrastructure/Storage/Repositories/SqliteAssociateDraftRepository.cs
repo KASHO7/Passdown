@@ -48,4 +48,20 @@ public sealed class SqliteAssociateDraftRepository(SqliteConnectionFactory conne
 
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
+
+    public async Task<IReadOnlyList<DateOnly>> ListSavedDraftDatesAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT operating_date FROM associate_drafts ORDER BY operating_date ASC;";
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        var dates = new List<DateOnly>();
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            dates.Add(SqliteConvert.ReadDateOnly(reader, 0));
+        }
+
+        return dates;
+    }
 }

@@ -14,4 +14,10 @@ internal sealed class InMemoryAssociateDraftRepository : IAssociateDraftReposito
         _drafts[draft.OperatingDate] = draft;
         return Task.CompletedTask;
     }
+
+    public Task<IReadOnlyList<DateOnly>> ListSavedDraftDatesAsync(CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<DateOnly> dates = _drafts.Keys.OrderBy(d => d).ToList();
+        return Task.FromResult(dates);
+    }
 }

@@ -1,9 +1,12 @@
 # Phase 9 — Passdown History & Finalization
 
-Phase 9A (this document's current scope) establishes the immutable
-finalized-passdown domain/storage model only. It does not schedule
-automatic finalization, does not build the History UI, does not implement
-revisions, and does not touch the Manager workflow.
+Phase 9A established the immutable finalized-passdown domain/storage
+model. Phase 9B (this document's current scope) adds *automatic*
+finalization: a 6:00 AM Eastern cutoff, evaluated by the existing
+scheduled task and the interactive startup catch-up path, always before
+either ever runs a source refresh. Neither phase builds the History UI,
+implements revisions, or touches the Manager workflow. Phase 9B does not
+add frozen PDF storage — see "PDF storage" below.
 
 ## Concept
 
@@ -11,10 +14,10 @@ revisions, and does not touch the Manager workflow.
 editable Associate draft
     |
     v
-finalization
+finalization                     <- Phase 9A model; Phase 9B automates it
     |
     v
-immutable historical snapshot   <- Phase 9A (this doc)
+immutable historical snapshot
     |
     v
 frozen PDF                       <- Phase 9C
@@ -172,23 +175,122 @@ alongside its own metadata/snapshot row, transactionally, rather than an
 external file path that can silently disappear if a folder moves — that
 remains the intended Phase 9C direction.
 
-## No-draft eligibility — open decision for Phase 9B
+## Automatic finalization (Phase 9B)
+
+**Order — finalize before refresh.** Both entry points that already run
+`IScheduledRefreshRunner` now finalize first, and a finalization failure
+blocks that invocation's refresh:
+
+- `ScheduledRefreshHost.RunAsync` (`Carowinds.Passdown.Desktop.exe --scheduled-refresh`,
+  the same Windows Task Scheduler task as Phase 6 — Phase 9B adds no
+  second task, no second CLI flag, and does not touch the 6:00 AM
+  trigger itself): acquire lock → run migrations → finalize eligible
+  passdowns → run scheduled refresh → exit/logging.
+- `StartupCatchUpRefresh.RunAsync` (Phase 6B's non-blocking startup
+  catch-up): the same ordering, guarded by the same
+  `FileScheduledRefreshLock`, resolved through the same
+  `IScheduledPassdownFinalizer`. A failure here is caught by the
+  existing outer catch (never propagates — the window still opens) but
+  still prevents the refresh runner from being invoked for that catch-up
+  attempt.
+
+Interactive "Check Online" (`AssociatePassdownService.CheckAssociateDateOnlineAsync`)
+is untouched and stays a plain user-triggered single-date refresh — it
+does not route through `IScheduledPassdownFinalizer` and does not
+finalize anything. If a user checks a date online after its cutoff but
+before the scheduled/catch-up finalizer has run, nothing about
+finalization semantics changes; the next scheduled or catch-up
+invocation still finalizes from whatever is locally stored at that time.
+
+**Eligibility** (`ScheduledPassdownFinalizer.FinalizeEligibleAsync`,
+`Application/Finalization/ScheduledPassdownFinalizer.cs`) — a
+`PassdownDate` is eligible only when all three hold:
+
+1. `FinalizationEligibility.EligibleForFinalizationAt(date) <=` the
+   injected `IClock.UtcNow` (its cutoff has passed).
+2. `IAssociateDraftRepository.ListSavedDraftDatesAsync()` includes the
+   date — i.e. a draft row was actually saved for it. This resolves
+   Phase 9A's open decision below: "a workspace can be loaded for this
+   date" (true for *every* date — a missing draft simply composes
+   `AssociateDraftPayload.CreateDefault()`) is **not** treated as
+   eligibility; only a persisted row is.
+3. `IFinalizedPassdownRepository.ExistsForDateAsync(date)` is `false`
+   (not already finalized).
+
+No draft row for a date means no historical record is ever fabricated
+for it — the finalizer simply never considers a date that never appears
+in `ListSavedDraftDatesAsync()`.
+
+**Missed-run / multi-day recovery.** Every eligible date is finalized in
+one pass, oldest first: `FinalizeEligibleAsync` reads every saved draft
+date, filters to eligible ones, sorts ascending, and finalizes each in
+order. A machine that misses several days (e.g. off from 8/24 through
+8/28) finalizes 8/24, 8/25, 8/26, 8/27 in that order in the single
+invocation that next runs, rather than only "yesterday". `FinalizedAtUtc`
+on every resulting row is the actual completion time (`IClock.UtcNow`
+when the pass ran), never a fabricated nominal 6:00.
+
+**Origin** (`FinalizationOrigin.Scheduled` vs `.Recovery`) — deterministic
+from calendar dates alone, never from Task Scheduler's own missed-run
+reporting: a `PassdownDate`'s cutoff always falls on `PassdownDate + 1
+day` (America/New_York calendar date). If that equals today's Eastern
+calendar date (from the same `IClock.UtcNow`), the origin is `Scheduled`;
+if it is an earlier date, the origin is `Recovery`. It can never be a
+later date, since only already-eligible dates reach this check.
+`FinalizationOrigin.Manual` is not produced anywhere in Phase 9B — no
+manual finalization UI/command exists yet (Phase 9B Part W).
+
+**Failure blocks refresh.** If `FinalizeEligibleAsync` throws for an
+eligible date (a build/serialize/hash/repository failure inside
+`FinalizedPassdownFinalizationService.FinalizeAsync`),
+`ScheduledRefreshHost` logs it and returns the existing `FatalFailure`
+exit code (2) *without ever calling* `IScheduledRefreshRunner` for that
+invocation — no new exit code was added. The next scheduled/catch-up
+invocation retries finalization from the same unchanged pre-refresh local
+state, since refresh never ran to alter it.
+
+**Safe skips continue to refresh** — none of the following is a failure;
+finalization simply reports zero/partial work and the refresh step still
+runs normally:
+
+- no saved draft is eligible yet (nothing has crossed cutoff);
+- every eligible date was already finalized by an earlier run;
+- there are no saved drafts at all.
+
+**Duplicate/race safety.** `FileScheduledRefreshLock` still serializes
+every scheduled/catch-up invocation, so two finalization passes cannot
+run concurrently in practice. As defense in depth underneath that lock,
+nothing changed here: `ExistsForDateAsync` is checked before finalizing
+each date, `FinalizedPassdownFinalizationService.FinalizeAsync` re-checks
+via `GetByDateAsync` before its own insert (Phase 9A), and the database's
+unique index on `passdown_date` remains the final backstop — none of
+these were removed or weakened to make room for the scheduler.
+
+**Summary/logging.** `FinalizeEligibleAsync` returns a
+`ScheduledFinalizationSummary` (`EligibleCount`, `FinalizedCount`,
+`AlreadyFinalizedCount`, and the list of newly finalized
+dates/origins). `ScheduledRefreshHost.LogFinalizationSummary` logs one
+concise line with those counts (only when `EligibleCount > 0`, to avoid
+noise on the common "nothing to finalize" run), plus one
+`Finalized passdown {date} ({origin})` line per newly finalized date from
+inside the finalizer itself. Never logs snapshot JSON or any
+associate-entered note text.
+
+## No-draft eligibility — resolved in Phase 9B
 
 `AssociatePassdownService.LoadAssociateDateAsync` always returns a
 composed `AssociateWorkspace` for any date, whether or not an
 `AssociateDraft` row was ever saved for it (a missing draft simply
 composes `AssociateDraftPayload.CreateDefault()`). This means "a
 workspace can be loaded for this date" is **not** a meaningful "there is
-real content to finalize" signal — Phase 9B must not treat every date the
-app has ever displayed as eligible for automatic finalization.
+real content to finalize" signal.
 
-The recommended (not yet implemented) interpretation for Phase 9B:
-treat a date as having "eligible source content" only when
-`IAssociateDraftRepository.GetAsync(date)` returns a non-null row — i.e.
-an associate actually saved something for that date — rather than merely
-being loadable. Phase 9A does not enforce or encode this rule anywhere;
-it is documented here as the open decision Phase 9B needs to resolve
-before wiring up the 6:00 AM job, per spec Phase 9 Part P.
+Phase 9B resolves this exactly as Phase 9A recommended: a date is treated
+as having eligible source content only when
+`IAssociateDraftRepository.ListSavedDraftDatesAsync()` includes it — i.e.
+an associate actually saved something for that date — never merely
+because the date is loadable (every date is). See "Eligibility" above for
+the full rule.
 
 ## Date/time semantics
 
@@ -201,14 +303,13 @@ before wiring up the 6:00 AM job, per spec Phase 9 Part P.
   6:00 AM **America/New_York** on the day after `passdownDate`, correctly
   applying the EST/EDT offset for whichever side of a DST transition that
   particular date falls on (same approach as the existing
-  `EasternTimeZone` helper). This is a pure, tested helper only — nothing
-  calls it yet. Phase 9B owns actually evaluating "is it past the cutoff"
-  against the real clock and scheduling the job.
+  `EasternTimeZone` helper). Phase 9B's `ScheduledPassdownFinalizer` is
+  the caller: it compares this against `IClock.UtcNow` for every saved
+  draft date to decide eligibility (see "Automatic finalization" above).
 
-`DateTime.Now`/`DateTime.UtcNow` are not used anywhere in the Phase 9A
-code; all timestamps flow from the composed `AssociateWorkspace`'s own
-`asOf`/`finalizedAt` parameters, supplied by the caller (a test, or in
-the future, the Phase 9B scheduler via `IClock`).
+`DateTime.Now`/`DateTime.UtcNow` are not used anywhere in the Phase 9A/9B
+code; all timestamps flow from `IClock`/the composed `AssociateWorkspace`'s
+own `asOf`/`finalizedAt` parameters.
 
 ## Immutability enforcement
 
@@ -243,8 +344,9 @@ guarantee.)
 
 ## Not implemented in Phase 9A (by design)
 
-- The 6:00 AM automatic finalization job/scheduler.
-- Windows Task Scheduler wiring for finalization.
+- The 6:00 AM automatic finalization job/scheduler — added in Phase 9B.
+- Windows Task Scheduler wiring for finalization — Phase 9B reuses the
+  existing Phase 6C task/trigger rather than adding one.
 - The Passdown History UI/screen.
 - Reading a finalized snapshot back into any UI.
 - Frozen PDF storage (`pdf_bytes` column and the code that populates it).
@@ -254,6 +356,33 @@ guarantee.)
   draft stays fully editable after finalization, exactly as before.
 - Automatic snapshotting on save, on PDF export, or on date switch.
 
-`IFinalizedPassdownFinalizationService` is registered in DI
-(`App.axaml.cs`) but nothing in the running app calls it — it exists so
-Phase 9B has a single, already-tested call to make.
+## Not implemented in Phase 9B (by design)
+
+- Manual finalization UI or command — `FinalizationOrigin.Manual` exists
+  for future use only; nothing in Phase 9B produces it.
+- A second Windows Task Scheduler task, a second CLI flag, a Windows
+  service, or a second process-level lock — Phase 9B reuses
+  `Carowinds.Passdown.Desktop.exe --scheduled-refresh`,
+  `FileScheduledRefreshLock`, and the existing 6:00 AM trigger unchanged.
+- Routing interactive "Check Online" through the scheduled finalizer.
+- Frozen PDF blob storage, revisions, History UI, and the Manager
+  workflow — same as Phase 9A, still deferred to Phase 9C/9D/later.
+
+## Persistence additions (Phase 9B)
+
+`IAssociateDraftRepository.ListSavedDraftDatesAsync()`
+(`Application/Persistence/AssociateDraftPersistence.cs`) — every saved
+draft's `OperatingDate`, ascending, without deserializing any
+`PayloadJson`. `SqliteAssociateDraftRepository`'s implementation is a
+plain `SELECT operating_date FROM associate_drafts ORDER BY
+operating_date ASC`. No migration was needed — `associate_drafts`
+already existed (Phase 4A/Migration0006).
+
+`IFinalizedPassdownFinalizationService` (registered in DI since Phase
+9A) is now actually called, by `ScheduledPassdownFinalizer`
+(`Application/Finalization/ScheduledPassdownFinalizer.cs`, also
+registered as `IScheduledPassdownFinalizer` in DI). The coordinator
+itself depends only on `IAssociateDraftRepository`,
+`IAssociatePassdownService`, `IFinalizedPassdownRepository`,
+`IFinalizedPassdownFinalizationService`, and `IClock` — no HTTP,
+Playwright, `IRefreshOrchestrator`, or Windows Task Scheduler API.
