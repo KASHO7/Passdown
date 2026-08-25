@@ -40,9 +40,10 @@ public class PortableLifecycleTests : IDisposable
         new Migration0005CreateProductHistoryTable(),
         new Migration0006CreateAssociateDraftsTable(),
         new Migration0007CreateManagerDraftsTable(),
+        new Migration0008CreateFinalizedPassdownsTable(),
     ];
 
-    private const int CurrentSchemaVersion = 7;
+    private const int CurrentSchemaVersion = 8;
 
     // ------------------------------------------------------------------
     // Part B: clean first run.
@@ -254,7 +255,7 @@ public class PortableLifecycleTests : IDisposable
             {
                 versions.Add(reader.GetInt64(0));
             }
-            Assert.Equal([1L, 2L, 3L, 4L, 5L, 6L, 7L], versions);
+            Assert.Equal([1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L], versions);
         }
 
         // Re-running the current runner again is idempotent.

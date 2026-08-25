@@ -4,6 +4,7 @@ using Avalonia.Markup.Xaml;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Catalog;
 using Carowinds.Passdown.Application.Diagnostics;
+using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Freshness;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Refresh;
@@ -113,6 +114,7 @@ public partial class App : global::Avalonia.Application
             new Migration0005CreateProductHistoryTable(),
             new Migration0006CreateAssociateDraftsTable(),
             new Migration0007CreateManagerDraftsTable(),
+            new Migration0008CreateFinalizedPassdownsTable(),
         ]);
         services.AddSingleton<MigrationRunner>();
 
@@ -130,6 +132,13 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IAssociatePassdownPdfGenerator, AssociatePassdownPdfGenerator>();
         services.AddSingleton<IAssociatePassdownPdfExportService, AssociatePassdownPdfExportService>();
         services.AddSingleton<IPdfSaveFilePicker, AvaloniaPdfSaveFilePicker>();
+
+        // Phase 9A: the immutable finalized-passdown foundation. Nothing in the app calls
+        // IFinalizedPassdownFinalizationService yet (Phase 9B owns the 6:00 AM scheduler that will) —
+        // registered now so that later phase has nothing left to wire up.
+        services.AddSingleton<IFinalizedPassdownRepository, SqliteFinalizedPassdownRepository>();
+        services.AddSingleton<IFinalizedPassdownSnapshotBuilder, FinalizedPassdownSnapshotBuilder>();
+        services.AddSingleton<IFinalizedPassdownFinalizationService, FinalizedPassdownFinalizationService>();
 
         // Phase 7F Part F/G: the sanitized diagnostic export pipeline. Reuses the already-registered
         // SqliteConnectionFactory/ISourceStateRepository/IReadOnlyList<SourceRegistration>/IClock —

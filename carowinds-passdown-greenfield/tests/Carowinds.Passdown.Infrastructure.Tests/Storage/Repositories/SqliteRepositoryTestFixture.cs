@@ -28,6 +28,7 @@ internal sealed class SqliteRepositoryTestFixture : IDisposable
             new Migration0005CreateProductHistoryTable(),
             new Migration0006CreateAssociateDraftsTable(),
             new Migration0007CreateManagerDraftsTable(),
+            new Migration0008CreateFinalizedPassdownsTable(),
         ];
         new MigrationRunner(ConnectionFactory, migrations, NullLogger<MigrationRunner>.Instance).Run();
     }
