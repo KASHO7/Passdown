@@ -129,10 +129,21 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
         return new AssociateWorkspace(
             date,
             draft,
-            new AssociateParkHoursView(NotCheckedHours, AssociateVerificationInfo.NotCheckedYet, OfficialIsClosed: false, OfficialOpening: null, OfficialClosing: null),
+            ComposeParkHoursFromDraft(draft),
             Products: [],
             CategoryStatuses: [],
             saveStatus);
+    }
+
+    /// <summary>Mirrors production <c>AssociatePassdownService.ComposeParkHours</c>'s override precedence (no official hours ever set here — this fake has no dated-source data) so a test's saved-then-reloaded draft round-trips its manual/buyout override the same way the real service does, instead of always coming back "not checked yet".</summary>
+    private static AssociateParkHoursView ComposeParkHoursFromDraft(AssociateDraftPayload draft)
+    {
+        var effective = ParkHoursCalculator.Calculate(
+            officialIsClosed: false, officialOpening: null, officialClosing: null,
+            draft.ManualHoursOverride.Enabled, draft.ManualHoursOverride.OpeningTime, draft.ManualHoursOverride.ClosingTime,
+            draft.PrivateBuyout.Enabled, draft.PrivateBuyout.OpeningTime, draft.PrivateBuyout.ClosingTime);
+
+        return new AssociateParkHoursView(effective, AssociateVerificationInfo.NotCheckedYet, OfficialIsClosed: false, OfficialOpening: null, OfficialClosing: null);
     }
 
     public static AssociateWorkspace DefaultWorkspace(DateOnly date) => new(

@@ -1,6 +1,7 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Desktop.ViewModels;
+using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Domain.Hours;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
 
@@ -272,6 +273,160 @@ public class AssociateViewModelDraftEditingTests
         Assert.Equal("11:00 AM – 10:00 PM", viewModel.ParkHours.HeadlineText);
         Assert.Equal("10:30 AM", viewModel.ParkHours.NorthGateText);
         Assert.Equal("10:15 AM", viewModel.ParkHours.AvenueText);
+    }
+
+    // Regression (Part G/H): Workspace.ParkHours.Effective — not just the live ParkHours getter
+    // above — must reflect a manual override immediately once autosave completes, with no date
+    // switch or Check Online in between. CreatePdfCommand (via
+    // AssociatePassdownDocumentModelBuilder) builds straight from Workspace.ParkHours and never
+    // recomputes it itself, so before this was fixed, enabling an override and immediately creating
+    // a PDF silently produced official-only hours.
+    [Fact]
+    public async Task ManualHoursOverride_Autosave_UpdatesWorkspaceParkHoursEffective_Immediately()
+    {
+        var (viewModel, _, scheduler) = CreateViewModel();
+        await viewModel.PendingLoad;
+
+        viewModel.ManualHoursOverrideEnabled = true;
+        viewModel.ManualOpeningTime = new TimeSpan(11, 0, 0);
+        viewModel.ManualClosingTime = new TimeSpan(22, 0, 0);
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var effective = viewModel.Workspace!.ParkHours.Effective;
+        Assert.Equal(EffectiveHoursStatus.Open, effective.Status);
+        Assert.True(effective.IsManualOverrideApplied);
+        Assert.Equal(new TimeOnly(11, 0), effective.Opening);
+        Assert.Equal(new TimeOnly(22, 0), effective.Closing);
+    }
+
+    [Fact]
+    public async Task PrivateBuyout_Autosave_UpdatesWorkspaceParkHoursEffective_Immediately()
+    {
+        var (viewModel, _, scheduler) = CreateViewModel();
+        await viewModel.PendingLoad;
+
+        viewModel.PrivateBuyoutEnabled = true;
+        viewModel.PrivateBuyoutOpeningTime = new TimeSpan(18, 0, 0);
+        viewModel.PrivateBuyoutClosingTime = new TimeSpan(23, 0, 0);
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var effective = viewModel.Workspace!.ParkHours.Effective;
+        Assert.Equal(EffectiveHoursStatus.Open, effective.Status);
+        Assert.True(effective.IsPrivateBuyoutApplied);
+        Assert.Equal(new TimeOnly(18, 0), effective.Opening);
+        Assert.Equal(new TimeOnly(23, 0), effective.Closing);
+    }
+
+    [Fact]
+    public async Task ManualHoursOverride_Disabled_RevertsWorkspaceParkHoursEffective_ToOfficial()
+    {
+        var (viewModel, _, scheduler) = CreateViewModel();
+        await viewModel.PendingLoad;
+
+        viewModel.ManualHoursOverrideEnabled = true;
+        viewModel.ManualOpeningTime = new TimeSpan(11, 0, 0);
+        viewModel.ManualClosingTime = new TimeSpan(22, 0, 0);
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+        Assert.True(viewModel.Workspace!.ParkHours.Effective.IsManualOverrideApplied);
+
+        viewModel.ManualHoursOverrideEnabled = false;
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var effective = viewModel.Workspace!.ParkHours.Effective;
+        Assert.False(effective.IsManualOverrideApplied);
+        Assert.Equal(EffectiveHoursStatus.NotCheckedYet, effective.Status); // no official hours in the fake default workspace.
+    }
+
+    // Part H #5: an override is date-specific — switching away and back must reload the correct
+    // date's own override (or lack of one), not leak the previous date's edit.
+    [Fact]
+    public async Task ManualHoursOverride_SurvivesDateSwitchAndReload()
+    {
+        var (viewModel, _, scheduler) = CreateViewModel();
+        await viewModel.PendingLoad;
+
+        viewModel.ManualHoursOverrideEnabled = true;
+        viewModel.ManualOpeningTime = new TimeSpan(11, 0, 0);
+        viewModel.ManualClosingTime = new TimeSpan(22, 0, 0);
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var otherDate = Today.AddDays(1);
+        viewModel.SelectedDate = otherDate;
+        await viewModel.PendingLoad;
+        Assert.False(viewModel.ManualHoursOverrideEnabled); // the other date has no override of its own.
+
+        viewModel.SelectedDate = Today;
+        await viewModel.PendingLoad;
+
+        Assert.True(viewModel.ManualHoursOverrideEnabled);
+        Assert.Equal(new TimeSpan(11, 0, 0), viewModel.ManualOpeningTime);
+        Assert.Equal(new TimeSpan(22, 0, 0), viewModel.ManualClosingTime);
+        Assert.True(viewModel.Workspace!.ParkHours.Effective.IsManualOverrideApplied);
+    }
+
+    [Fact]
+    public async Task PrivateBuyout_SurvivesDateSwitchAndReload()
+    {
+        var (viewModel, _, scheduler) = CreateViewModel();
+        await viewModel.PendingLoad;
+
+        viewModel.PrivateBuyoutEnabled = true;
+        viewModel.PrivateBuyoutOpeningTime = new TimeSpan(18, 0, 0);
+        viewModel.PrivateBuyoutClosingTime = new TimeSpan(23, 0, 0);
+        viewModel.PrivateBuyoutDetails = "Acme Corp holiday party";
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var otherDate = Today.AddDays(1);
+        viewModel.SelectedDate = otherDate;
+        await viewModel.PendingLoad;
+
+        viewModel.SelectedDate = Today;
+        await viewModel.PendingLoad;
+
+        Assert.True(viewModel.PrivateBuyoutEnabled);
+        Assert.Equal(new TimeSpan(18, 0, 0), viewModel.PrivateBuyoutOpeningTime);
+        Assert.Equal(new TimeSpan(23, 0, 0), viewModel.PrivateBuyoutClosingTime);
+        Assert.Equal("Acme Corp holiday party", viewModel.PrivateBuyoutDetails);
+        Assert.True(viewModel.Workspace!.ParkHours.Effective.IsPrivateBuyoutApplied);
+    }
+
+    // Part G/H #7: the PDF document model — built exactly the way CreatePdfCommand builds it, from
+    // Workspace directly — must carry the effective/manual hours immediately after autosave, with no
+    // date switch or Check Online needed first.
+    [Fact]
+    public async Task ManualHoursOverride_PdfDocumentModel_UsesEffectiveHours_ImmediatelyAfterAutosave()
+    {
+        var (viewModel, _, scheduler) = CreateViewModel();
+        await viewModel.PendingLoad;
+
+        viewModel.ManualHoursOverrideEnabled = true;
+        viewModel.ManualOpeningTime = new TimeSpan(9, 0, 0);
+        viewModel.ManualClosingTime = new TimeSpan(23, 0, 0);
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var model = AssociatePassdownDocumentModelBuilder.Build(viewModel.Workspace!, FixedNow);
+
+        Assert.Equal("9:00 AM - 11:00 PM", model.ParkHours.HeadlineText);
+        Assert.Equal("Manual Override", model.ParkHours.BadgeText);
+    }
+
+    [Fact]
+    public async Task PrivateBuyout_PdfDocumentModel_UsesBuyoutHours_ImmediatelyAfterAutosave()
+    {
+        var (viewModel, _, scheduler) = CreateViewModel();
+        await viewModel.PendingLoad;
+
+        viewModel.PrivateBuyoutEnabled = true;
+        viewModel.PrivateBuyoutOpeningTime = new TimeSpan(18, 0, 0);
+        viewModel.PrivateBuyoutClosingTime = new TimeSpan(23, 0, 0);
+        viewModel.PrivateBuyoutDetails = "Acme Corp holiday party";
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var model = AssociatePassdownDocumentModelBuilder.Build(viewModel.Workspace!, FixedNow);
+
+        Assert.Equal("6:00 PM - 11:00 PM", model.ParkHours.HeadlineText);
+        Assert.Equal("Private Buyout", model.ParkHours.BadgeText);
+        Assert.Equal("Acme Corp holiday party", model.ParkHours.PrivateBuyoutDetails);
     }
 
     // 11. An edit marks the state unsaved immediately.

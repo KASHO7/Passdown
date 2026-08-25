@@ -298,14 +298,33 @@ public partial class AssociateViewModel : ViewModelBase
                 return null;
             }
 
-            var official = workspace.ParkHours;
-            var live = ParkHoursCalculator.Calculate(
-                official.OfficialIsClosed, official.OfficialOpening, official.OfficialClosing,
+            var live = RecomputeParkHours(
+                workspace.ParkHours,
                 ManualHoursOverrideEnabled, ToTimeOnly(ManualOpeningTime), ToTimeOnly(ManualClosingTime),
                 PrivateBuyoutEnabled, ToTimeOnly(PrivateBuyoutOpeningTime), ToTimeOnly(PrivateBuyoutClosingTime));
 
-            return ParkHoursPresentation.Build(official with { Effective = live });
+            return ParkHoursPresentation.Build(live);
         }
+    }
+
+    /// <summary>
+    /// Re-runs <see cref="ParkHoursCalculator.Calculate"/> against <paramref name="official"/>'s raw
+    /// inputs plus whichever override values are supplied, returning an updated view with only
+    /// <see cref="AssociateParkHoursView.Effective"/> replaced. Shared by the live <see cref="ParkHours"/>
+    /// display and by <see cref="SaveDraftNowAsync"/> — both need the exact same recalculation, so
+    /// there is exactly one place that runs it, never two copies that could drift out of sync.
+    /// </summary>
+    private static AssociateParkHoursView RecomputeParkHours(
+        AssociateParkHoursView official,
+        bool manualOverrideEnabled, TimeOnly? manualOpening, TimeOnly? manualClosing,
+        bool privateBuyoutEnabled, TimeOnly? buyoutOpening, TimeOnly? buyoutClosing)
+    {
+        var effective = ParkHoursCalculator.Calculate(
+            official.OfficialIsClosed, official.OfficialOpening, official.OfficialClosing,
+            manualOverrideEnabled, manualOpening, manualClosing,
+            privateBuyoutEnabled, buyoutOpening, buyoutClosing);
+
+        return official with { Effective = effective };
     }
 
     public string? ManualHoursWarningText =>
@@ -818,7 +837,16 @@ public partial class AssociateViewModel : ViewModelBase
 
             if (Workspace is { } current && current.OperatingDate == date)
             {
-                Workspace = current with { Draft = draft, SaveStatus = status };
+                // The just-saved draft's manual/buyout override must be reflected in the workspace's
+                // own ParkHours immediately, not only in the live ParkHours getter above — CreatePdfAsync
+                // (and anything else reading Workspace directly) builds from this field, and until the
+                // next full load/Check Online it would otherwise still show the pre-edit hours.
+                var parkHours = RecomputeParkHours(
+                    current.ParkHours,
+                    draft.ManualHoursOverride.Enabled, draft.ManualHoursOverride.OpeningTime, draft.ManualHoursOverride.ClosingTime,
+                    draft.PrivateBuyout.Enabled, draft.PrivateBuyout.OpeningTime, draft.PrivateBuyout.ClosingTime);
+
+                Workspace = current with { Draft = draft, SaveStatus = status, ParkHours = parkHours };
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
