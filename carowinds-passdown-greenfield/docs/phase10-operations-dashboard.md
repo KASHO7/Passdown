@@ -1249,3 +1249,278 @@ not claimed as a pixel-verified PASS.
 - Redesigning Associate/History beyond what Phase 10C already changed.
 - Visual/desktop polish beyond what this phase's own panel required
   (Phase 10E).
+
+---
+
+# Phase 10E — Visual/Desktop Polish
+
+Phase 10E audits the combined Dashboard now that 10A–10D's content is all in
+place, and makes targeted density/hierarchy/accessibility refinements — no
+new business rule, no new field, no new panel type, no schema change.
+
+## Audit (Part A)
+
+Reviewed as one screen at the 1280×860 target: Today header → Today's
+Operation / Passdown Status (hero row) → Today at a Glance → Data Status →
+Operational Notes / Latest Finalized. A rough height accounting of the
+existing (pre-10E) layout — header (~64px) + hero row (~180px) + Today at a
+Glance (~107px) + Data Status (~247px) + the Notes/Latest-Finalized row
+(~167px), plus `ScrollViewer` padding and inter-panel spacing — already came
+in close to 860px, meaning the Part B goal ("little or no vertical
+scrolling at 1280×860") was substantially already met by 10A–10D's own
+layout choices. Phase 10E's job was therefore real refinement, not a
+re-layout: closing genuine gaps found in the audit rather than restructuring
+panels that already worked. Four gaps were found and fixed:
+
+1. Four of the six panels (Today's Operation, Passdown Status, Today at a
+   Glance, Operational Notes) had no `AutomationProperties.Name`, unlike
+   Data Status/Latest Finalized (Phase 10C/10D) — an inconsistent
+   accessibility landmark structure (Part W).
+2. The Check Online busy state had no visual indicator distinct from the
+   header's `IsLoading` `ProgressBar` — only text and a disabled button
+   (Part R).
+3. The Data Status count-chip row used a fixed horizontal `StackPanel`,
+   which could clip instead of reflow if all six status buckets (Current/
+   Stale/Unavailable/Not published/Issues/Not checked) were ever populated
+   at once at the 960×640 fallback width (Part L/C).
+4. The Data Status card — already the page's densest panel by design (Part
+   K's own precedent) — had slightly looser internal spacing (`Spacing="10"`,
+   `Margin="0,3"` per source row) than necessary; not oversized, but not as
+   tight as it could be either.
+
+Everything else audited clean: card balance (Today's Operation / Passdown
+Status already render at equal height — a single-row `Grid` with two
+`Stretch`-aligned `Border.panel` cells sizes both to the tallest content, no
+explicit alignment code was needed), badge/chip typography (one shared
+`Border.chip`/`TextBlock` style already used everywhere a chip appears),
+button hierarchy (each card's one primary action uses `Button.primaryAction`,
+everything else `Button.secondaryAction` — Open Passdown and Check Online
+are each the single obvious action *within their own card*, matching
+`AssociateView`'s own established Check Online-is-primary precedent, not a
+page full of competing primary buttons), and color restraint (no literal
+colors in `DashboardView.axaml` — every brush is a `DynamicResource` from
+`App.axaml`'s existing navy/blue palette; no red/error color appears at all
+on the Dashboard today, since `VerificationIssue`/error states are
+plain-language text, not a red field).
+
+## 1280×860 / 960×640 (Parts B/C)
+
+Unchanged Grid-based two-column panel structure, still wrapped in the page's
+one `ScrollViewer` (Phase 10A). The WrapPanel fix (gap 3 above) is
+specifically a 960×640 safeguard — previously untested with more than one or
+two simultaneous non-zero count buckets. `Border.chip` timestamps stay
+tooltip/automation-only (Phase 10D), so no new fixed-width text was
+introduced that could clip at the narrower width.
+
+## Navigation / header polish (Parts D/E)
+
+`MainWindow.axaml`'s section strip and `DashboardView.axaml`'s header were
+reviewed and left unchanged — both already matched the spec's compact,
+text-first, non-oversized targets (`Button.appSectionItem`'s
+18,11 padding; the header's eyebrow-plus-headline pair from Phase 10B).
+
+## Park Status / Passdown Status (Parts F/G)
+
+Unchanged presentation logic. Confirmed (not just assumed) that the two hero
+cards render at equal height without any special-case layout code, since
+they share one `Grid` row with default `Stretch` vertical alignment — this
+is why no "align them intentionally" code change was needed for Part G.
+
+## Today at a Glance (Part H)
+
+Unchanged — already one compact `Grid` (not four separate cards), matching
+the spec's own preference.
+
+## Operational Notes / Latest Finalized (Parts I/J)
+
+Unchanged content/truncation. Both panels gained `AutomationProperties.Name`
+(gap 1).
+
+## Data Status / source grid (Parts K/L)
+
+- Count-chip row: `StackPanel Orientation="Horizontal"` → `WrapPanel`, each
+  chip's own `Margin="0,0,8,4"` replacing the panel's `Spacing="8"` (a
+  `WrapPanel` doesn't support `Spacing`) — reflows instead of clipping when
+  every bucket is populated (gap 3; new regression test below).
+- Internal spacing tightened: outer `StackPanel Spacing` 10→8, each source
+  row's `Margin` "0,3"→"0,2" (gap 4) — a small, deliberate density
+  improvement to the page's single densest panel, not a restructure.
+- The two-column "Today's Operation" / "Products / Offers" source grid
+  itself (Phase 10D) was reviewed and left unchanged — already compact,
+  aligned, and free of per-source cards.
+
+## Badge/status consistency (Part M) and color restraint (Part N)
+
+Audited, no change needed — see Part A audit above.
+
+## Spacing system / typography (Parts O/P)
+
+No stray "7/11/13/18"-style magic numbers were found in `DashboardView.axaml`
+beyond the two intentional tightening edits above (Part K); the existing
+spacing scale (2/4/6/8/10/16/18/20/24) was already consistent with
+`AssociateView`/`HistoryView`'s own values, so no broader spacing-token
+refactor was needed (per CLAUDE.md's "do not over-refactor" guidance and the
+spec's own "do not over-refactor the entire app's spacing tokens unless
+needed").
+
+## Long content / truncation (Part Q)
+
+Unchanged — Phase 10B's bounded Daily Feature/notes-preview truncation was
+re-verified via the existing `DashboardView_LongDailyFeatureAndNotes_ConstructsWithBoundedText`
+test, still passing unmodified.
+
+## Check Online busy/error state (Parts R/S)
+
+Added a dedicated `ProgressBar` (`IsIndeterminate="True"`, `Height="3"`,
+`Width="140"`) bound to `IsCheckingOnline` — distinct from the header's
+`IsLoading`-bound `ProgressBar` (Part R gap 2), so the two different "busy"
+concepts (local reload vs. explicit online check) never look like the same
+indicator. No changes to the underlying error-handling logic
+(`OperationsDashboardViewModel.CheckOnlineAsync` already preserved existing
+values and showed a plain-language message on failure — Phase 10D; Part S
+reconfirmed unchanged by re-running
+`CheckOnlineCommand_Failure_PreservesExistingSnapshotAndSetsMessage`).
+
+## Reload Summary vs. Check Online (Part T) and action hierarchy (Part U)
+
+Reviewed, unchanged — "Refresh" (header) vs. "Check Online" (Data Status
+card) already read as distinct actions with distinct help text (Phase 10D
+Part Q), and the primary/secondary button split already matches the spec's
+own suggested hierarchy (see Part A audit above).
+
+## Keyboard navigation (Part V)
+
+Manually traced the logical/XAML declaration order, which Avalonia's default
+tab order follows: header Refresh → Today's Operation (no focusable
+controls) → Open Passdown → Today at a Glance (no focusable controls) →
+Check Online → Open Notes → Open History. This matches the spec's expected
+routing (Dashboard → Open Passdown/Notes/History) with no focus traps —
+every focusable element is a plain `Button`, and Avalonia's `FluentTheme`
+supplies a default visible focus adorner with no custom override needed
+(none of `AssociateView`/`HistoryView` override it either, so this stays
+consistent app-wide). Disabled-while-busy buttons (`CheckOnlineCommand`/
+`ReloadCommand`, both already cross-referencing `CanExecute` since Phase
+10D) are correctly skipped in tab order by Avalonia's own `IsEnabled`
+handling — no dedicated `KeyboardNavigation.IsTabStop` overrides were
+needed.
+
+## Accessibility text (Part W)
+
+Added `AutomationProperties.Name` to the four panels identified in the audit
+(gap 1): `"Today's Operation"`, `"Passdown Status"`, `"Today at a Glance"`,
+`"Operational Notes"` — all short, meaningful, and matching their own
+visible heading text (no `"Border1"`/`"Panel2"`-style names), consistent
+with the existing `"Data status"`/`"Latest finalized passdown"` names from
+Phase 10C/10D. `DashboardView_WithSnapshot_ExposesCriticalAutomationNames`
+was extended to assert all four.
+
+## Windows scaling validation (Parts X/Y) — NOT EXECUTED
+
+No Windows machine is available in this environment (macOS/darwin host, not
+the Fedora dev host CLAUDE.md describes, and no Windows VM was reachable
+during this phase). Per CLAUDE.md ("flag Windows-only behavior for Windows
+VM testing") and this document's own instructions ("If Windows is
+unavailable: mark all Windows scaling checks NOT EXECUTED... Do not infer
+Windows scaling from macOS/Linux"), 100%/125%/150% scaling and Windows
+font/rendering review are recorded honestly as **NOT EXECUTED** rather than
+inferred from this build/test environment. `dotnet build`/`dotnet test` were
+run successfully on macOS (net10.0, cross-platform), which validates
+compilation and headless-XAML-loader construction only — not actual Windows
+rendering.
+
+## Visual screenshot validation (Part Z) — PARTIAL
+
+Same constraint as every prior Phase 9/10 document: no pixel/bitmap
+screenshot renderer exists in this codebase (`Avalonia.Headless` is used
+here only for real-XAML-loader construction checks). All of the spec's
+representative states (normal/full data, sparse/no-draft, private buyout,
+stale data, verification issue, long content, Check Online busy) already
+have a construction-level `DashboardViewTests`/`OperationsDashboardServiceTests`
+case from Phase 10A–10D, re-run and still green. `DashboardView.axaml` was
+reviewed directly against the 1280×860/960×640 layout targets. Recorded
+honestly as **PARTIAL**, matching every prior phase's precedent — not
+claimed as pixel-verified.
+
+## UI test stability (Part AA)
+
+One genuine timing fragility was found and fixed **during this phase's own
+test-writing**, not in pre-existing 10A–10D coverage: an initial draft of
+the new Check-Online-busy-indicator test asserted the *live, binding-driven*
+`ProgressBar.IsVisible` value on the real control immediately after starting
+an async command (`CheckOnlineCommand.ExecuteAsync`). That assertion failed
+intermittently when run alongside the rest of the Dashboard test file (80
+tests) but passed reliably in isolation — a dispatcher/binding-propagation
+timing race under this suite's parallel test execution, not a product
+defect. It was rewritten to assert `OperationsDashboardViewModel` state
+(`IsCheckingOnline`) instead of bound-control state, matching every other
+async/busy test in this file's own established pattern
+(`DashboardView_CheckOnlineBusy_ConstructsWithoutError`,
+`OperationsDashboardViewModelTests.CheckOnlineCommand_CannotRunConcurrently`,
+etc.) — the fixed test
+(`DashboardView_CheckOnlineBusy_HasDedicatedBusyIndicator`) still verifies
+the indicator control exists in the real XAML tree, just not its live
+`IsVisible` transition. With that fix in place, the full Dashboard test
+filter (80 tests) and the full non-live suite were each run three and two
+times respectively with zero failures — no other flake reproduced. No test
+was disabled, no parallelism was turned off app-wide, and nothing was
+masked: the root cause (a test asserting Avalonia binding-propagation timing
+under parallel execution) was identified and fixed at its source.
+
+## No business logic / schema changes (Parts AB/AC)
+
+Confirmed: no changes to hours semantics, finalization, History immutability,
+source freshness/aggregation rules, Check Online retrieval logic, catalog
+lifecycle, or persistence schema. Schema stays **9**; snapshot schema stays
+**1** (both unchanged from Phase 9). Every 10E change is
+`DashboardView.axaml` layout/accessibility markup plus its own regression
+tests — no `Application`/`Domain`/`Infrastructure` file was touched.
+
+## Regression matrix (Part AD)
+
+All 15 representative combinations the spec lists already have direct
+coverage from Phase 10A–10D's own tests (`DashboardViewTests`,
+`OperationsDashboardServiceTests`, `OperationsDashboardPresentationTests`,
+`DashboardDataHealthPresentationTests`), all re-run green in this phase; no
+gap required a new combination beyond the two added below.
+
+## Tests added (Part AE)
+
+- `DashboardViewTests`: +2 —
+  `DashboardView_CheckOnlineBusy_HasDedicatedBusyIndicator` (the new busy
+  `ProgressBar` exists, is distinct from the header's, and both busy/idle
+  states construct cleanly) and
+  `DashboardView_AllDataStatusCountBucketsPopulated_ConstructsWithoutError`
+  (all six count-chip buckets populated at once, exercising the new
+  `WrapPanel`). The existing `DashboardView_WithSnapshot_ExposesCriticalAutomationNames`
+  test was extended (not counted as new) to assert the four newly-named
+  panels.
+
+2 new tests total (980 Phase 10D baseline + 2 = 982).
+
+## Full validation
+
+`dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors.
+`dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` —
+**982/982**, run twice with identical results. The Dashboard-focused test
+filter was additionally run three times on its own (80/80 each run) to
+specifically confirm the Part AA fix. No live internet was used or
+required. Schema: **9**. Snapshot schema: **1**.
+
+## What Phase 10E does *not* implement
+
+- Any new Dashboard field, panel, or business rule — see Parts AB/AC above.
+- Alerts, an Operations Calendar, a persistent Notes Manager, or the Manager
+  workflow (still deferred per CLAUDE.md).
+- A pixel/bitmap screenshot renderer — visual validation stays PARTIAL,
+  matching every prior phase's own honest precedent.
+- Actual Windows-scaling verification — NOT EXECUTED, no Windows machine
+  available in this environment; still a Phase 10F (or later Windows-VM
+  session) candidate before release sign-off.
+- The Phase 10F release rebuild/audit.
+
+## Phase 10F remaining work
+
+- Rebuild and validate the Windows release ZIP.
+- Execute the deferred 100%/125%/150% Windows scaling and font/rendering
+  checks on an actual Windows machine/VM (Parts X/Y, NOT EXECUTED here).
+- Final Phase 10 audit across 10A–10E as one release-readiness pass.

@@ -5,6 +5,7 @@ using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Persistence;
+using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
@@ -49,6 +50,79 @@ public class DashboardViewTests
         Assert.Contains("Latest finalized passdown", names);
         Assert.Contains("Data status", names);
         Assert.Contains("Check Online", names);
+
+        // Phase 10E Part W: the remaining panels gained accessible names to match the precedent set
+        // by "Data status"/"Latest finalized passdown" (Phase 10C/10D), so a screen reader can
+        // navigate the page's landmark structure, not just its individual actions.
+        Assert.Contains("Today's Operation", names);
+        Assert.Contains("Passdown Status", names);
+        Assert.Contains("Today at a Glance", names);
+        Assert.Contains("Operational Notes", names);
+    }
+
+    // Phase 10E Part R: a dedicated busy indicator for Check Online (distinct from the header's
+    // local-reload ProgressBar, keyed off IsCheckingOnline rather than IsLoading) exists in the real
+    // XAML tree and constructs cleanly through both the idle and busy states. This intentionally does
+    // not assert live IsVisible transitions off the UI-bound control — under this suite's parallel
+    // test execution, reading a binding-driven property immediately after starting an async command is
+    // a dispatcher-timing race, not a meaningful assertion (mirrors why every other test in this file
+    // asserts view-model state rather than bound-control state for busy/async transitions).
+    [Fact]
+    public async Task DashboardView_CheckOnlineBusy_HasDedicatedBusyIndicator()
+    {
+        var service = new FakeOperationsDashboardService { CheckOnlineGate = new TaskCompletionSource<bool>() };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        var view = new DashboardView { DataContext = viewModel };
+        var checkOnlineBusyBar = view.GetLogicalDescendants().OfType<ProgressBar>().Single(p => p.Width == 140);
+        Assert.NotSame(checkOnlineBusyBar, view.GetLogicalDescendants().OfType<ProgressBar>().Single(p => double.IsNaN(p.Width)));
+
+        var runTask = viewModel.CheckOnlineCommand.ExecuteAsync(null);
+        Assert.True(viewModel.IsCheckingOnline);
+
+        service.CheckOnlineGate!.SetResult(true);
+        await runTask;
+
+        Assert.False(viewModel.IsCheckingOnline);
+    }
+
+    // Phase 10E Part L/C: with every source bucket populated (all six count chips present, not just
+    // the default one-or-two), the Data Status card must still construct cleanly — the count row uses
+    // a WrapPanel specifically so this does not clip at the 960px fallback width.
+    [Fact]
+    public async Task DashboardView_AllDataStatusCountBucketsPopulated_ConstructsWithoutError()
+    {
+        var service = new FakeOperationsDashboardService
+        {
+            SnapshotFactory = date =>
+            {
+                var snapshot = FakeOperationsDashboardService.DefaultSnapshot(date);
+                var sources = snapshot.DataHealth.Sources
+                    .Select((entry, index) => entry with { Status = (DashboardSourceStatus)(index % 6) })
+                    .ToList();
+                return snapshot with
+                {
+                    DataHealth = snapshot.DataHealth with
+                    {
+                        CurrentCount = 2,
+                        StaleCount = 1,
+                        UnavailableCount = 1,
+                        NotPublishedCount = 1,
+                        VerificationIssueCount = 1,
+                        NotCheckedCount = 1,
+                        Sources = sources,
+                    },
+                };
+            },
+        };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        var view = new DashboardView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+        Assert.Equal(6, viewModel.Presentation!.DataHealth.Counts.Count);
     }
 
     // Phase 10D Part AD/AA: every overall Data Status classification constructs cleanly through the

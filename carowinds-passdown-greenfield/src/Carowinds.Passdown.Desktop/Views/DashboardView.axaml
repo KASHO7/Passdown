@@ -131,7 +131,7 @@
           <!-- Today's Operation / Passdown Status (spec Part M's top row). -->
           <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
 
-            <Border Grid.Column="0" Classes="panel heroPanel">
+            <Border Grid.Column="0" Classes="panel heroPanel" AutomationProperties.Name="Today's Operation">
               <StackPanel Spacing="2">
                 <TextBlock Text="Today's Operation" Classes="sectionTitle" />
                 <TextBlock Text="{Binding Presentation.ParkHours.HeadlineText}" Classes="hoursHeadline" />
@@ -145,7 +145,7 @@
               </StackPanel>
             </Border>
 
-            <Border Grid.Column="1" Classes="panel heroPanel">
+            <Border Grid.Column="1" Classes="panel heroPanel" AutomationProperties.Name="Passdown Status">
               <StackPanel Spacing="2">
                 <TextBlock Text="Passdown Status" Classes="sectionTitle" />
                 <TextBlock Text="{Binding Presentation.PassdownStatusText}" Classes="hoursHeadline" />
@@ -163,7 +163,7 @@
 
           <!-- Daily snapshot region (spec Part M): attendance/pre-solds/Early Ride Time/Daily
                Feature as compact stat tiles, not full editing controls. -->
-          <Border Classes="panel">
+          <Border Classes="panel" AutomationProperties.Name="Today at a Glance">
             <StackPanel Spacing="10">
               <TextBlock Text="Today at a Glance" Classes="sectionTitle" Margin="0" />
               <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="20">
@@ -193,7 +193,7 @@
                two-column row) because Phase 10D gave it a source breakdown and the explicit Check
                Online action, making it the page's most information-dense panel after the hero row. -->
           <Border Classes="panel" AutomationProperties.Name="Data status">
-            <StackPanel Spacing="10">
+            <StackPanel Spacing="8">
 
               <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Grid.Column="0" Spacing="2">
@@ -209,6 +209,12 @@
                           Command="{Binding CheckOnlineCommand}"
                           AutomationProperties.Name="Check Online"
                           AutomationProperties.HelpText="Checks official Carowinds/Six Flags sources now and updates today's information." />
+                  <!-- Phase 10E Part R: a subtle, dedicated busy indicator for Check Online, distinct
+                       from the header's IsLoading ProgressBar — the local reload and the online check
+                       are two different kinds of "busy" and must not look like the same one to a
+                       screen reader or at a glance. -->
+                  <ProgressBar IsIndeterminate="True" Height="3" Width="140" HorizontalAlignment="Right"
+                               IsVisible="{Binding IsCheckingOnline}" />
                   <TextBlock Text="{Binding CheckOnlineStatusMessage}" Classes="muted" HorizontalAlignment="Right"
                              TextWrapping="Wrap" MaxWidth="230" TextAlignment="Right"
                              IsVisible="{Binding CheckOnlineStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
@@ -218,15 +224,17 @@
                 </StackPanel>
               </Grid>
 
+              <!-- WrapPanel (not a fixed horizontal StackPanel) so up to six count chips reflow
+                   instead of clipping at the 960px fallback width (Part L/C). -->
               <ItemsControl ItemsSource="{Binding Presentation.DataHealth.Counts}">
                 <ItemsControl.ItemsPanel>
                   <ItemsPanelTemplate>
-                    <StackPanel Orientation="Horizontal" Spacing="8" />
+                    <WrapPanel Orientation="Horizontal" />
                   </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="presentation:DashboardCountChip">
-                    <Border Classes="chip">
+                    <Border Classes="chip" Margin="0,0,8,4">
                       <StackPanel Orientation="Horizontal" Spacing="4">
                         <TextBlock Text="{Binding CountText}" FontWeight="Bold" />
                         <TextBlock Text="{Binding Label}" />
@@ -242,7 +250,7 @@
                   <ItemsControl ItemsSource="{Binding Presentation.DataHealth.OperationalSources}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="presentation:DashboardSourceStatusPresentation">
-                        <Grid ColumnDefinitions="*,Auto" Margin="0,3"
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,2"
                               ToolTip.Tip="{Binding TimestampText}"
                               AutomationProperties.Name="{Binding CategoryLabel}"
                               AutomationProperties.HelpText="{Binding TimestampText}">
@@ -259,7 +267,7 @@
                   <ItemsControl ItemsSource="{Binding Presentation.DataHealth.ProductSources}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="presentation:DashboardSourceStatusPresentation">
-                        <Grid ColumnDefinitions="*,Auto" Margin="0,3"
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,2"
                               ToolTip.Tip="{Binding TimestampText}"
                               AutomationProperties.Name="{Binding CategoryLabel}"
                               AutomationProperties.HelpText="{Binding TimestampText}">
@@ -280,7 +288,7 @@
                frozen snapshot or PDF). -->
           <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
 
-            <Border Grid.Column="0" Classes="panel">
+            <Border Grid.Column="0" Classes="panel" AutomationProperties.Name="Operational Notes">
               <StackPanel Spacing="6">
                 <TextBlock Text="Operational Notes" Classes="sectionTitle" Margin="0" />
                 <TextBlock Text="{Binding Presentation.NotesSummaryText}" FontWeight="SemiBold" />
