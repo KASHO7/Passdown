@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Diagnostics;
 using Carowinds.Passdown.Application.Finalization;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Infrastructure.Diagnostics;
 using Carowinds.Passdown.Infrastructure.Storage;
@@ -141,5 +142,43 @@ public class SqliteDatabaseDiagnosticsProviderTests : IDisposable
         Assert.DoesNotContain(propertyNames, name => name.Contains("Pdf", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(propertyNames, name => name.Contains("Snapshot", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(propertyNames, name => name.Contains("OperationalNote", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // Phase 11A Part AA: a persistent Operational Note's title/body is user-entered operational content
+    // and must never surface through the diagnostic export pipeline, exactly like a finalized
+    // passdown's snapshot JSON above. SqliteDatabaseDiagnosticsProvider still only ever reports
+    // file/schema metadata and never queries operational_notes row content at all.
+    [Fact]
+    public async Task GetAsync_DatabaseContainsOperationalNoteWithSensitiveContent_NeverSurfacesItInDiagnostics()
+    {
+        var connectionFactory = new SqliteConnectionFactory(_databasePath);
+        IMigration[] migrations =
+        [
+            new Migration0001CreateSchemaVersionTable(),
+            new Migration0002CreateSourceStateTable(),
+            new Migration0003CreateDatedResultsTable(),
+            new Migration0004CreateCatalogProductsTable(),
+            new Migration0005CreateProductHistoryTable(),
+            new Migration0006CreateAssociateDraftsTable(),
+            new Migration0007CreateManagerDraftsTable(),
+            new Migration0008CreateFinalizedPassdownsTable(),
+            new Migration0009AddFinalizedPassdownPdfColumns(),
+            new Migration0010CreateOperationalNotesTable(),
+        ];
+        new MigrationRunner(connectionFactory, migrations, NullLogger<MigrationRunner>.Instance).Run();
+
+        const string secretTitle = "CONFIDENTIAL-OPS-NOTE-TITLE-13579";
+        const string secretBody = "CONFIDENTIAL-OPS-NOTE-BODY-24680";
+        var now = DateTimeOffset.UtcNow;
+        await new SqliteOperationalNoteRepository(connectionFactory).AddAsync(new OperationalNote(
+            Guid.NewGuid(), secretTitle, secretBody, OperationalNoteCategory.Staffing, OperationalNotePriority.Important,
+            DateOnly.FromDateTime(now.Date), null, OperationalNoteStatus.Active, now, now, null));
+
+        var sut = new SqliteDatabaseDiagnosticsProvider(connectionFactory);
+        var result = await sut.GetAsync();
+
+        var serialized = $"{result.Exists}|{result.SchemaVersion}|{result.FileSizeBytes}|{result.WalPresent}|{result.Note}";
+        Assert.DoesNotContain(secretTitle, serialized);
+        Assert.DoesNotContain(secretBody, serialized);
     }
 }

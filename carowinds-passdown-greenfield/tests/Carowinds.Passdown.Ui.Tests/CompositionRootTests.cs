@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.History;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Desktop;
 using Carowinds.Passdown.Desktop.Services;
@@ -87,5 +88,18 @@ public class CompositionRootTests
         Assert.NotNull(provider.GetRequiredService<IOperationsDashboardService>());
         Assert.NotNull(provider.GetRequiredService<OperationsDashboardViewModel>());
         Assert.NotNull(provider.GetRequiredService<MainViewModel>());
+    }
+
+    // Phase 11A: the persistent Operational Notes foundation's Application-layer seams resolve from
+    // the same composition root. No ViewModel/View is registered for it yet (Phase 11B owns the Notes
+    // Manager UI) and MainViewModel's own constructor is unaffected — proven by it still resolving
+    // above/below unchanged.
+    [Fact]
+    public void BuildServiceProvider_ResolvesOperationalNotesServices()
+    {
+        var provider = App.BuildServiceProvider();
+
+        Assert.NotNull(provider.GetRequiredService<IOperationalNoteRepository>());
+        Assert.NotNull(provider.GetRequiredService<IOperationalNotesService>());
     }
 }

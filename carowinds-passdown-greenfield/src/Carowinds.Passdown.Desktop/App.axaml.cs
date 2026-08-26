@@ -8,6 +8,7 @@ using Carowinds.Passdown.Application.Diagnostics;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Freshness;
 using Carowinds.Passdown.Application.History;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
@@ -118,6 +119,7 @@ public partial class App : global::Avalonia.Application
             new Migration0007CreateManagerDraftsTable(),
             new Migration0008CreateFinalizedPassdownsTable(),
             new Migration0009AddFinalizedPassdownPdfColumns(),
+            new Migration0010CreateOperationalNotesTable(),
         ]);
         services.AddSingleton<MigrationRunner>();
 
@@ -163,6 +165,14 @@ public partial class App : global::Avalonia.Application
         // above) — it never performs HTTP/Playwright retrieval and never loads a finalized PDF blob.
         services.AddSingleton<IOperationsDashboardService, OperationsDashboardService>();
         services.AddTransient<OperationsDashboardViewModel>();
+
+        // Phase 11A: the persistent Operational Notes domain/persistence/service foundation only.
+        // IOperationalNotesService depends on IOperationalNoteRepository/IClock only — nothing here
+        // writes into an Associate draft, and no UI is wired to it yet (Phase 11B owns the Notes
+        // Manager screen). A relevant persistent note is never automatically copied into a daily
+        // passdown (Phase 11D is the explicit, user-selected opt-in that will eventually do that).
+        services.AddSingleton<IOperationalNoteRepository, SqliteOperationalNoteRepository>();
+        services.AddSingleton<IOperationalNotesService, OperationalNotesService>();
 
         // Phase 7F Part F/G: the sanitized diagnostic export pipeline. Reuses the already-registered
         // SqliteConnectionFactory/ISourceStateRepository/IReadOnlyList<SourceRegistration>/IClock —

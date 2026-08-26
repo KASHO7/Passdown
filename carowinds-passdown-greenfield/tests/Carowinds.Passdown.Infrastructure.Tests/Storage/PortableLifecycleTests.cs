@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Finalization;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Catalog;
@@ -43,9 +44,10 @@ public class PortableLifecycleTests : IDisposable
         new Migration0007CreateManagerDraftsTable(),
         new Migration0008CreateFinalizedPassdownsTable(),
         new Migration0009AddFinalizedPassdownPdfColumns(),
+        new Migration0010CreateOperationalNotesTable(),
     ];
 
-    private const int CurrentSchemaVersion = 9;
+    private const int CurrentSchemaVersion = 10;
 
     // ------------------------------------------------------------------
     // Part B: clean first run.
@@ -257,7 +259,7 @@ public class PortableLifecycleTests : IDisposable
             {
                 versions.Add(reader.GetInt64(0));
             }
-            Assert.Equal([1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L], versions);
+            Assert.Equal([1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L], versions);
         }
 
         // Re-running the current runner again is idempotent.
@@ -322,6 +324,96 @@ public class PortableLifecycleTests : IDisposable
         Assert.False(reloaded!.HasFrozenPdf);
         Assert.Null(reloaded.PdfBytes);
         Assert.Equal("pre-9c-hash", reloaded.ContentHash);
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 11A Part AC: schema 9 -> 10 (operational_notes table) is purely additive — it creates the
+    // new table/index and leaves every existing Phase 9 table (and its data) untouched.
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public async Task Schema9ToSchema10_CreatesOperationalNotesTable_AndPreservesExistingFinalizedAndDraftData()
+    {
+        var databasePath = Path.Combine(_tempDirectory, "carowinds-passdown.db");
+        var connectionFactory = new SqliteConnectionFactory(databasePath);
+
+        IReadOnlyList<IMigration> schema9Migrations =
+        [
+            new Migration0001CreateSchemaVersionTable(),
+            new Migration0002CreateSourceStateTable(),
+            new Migration0003CreateDatedResultsTable(),
+            new Migration0004CreateCatalogProductsTable(),
+            new Migration0005CreateProductHistoryTable(),
+            new Migration0006CreateAssociateDraftsTable(),
+            new Migration0007CreateManagerDraftsTable(),
+            new Migration0008CreateFinalizedPassdownsTable(),
+            new Migration0009AddFinalizedPassdownPdfColumns(),
+        ];
+        var schema9Version = new MigrationRunner(connectionFactory, schema9Migrations, NullLogger<MigrationRunner>.Instance).Run();
+        Assert.Equal(9, schema9Version);
+
+        var operatingDate = new DateOnly(2026, 8, 22);
+        var checkedAt = new DateTimeOffset(2026, 8, 22, 6, 0, 0, TimeSpan.Zero);
+        await new SqliteAssociateDraftRepository(connectionFactory).SaveAsync(
+            new AssociateDraft(operatingDate, 1, """{"notes":"pre-existing draft"}""", checkedAt));
+
+        var pdfBytes = new byte[] { 0x25, 0x50, 0x44, 0x46 };
+        await new SqliteFinalizedPassdownRepository(connectionFactory).AddAsync(new Application.Persistence.FinalizedPassdown(
+            Guid.NewGuid(), operatingDate, checkedAt, FinalizedPassdownSnapshot.CurrentSchemaVersion,
+            "{}", "pre-existing-hash", FinalizationOrigin.Scheduled, pdfBytes, "deadbeef", pdfBytes.LongLength));
+
+        var upgradedVersion = new MigrationRunner(connectionFactory, AllMigrations, NullLogger<MigrationRunner>.Instance).Run();
+        Assert.Equal(CurrentSchemaVersion, upgradedVersion);
+
+        // The new table exists, is empty, and is immediately usable through the real repository.
+        var noteRepository = new SqliteOperationalNoteRepository(connectionFactory);
+        Assert.Empty(await noteRepository.ListAsync());
+        var note = new OperationalNote(
+            Guid.NewGuid(), "Test note", null, OperationalNoteCategory.General, OperationalNotePriority.Normal,
+            operatingDate, null, OperationalNoteStatus.Active, checkedAt, checkedAt, null);
+        await noteRepository.AddAsync(note);
+        Assert.NotNull(await noteRepository.GetByIdAsync(note.Id));
+
+        // Required columns/index exist with the expected shape.
+        using (var connection = connectionFactory.OpenConnection())
+        {
+            using var tableInfo = connection.CreateCommand();
+            tableInfo.CommandText = "PRAGMA table_info(operational_notes);";
+            using var reader = tableInfo.ExecuteReader();
+            var columnNames = new List<string>();
+            while (reader.Read())
+            {
+                columnNames.Add(reader.GetString(1));
+            }
+            Assert.Equal(
+                ["id", "title", "body", "category", "priority", "effective_from", "effective_through", "status", "created_at_utc", "updated_at_utc", "resolved_at_utc"],
+                columnNames);
+
+            using var indexList = connection.CreateCommand();
+            indexList.CommandText = "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'operational_notes';";
+            using var indexReader = indexList.ExecuteReader();
+            var indexNames = new List<string>();
+            while (indexReader.Read())
+            {
+                indexNames.Add(indexReader.GetString(0));
+            }
+            Assert.Contains("ix_operational_notes_status_effective_from", indexNames);
+        }
+
+        // Existing Phase 9 data is untouched by this purely additive migration.
+        var reloadedDraft = await new SqliteAssociateDraftRepository(connectionFactory).GetAsync(operatingDate);
+        Assert.NotNull(reloadedDraft);
+        Assert.Equal("""{"notes":"pre-existing draft"}""", reloadedDraft.PayloadJson);
+
+        var reloadedFinalized = await new SqliteFinalizedPassdownRepository(connectionFactory).GetByDateAsync(operatingDate);
+        Assert.NotNull(reloadedFinalized);
+        Assert.Equal("pre-existing-hash", reloadedFinalized.ContentHash);
+        Assert.Equal(pdfBytes, reloadedFinalized.PdfBytes);
+
+        using var finalConnection = connectionFactory.OpenConnection();
+        Assert.Equal(1, CountRows(finalConnection, "associate_drafts"));
+        Assert.Equal(1, CountRows(finalConnection, "finalized_passdowns"));
+        Assert.Equal(1, CountRows(finalConnection, "operational_notes"));
     }
 
     private static long CountRows(SqliteConnection connection, string tableName)
