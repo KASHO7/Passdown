@@ -3,6 +3,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Catalog;
+using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Diagnostics;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Freshness;
@@ -156,6 +157,12 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IPassdownHistoryService, PassdownHistoryService>();
         services.AddSingleton<IFinalizedPdfLauncher, TempFileFinalizedPdfLauncher>();
         services.AddTransient<PassdownHistoryViewModel>();
+
+        // Phase 10A: the Operations Dashboard foundation. IOperationsDashboardService reads
+        // IAssociatePassdownService/IFinalizedPassdownRepository only (both already registered
+        // above) — it never performs HTTP/Playwright retrieval and never loads a finalized PDF blob.
+        services.AddSingleton<IOperationsDashboardService, OperationsDashboardService>();
+        services.AddTransient<OperationsDashboardViewModel>();
 
         // Phase 7F Part F/G: the sanitized diagnostic export pipeline. Reuses the already-registered
         // SqliteConnectionFactory/ISourceStateRepository/IReadOnlyList<SourceRegistration>/IClock —

@@ -1,0 +1,229 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="860"
+             x:Class="Carowinds.Passdown.Desktop.Views.DashboardView"
+             x:DataType="vm:OperationsDashboardViewModel">
+
+  <!-- Phase 10A: the Operations Dashboard foundation — a summary/control surface answering "what do
+       I need to know today?", not another editing form. Every style class below is a small,
+       self-contained subset mirroring AssociateView/HistoryView's own visual language (Avalonia
+       Styles declared inside one UserControl are scoped to its own visual tree), since this screen
+       has no editable controls at all. -->
+  <UserControl.Styles>
+
+    <Style Selector="TextBlock.pageTitle">
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.sectionTitle">
+      <Setter Property="FontSize" Value="13.5" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="LetterSpacing" Value="0.4" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+    <Style Selector="TextBlock.muted">
+      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+      <Setter Property="FontSize" Value="12.5" />
+    </Style>
+    <Style Selector="TextBlock.fieldError">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownErrorBrush}" />
+      <Setter Property="FontSize" Value="12.5" />
+      <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+
+    <Style Selector="Border.panel">
+      <Setter Property="Padding" Value="18" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceTintBrush}" />
+    </Style>
+    <!-- The two strongest panels on the page (Today's Operation / Passdown Status): same surface, with a brand top rule. -->
+    <Style Selector="Border.heroPanel">
+      <Setter Property="BorderThickness" Value="1,3,1,1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
+    </Style>
+
+    <Style Selector="Border.chip">
+      <Setter Property="Background" Value="{DynamicResource PassdownChipBrush}" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="9,3" />
+    </Style>
+    <Style Selector="Border.chip TextBlock">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+
+    <Style Selector="TextBlock.hoursHeadline">
+      <Setter Property="FontSize" Value="26" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Margin" Value="0,4,0,6" />
+    </Style>
+
+    <Style Selector="TextBlock.statValue">
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="TextBlock.statLabel">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="LetterSpacing" Value="0.5" />
+      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+      <Setter Property="Margin" Value="0,0,0,4" />
+    </Style>
+
+    <Style Selector="Button.primaryAction">
+      <Setter Property="Background" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownHeaderForegroundBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="Padding" Value="14,7" />
+    </Style>
+    <Style Selector="Button.secondaryAction">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="Padding" Value="14,7" />
+    </Style>
+    <Style Selector="Button.secondaryAction:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
+    </Style>
+
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+
+    <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceTintBrush}"
+            BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <StackPanel Grid.Column="0" Spacing="2">
+          <TextBlock Text="Today" Classes="pageTitle" />
+          <TextBlock Text="{Binding Presentation.OperatingDayLabel}" Classes="muted" />
+        </StackPanel>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <TextBlock Text="{Binding Presentation.GeneratedAtText}" Classes="muted" VerticalAlignment="Center"
+                     IsVisible="{Binding HasSnapshot}" />
+          <Button Content="Refresh" Classes="secondaryAction" Command="{Binding ReloadCommand}"
+                  AutomationProperties.Name="Refresh today's operations summary"
+                  AutomationProperties.HelpText="Reloads today's summary from your saved local information. Does not check the website." />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <ScrollViewer Grid.Row="1" Padding="24,20,24,24">
+      <StackPanel Spacing="16">
+
+        <ProgressBar IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoading}" />
+
+        <TextBlock Text="{Binding ErrorMessage}" Classes="fieldError" TextWrapping="Wrap"
+                   IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+        <StackPanel Spacing="16" IsVisible="{Binding HasSnapshot}">
+
+          <!-- Today's Operation / Passdown Status (spec Part M's top row). -->
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+
+            <Border Grid.Column="0" Classes="panel heroPanel">
+              <StackPanel Spacing="2">
+                <TextBlock Text="Today's Operation" Classes="sectionTitle" />
+                <TextBlock Text="{Binding Presentation.ParkHours.HeadlineText}" Classes="hoursHeadline" />
+                <Border Classes="chip" HorizontalAlignment="Left">
+                  <TextBlock Text="{Binding Presentation.ParkStatusBadgeText}" />
+                </Border>
+                <TextBlock Text="{Binding Presentation.ParkHours.VerificationText}" Classes="muted" Margin="0,6,0,0" TextWrapping="Wrap"
+                           IsVisible="{Binding Presentation.ParkHours.VerificationText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <TextBlock Text="{Binding Presentation.ParkHours.StaleNoteText}" Classes="muted" TextWrapping="Wrap"
+                           IsVisible="{Binding Presentation.ParkHours.StaleNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" Classes="panel heroPanel">
+              <StackPanel Spacing="2">
+                <TextBlock Text="Passdown Status" Classes="sectionTitle" />
+                <TextBlock Text="{Binding Presentation.PassdownStatusText}" Classes="hoursHeadline" />
+                <TextBlock Text="{Binding Presentation.PassdownStatusDetailText}" Classes="muted" TextWrapping="Wrap"
+                           IsVisible="{Binding Presentation.PassdownStatusDetailText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <Button Content="Open Passdown" Classes="primaryAction" Margin="0,10,0,0" HorizontalAlignment="Left"
+                        Command="{Binding OpenPassdownCommand}"
+                        IsVisible="{Binding Presentation.ShowOpenPassdownAction}"
+                        AutomationProperties.Name="Open Passdown"
+                        AutomationProperties.HelpText="Opens today's Associate Passdown for editing." />
+              </StackPanel>
+            </Border>
+
+          </Grid>
+
+          <!-- Daily snapshot region (spec Part M): attendance/pre-solds/Early Ride Time/Daily
+               Feature as compact stat tiles, not full editing controls. -->
+          <Border Classes="panel">
+            <StackPanel Spacing="10">
+              <TextBlock Text="Daily Snapshot" Classes="sectionTitle" Margin="0" />
+              <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="20">
+                <StackPanel Grid.Column="0" Spacing="0">
+                  <TextBlock Text="PROJECTED ATTENDANCE" Classes="statLabel" />
+                  <TextBlock Text="{Binding Presentation.AttendanceText, FallbackValue='Not recorded', TargetNullValue='Not recorded'}" Classes="statValue" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="0">
+                  <TextBlock Text="PRE-SOLDS" Classes="statLabel" />
+                  <TextBlock Text="{Binding Presentation.PreSoldsText, FallbackValue='Not recorded', TargetNullValue='Not recorded'}" Classes="statValue" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" Spacing="0">
+                  <TextBlock Text="EARLY RIDE TIME" Classes="statLabel" />
+                  <TextBlock Text="{Binding Presentation.EarlyRideTimeText}" TextWrapping="Wrap" FontWeight="SemiBold" />
+                </StackPanel>
+                <StackPanel Grid.Column="3" Spacing="0">
+                  <TextBlock Text="{Binding Presentation.DailyFeatureLabel}" Classes="statLabel" />
+                  <TextBlock Text="{Binding Presentation.DailyFeatureText}" TextWrapping="Wrap" FontWeight="SemiBold"
+                             IsVisible="{Binding Presentation.DailyFeatureText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  <TextBlock Text="Not set for today." Classes="muted"
+                             IsVisible="{Binding Presentation.DailyFeatureText, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
+                </StackPanel>
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          <!-- Data/verification summary + operational notes preview, side by side (spec Part M). -->
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+
+            <Border Grid.Column="0" Classes="panel">
+              <StackPanel Spacing="6">
+                <TextBlock Text="Data Verification" Classes="sectionTitle" Margin="0" />
+                <TextBlock Text="{Binding Presentation.SourceHealthText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <Button Content="Open History" Classes="secondaryAction" Margin="0,6,0,0" HorizontalAlignment="Left"
+                        Command="{Binding OpenHistoryCommand}"
+                        AutomationProperties.Name="Open History"
+                        AutomationProperties.HelpText="Opens the read-only Passdown History screen." />
+              </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" Classes="panel">
+              <StackPanel Spacing="6">
+                <TextBlock Text="Operational Notes" Classes="sectionTitle" Margin="0" />
+                <TextBlock Text="{Binding Presentation.NotesSummaryText}" FontWeight="SemiBold" />
+                <ItemsControl ItemsSource="{Binding Presentation.NotesPreviewLines}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                      <TextBlock Text="{Binding}" Classes="muted" TextWrapping="Wrap" Margin="0,2,0,0" />
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+
+          </Grid>
+
+        </StackPanel>
+
+      </StackPanel>
+    </ScrollViewer>
+
+  </Grid>
+
+</UserControl>

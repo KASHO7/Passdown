@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.History;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Desktop;
@@ -73,5 +74,18 @@ public class CompositionRootTests
         Assert.NotNull(provider.GetRequiredService<IPassdownHistoryService>());
         Assert.NotNull(provider.GetRequiredService<IFinalizedPdfLauncher>());
         Assert.NotNull(provider.GetRequiredService<PassdownHistoryViewModel>());
+    }
+
+    // Phase 10A: the Dashboard's Application/Desktop seams resolve from the same composition root —
+    // proves IOperationsDashboardService/OperationsDashboardViewModel are wired, and that
+    // MainViewModel now resolves with its third (Dashboard) constructor argument satisfied.
+    [Fact]
+    public void BuildServiceProvider_ResolvesOperationsDashboardServices()
+    {
+        var provider = App.BuildServiceProvider();
+
+        Assert.NotNull(provider.GetRequiredService<IOperationsDashboardService>());
+        Assert.NotNull(provider.GetRequiredService<OperationsDashboardViewModel>());
+        Assert.NotNull(provider.GetRequiredService<MainViewModel>());
     }
 }
