@@ -263,6 +263,153 @@ public class OperationsDashboardServiceTests
         Assert.Equal(DashboardSourceHealth.AllCurrent, snapshot.SourceHealth.Health);
     }
 
+    // Phase 10C Part M: no finalized passdown has ever existed -> LatestFinalized is null, never a
+    // fabricated date.
+    [Fact]
+    public async Task LoadAsync_NoFinalizedHistory_LatestFinalizedIsNull()
+    {
+        var env = CreateEnvironment();
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Null(snapshot.LatestFinalized);
+    }
+
+    // Phase 10C Part B: exactly one finalized record -> it is surfaced as LatestFinalized, metadata only.
+    [Fact]
+    public async Task LoadAsync_OneFinalizedRecord_LatestFinalizedPopulated()
+    {
+        var env = CreateEnvironment();
+        var finalizedDate = new DateOnly(2026, 8, 20);
+        var finalizedAt = env.Clock.UtcNow;
+        await env.FinalizedPassdowns.AddAsync(new FinalizedPassdown(
+            Guid.NewGuid(), finalizedDate, finalizedAt, 1, "{}", "hash", FinalizationOrigin.Scheduled,
+            PdfBytes: [1, 2, 3], PdfSha256: "pdfhash", PdfSizeBytes: 3));
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.NotNull(snapshot.LatestFinalized);
+        Assert.Equal(finalizedDate, snapshot.LatestFinalized!.PassdownDate);
+        Assert.Equal(finalizedAt, snapshot.LatestFinalized.FinalizedAtUtc);
+        Assert.Equal(FinalizationOrigin.Scheduled, snapshot.LatestFinalized.Origin);
+    }
+
+    // Phase 10C Part C: "latest" is the highest PassdownDate, never the most-recently-inserted row or
+    // the row with the most recent FinalizedAtUtc — the last-inserted/last-finalized row here (Aug 18)
+    // is deliberately the earliest PassdownDate, so a naive "last row"/"most recent FinalizedAtUtc"
+    // implementation would pick the wrong one.
+    [Fact]
+    public async Task LoadAsync_MultipleFinalizedRecords_LatestSelectedByHighestPassdownDate()
+    {
+        var env = CreateEnvironment();
+        await env.FinalizedPassdowns.AddAsync(new FinalizedPassdown(
+            Guid.NewGuid(), new DateOnly(2026, 8, 19), env.Clock.UtcNow.AddHours(1), 1, "{}", "hash", FinalizationOrigin.Scheduled,
+            PdfBytes: [1], PdfSha256: "h1", PdfSizeBytes: 1));
+        await env.FinalizedPassdowns.AddAsync(new FinalizedPassdown(
+            Guid.NewGuid(), new DateOnly(2026, 8, 22), env.Clock.UtcNow.AddHours(-5), 1, "{}", "hash", FinalizationOrigin.Recovery,
+            PdfBytes: [1], PdfSha256: "h2", PdfSizeBytes: 1));
+        await env.FinalizedPassdowns.AddAsync(new FinalizedPassdown(
+            Guid.NewGuid(), new DateOnly(2026, 8, 18), env.Clock.UtcNow.AddHours(10), 1, "{}", "hash", FinalizationOrigin.Scheduled,
+            PdfBytes: [1], PdfSha256: "h3", PdfSizeBytes: 1));
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(new DateOnly(2026, 8, 22), snapshot.LatestFinalized!.PassdownDate);
+        Assert.Equal(FinalizationOrigin.Recovery, snapshot.LatestFinalized.Origin);
+    }
+
+    // Phase 10C Part N: a legacy pre-9C record with no frozen PDF must still be surfaced, never hidden
+    // or treated as invalid.
+    [Fact]
+    public async Task LoadAsync_LatestFinalizedHasNoPdf_StillPopulated()
+    {
+        var env = CreateEnvironment();
+        var finalizedDate = new DateOnly(2026, 8, 20);
+        await env.FinalizedPassdowns.AddAsync(new FinalizedPassdown(
+            Guid.NewGuid(), finalizedDate, env.Clock.UtcNow, 1, "{}", "hash", FinalizationOrigin.Scheduled,
+            PdfBytes: null, PdfSha256: null, PdfSizeBytes: null));
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.NotNull(snapshot.LatestFinalized);
+        Assert.Equal(finalizedDate, snapshot.LatestFinalized!.PassdownDate);
+        Assert.False(snapshot.LatestFinalized.HasFrozenPdf);
+    }
+
+    // Phase 10C Part O: a malformed SnapshotJson row must never break the dashboard — LatestFinalized
+    // is built from FinalizedPassdownSummary metadata only, and this service never deserializes
+    // SnapshotJson to render it.
+    [Fact]
+    public async Task LoadAsync_LatestFinalizedHasMalformedSnapshotJson_DoesNotThrow()
+    {
+        var env = CreateEnvironment();
+        var finalizedDate = new DateOnly(2026, 8, 20);
+        await env.FinalizedPassdowns.AddAsync(new FinalizedPassdown(
+            Guid.NewGuid(), finalizedDate, env.Clock.UtcNow, 1, "{ this is not valid json", "hash", FinalizationOrigin.Scheduled,
+            PdfBytes: [1], PdfSha256: "h", PdfSizeBytes: 1));
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(finalizedDate, snapshot.LatestFinalized!.PassdownDate);
+    }
+
+    // Phase 10C Part O: a row from a future/unknown snapshot schema version must never break the
+    // dashboard either, for the same reason — metadata only, no deserialization.
+    [Fact]
+    public async Task LoadAsync_LatestFinalizedHasFutureSchemaVersion_DoesNotThrow()
+    {
+        var env = CreateEnvironment();
+        var finalizedDate = new DateOnly(2026, 8, 20);
+        await env.FinalizedPassdowns.AddAsync(new FinalizedPassdown(
+            Guid.NewGuid(), finalizedDate, env.Clock.UtcNow, int.MaxValue, "{}", "hash", FinalizationOrigin.Scheduled,
+            PdfBytes: [1], PdfSha256: "h", PdfSizeBytes: 1));
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(finalizedDate, snapshot.LatestFinalized!.PassdownDate);
+    }
+
+    // Phase 10C Part T #22: other dates being finalized must never cause today's own status to be
+    // misreported as Finalized — only a record for operatingDate itself counts.
+    [Fact]
+    public async Task LoadAsync_OtherDatesFinalized_TodaysOwnStatusUnaffected()
+    {
+        var env = CreateEnvironment();
+        await SaveDraftAsync(env, AssociateDraftPayload.CreateDefault());
+        await env.FinalizedPassdowns.AddAsync(new FinalizedPassdown(
+            Guid.NewGuid(), Date.AddDays(-1), env.Clock.UtcNow, 1, "{}", "hash", FinalizationOrigin.Scheduled,
+            PdfBytes: [1], PdfSha256: "h", PdfSizeBytes: 1));
+        await env.FinalizedPassdowns.AddAsync(new FinalizedPassdown(
+            Guid.NewGuid(), Date.AddDays(1), env.Clock.UtcNow, 1, "{}", "hash", FinalizationOrigin.Scheduled,
+            PdfBytes: [1], PdfSha256: "h", PdfSizeBytes: 1));
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(DashboardPassdownStatus.DraftInProgress, snapshot.PassdownStatus.Status);
+        Assert.Null(snapshot.PassdownStatus.FinalizedAt);
+        // The other dates are still correctly surfaced as History's own latest-finalized concern.
+        Assert.Equal(Date.AddDays(1), snapshot.LatestFinalized!.PassdownDate);
+    }
+
+    // Phase 10C Part L: a large finalized-history set stays metadata-only — GetByDateAsync (the only
+    // method that can return a PDF blob or SnapshotJson-bearing full row) is never called even once.
+    [Fact]
+    public async Task LoadAsync_LargeFinalizedHistorySet_RemainsMetadataOnly()
+    {
+        var env = CreateEnvironment();
+        for (var i = 0; i < 50; i++)
+        {
+            await env.FinalizedPassdowns.AddAsync(new FinalizedPassdown(
+                Guid.NewGuid(), new DateOnly(2026, 1, 1).AddDays(i), env.Clock.UtcNow, 1, "{}", "hash", FinalizationOrigin.Scheduled,
+                PdfBytes: [1], PdfSha256: "h", PdfSizeBytes: 1));
+        }
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(new DateOnly(2026, 1, 1).AddDays(49), snapshot.LatestFinalized!.PassdownDate);
+        Assert.Equal(0, env.FinalizedPassdowns.GetByDateCallCount);
+    }
+
     private static SourceEvidence Evidence(RetrievalStatus status) =>
         new("Fake Source", new Uri("https://example.test/fake-source"), FixedNow, status, $"{status}.", RetrievalStrategy.DirectApi, Date, status == RetrievalStatus.Verified ? Date : null);
 

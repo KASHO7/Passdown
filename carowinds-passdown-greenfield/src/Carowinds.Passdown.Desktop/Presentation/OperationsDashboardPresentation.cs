@@ -10,6 +10,12 @@ namespace Carowinds.Passdown.Desktop.Presentation;
 /// <see cref="ParkHours"/> is built by reusing <see cref="ParkHoursPresentation.Build"/> directly on
 /// the snapshot's own <see cref="OperationsDashboardSnapshot.ParkStatus"/> hours view.
 /// </summary>
+/// <param name="LatestFinalized">
+/// The Dashboard's compact History integration surface (Phase 10C Part B) — built by reusing
+/// <see cref="PassdownHistorySummaryPresentation.Build"/> directly, the exact same metadata-only
+/// formatter the History screen's own list row already uses, rather than a second date/timestamp/
+/// origin formatter. <c>null</c> when no passdown has ever been finalized (Part M).
+/// </param>
 public sealed record OperationsDashboardPresentation(
     string OperatingDayLabel,
     ParkHoursPresentation ParkHours,
@@ -25,6 +31,7 @@ public sealed record OperationsDashboardPresentation(
     string NotesSummaryText,
     IReadOnlyList<string> NotesPreviewLines,
     string SourceHealthText,
+    PassdownHistorySummaryPresentation? LatestFinalized,
     string GeneratedAtText)
 {
     /// <summary>Presentation-only bound (spec Phase 10B Part K) — never applied to persisted draft data, only to the Dashboard's own read-only display strings.</summary>
@@ -91,6 +98,10 @@ public sealed record OperationsDashboardPresentation(
             _ => "Source status unknown",
         };
 
+        var latestFinalized = snapshot.LatestFinalized is { } summary
+            ? PassdownHistorySummaryPresentation.Build(summary)
+            : null;
+
         return new OperationsDashboardPresentation(
             dayLabel,
             parkHours,
@@ -106,6 +117,7 @@ public sealed record OperationsDashboardPresentation(
             notesSummaryText,
             notesPreviewLines,
             sourceHealthText,
+            latestFinalized,
             $"Updated {FormatTimestamp(snapshot.GeneratedAt)}");
     }
 

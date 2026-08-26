@@ -16,6 +16,19 @@ using Microsoft.Extensions.Logging;
 namespace Carowinds.Passdown.Desktop.ViewModels;
 
 /// <summary>
+/// Associate Passdown's internal section rail (spec Parts 2/3 — Overview / Products / Notes; Phase
+/// 10C Part F). View-model-owned so a caller like <see cref="MainViewModel"/> can request a specific
+/// section (e.g. a Dashboard "Open Notes" deep link) without manipulating <c>ToggleButton</c> state or
+/// searching the visual tree.
+/// </summary>
+public enum AssociateSection
+{
+    Overview,
+    Products,
+    Notes,
+}
+
+/// <summary>
 /// Phase 4B–4D's Associate Passdown screen state. Depends only on <see cref="IAssociatePassdownService"/>
 /// (application-layer) and <see cref="IClock"/> (application-layer) — it never queries a
 /// repository, calls HTTP/Playwright, or recomputes effective-hours arithmetic (every effective-hours
@@ -91,6 +104,32 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedDateForPicker))]
     public partial DateOnly SelectedDate { get; set; }
+
+    /// <summary>
+    /// Which of Overview/Products/Notes is currently shown (Phase 10C Part F) — deliberately
+    /// independent of <see cref="SelectedDate"/>: switching this never loads, saves, or otherwise
+    /// touches draft data, exactly like the view-layer <c>ToggleButton</c> state it replaces.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsOverviewSectionSelected))]
+    [NotifyPropertyChangedFor(nameof(IsProductsSectionSelected))]
+    [NotifyPropertyChangedFor(nameof(IsNotesSectionSelected))]
+    public partial AssociateSection SelectedSection { get; set; } = AssociateSection.Overview;
+
+    public bool IsOverviewSectionSelected => SelectedSection == AssociateSection.Overview;
+
+    public bool IsProductsSectionSelected => SelectedSection == AssociateSection.Products;
+
+    public bool IsNotesSectionSelected => SelectedSection == AssociateSection.Notes;
+
+    [RelayCommand]
+    private void ShowOverviewSection() => SelectedSection = AssociateSection.Overview;
+
+    [RelayCommand]
+    private void ShowProductsSection() => SelectedSection = AssociateSection.Products;
+
+    [RelayCommand]
+    private void ShowNotesSection() => SelectedSection = AssociateSection.Notes;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBusy))]

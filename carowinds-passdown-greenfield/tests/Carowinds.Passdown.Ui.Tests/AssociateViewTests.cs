@@ -28,4 +28,24 @@ public class AssociateViewTests
 
         Assert.Same(viewModel, view.DataContext);
     }
+
+    // Phase 10C Part F: the section rail's Button/Classes.active bindings (replacing the former
+    // ToggleButton + code-behind mutual exclusion) resolve through the real XAML loader for every
+    // AssociateSection value, including a value set before the view is even constructed (a Dashboard
+    // deep link arriving before Associate has ever been shown).
+    [Theory]
+    [InlineData(AssociateSection.Overview)]
+    [InlineData(AssociateSection.Products)]
+    [InlineData(AssociateSection.Notes)]
+    public void AssociateView_EachInternalSection_ConstructsWithoutError(AssociateSection section)
+    {
+        var viewModel = new AssociateViewModel(new FakeAssociatePassdownService(), new FakeClock(DateTimeOffset.UtcNow))
+        {
+            SelectedSection = section,
+        };
+
+        var view = new AssociateView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+    }
 }

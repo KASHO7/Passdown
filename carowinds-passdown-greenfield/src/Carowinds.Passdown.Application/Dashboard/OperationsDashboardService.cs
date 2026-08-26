@@ -27,7 +27,7 @@ public sealed class OperationsDashboardService(
         var workspace = await associatePassdownService.LoadAssociateDateAsync(operatingDate, cancellationToken).ConfigureAwait(false);
 
         var parkStatus = BuildParkStatus(workspace.ParkHours);
-        var passdownStatus = await BuildPassdownStatusAsync(operatingDate, workspace.SaveStatus, cancellationToken).ConfigureAwait(false);
+        var (passdownStatus, latestFinalized) = await BuildPassdownAndHistoryAsync(operatingDate, workspace.SaveStatus, cancellationToken).ConfigureAwait(false);
 
         // Mirrors AssociateViewModel.OnIsEarlyRideTimeEnabledChanged's own "off means not
         // applicable" rule (Desktop/ViewModels/AssociateViewModel.cs) so the dashboard's summary
@@ -50,6 +50,7 @@ public sealed class OperationsDashboardService(
             workspace.Draft.DailyFeatureText,
             notes,
             sourceHealth,
+            latestFinalized,
             clock.UtcNow);
     }
 
@@ -77,20 +78,36 @@ public sealed class OperationsDashboardService(
         return new DashboardParkStatusSummary(status, hours);
     }
 
-    private async Task<DashboardPassdownStatusSummary> BuildPassdownStatusAsync(DateOnly operatingDate, AssociateSaveStatus saveStatus, CancellationToken cancellationToken)
+    /// <summary>
+    /// One metadata-only <see cref="IFinalizedPassdownRepository.ListAsync"/> call serves both today's
+    /// own passdown status and the "latest finalized" History integration surface (Phase 10C Parts
+    /// A/B/L) — never <c>GetByDateAsync</c>, so a dashboard load can never materialize a historical
+    /// PDF blob or deserialize a <see cref="Persistence.FinalizedPassdown.SnapshotJson"/> (Phase 10C
+    /// Parts L/O). "Latest" is defined explicitly as the highest <see cref="DateOnly"/>
+    /// <see cref="Persistence.FinalizedPassdownSummary.PassdownDate"/> (Phase 10C Part C) — computed
+    /// here rather than trusted from the repository's own ordering, so this stays correct even if a
+    /// future repository implementation changes <c>ListAsync</c>'s ordering.
+    /// </summary>
+    private async Task<(DashboardPassdownStatusSummary PassdownStatus, FinalizedPassdownSummary? LatestFinalized)> BuildPassdownAndHistoryAsync(
+        DateOnly operatingDate, AssociateSaveStatus saveStatus, CancellationToken cancellationToken)
     {
-        if (!await finalizedPassdownRepository.ExistsForDateAsync(operatingDate, cancellationToken).ConfigureAwait(false))
-        {
-            return saveStatus.State == AssociateSaveState.NeverSaved
-                ? new DashboardPassdownStatusSummary(DashboardPassdownStatus.NoDraft, LastSavedAt: null, FinalizedAt: null)
-                : new DashboardPassdownStatusSummary(DashboardPassdownStatus.DraftInProgress, saveStatus.LastSavedAt, FinalizedAt: null);
-        }
-
-        // Metadata-only (IFinalizedPassdownRepository.ListAsync never selects pdf_bytes) — even the
-        // rare case of a past finalized date never loads the frozen PDF blob here.
         var summaries = await finalizedPassdownRepository.ListAsync(cancellationToken).ConfigureAwait(false);
-        var finalizedAt = summaries.FirstOrDefault(summary => summary.PassdownDate == operatingDate)?.FinalizedAtUtc;
-        return new DashboardPassdownStatusSummary(DashboardPassdownStatus.Finalized, saveStatus.LastSavedAt, finalizedAt);
+
+        var latestFinalized = summaries.Count == 0
+            ? null
+            : summaries.Aggregate((latest, candidate) => candidate.PassdownDate > latest.PassdownDate ? candidate : latest);
+
+        var todaysRecord = summaries.FirstOrDefault(summary => summary.PassdownDate == operatingDate);
+        var passdownStatus = todaysRecord switch
+        {
+            null when saveStatus.State == AssociateSaveState.NeverSaved =>
+                new DashboardPassdownStatusSummary(DashboardPassdownStatus.NoDraft, LastSavedAt: null, FinalizedAt: null),
+            null =>
+                new DashboardPassdownStatusSummary(DashboardPassdownStatus.DraftInProgress, saveStatus.LastSavedAt, FinalizedAt: null),
+            _ => new DashboardPassdownStatusSummary(DashboardPassdownStatus.Finalized, saveStatus.LastSavedAt, todaysRecord.FinalizedAtUtc),
+        };
+
+        return (passdownStatus, latestFinalized);
     }
 
     private static DashboardNotesSummary BuildNotesSummary(IReadOnlyList<string> operationalNotes)

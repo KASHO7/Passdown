@@ -1,3 +1,5 @@
+using Carowinds.Passdown.Application.Finalization;
+using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
 
@@ -48,34 +50,56 @@ public class OperationsDashboardViewModelTests
         Assert.Equal(2, service.GetTodayCallCount);
     }
 
+    // Phase 10C Part G: "Open Passdown" raises its own event, distinct from "Open Notes" — so
+    // MainViewModel can route each to a different Associate internal section.
     [Fact]
-    public async Task OpenPassdownCommand_RaisesOpenAssociateRequested()
+    public async Task OpenPassdownCommand_RaisesOpenAssociateOverviewRequested()
     {
         var service = new FakeOperationsDashboardService();
         var viewModel = new OperationsDashboardViewModel(service);
         await viewModel.PendingLoad;
 
         var raised = false;
-        viewModel.OpenAssociateRequested += (_, _) => raised = true;
+        viewModel.OpenAssociateOverviewRequested += (_, _) => raised = true;
         viewModel.OpenPassdownCommand.Execute(null);
 
         Assert.True(raised);
     }
 
-    // Phase 10B Part J/T: "Open Notes" routes to Associate as a whole (no separate Notes tab exists
-    // to deep-link into yet) — same event as OpenPassdownCommand, distinct command/automation name.
+    // Phase 10C Part F: "Open Notes" is now a true deep link — its own event, distinct from
+    // OpenPassdownCommand's, so MainViewModel can route it to Associate's Notes section specifically
+    // (Phase 10B routed both to the same OpenAssociateRequested event; no Notes section existed yet).
     [Fact]
-    public async Task OpenNotesCommand_RaisesOpenAssociateRequested()
+    public async Task OpenNotesCommand_RaisesOpenAssociateNotesRequested()
     {
         var service = new FakeOperationsDashboardService();
         var viewModel = new OperationsDashboardViewModel(service);
         await viewModel.PendingLoad;
 
         var raised = false;
-        viewModel.OpenAssociateRequested += (_, _) => raised = true;
+        viewModel.OpenAssociateNotesRequested += (_, _) => raised = true;
         viewModel.OpenNotesCommand.Execute(null);
 
         Assert.True(raised);
+    }
+
+    // Phase 10C Part J/K: Reload is local-only (still calls the same service method, no new
+    // dependency) and picks up newly finalized History metadata that appeared since the initial load —
+    // e.g. after a background startup catch-up finalization completed.
+    [Fact]
+    public async Task ReloadCommand_PicksUpNewlyFinalizedMetadata()
+    {
+        var latestFinalized = new FinalizedPassdownSummary(new DateOnly(2026, 8, 25), DateTimeOffset.UtcNow, FinalizationOrigin.Recovery, true, 100);
+        var service = new FakeOperationsDashboardService();
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+        Assert.Null(viewModel.Snapshot!.LatestFinalized);
+
+        service.SnapshotFactory = date => FakeOperationsDashboardService.DefaultSnapshot(date) with { LatestFinalized = latestFinalized };
+        await viewModel.ReloadCommand.ExecuteAsync(null);
+
+        Assert.Equal(latestFinalized, viewModel.Snapshot!.LatestFinalized);
+        Assert.NotNull(viewModel.Presentation!.LatestFinalized);
     }
 
     [Fact]

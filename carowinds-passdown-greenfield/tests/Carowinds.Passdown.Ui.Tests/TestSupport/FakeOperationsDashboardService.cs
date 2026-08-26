@@ -54,6 +54,7 @@ internal sealed class FakeOperationsDashboardService : IOperationsDashboardServi
         DailyFeatureText: null,
         Notes: DashboardNotesSummary.Empty,
         SourceHealth: new DashboardSourceHealthSummary(DashboardSourceHealth.AllCurrent, 0, 0, 0, 0),
+        LatestFinalized: null,
         GeneratedAt: DateTimeOffset.UtcNow);
 
     private static AssociateParkHoursView DefaultParkHours() => new(

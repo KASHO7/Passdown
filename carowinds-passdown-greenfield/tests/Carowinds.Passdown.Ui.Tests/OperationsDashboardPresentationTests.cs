@@ -1,5 +1,7 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Dashboard;
+using Carowinds.Passdown.Application.Finalization;
+using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
 
@@ -175,6 +177,35 @@ public class OperationsDashboardPresentationTests
         var presentation = OperationsDashboardPresentation.Build(snapshot);
 
         Assert.Equal(["South Gate opens at 9:45.", "Group arrival expected at 11:00."], presentation.NotesPreviewLines);
+    }
+
+    // Phase 10C Part M: no finalized history -> LatestFinalized presentation is null, so the view can
+    // render the "No finalized passdowns yet." empty state.
+    [Fact]
+    public void Build_NoLatestFinalized_PresentationIsNull()
+    {
+        var snapshot = DefaultSnapshot() with { LatestFinalized = null };
+
+        var presentation = OperationsDashboardPresentation.Build(snapshot);
+
+        Assert.Null(presentation.LatestFinalized);
+    }
+
+    // Phase 10C Part B/S: LatestFinalized is built by reusing PassdownHistorySummaryPresentation.Build
+    // directly, so its date/finalized/origin text matches History's own list-row formatting exactly.
+    [Fact]
+    public void Build_LatestFinalizedPresent_MatchesHistorySummaryFormatting()
+    {
+        var finalizedDate = new DateOnly(2026, 8, 20);
+        var finalizedAt = new DateTimeOffset(2026, 8, 21, 10, 1, 0, TimeSpan.Zero);
+        var summary = new FinalizedPassdownSummary(finalizedDate, finalizedAt, FinalizationOrigin.Recovery, true, 12345);
+        var snapshot = DefaultSnapshot() with { LatestFinalized = summary };
+
+        var presentation = OperationsDashboardPresentation.Build(snapshot);
+        var expected = PassdownHistorySummaryPresentation.Build(summary);
+
+        Assert.NotNull(presentation.LatestFinalized);
+        Assert.Equal(expected, presentation.LatestFinalized);
     }
 
     private static OperationsDashboardSnapshot DefaultSnapshot() => FakeOperationsDashboardService.DefaultSnapshot(Date);

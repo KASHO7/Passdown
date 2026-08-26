@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.Persistence;
 
 namespace Carowinds.Passdown.Application.Dashboard;
 
@@ -68,6 +69,15 @@ public sealed record DashboardNotesSummary(bool HasNotes, IReadOnlyList<string> 
 /// draft composition, or finalization eligibility. Produced entirely from local persisted state
 /// (Phase 10A Part K/J) — no HTTP, no Playwright, no Task Scheduler API.
 /// </summary>
+/// <param name="LatestFinalized">
+/// The most recently operated finalized passdown — "latest" meaning the highest
+/// <see cref="FinalizedPassdown.PassdownDate"/>, not the most-recently-inserted row or the most
+/// recent <see cref="FinalizedPassdown.FinalizedAtUtc"/> (Phase 10C Part C). <c>null</c> when no
+/// passdown has ever been finalized. Reuses the same metadata-only
+/// <see cref="FinalizedPassdownSummary"/> type <see cref="IFinalizedPassdownRepository.ListAsync"/>
+/// and the History screen already use — never <see cref="FinalizedPassdown.SnapshotJson"/> or
+/// <see cref="FinalizedPassdown.PdfBytes"/> (Phase 10C Parts A/L/O).
+/// </param>
 public sealed record OperationsDashboardSnapshot(
     DateOnly OperatingDate,
     DashboardParkStatusSummary ParkStatus,
@@ -80,4 +90,5 @@ public sealed record OperationsDashboardSnapshot(
     string? DailyFeatureText,
     DashboardNotesSummary Notes,
     DashboardSourceHealthSummary SourceHealth,
+    FinalizedPassdownSummary? LatestFinalized,
     DateTimeOffset GeneratedAt);

@@ -138,4 +138,79 @@ public class MainViewModelNavigationTests
         Assert.Equal(AssociateDate, associate.SelectedDate);
         Assert.Equal("9000", associate.ProjectedAttendanceText);
     }
+
+    // Phase 10C Part G: "Open Passdown" routes to Associate's Overview section specifically.
+    [Fact]
+    public async Task DashboardOpenPassdownCommand_RoutesToAssociateOverview()
+    {
+        var main = CreateMainViewModel(out var dashboard, out var associate, out _);
+        await dashboard.PendingLoad;
+        associate.SelectedSection = AssociateSection.Notes;
+
+        dashboard.OpenPassdownCommand.Execute(null);
+
+        Assert.Equal(AppSection.AssociatePassdown, main.SelectedSection);
+        Assert.Equal(AssociateSection.Overview, associate.SelectedSection);
+    }
+
+    // Phase 10C Part F: "Open Notes" is a true deep link to Associate's Notes section.
+    [Fact]
+    public async Task DashboardOpenNotesCommand_RoutesToAssociateNotes()
+    {
+        var main = CreateMainViewModel(out var dashboard, out var associate, out _);
+        await dashboard.PendingLoad;
+
+        dashboard.OpenNotesCommand.Execute(null);
+
+        Assert.Equal(AppSection.AssociatePassdown, main.SelectedSection);
+        Assert.Equal(AssociateSection.Notes, associate.SelectedSection);
+    }
+
+    // Phase 10C Part H: neither deep link ever changes AssociateViewModel.SelectedDate — an associate
+    // mid-edit on another date is never silently switched to today's record.
+    [Fact]
+    public async Task DashboardDeepLinks_NeverChangeAssociateSelectedDate()
+    {
+        var main = CreateMainViewModel(out var dashboard, out var associate, out _);
+        await dashboard.PendingLoad;
+        await associate.PendingLoad;
+
+        dashboard.OpenNotesCommand.Execute(null);
+        Assert.Equal(AssociateDate, associate.SelectedDate);
+
+        dashboard.OpenPassdownCommand.Execute(null);
+        Assert.Equal(AssociateDate, associate.SelectedDate);
+    }
+
+    // Phase 10C Part H: merely viewing/switching top-level sections never touches Associate's internal
+    // section on its own — only the Dashboard's explicit "Open Passdown"/"Open Notes" actions do.
+    [Fact]
+    public void SwitchingTopLevelSections_NeverChangesAssociateInternalSection()
+    {
+        var main = CreateMainViewModel(out _, out var associate, out _);
+
+        main.ShowAssociateSectionCommand.Execute(null);
+        main.ShowHistorySectionCommand.Execute(null);
+        main.ShowDashboardSectionCommand.Execute(null);
+
+        Assert.Equal(AssociateSection.Overview, associate.SelectedSection);
+    }
+
+    // Phase 10C Part I: History's own selection state survives a Dashboard round trip — History is
+    // constructed once and kept alive, so navigating away and back never resets SelectedItem.
+    [Fact]
+    public async Task NavigatingHistoryThenDashboardThenHistory_PreservesHistorySelection()
+    {
+        var main = CreateMainViewModel(out _, out _, out var history);
+        await history.PendingLoad;
+
+        main.ShowHistorySectionCommand.Execute(null);
+        history.SelectedItem = history.HistoryItems[0];
+        await history.PendingDetailLoad;
+
+        main.ShowDashboardSectionCommand.Execute(null);
+        main.ShowHistorySectionCommand.Execute(null);
+
+        Assert.Equal(HistoryDate, history.SelectedItem?.PassdownDate);
+    }
 }

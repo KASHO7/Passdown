@@ -3,6 +3,8 @@ using Avalonia.Controls;
 using Avalonia.LogicalTree;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Dashboard;
+using Carowinds.Passdown.Application.Finalization;
+using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
@@ -44,6 +46,79 @@ public class DashboardViewTests
         Assert.Contains("Open History", names);
         Assert.Contains("Open Notes", names);
         Assert.Contains("Refresh today's operations summary", names);
+        Assert.Contains("Latest finalized passdown", names);
+    }
+
+    // Phase 10C Part U/M: no finalized history yet — the empty state constructs and never fabricates a date.
+    [Fact]
+    public async Task DashboardView_NoFinalizedHistory_ConstructsWithEmptyState()
+    {
+        var viewModel = new OperationsDashboardViewModel(new FakeOperationsDashboardService());
+        await viewModel.PendingLoad;
+
+        var view = new DashboardView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+        Assert.Null(viewModel.Presentation!.LatestFinalized);
+    }
+
+    // Phase 10C Part U: one finalized record constructs cleanly and is reflected in the presentation.
+    [Fact]
+    public async Task DashboardView_OneFinalizedRecord_ConstructsWithLatestFinalized()
+    {
+        var summary = new FinalizedPassdownSummary(new DateOnly(2026, 8, 24), DateTimeOffset.UtcNow, FinalizationOrigin.Scheduled, true, 50_000);
+        var service = new FakeOperationsDashboardService
+        {
+            SnapshotFactory = date => FakeOperationsDashboardService.DefaultSnapshot(date) with { LatestFinalized = summary },
+        };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        var view = new DashboardView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+        Assert.NotNull(viewModel.Presentation!.LatestFinalized);
+    }
+
+    // Phase 10C Part U/E: "Draft In Progress" (today has a saved-but-not-finalized draft) constructs
+    // cleanly and shows the Open Passdown action — never implying today is finalized.
+    [Fact]
+    public async Task DashboardView_DraftInProgress_ConstructsWithoutError()
+    {
+        var service = new FakeOperationsDashboardService
+        {
+            SnapshotFactory = date => FakeOperationsDashboardService.DefaultSnapshot(date) with
+            {
+                PassdownStatus = new DashboardPassdownStatusSummary(DashboardPassdownStatus.DraftInProgress, DateTimeOffset.UtcNow, null),
+            },
+        };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        var view = new DashboardView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+        Assert.Equal("Draft In Progress", viewModel.Presentation!.PassdownStatusText);
+        Assert.True(viewModel.Presentation!.ShowOpenPassdownAction);
+    }
+
+    // Phase 10C Part U/N: a no-PDF (pre-9C) latest finalized record must still construct cleanly and
+    // never be treated as invalid.
+    [Fact]
+    public async Task DashboardView_LatestFinalizedHasNoPdf_ConstructsWithoutError()
+    {
+        var summary = new FinalizedPassdownSummary(new DateOnly(2026, 8, 24), DateTimeOffset.UtcNow, FinalizationOrigin.Scheduled, false, null);
+        var service = new FakeOperationsDashboardService
+        {
+            SnapshotFactory = date => FakeOperationsDashboardService.DefaultSnapshot(date) with { LatestFinalized = summary },
+        };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        var view = new DashboardView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+        Assert.False(viewModel.Presentation!.LatestFinalized!.HasFrozenPdf);
     }
 
     // A load failure must render without throwing — no fabricated snapshot content (spec Part W).

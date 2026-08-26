@@ -193,10 +193,6 @@
               <StackPanel Spacing="6">
                 <TextBlock Text="Data Verification" Classes="sectionTitle" Margin="0" />
                 <TextBlock Text="{Binding Presentation.SourceHealthText}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                <Button Content="Open History" Classes="secondaryAction" Margin="0,6,0,0" HorizontalAlignment="Left"
-                        Command="{Binding OpenHistoryCommand}"
-                        AutomationProperties.Name="Open History"
-                        AutomationProperties.HelpText="Opens the read-only Passdown History screen." />
               </StackPanel>
             </Border>
 
@@ -214,11 +210,34 @@
                 <Button Content="Open Notes" Classes="secondaryAction" Margin="0,6,0,0" HorizontalAlignment="Left"
                         Command="{Binding OpenNotesCommand}"
                         AutomationProperties.Name="Open Notes"
-                        AutomationProperties.HelpText="Opens Associate Passdown, where operational notes can be reviewed and edited." />
+                        AutomationProperties.HelpText="Opens Associate Passdown's Notes section, where operational notes can be reviewed and edited." />
               </StackPanel>
             </Border>
 
           </Grid>
+
+          <!-- Passdown/History integration surface (Phase 10C Part B/P): the most recent finalized
+               passdown's metadata only — never the frozen snapshot or PDF — plus the single "Open
+               History" action for the whole page, so a supervisor can see what was last finalized and
+               jump to the full read-only archive without a second History browser here. -->
+          <Border Classes="panel" AutomationProperties.Name="Latest finalized passdown">
+            <StackPanel Spacing="6">
+              <TextBlock Text="Latest Finalized" Classes="sectionTitle" Margin="0" />
+
+              <StackPanel Spacing="2" IsVisible="{Binding Presentation.LatestFinalized, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <TextBlock Text="{Binding Presentation.LatestFinalized.PassdownDateText}" FontWeight="SemiBold" FontSize="15" />
+                <TextBlock Text="{Binding Presentation.LatestFinalized.FinalizedText}" Classes="muted" />
+                <TextBlock Text="{Binding Presentation.LatestFinalized.OriginText}" Classes="muted" />
+              </StackPanel>
+              <TextBlock Text="No finalized passdowns yet." Classes="muted"
+                         IsVisible="{Binding Presentation.LatestFinalized, Converter={x:Static ObjectConverters.IsNull}}" />
+
+              <Button Content="Open History" Classes="secondaryAction" Margin="0,6,0,0" HorizontalAlignment="Left"
+                      Command="{Binding OpenHistoryCommand}"
+                      AutomationProperties.Name="Open History"
+                      AutomationProperties.HelpText="Opens the read-only Passdown History screen." />
+            </StackPanel>
+          </Border>
 
         </StackPanel>
 

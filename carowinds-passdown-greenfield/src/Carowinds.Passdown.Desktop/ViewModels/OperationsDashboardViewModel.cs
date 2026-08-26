@@ -42,8 +42,19 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(ShowEmptyOrErrorState))]
     public partial string? ErrorMessage { get; set; }
 
-    /// <summary>Raised when the "Open Passdown" action is used (Phase 10A Part O) — routes to the existing Associate Passdown screen rather than duplicating any of its editing UI here.</summary>
-    public event EventHandler? OpenAssociateRequested;
+    /// <summary>
+    /// Raised when the "Open Passdown" action is used (Phase 10A Part O; Phase 10C Part G) — routes to
+    /// the existing Associate Passdown screen's Overview section specifically, rather than duplicating
+    /// any of its editing UI here or leaving whatever internal section Associate was last on.
+    /// </summary>
+    public event EventHandler? OpenAssociateOverviewRequested;
+
+    /// <summary>
+    /// Raised when the "Open Notes" action is used (Phase 10B Part J/T; Phase 10C Part F) — a true
+    /// deep link to Associate Passdown's Notes section, replacing Phase 10B's routing to Associate as a
+    /// whole (there was no Notes-specific section to target yet).
+    /// </summary>
+    public event EventHandler? OpenAssociateNotesRequested;
 
     /// <summary>Raised when the "Open History" action is used (Phase 10A Part O) — routes to the existing read-only History screen.</summary>
     public event EventHandler? OpenHistoryRequested;
@@ -98,17 +109,19 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     }
 
     [RelayCommand(CanExecute = nameof(CanOpenPassdown))]
-    private void OpenPassdown() => OpenAssociateRequested?.Invoke(this, EventArgs.Empty);
+    private void OpenPassdown() => OpenAssociateOverviewRequested?.Invoke(this, EventArgs.Empty);
 
     /// <summary>
-    /// "Open Notes" (Phase 10B Part J/T) — Associate Passdown has no separate Notes tab/section to
-    /// deep-link into (Operational Notes is one field on its single Overview screen), so routing
-    /// directly to a Notes sub-view would require an ugly coupling to Associate's internal layout.
-    /// This raises the same <see cref="OpenAssociateRequested"/> event as <see cref="OpenPassdownCommand"/>
-    /// and is documented as deferring a true Notes deep-link to Phase 10C.
+    /// "Open Notes" (Phase 10B Part J/T; Phase 10C Part F) — a true deep link, now that Associate
+    /// Passdown's internal section is view-model-owned (<see cref="AssociateViewModel.SelectedSection"/>)
+    /// rather than only view-layer <c>ToggleButton</c> state. Raising a distinct event from
+    /// <see cref="OpenPassdownCommand"/> lets <see cref="MainViewModel"/> — the one place that
+    /// coordinates both the top-level section switch and Associate's internal section — route this
+    /// specifically to Notes without this view model needing to know <see cref="AssociateViewModel"/>
+    /// or <c>AppSection</c> exist (spec Part P).
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanOpenPassdown))]
-    private void OpenNotes() => OpenAssociateRequested?.Invoke(this, EventArgs.Empty);
+    private void OpenNotes() => OpenAssociateNotesRequested?.Invoke(this, EventArgs.Empty);
 
     private bool CanOpenPassdown() => HasSnapshot;
 

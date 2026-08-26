@@ -544,3 +544,283 @@ Recorded honestly as **PARTIAL**, matching Phase 10A/9E precedent.
 - Visual/desktop polish beyond what these content changes required
   (Phase 10E).
 - The Phase 10F release rebuild/audit.
+
+---
+
+# Phase 10C — Passdown/History/Notes integration
+
+Phase 10C turns the Dashboard from a read-only summary into a workflow
+hub: it adds a compact History integration surface (the latest finalized
+passdown's metadata) and replaces Phase 10B's "route to Associate as a
+whole" placeholder with true, targeted deep links into Associate
+Passdown's Overview and Notes sections. No new operational business rule
+was added — every value shown was already computed by an existing
+Application-layer type; Phase 10C's work is entirely wiring and
+navigation.
+
+## Latest-finalized History integration (Parts A/B)
+
+`OperationsDashboardSnapshot` gained one field:
+
+```csharp
+FinalizedPassdownSummary? LatestFinalized
+```
+
+Reusing the existing metadata-only `FinalizedPassdownSummary` type
+(`Application/Persistence/FinalizedPassdownPersistence.cs`) — the exact
+same read model `IFinalizedPassdownRepository.ListAsync`/the History
+screen's own list already use — rather than inventing four separate
+scalar fields (`LatestFinalizedPassdownDate`/`LatestFinalizedAt`/etc.) or
+a second read model. `null` means no passdown has ever been finalized
+(Part M's empty state).
+
+`OperationsDashboardService.BuildPassdownAndHistoryAsync` (replacing
+Phase 10A/B's `BuildPassdownStatusAsync`) makes exactly **one**
+`IFinalizedPassdownRepository.ListAsync` call per `LoadAsync`, metadata
+only, and uses it for two purposes at once: classifying today's own
+passdown status (unchanged behavior from Phase 10A/B) and selecting the
+latest finalized record for the History integration surface. This
+replaces the prior `ExistsForDateAsync` fast-path with the same
+`ListAsync` call the rare "today is finalized" branch already had to
+make — no new repository dependency, no additional round trip in the
+common case.
+
+## Latest-selection rule (Part C)
+
+"Latest finalized" is defined as the highest `PassdownDate`, computed
+explicitly in `OperationsDashboardService`:
+
+```csharp
+summaries.Aggregate((latest, candidate) => candidate.PassdownDate > latest.PassdownDate ? candidate : latest)
+```
+
+— never the most-recently-inserted row and never the row with the most
+recent `FinalizedAtUtc`. This is computed independently of
+`SqliteFinalizedPassdownRepository.ListAsync`'s own `ORDER BY
+passdown_date DESC` (which already happens to produce the same answer at
+index 0) so the Dashboard's own correctness never silently depends on a
+persistence-layer ordering detail it doesn't own.
+`OperationsDashboardServiceTests.LoadAsync_MultipleFinalizedRecords_LatestSelectedByHighestPassdownDate`
+seeds three dates where the highest `PassdownDate` is neither the
+first-nor-last-inserted row nor the most recently `FinalizedAtUtc`, and
+asserts the correct one wins. The current schema's unique index on
+`passdown_date` (Phase 9A) means "multiple rows for one date" can never
+occur, so there is no tie-breaking rule to define.
+
+## History metadata-only guarantee (Parts L/N/O)
+
+Unchanged Phase 9C/9D guarantee, now also proven from the Dashboard's own
+call site: `IFinalizedPassdownRepository.GetByDateAsync` (the only method
+that can return `PdfBytes`/`SnapshotJson`) is never called by
+`OperationsDashboardService` — proven the same way Phase 10A did for
+today's own finalized-date case
+(`OperationsDashboardServiceTests.LoadAsync_LargeFinalizedHistorySet_RemainsMetadataOnly`
+seeds 50 finalized rows and asserts `GetByDateCallCount == 0`). A legacy
+pre-9C row with `HasFrozenPdf == false` (Part N) and a row with a
+malformed `SnapshotJson` string or an unrecognized future
+`SnapshotSchemaVersion` (Part O) all still surface correctly as
+`LatestFinalized`, because the Dashboard never reads or deserializes
+`SnapshotJson` in the first place — there is nothing to fail on. Three
+dedicated regression tests
+(`LoadAsync_LatestFinalizedHasNoPdf_StillPopulated`,
+`LoadAsync_LatestFinalizedHasMalformedSnapshotJson_DoesNotThrow`,
+`LoadAsync_LatestFinalizedHasFutureSchemaVersion_DoesNotThrow`) lock this
+in, alongside the equivalent `DashboardView` construction-level cases.
+
+## No-History empty state (Part M)
+
+`OperationsDashboardPresentation.LatestFinalized` is `null` when
+`OperationsDashboardSnapshot.LatestFinalized` is `null`; `DashboardView`'s
+"Latest Finalized" panel then shows the plain-language line "No finalized
+passdowns yet." — the same Part M wording the spec calls for — never a
+fabricated date. `Open History` stays visible and reachable in this
+state.
+
+## Dashboard layout (Part P)
+
+`DashboardView.axaml`'s bottom row gained one full-width "Latest
+Finalized" panel below the existing Data Verification / Operational
+Notes row, showing the reused
+`PassdownHistorySummaryPresentation.Build` output (date / finalized-at /
+origin text) plus the page's single `Open History` action. The duplicate
+`Open History` button that Phase 10A/10B had placed on the Data
+Verification card was removed — one action, one place, per Part Q. No
+giant History card/list was added; the page stays within its existing
+Grid-based panel structure.
+
+## Open Passdown / Open Notes deep link (Parts F/G/H)
+
+`AssociateViewModel` gained a view-model-owned internal section rail
+(replacing Phase 4B's view-layer-only `ToggleButton` + code-behind
+mutual-exclusion state):
+
+```csharp
+public enum AssociateSection { Overview, Products, Notes }
+public partial AssociateSection SelectedSection { get; set; } = AssociateSection.Overview;
+```
+
+`AssociateView.axaml`'s three rail items are now plain `Button`s with a
+data-bound `active` class and a `Command` — the exact same pattern
+`MainWindow.axaml`'s own top-level section strip already uses — instead
+of `ToggleButton.IsChecked` bindings via `#ElementName`; the three
+content `ScrollViewer`s bind their `IsVisible` to
+`IsOverviewSectionSelected`/`IsProductsSectionSelected`/`IsNotesSectionSelected`
+instead of `#OverviewSectionButton.IsChecked` and friends.
+`AssociateView.axaml.cs`'s `OnSectionButtonClick` code-behind handler was
+deleted entirely — there is no view-layer navigation state left.
+
+`OperationsDashboardViewModel.OpenAssociateRequested` (one event shared
+by both actions since Phase 10B) is now two distinct events:
+`OpenAssociateOverviewRequested` and `OpenAssociateNotesRequested`.
+`MainViewModel` — already the sole owner of top-level navigation — is the
+one place that reacts to each:
+
+```csharp
+Dashboard.OpenAssociateOverviewRequested += (_, _) => { Associate.SelectedSection = AssociateSection.Overview; ShowAssociateSection(); };
+Dashboard.OpenAssociateNotesRequested += (_, _) => { Associate.SelectedSection = AssociateSection.Notes; ShowAssociateSection(); };
+```
+
+Neither event handler touches `AssociateViewModel.SelectedDate` — "Open
+Passdown"/"Open Notes" always land on whatever date Associate already
+has selected (Part H); a future "Open Today's Passdown" that
+deliberately switches the date is a distinct, differently-labeled action
+this phase does not add. Setting `SelectedSection` explicitly on every
+"Open Passdown" click (not only when it differs) means Part G's rule —
+Open Passdown always means Overview, even if Associate was last left on
+Products/Notes — holds regardless of Associate's prior state.
+`OperationsDashboardViewModel` itself still has zero knowledge of
+`AssociateViewModel`/`AppSection`/`AssociateSection` — it only raises
+plain events, exactly as Phase 10A's Part P design required.
+
+## Open History routing (Part D)
+
+Unchanged from Phase 10A: `OpenHistoryCommand` raises
+`OpenHistoryRequested`, and `MainViewModel` turns that into
+`ShowHistorySection()`. The optional "Open Latest" (pre-selecting the
+latest finalized date inside History) was evaluated and **not**
+implemented: `PassdownHistoryViewModel.SelectedItem` is a
+`PassdownHistorySummaryPresentation`, not a `DateOnly`, and there is no
+existing seam for one view model to hand another a "please select this
+item" instruction without either reaching into the other's internals or
+introducing a third coordination type solely for this one case. Plain
+`Open History` (landing on History's own default view, whatever it was
+last showing — see Part I) is the implementation, matching the spec's
+documented fallback.
+
+## History state isolation (Part I)
+
+No code change was needed: `PassdownHistoryViewModel` was already
+constructed once at composition-root time and kept alive for the app's
+whole lifetime (Phase 9D), and `MainWindow.axaml` already only toggles
+`IsVisible` rather than recreating the view. Phase 10C adds the
+regression test that proves this specifically for a Dashboard round trip
+(`MainViewModelNavigationTests.NavigatingHistoryThenDashboardThenHistory_PreservesHistorySelection`):
+selecting a History row, switching to Dashboard, then back to History,
+still shows the same `SelectedItem`.
+
+## Dashboard Reload (Parts J/K)
+
+Unchanged mechanism (`ReloadCommand` still calls
+`IOperationsDashboardService.GetTodayAsync()`, no new dependency) — but
+because `GetTodayAsync`/`LoadAsync` now also recompute `LatestFinalized`
+from the same metadata call, pressing Reload naturally picks up a newly
+finalized record that appeared since the initial load (e.g. after a
+background `StartupCatchUpRefresh` finalizes an overdue date), with no
+polling or event-bus infrastructure added
+(`OperationsDashboardViewModelTests.ReloadCommand_PicksUpNewlyFinalizedMetadata`).
+Startup catch-up interaction (Part K) stays exactly as Phase 10A
+documented it: the Dashboard renders its initial local state
+immediately, and a supervisor's manual Reload is what surfaces anything
+that changed in the background — no automatic refresh was added this
+phase either.
+
+## Accessibility (Part R)
+
+The "Latest Finalized" panel carries
+`AutomationProperties.Name="Latest finalized passdown"`; `Open History`
+keeps its existing name (now attached to the one remaining button, not
+two). `DashboardView_WithSnapshot_ExposesCriticalAutomationNames` was
+extended to assert this new name alongside the existing four.
+
+## Presentation models (Part S)
+
+`OperationsDashboardPresentation.LatestFinalized` is a
+`PassdownHistorySummaryPresentation?` — built by calling
+`PassdownHistorySummaryPresentation.Build` directly on the snapshot's
+`FinalizedPassdownSummary`, reusing History's own list-row formatter
+rather than writing a second date/timestamp/origin formatter. No new
+presentation type touches a repository, computes a business rule, or
+deserializes a historical snapshot.
+
+## Visual validation (Part U) — PARTIAL
+
+Same constraint as every prior Phase 9/10 document: no pixel/bitmap
+screenshot renderer exists in this codebase. `DashboardView` and the
+rebuilt `AssociateView` section rail were reviewed directly against the
+1280×860 layout target (the new "Latest Finalized" panel is one compact
+full-width row, keeping the page's existing `ScrollViewer` fallback for
+960×640 unchanged) and exercised through Avalonia's headless
+real-XAML-loader construction checks for every representative state the
+spec lists: no history, one finalized record, a no-PDF finalized record,
+draft-in-progress, no-draft, and (already covered by Phase 10B) long
+notes/Daily Feature content. "Many finalized records" was validated at
+the Application layer instead of the View layer
+(`LoadAsync_LargeFinalizedHistorySet_RemainsMetadataOnly`, 50 rows) since
+the Dashboard only ever renders one row (the latest) regardless of how
+many exist — there is no additional View-layer rendering path that
+scales with History's size. Recorded honestly as **PARTIAL**, matching
+every prior phase's precedent.
+
+## Tests added (Part T)
+
+- `OperationsDashboardServiceTests`: +9 — no-history/one-record/
+  multi-record-highest-date-wins/no-PDF/malformed-JSON/future-schema/
+  large-history-metadata-only latest-finalized cases, plus
+  "other dates finalized never affects today's own status".
+- `OperationsDashboardPresentationTests`: +2 — null passthrough and
+  exact-match reuse of `PassdownHistorySummaryPresentation.Build`.
+- `OperationsDashboardViewModelTests`: renamed 2 existing cases for the
+  split `OpenAssociateOverviewRequested`/`OpenAssociateNotesRequested`
+  events, +1 new (`ReloadCommand_PicksUpNewlyFinalizedMetadata`).
+- `DashboardViewTests`: +4 construction-level cases (no-history,
+  one-record, no-PDF-record, draft-in-progress) plus an accessibility
+  assertion extension.
+- `MainViewModelNavigationTests`: +5 — Open Passdown routes to Overview,
+  Open Notes routes to Notes, neither changes `SelectedDate`, switching
+  top-level sections alone never changes Associate's internal section,
+  History selection survives a Dashboard round trip.
+- `AssociateViewModelTests`: +5 — internal section default/commands/
+  independence from `SelectedDate` and from triggering a load.
+- `AssociateViewTests`: +1 theory (3 cases) — the rebuilt Button-based
+  rail constructs through the real XAML loader for every
+  `AssociateSection` value.
+
+28 new tests total (914 Phase 10B baseline + 28 = 942).
+
+## Full validation
+
+`dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors.
+`dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` —
+**942/942**, run twice to confirm no flakiness. No live internet was used
+or required.
+
+## What Phase 10C does *not* implement
+
+- Alerts or any data-confidence/staleness scoring (Phase 10D).
+- The "Open Latest" History pre-selection variant — evaluated and
+  rejected as requiring cross-view-model coupling not worth it for this
+  phase (see "Open History routing" above); plain `Open History` is used
+  instead, matching the spec's own documented fallback.
+- An operations calendar, a persistent Notes Manager, a product/pricing
+  reference tool, or the Manager workflow (still deferred per CLAUDE.md).
+- Any network call from Dashboard load or Reload — still local-only by
+  construction, unchanged from Phase 10A.
+- Automatic/event-driven Dashboard refresh when a background
+  finalization completes — manual `ReloadCommand` only, unchanged from
+  Phase 10A/10B (Part K).
+- Revising Phase 9's finalization/History semantics in any way — the
+  6:00 AM Eastern cutoff, insert-only repository, and metadata-only
+  `ListAsync` contract are all unchanged.
+- Rebuilding the release ZIP — Phase 10F's scope.
+- Visual/desktop polish beyond what this integration required
+  (Phase 10E).

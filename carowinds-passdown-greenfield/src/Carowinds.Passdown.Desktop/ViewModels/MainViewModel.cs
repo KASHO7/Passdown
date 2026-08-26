@@ -21,10 +21,15 @@ public enum AppSection
 /// toggles which one is visible (spec Part T): it never recreates <see cref="Associate"/>'s
 /// in-progress edits/autosave state, and it never touches <see cref="AssociateViewModel.SelectedDate"/>.
 /// <see cref="Dashboard"/>'s own navigation actions are plain events (see
-/// <see cref="OperationsDashboardViewModel.OpenAssociateRequested"/>/<see cref="OperationsDashboardViewModel.OpenHistoryRequested"/>)
-/// that this type — the one owner of top-level navigation (spec Part P) — subscribes to and turns
-/// into a section switch, so the Dashboard view model itself never needs to know about
-/// <see cref="AppSection"/> or <see cref="MainViewModel"/>.
+/// <see cref="OperationsDashboardViewModel.OpenAssociateOverviewRequested"/>/
+/// <see cref="OperationsDashboardViewModel.OpenAssociateNotesRequested"/>/
+/// <see cref="OperationsDashboardViewModel.OpenHistoryRequested"/>) that this type — the one owner of
+/// top-level navigation (spec Part P) — subscribes to and turns into a section switch, so the
+/// Dashboard view model itself never needs to know about <see cref="AppSection"/> or
+/// <see cref="MainViewModel"/>. Phase 10C extends this to a true Notes deep link: this type also sets
+/// <see cref="AssociateViewModel.SelectedSection"/> — Associate's own internal Overview/Products/Notes
+/// rail — so "Open Passdown"/"Open Notes" land on the right internal section without either view model
+/// reaching into the other's control/visual tree.
 /// </summary>
 public partial class MainViewModel : ViewModelBase
 {
@@ -38,7 +43,19 @@ public partial class MainViewModel : ViewModelBase
         Associate = associate;
         History = history;
 
-        Dashboard.OpenAssociateRequested += (_, _) => ShowAssociateSection();
+        // "Open Passdown"/"Open Notes" (spec Phase 10C Parts F/G/H): switch the top-level section and
+        // set Associate's own internal section explicitly — never Associate.SelectedDate, so an
+        // associate mid-edit on another date is never silently switched to today's record.
+        Dashboard.OpenAssociateOverviewRequested += (_, _) =>
+        {
+            Associate.SelectedSection = AssociateSection.Overview;
+            ShowAssociateSection();
+        };
+        Dashboard.OpenAssociateNotesRequested += (_, _) =>
+        {
+            Associate.SelectedSection = AssociateSection.Notes;
+            ShowAssociateSection();
+        };
         Dashboard.OpenHistoryRequested += (_, _) => ShowHistorySection();
     }
 

@@ -302,6 +302,69 @@ public class AssociateViewModelTests
         Assert.Contains("Saved on this computer at", viewModel.SaveStatus!.Text);
     }
 
+    // Phase 10C Part F: the internal section rail is view-model-owned so a caller (MainViewModel) can
+    // set it directly for a Dashboard deep link, without touching any view/ToggleButton state.
+    [Fact]
+    public void SelectedSection_DefaultsToOverview()
+    {
+        var viewModel = CreateViewModel();
+
+        Assert.Equal(AssociateSection.Overview, viewModel.SelectedSection);
+        Assert.True(viewModel.IsOverviewSectionSelected);
+        Assert.False(viewModel.IsProductsSectionSelected);
+        Assert.False(viewModel.IsNotesSectionSelected);
+    }
+
+    [Fact]
+    public void ShowNotesSectionCommand_SelectsNotesSection()
+    {
+        var viewModel = CreateViewModel();
+
+        viewModel.ShowNotesSectionCommand.Execute(null);
+
+        Assert.Equal(AssociateSection.Notes, viewModel.SelectedSection);
+        Assert.True(viewModel.IsNotesSectionSelected);
+        Assert.False(viewModel.IsOverviewSectionSelected);
+    }
+
+    [Fact]
+    public void ShowProductsSectionCommand_SelectsProductsSection()
+    {
+        var viewModel = CreateViewModel();
+
+        viewModel.ShowProductsSectionCommand.Execute(null);
+
+        Assert.Equal(AssociateSection.Products, viewModel.SelectedSection);
+        Assert.True(viewModel.IsProductsSectionSelected);
+    }
+
+    [Fact]
+    public void ShowOverviewSectionCommand_SelectsOverviewSection()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.SelectedSection = AssociateSection.Notes;
+
+        viewModel.ShowOverviewSectionCommand.Execute(null);
+
+        Assert.Equal(AssociateSection.Overview, viewModel.SelectedSection);
+        Assert.True(viewModel.IsOverviewSectionSelected);
+    }
+
+    // Switching the internal section is pure UI state — it must never touch SelectedDate or trigger a load.
+    [Fact]
+    public async Task ChangingSelectedSection_NeverChangesSelectedDateOrTriggersLoad()
+    {
+        var service = new FakeAssociatePassdownService();
+        var viewModel = CreateViewModel(service);
+        await viewModel.PendingLoad;
+        service.LoadCalls.Clear();
+
+        viewModel.SelectedSection = AssociateSection.Notes;
+
+        Assert.Equal(Today, viewModel.SelectedDate);
+        Assert.Empty(service.LoadCalls);
+    }
+
     private static FakeAssociatePassdownService WithParkHours(EffectiveHours effective, AssociateVerificationInfo verification, bool officialIsClosed = false, TimeOnly? officialOpening = null, TimeOnly? officialClosing = null) => new()
     {
         WorkspaceFactory = date => FakeAssociatePassdownService.DefaultWorkspace(date) with

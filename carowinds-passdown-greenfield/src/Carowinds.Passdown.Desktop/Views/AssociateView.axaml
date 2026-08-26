@@ -170,18 +170,22 @@
       <Setter Property="Margin" Value="16,2" />
     </Style>
 
-    <!-- Section rail (Parts 2/3): a compact left navigation strip so the Associate page reads as
-         an app-shell with sections (Overview / Products / Notes) instead of one long scrolling
-         form. Only in-page section switching — not a workflow/mode selector (Manager remains
-         deferred per CLAUDE.md; MainWindow.axaml). Plain ToggleButtons rather than TabControl or
-         grouped RadioButtons: TabControl eagerly populates its Items collection during XAML load
-         (requires dispatcher access, breaks headless construction tests), and RadioButton's
-         GroupName registers into Avalonia's process-global RadioButtonGroupManager, which collides
-         across the separate AssociateView instances different tests construct. Plain ToggleButton
-         has neither problem; mutual exclusion is handled explicitly in the view's code-behind
-         (pure navigation state, not business logic). The default toggle chrome is replaced with a
-         flat, full-width template so it reads as a nav-rail item. -->
-    <Style Selector="ToggleButton.railItem">
+    <!-- Section rail (Parts 2/3; Phase 10C Part F): a compact left navigation strip so the Associate
+         page reads as an app-shell with sections (Overview / Products / Notes) instead of one long
+         scrolling form. Only in-page section switching — not a workflow/mode selector (Manager
+         remains deferred per CLAUDE.md; MainWindow.axaml). Plain Button + a view-model-bound "active"
+         class, the same pattern MainWindow.axaml's own top-level section strip already uses — not
+         ToggleButton: AssociateViewModel.SelectedSection is now the single source of truth (so
+         MainViewModel can drive a Dashboard "Open Notes" deep link, spec Part F), and a one-way
+         Classes binding to Is*SectionSelected can never drift out of sync the way ToggleButton's own
+         click-toggled IsChecked required explicit code-behind mutual exclusion to prevent. Not
+         TabControl: it eagerly populates its Items collection during XAML load (requires dispatcher
+         access, breaks headless construction tests). -->
+    <Style Selector="Button.railItem">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="3,0,0,0" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="CornerRadius" Value="0" />
       <Setter Property="Padding" Value="18,13" />
       <Setter Property="HorizontalAlignment" Value="Stretch" />
       <Setter Property="HorizontalContentAlignment" Value="Left" />
@@ -189,24 +193,14 @@
       <Setter Property="FontWeight" Value="Medium" />
       <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
       <Setter Property="Cursor" Value="Hand" />
-      <Setter Property="Template">
-        <ControlTemplate>
-          <Border Name="PART_RailItemBorder" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
-            <ContentPresenter Content="{TemplateBinding Content}"
-                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                              TextBlock.Foreground="{TemplateBinding Foreground}"
-                              TextBlock.FontSize="{TemplateBinding FontSize}"
-                              TextBlock.FontWeight="{TemplateBinding FontWeight}" />
-          </Border>
-        </ControlTemplate>
-      </Setter>
     </Style>
-    <Style Selector="ToggleButton.railItem:checked">
+    <Style Selector="Button.railItem.active">
       <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
       <Setter Property="FontWeight" Value="Bold" />
     </Style>
-    <Style Selector="ToggleButton.railItem:pointerover /template/ Border#PART_RailItemBorder">
+    <Style Selector="Button.railItem:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource PassdownSubtleSurfaceBrush}" />
     </Style>
 
@@ -302,20 +296,20 @@
       <Border Grid.Column="0" Background="{DynamicResource PassdownSurfaceTintBrush}"
               BorderThickness="0,0,1,0" BorderBrush="{DynamicResource PassdownDividerBrush}">
         <StackPanel>
-          <ToggleButton x:Name="OverviewSectionButton" IsChecked="True"
-                        Classes="railItem" Content="Overview" Click="OnSectionButtonClick"
-                        AutomationProperties.Name="Overview section" />
-          <ToggleButton x:Name="ProductsSectionButton"
-                        Classes="railItem" Content="Products" Click="OnSectionButtonClick"
-                        AutomationProperties.Name="Products section" />
-          <ToggleButton x:Name="NotesSectionButton"
-                        Classes="railItem" Content="Notes" Click="OnSectionButtonClick"
-                        AutomationProperties.Name="Notes section" />
+          <Button Classes="railItem" Classes.active="{Binding IsOverviewSectionSelected}"
+                  Content="Overview" Command="{Binding ShowOverviewSectionCommand}"
+                  AutomationProperties.Name="Overview section" />
+          <Button Classes="railItem" Classes.active="{Binding IsProductsSectionSelected}"
+                  Content="Products" Command="{Binding ShowProductsSectionCommand}"
+                  AutomationProperties.Name="Products section" />
+          <Button Classes="railItem" Classes.active="{Binding IsNotesSectionSelected}"
+                  Content="Notes" Command="{Binding ShowNotesSectionCommand}"
+                  AutomationProperties.Name="Notes section" />
         </StackPanel>
       </Border>
 
       <ScrollViewer Grid.Column="1" Padding="24,20,24,24"
-                    IsVisible="{Binding #OverviewSectionButton.IsChecked}">
+                    IsVisible="{Binding IsOverviewSectionSelected}">
           <StackPanel Spacing="16">
 
             <Grid ColumnDefinitions="*,1.4*" ColumnSpacing="16">
@@ -566,7 +560,7 @@
       </ScrollViewer>
 
       <ScrollViewer Grid.Column="1" Padding="24,20,24,24"
-                    IsVisible="{Binding #ProductsSectionButton.IsChecked}">
+                    IsVisible="{Binding IsProductsSectionSelected}">
           <StackPanel Spacing="16">
 
             <!-- Products (Part F): editable, data-driven per-category product sections. No product
@@ -730,7 +724,7 @@
       </ScrollViewer>
 
       <ScrollViewer Grid.Column="1" Padding="24,20,24,24"
-                    IsVisible="{Binding #NotesSectionButton.IsChecked}">
+                    IsVisible="{Binding IsNotesSectionSelected}">
         <!-- Operational notes (Part E): full width, comfortable multiline entry — the actual
              editing surface for the Overview section's read-only summary card. -->
         <Border Classes="panel">
