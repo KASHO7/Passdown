@@ -2147,3 +2147,385 @@ are new risks Phase 10 introduced beyond what Phase 7E/9F already carried for th
 process, and all of which are recorded above rather than glossed over. `0.1.0-dev` remains an explicit
 pre-release development version, not a production 1.0 release.
 
+## Phase 11F rebuild — release closeout for the full Phase 11 persistent Operational Notes feature
+
+Not a new numbered product phase (Phase 11 itself spans 11A–11F) — this is the release rebuild that
+closes out Phase 11 as a shipped feature set, mirroring exactly how Phase 10F closed out Phase 10
+above. `docs/release-manifest.md` is the authoritative record of exactly what this rebuild produced
+(SHA-256, sizes, file/entry counts, test count, schema versions); this section records the narrative,
+the audit performed, and what was/was not re-verified.
+
+### What changed since the Phase 10F artifact
+
+The entire Phase 11A–11E persistent Operational Notes feature, previously validated only by the
+automated suite, never packaged:
+
+- **11A** — foundation: `OperationalNote` domain record (stable `Guid` identity, closed
+  Category/Priority enums, effective date range, persisted `Active`/`Resolved` status plus a derived
+  `Upcoming`/`Active`/`Expired`/`Resolved` lifecycle), `OperationalNotesService`/
+  `IOperationalNoteRepository`/`SqliteOperationalNoteRepository` (local-only, no HTTP/Playwright/
+  Associate-draft dependency by constructor shape), Migration 10 (`operational_notes` table). No
+  delete method, no Reopen operation, no `IsPinned` field — all deliberately deferred/omitted.
+- **11B** — Operational Notes Manager UI: a new "Operational Notes" top-level section (Dashboard
+  remains default startup), master/detail create/edit/resolve screen, lifecycle filter tabs
+  (default Active), dirty-state protection that also disables other top-level navigation mid-edit,
+  resolved notes read-only, expired notes still editable.
+- **11C** — Dashboard integration: a read-only "Active Operational Notes" panel (Eastern "Today",
+  Important-first, preview capped at 3 with an overflow count), kept visually and architecturally
+  separate from the existing Associate-draft "Passdown Notes" preview (renamed from "Operational
+  Notes" to make room for the new name). One query per Dashboard load; no include/remove/replace
+  action exists on the Dashboard.
+- **11D** — explicit, per-date passdown inclusion: `AssociateOperationalNoteSelection` freezes a
+  persistent note's display content into `AssociateDraftPayload.SelectedOperationalNotes`
+  (schema version 3) at the moment a supervisor clicks Add; selections are keyed to the Associate's
+  operating date, duplicate-safe, and never resync automatically. Included notes are rendered into
+  the existing generic `OperationalNotes` string list at finalization/PDF time (no new structured
+  snapshot field — `FinalizedPassdownSnapshot.CurrentSchemaVersion` stays 1).
+- **11E** — filtering, carry-forward presentation, and source-change awareness: category (All + 7)
+  and priority (All/Important/Normal) filters added to the Notes Manager alongside the existing
+  lifecycle tabs; display-only carry-forward text ("Until resolved", "Expires today", "Starts
+  tomorrow", etc.); an `OperationalNoteSourceComparisonState` (Unchanged/ContentChanged/Resolved/
+  NoLongerApplicable/Missing) computed fresh on every load, informational only except
+  `ContentChanged`, which offers an explicit "Replace with Current Version" action
+  (`ReplaceOperationalNoteWithCurrentAsync`). No auto-sync, no auto-remove, no schema change.
+
+No retrieval, business-rule, finalization/History-immutability, or existing Associate-editing behavior
+changed. No Manager workflow, Alerts system, Operations Calendar, reordering, or text search was
+added — all remain explicitly deferred (CLAUDE.md "Current scope decision"). The product version was
+not changed (`0.1.0-dev` remains the single authoritative version, `Directory.Build.props`).
+
+### Final Phase 11 requirements audit (Part A)
+
+Audited Phase 11A–11E as one system by reading the actual current code and tests directly (constructor
+signatures, service/repository method bodies, migration registration, the real PDF/finalization/
+History call graph) rather than trusting each sub-phase's own summary in isolation, plus a fresh full
+test run:
+
+| Requirement | Evidence | Status |
+|---|---|---|
+| Persistent note model / stable Guid identity | `OperationalNote` record, `Id: Guid` independent of content | PASS |
+| Categories (closed enum, 7 values) | `OperationalNoteCategory` | PASS |
+| Priority (Normal/Important, no Critical) | `OperationalNotePriority` | PASS |
+| Effective date semantics | `EffectiveFrom`/`EffectiveThrough?`, validated `Through >= From` | PASS |
+| Active/Resolved persisted status | `OperationalNoteStatus`; `ResolveAsync` idempotent, no delete | PASS |
+| Derived Upcoming/Active/Expired/Resolved lifecycle | `OperationalNoteLifecycle.Derive` | PASS |
+| Relevance logic (one authoritative rule) | `OperationalNoteRelevance.IsRelevantForDate`, re-applied in both SQL and C# | PASS |
+| Deterministic ordering (two named orderings) | `OperationalNoteOrdering.ByDefaultListOrder`/`ByRelevance` | PASS |
+| No hard delete | `IOperationalNoteRepository` has no delete method (by design, same convention as `IFinalizedPassdownRepository`) | PASS |
+| Local-only persistence/service | `OperationalNotesService`/`SqliteOperationalNoteRepository` constructors carry no HTTP/Playwright dependency | PASS |
+| Operational Notes top-level navigation | `AppSection` = Dashboard / Associate Passdown / Operational Notes / History (exactly 4 values) | PASS |
+| Dashboard remains default startup | `MainViewModel.SelectedSection` initializer unchanged: `= AppSection.Dashboard` | PASS |
+| Notes Manager master/detail | `OperationalNotesView.axaml` Grid-based list + detail/editor | PASS |
+| Lifecycle / category / priority filters | `OperationalNotesViewModel.LifecycleFilter`/`CategoryFilter`/`PriorityFilter`, default Active/All/All, composed deterministically over cached list | PASS |
+| Create/edit/resolve | `NewNoteCommand`/edit flow/`ResolveAsync`, service is sole validation authority | PASS |
+| Resolved read-only / expired editable | `SelectedDetail.IsResolved` hides action row; expired notes remain editable via normal Save | PASS |
+| Dirty-state protection | `IsEditing` disables Reload/New/Edit/Resolve and other top-level nav mid-edit | PASS |
+| Dashboard today-relevant persistent notes | `OperationsDashboardService.BuildActiveOperationalNotesAsync`, Eastern Today, one query per load | PASS |
+| Dashboard preview limit/overflow | `DashboardOperationalNotesSummary.MaxPreviewCount = 3`, `Count` always the true total | PASS |
+| Explicit passdown inclusion / no automatic inclusion | `SelectOperationalNoteAsync` — only caller-invoked; zero references to `OperationalNote` under `Application/Refresh`/scheduled-refresh code | PASS |
+| Selection-time freeze / date-specific selections | `AssociateOperationalNoteSelection` copies fields at selection time; lives inside per-date `AssociateDraftPayload`, no global flag on `OperationalNote` | PASS |
+| Duplicate prevention / deselect-reselect | `SelectOperationalNoteAsync` checks `Any(...)` before appending; idempotent-call and safe-no-op-deselect tests both pass | PASS |
+| Source edits/resolve/no-longer-relevant/missing do not auto-sync or auto-remove | `OperationalNoteSourceComparisonState` computed read-only every load, never mutates `selections`; only explicit Replace changes a selection | PASS |
+| Explicit Replace with Current Version | `ReplaceOperationalNoteWithCurrentAsync` overwrites in place at the existing index, preserving order | PASS |
+| Manual daily notes independence | `AssociateDraftPayload.OperationalNotes` (manual) and `.SelectedOperationalNotes` (persistent) are separate fields; no code path merges them silently | PASS |
+| PDF inclusion | `AssociatePassdownDocumentModelBuilder.FormatSelectedOperationalNote` prints only Title/Body/category-priority prefix — no Guid/timestamp/comparison-state leak | PASS |
+| Finalization from frozen draft copy | `ScheduledPassdownFinalizer`/`FinalizedPassdownFinalizationService` read the already-composed `AssociateWorkspace`; no live `IOperationalNotesService` call at finalize time | PASS |
+| History immutability | `FinalizedPassdownSnapshot.OperationalNotes` is plain formatted text; `PassdownHistoryService`/History code never references `OperationalNote` | PASS |
+| Privacy | `SqliteDatabaseDiagnosticsProvider` never queries note content; all note logging is `{NoteId}`-only | PASS |
+| Accessibility | `AutomationProperties.Name` present across Notes Manager, Associate inclusion UI, and the Dashboard's new panel/action | PASS |
+| Schema/version compatibility | Database schema 10, `AssociateDraftPayload` schema 3, `FinalizedPassdownSnapshot` schema 1 — all additive, no historical migration modified | PASS |
+| No forbidden features | No Delete, no Reopen, no global "Included" badge, no Manager/Alerts/Calendar nav, no reordering, no text search | PASS |
+| Windows 100%/125%/150% scaling | No Windows host available this session | NOT EXECUTED |
+| Raster/pixel visual validation | No bitmap/screenshot renderer exists in this codebase (unchanged since Phase 9E/10F) | PARTIAL (construction-level PASS; pixel-level NOT EXECUTED) |
+
+One genuine gap was found and fixed during this audit (not a functional defect, a verification gap —
+see "Fix made during this audit" below); no other item required a code fix.
+
+### Part B — no-automatic-inclusion audit (the core product rule)
+
+Re-confirmed the authoritative Phase 11 rule directly against current code: **persistent Operational
+Notes are never automatically included in a daily Associate passdown.** Every call site of
+`IOperationalNotesService.ListRelevantForDateAsync`/`ListAsync` was enumerated:
+
+- `OperationsDashboardService.BuildActiveOperationalNotesAsync` — read-only Dashboard preview, never
+  writes to `AssociateDraftPayload`.
+- `AssociatePassdownService.GetRelevantOperationalNoteSuggestionsAsync` — returns suggestions only;
+  nothing consumes its result to mutate a draft.
+- `AssociatePassdownService.SelectOperationalNoteAsync`/`ReplaceOperationalNoteWithCurrentAsync` — both
+  require an explicit caller-supplied `operationalNoteId`; neither is ever invoked from a load,
+  refresh, autosave, or scheduled-refresh path.
+- `AssociatePassdownService`'s internal source-comparison composition — informational only, never
+  writes.
+
+Zero references to `OperationalNote`/`IOperationalNotesService` exist under
+`Application/Refresh/*` or the Desktop scheduled-refresh code. Direct regression test:
+`AssociatePassdownServiceTests.NoAutomaticSync_ReloadOrCheckOnline_NeverUpdatesFrozenSelection`. No
+violation found.
+
+### Part C — frozen-copy audit
+
+`AssociateOperationalNoteSelection` copies every display field (`Title`, `Body`, `Category`,
+`Priority`, `EffectiveFrom`, `EffectiveThrough`) at the moment `SelectOperationalNoteAsync` runs.
+`ReplaceOperationalNoteWithCurrentAsync` is the **only** code path that overwrites an existing
+selection, and it does so in place at the selection's existing list index (order preserved). Source
+title/body/category/priority/effective-date edits, resolve, and a missing source note were all traced
+through the actual service methods and confirmed to never reach an existing selection outside that one
+explicit method. Regression tests:
+`ReplaceOperationalNoteWithCurrentAsync_NeverMutatesSourceNote`,
+`NoAutomaticSync_ReloadOrCheckOnline_NeverUpdatesFrozenSelection`. No violation found.
+
+### Part D — date-specific selection audit
+
+`SelectedOperationalNotes` lives inside the per-date `AssociateDraftPayload`, loaded via
+`IAssociateDraftRepository.GetAsync(date)` — there is no global inclusion flag anywhere on
+`OperationalNote` itself. Regression tests:
+`Selections_AreDateSpecific_NeverLeakAcrossDates`,
+`SourceDateChangeAfterSelection_DoesNotRemoveSelectedCopy`. No cross-date leakage found.
+
+### Part E — source comparison audit
+
+`OperationalNoteSourceComparisonState` (`Unchanged`/`ContentChanged`/`Resolved`/`NoLongerApplicable`/
+`Missing`) is computed fresh on every compose and never persisted or written back to `selections` or
+the source note. Only `ContentChanged` correlates with an offered "Replace with Current Version"
+action in the UI; `Resolved`/`NoLongerApplicable`/`Missing` are informational text only. No expansion
+of these states was made (none was needed or requested). No violation found.
+
+### Part F — filter audit
+
+Lifecycle (`All`/`Active`/`Upcoming`/`Expired`/`Resolved`, default `Active`), category (`All` + 7), and
+priority (`All`/`Important`/`Normal`) filters compose deterministically over the cached, already-sorted
+note list in `OperationalNotesViewModel.ApplyFilter` — filtering is pure derivation and never mutates
+an underlying note. Search and reordering remain deferred, as scoped. No violation found.
+
+### Part G — carry-forward presentation audit
+
+Confirmed display-only: `OperationalNoteDateRangeFormatter` produces text ("Until resolved", "Expires
+today", "Through \<date\>", "Starts tomorrow", "Expired \<date\>") with no recurrence model, no
+automatic duplication into future dates, and no automatic passdown carry-forward anywhere in the code.
+
+### Part H/I — Notes Manager and Dashboard integration audit
+
+Re-confirmed against `OperationalNotesView.axaml`/`DashboardView.axaml` directly: no Delete, no
+Reopen, no global "Included" badge on `OperationalNote`, no Manager/Alerts/Calendar section. Dashboard
+uses Eastern Today, one query per load, preview capped at 3 with an accurate overflow count,
+title-only summary, and clearly distinguishes "Passdown Notes" (the existing Associate-draft preview)
+from "Active Operational Notes" (the new persistent-note panel); "Open Operational Notes" is generic
+top-level navigation, and the Dashboard has no include/remove/replace action of its own. Dashboard
+Data Status remains untouched by this phase.
+
+### Part J/K — Associate inclusion UI and autosave/concurrency audit
+
+`AssociateView`'s Notes area clearly distinguishes manual daily notes, included persistent notes
+("Included persistent operational notes"), and available suggestions ("Available persistent
+operational notes"), each with a distinct `AutomationProperties.Name`. `SelectOperationalNoteAsync`
+is idempotent on repeated calls (`SelectOperationalNoteAsync_CalledTwice_IsIdempotent` — asserts
+`Assert.Single`); `DeselectOperationalNoteAsync` is a safe no-op when the note was never selected.
+Both re-read the saved draft directly rather than relying on in-memory caller state, so rapid
+Add/Remove, tab switches, date switches, and reload/restart scenarios cannot produce a stale-autosave
+overwrite or duplicate selection. No sleeps were added to any test.
+
+### Part L/M/N — PDF, finalization, and History audit
+
+`AssociatePassdownDocumentModelBuilder.FormatSelectedOperationalNote` prints only a
+"Persistent"/"Persistent (Important)" prefix plus Title/Body — direct regression test:
+`AssociatePassdownDocumentModelBuilderTests.SelectedOperationalNotes_NeverExposesSourceIdOrTimestamps`.
+`ScheduledPassdownFinalizer.FinalizeEligibleAsync` calls `AssociatePassdownService.LoadAssociateDateAsync`
+exactly once per eligible date and hands the resulting (already-composed, frozen-selection-containing)
+`AssociateWorkspace` to `FinalizedPassdownFinalizationService` — no live `IOperationalNotesService` call
+exists anywhere on the finalization path. `FinalizedPassdownSnapshot.OperationalNotes` is a plain
+`IReadOnlyList<string>` with no `OperationalNote.Id` or other live reference, and `PassdownHistoryService`
+has zero references to `OperationalNote`/`IOperationalNotesService`.
+
+**Fix made during this audit:** the required Part M scenario ("select source note → source note
+changes → do NOT replace → finalize → finalized snapshot/PDF contain the old selected version," and
+its explicit-Replace counterpart) was previously provable only by composing two separately-tested
+facts (frozen selections are never resynced; finalization only reads the persisted draft) rather than
+by one direct test. Closed by adding
+`FinalizedPassdownSnapshotBuilderTests.Build_SelectedNoteSourceEditedWithoutReplace_SnapshotStillShowsFrozenOldText`
+and `Build_SelectedNoteAfterExplicitReplace_SnapshotShowsNewText`
+(`tests/Carowinds.Passdown.Documents.Tests/Associate/FinalizedPassdownSnapshotBuilderTests.cs`) — both
+pass. This was a test-coverage gap, not a functional regression; no production code changed as a
+result.
+
+### Part O — version/compatibility audit
+
+Confirmed directly in code: database schema constant **10** (`Migration0010CreateOperationalNotesTable`
+is the highest of exactly 10 registered migrations in `App.axaml.cs`), `AssociateDraftPayload
+.CurrentSchemaVersion` = **3**, `FinalizedPassdownSnapshot.CurrentSchemaVersion` = **1**. All three
+values were read directly from source, not from prior documentation. `PortableLifecycleTests` already
+covers the 9→10 migration (new table/index shape, existing `associate_drafts`/`finalized_passdowns`
+rows untouched); pre-Phase-11 drafts default to zero selections (an added field with a default empty
+collection, not a breaking schema change). No version was changed this phase.
+
+### Part P/Q — privacy and accessibility audit
+
+`SqliteDatabaseDiagnosticsProvider` still only reports `PRAGMA user_version`, file size, and WAL
+presence — it has never queried `operational_notes` row content. All operational-note logging in
+`OperationalNotesViewModel`/`AssociateViewModel` logs `{NoteId}` only, never Title/Body. Accessibility
+names are present for the Notes Manager (nav, list, filters, editor fields, Save/Cancel/Edit/Resolve),
+Associate inclusion (Included/Available headings, Add/Remove/Replace, per-row composed names), and the
+Dashboard ("Active operational notes", "Open operational notes"). No expansion was made; none was
+needed.
+
+### Final automated validation (Part T)
+
+1. `dotnet build CarowindsPassdown.slnx` — **PASS**, 0 warnings, 0 errors.
+2. `dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` (run 1) — **PASS**, **1240/1240**
+   (66 Domain + 351 Application + 94 Documents + 317 Infrastructure + 412 Ui), matching the documented
+   Phase 11E baseline exactly.
+3. `dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` (run 2) — **PASS**, **1240/1240**
+   again, identical counts — the previously-recorded `NoManagerWorkflowTests`/Avalonia-parallel-test
+   flake (Phase 6D/10F) was **not observed** in either run this session.
+4. After adding the two Part M regression tests above: `dotnet build` — **PASS**, 0 warnings/errors;
+   `dotnet test ... --filter "Category!=LiveSmoke"` — **PASS**, **1242/1242** (66 Domain + 351
+   Application + 96 Documents + 317 Infrastructure + 412 Ui).
+5. One further full-suite run (a 5th run overall, taken to double-check the fix) hit the **known prior
+   unrelated flake** named in the Phase 11F task brief:
+   `FinalizedPassdownProjectionTests.BuildProjection_NormalDay_PdfBytesMatchDirectGenerationFromSameModel`
+   failed once, in `Carowinds.Passdown.Documents.Tests` (95/96 that run), with a small byte-offset
+   difference consistent with the same PDF metadata/creation-timestamp race between two independent
+   `Generate` calls documented in the Phase 11E closeout above — this is not a new symptom. Isolation
+   verified directly: an immediate full-suite rerun passed **1242/1242** again with no failure, and
+   running only `FinalizedPassdownProjectionTests` by itself three times in a row passed **8/8** every
+   time — the failure reproduces only under this suite's parallel full-solution execution, never in
+   isolation, matching the documented cause exactly. No file under `Carowinds.Passdown.Documents`
+   (other than the two new, passing, Part M tests added to a different test class in the same project)
+   was touched this phase, so this is recorded as the pre-existing, non-deterministic flake it already
+   was — not a Phase 11 regression.
+
+### Release rebuild (Parts U–Y)
+
+Performed on this (non-Windows, macOS) dev host — no `pwsh` available, same limitation as every prior
+Phase 7/9/10 rebuild:
+
+1. `dotnet publish src/Carowinds.Passdown.Desktop/Carowinds.Passdown.Desktop.csproj -c Release -r win-x64 --self-contained true -o artifacts/publish/win-x64 -p:PlaywrightPlatform=win-x64` — PASS, 271 files, 134 MB after `.pdb` removal (`Publish-Windows.ps1`'s exact command, staging cleaned first).
+2. Before staging, the freshly published `Carowinds.Passdown.Application.dll`/`.Infrastructure.dll`/`.Desktop.dll` were searched directly (`strings` over the actual built assemblies, not timestamps) for Phase 11A–11E-only symbols — see `docs/release-manifest.md` "How this artifact was produced" for the exact list (`OperationalNotesService`, `OperationalNotesViewModel` ×158, `DashboardOperationalNotesSummary`, `AssociateOperationalNoteSelection`, `ReplaceOperationalNoteWithCurrentAsync`, `OperationalNoteSourceComparison`, `Migration0010CreateOperationalNotesTable`) — all present, proving this publish is not a stale Phase 10F reuse.
+3. Staged into `artifacts/release-staging/Carowinds-Passdown-0.1.0-dev-win-x64/` exactly per `Build-PortableRelease.ps1`'s logic: publish output, `tools/Install-ScheduledRefresh.ps1`, `tools/Uninstall-ScheduledRefresh.ps1`, both `.cmd` helpers, `README.txt` (updated this rebuild — see Part AB/AC below), `TESTER-GUIDE.txt` (updated this rebuild).
+4. Forbidden-pattern check (`.git`, `.db`/`-wal`/`-shm`, `CLAUDE.md`, `AGENT_BUILD_SPEC.md`, `.pdb`, `*playwright*`, `*.Tests.dll`, `.dylib`/`.so`, `.DS_Store`) — clean, both on the staged folder and again on a fresh extraction of the finished ZIP.
+5. `zip -r -X -9` into `artifacts/releases/Carowinds-Passdown-0.1.0-dev-win-x64.zip`; `shasum -a 256` computed fresh (see `docs/release-manifest.md` for the exact value — it differs from the Phase 10F artifact's hash, confirming this is not a stale reuse).
+6. Release content audit: 277 files, 280 zip entries (277 files + 3 directories: release root, `LatoFont\`, `tools\`), 61,385,910 bytes compressed, 139,878,942 bytes extracted. Executable, `appsettings.json`, all managed/native runtime DLLs, updated README/tester-guide, both `.cmd` helpers, and `tools/` all present; no `.pdb`, no Playwright, no test assemblies, no dev docs, no user data, no non-Windows binaries.
+7. Independent verification: the ZIP was extracted fresh to a scratch directory outside `artifacts/`; `diff -rq` against the staging folder reported byte-for-byte identical content; `Carowinds.Passdown.Desktop.exe`'s SHA-256 inside the re-extracted ZIP was independently confirmed to match the staged copy.
+
+Note: the two Part M regression tests were added to test-only code after the publish/package steps
+above; since they touch no file under `src/`, the already-published/packaged artifact remains valid
+and was not rebuilt a second time — the build/test re-run in "Final automated validation" step 4
+confirms the solution as a whole (including the new tests) is still green.
+
+### Tester guide / README updates (Part AB/AC)
+
+Both `packaging/windows/TESTER-GUIDE.txt` and `packaging/windows/README-portable-release.md` predated
+Phase 11 and described only three top-level sections (Dashboard/Associate Passdown/History). Updated
+this rebuild:
+
+- `TESTER-GUIDE.txt` renumbered to insert a new step 5 ("Operational Notes Manager": create/edit/
+  filter/resolve a disposable note) and a new step 11 ("Include a persistent operational note in a
+  passdown": available suggestion → Add → source edit without replace → confirm frozen copy → Replace
+  with Current Version → Remove), plus updated wording in steps 3 and 18 to name all four top-level
+  sections and the Dashboard's "Active Operational Notes" summary.
+- `README-portable-release.md` gained an "Operational Notes" section describing the Notes Manager, the
+  explicit per-date inclusion workflow, and the frozen/Replace-with-Current-Version behavior in the
+  same plain-language style as the rest of the document.
+
+Neither file was turned into a technical design document.
+
+### Focused Windows smoke check (Part AE)
+
+**NOT EXECUTED.** No Windows machine or VM was available in this session/environment — the same
+limitation recorded for every prior Phase 7/9/10 rebuild performed from this dev host. The task brief's
+Part AE checklist (extract → launch → confirm 4-section nav → create/edit a disposable note → filter →
+select it into a passdown date → confirm frozen copy → edit source → confirm source-changed indicator
+→ Replace with Current Version → remove → re-add → generate PDF → confirm Dashboard summary → confirm
+History/diagnostics still work) is the recommended next manual step against this exact ZIP once a
+Windows host is available; `packaging/windows/TESTER-GUIDE.txt` steps 5 and 11 cover the same ground
+for a nontechnical tester.
+
+### Windows finalization smoke (Part AF)
+
+**NOT EXECUTED**, per the same no-Windows-host limitation. The automated equivalent (select → edit
+source without replacing → finalize → assert old text; select → explicitly Replace → finalize → assert
+new text) is now covered directly by the two Part M regression tests added this rebuild (see above).
+
+### Windows scaling validation (Part AG)
+
+**NOT EXECUTED**, per the same no-Windows-host limitation carried forward from Phase 10E/10F. No source
+or layout change occurred that would newly affect this status beyond adding the Operational Notes
+screens themselves, which have not been scaling-validated on Windows either.
+
+### Phase 9/10 regression smoke (Part AH)
+
+**NOT EXECUTED**, per the same no-Windows-host limitation. The full non-live automated suite (1242/1242,
+including the pre-existing Phase 9/10 finalization/History/Dashboard tests) passes unmodified, and
+Phase 11 touched no file under `Application/Finalization`, `Documents/`, or `Dashboard/` business logic
+beyond the one new `IOperationalNotesService` read in `OperationsDashboardService`.
+
+### Release confidence gaps (Part AI), carried forward honestly
+
+| # | Item | Classification |
+|---|---|---|
+| 1 | Operational Notes pixel-level Windows visual validation | Not executed (raster renderer unavailable, unchanged since Phase 9E) |
+| 2 | Windows 100%/125%/150% display-scaling validation | Not executed (Part AG) — no Windows host available |
+| 3 | Focused Windows Operational Notes smoke test | Not executed (Part AE) — no Windows host available |
+| 4 | Windows finalization smoke (select → edit source → finalize → old text; Replace → finalize → new text) | Automated equivalent added and passing this rebuild (Part L/M/N fix); live Windows walkthrough not executed |
+| 5 | Phase 9/10 regression smoke on this rebuild | Not executed (Part AH) — automated coverage stands in |
+| 6 | Automatic-refresh Task Scheduler live install/rebind on this rebuild | Not executed — static content coverage (`PortableSetupHelperTests`) stands in, unaffected by Phase 11 |
+| 7 | Native x64 vs. ARM64-emulation Windows validation (carried from Phase 7E) | Non-blocking confidence gap |
+| 8 | Self-contained runtime on a clean machine with no .NET pre-installed (carried from Phase 7E/7F) | Non-blocking confidence gap |
+| 9 | Pre-existing `NoManagerWorkflowTests` Avalonia parallel-test flake (Phase 6D/10F) | Not observed in any full-suite run this session; carried forward as a known, non-blocking, non-deterministic flake |
+| 10 | Pre-existing `FinalizedPassdownProjectionTests.BuildProjection_NormalDay_PdfBytesMatchDirectGenerationFromSameModel` PDF-timestamp-race flake (named in the Phase 11F task brief) | Observed once in 5 full-suite runs this session; isolation confirmed (passes 8/8 standalone, passes on immediate full-suite rerun); non-blocking, non-deterministic, unrelated to Phase 11 |
+| 11 | Manager workflow, Alerts, Operations Calendar, reordering, text search, Reopen | Deferred by design — out of current release scope |
+
+None of the above is presented as a false PASS.
+
+### Phase 11 documentation closeout
+
+`docs/phase11-operational-notes.md` gained a final "Phase 11F — audit and release closeout" section
+(see that document) covering 11A–11F and explicitly listing reordering, search, Reopen, Alerts, an
+Operations Calendar, and the Manager workflow as intentionally deferred — not implied to exist.
+
+### Phase 11F rebuild verdict
+
+| # | Item | Result |
+|---|---|---|
+| 1 | Phase 11 requirements audit | PASS |
+| 2 | No-automatic-inclusion audit (Part B) | PASS — no violation found |
+| 3 | Frozen-copy audit (Part C) | PASS — no violation found |
+| 4 | Date-specific selection audit (Part D) | PASS — no cross-date leakage |
+| 5 | Source-comparison audit (Part E) | PASS — informational-only confirmed |
+| 6 | Filter audit (Part F) | PASS — deterministic, non-mutating |
+| 7 | Carry-forward presentation audit (Part G) | PASS — display-only, no recurrence |
+| 8 | Notes Manager / Dashboard integration audit (Part H/I) | PASS — no forbidden feature found |
+| 9 | Associate inclusion / autosave-concurrency audit (Part J/K) | PASS — idempotent, no stale overwrite |
+| 10 | PDF/finalization/History audit (Part L/M/N) | PASS AFTER FIX — test-coverage gap closed, no production defect |
+| 11 | Version/compatibility audit (Part O) | PASS — schema 10 / 3 / 1 confirmed in code |
+| 12 | Privacy/accessibility audit (Part P/Q) | PASS — no leakage found |
+| 13 | Full automated validation | PASS, 1242/1242 (both runs after the fix), 0 warnings/errors |
+| 14 | Release rebuild (publish + package) | PASS |
+| 15 | Latest-code verification in artifact | PASS (byte-level `strings` symbol check against the freshly published assemblies) |
+| 16 | Release content audit | PASS |
+| 17 | New SHA-256 recorded | PASS — differs from the Phase 10F artifact; Phase 10F artifact explicitly marked superseded |
+| 18 | `docs/release-manifest.md` updated | PASS |
+| 19 | Tester guide / README updated for Operational Notes | PASS |
+| 20 | Focused Windows Operational Notes smoke test | **NOT EXECUTED** — no Windows host available |
+| 21 | Windows finalization smoke | Automated equivalent PASS; live Windows walkthrough **NOT EXECUTED** |
+| 22 | Windows 100/125/150 scaling validation | **NOT EXECUTED** — no Windows host available |
+| 23 | Phase 9/10 regression smoke on this rebuild | **NOT EXECUTED** — automated coverage stands in |
+| 24 | Phase 11 documentation closeout | PASS |
+
+### Phase 11F release readiness decision
+
+**READY WITH ACCEPTED LIMITATIONS.**
+
+Every Phase 11A–11E requirement was re-audited against current code and passes; the one gap found (a
+missing direct end-to-end test for Part M's required finalization scenario) was a test-coverage gap,
+not a functional defect, and was closed with two new regression tests, both passing. No accidental
+automatic-inclusion path, silent frozen-copy resync, live-source finalization query, or PDF/diagnostics
+content leak was found anywhere in the Phase 11A–11E code. The full non-live suite (1242/1242 on a
+clean run, twice) and a clean build both pass; the release ZIP was rebuilt from the exact current
+commit, independently verified to contain Phase 11 Operational Notes code via a byte-level `strings`
+check against the freshly published assemblies, and byte-for-byte re-inspected after extraction. The
+prior (Phase 10F) artifact is explicitly marked superseded. The only open gaps are Windows-host
+execution (Operational Notes visual, display-scaling, focused smoke, and live finalization-walkthrough
+checks) — none of which are new risks beyond what Phase 7E/9F/10F already carried for this
+dev-host-only build process, and all of which are recorded above rather than glossed over. `0.1.0-dev`
+remains an explicit pre-release development version, not a production 1.0 release.
+

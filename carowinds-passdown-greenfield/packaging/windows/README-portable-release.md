@@ -27,6 +27,26 @@ computer (it loads instantly and never needs the internet on its own). Use
 "Open Passdown", "Open Notes", and "Open History" on the Dashboard to jump to the
 matching screen. "Check Online" on the Dashboard explicitly contacts the official
 Carowinds sources, the same as "Check Online" on the Associate Passdown screen.
+The Dashboard also shows an "Active Operational Notes" summary — see "Operational
+Notes" below.
+
+Operational Notes
+-------------------
+Next to "Associate Passdown" at the top of the window is an "Operational Notes"
+section. This is where a supervisor manages notes that can span multiple days —
+for example, "South Gate scanner #3 out of service" for the length of a repair
+window — separately from any single day's Associate passdown. Create, edit, and
+resolve notes here; filter by lifecycle (Active/Upcoming/Expired/Resolved),
+category, and priority.
+
+Persistent Operational Notes are never automatically added to a daily passdown.
+On the Associate Passdown screen's Notes area, relevant persistent notes appear as
+available suggestions for the selected date; a supervisor explicitly adds the ones
+that belong in that day's passdown. Once added, the included copy is frozen — if
+the original note is edited afterward, the passdown keeps showing what was
+selected, with a "source has changed" indicator and an explicit "Replace with
+Current Version" button if you want to pull in the update. Removing a note from a
+passdown does not delete or resolve the original persistent note.
 
 Where your data is stored
 --------------------------

@@ -1609,3 +1609,94 @@ failed once with a single-byte difference consistent with a PDF metadata/creatio
 two independent `Generate` calls in the same test (confirmed unrelated to this phase's changes — it
 passed on an unmodified checkout of this branch, and passed consistently across three repeated isolated
 runs afterward). No code in `Carowinds.Passdown.Documents` was touched by Phase 11E.
+
+---
+
+# Phase 11F — final audit and release closeout
+
+Phase 11F is not a new feature phase — it audits Phase 11A–11E as one system, closes the one
+verification gap the audit found, and rebuilds/re-verifies the Windows release ZIP. Full narrative,
+per-part audit findings, and the release rebuild mechanics live in `docs/release-strategy.md` ("Phase
+11F rebuild"); exact artifact metadata (SHA-256, sizes, entry counts, schema versions) lives in
+`docs/release-manifest.md`. This section is the short summary.
+
+## What was audited
+
+Every Phase 11A–11E claim was re-checked directly against current code and tests (constructor
+signatures, service/repository method bodies, migration registration, the real PDF/finalization/
+History call graph), not just against each sub-phase's own prior documentation:
+
+- **11A** — model/persistence/service: still local-only, no delete method, no Reopen, relevance/
+  lifecycle/ordering logic unchanged and correctly reused everywhere else.
+- **11B** — Notes Manager UI: still no Manager/Alerts/Calendar navigation, no Delete/Reopen, dirty-edit
+  guard still disables other top-level sections mid-edit.
+- **11C** — Dashboard integration: still read-only, still architecturally separate from the manual
+  Associate-draft notes preview, still exactly one query per load.
+- **11D** — explicit inclusion/frozen copy: confirmed, by direct code trace, that there is no code path
+  from "note is relevant" to "note is in a passdown" that skips the explicit `SelectOperationalNoteAsync`
+  call — Dashboard load, Associate load, Check Online, autosave, and scheduled refresh all leave
+  `SelectedOperationalNotes` untouched.
+- **11E** — filtering/carry-forward/source-awareness: filters remain deterministic and non-mutating;
+  source comparison states remain informational except for the one explicit Replace action; no
+  auto-sync or auto-remove path exists anywhere.
+
+## The one gap found, and how it was closed
+
+Part M of the Phase 11F audit brief specifically requires a scenario: select a persistent note into a
+passdown, edit the source note afterward without explicitly replacing it, finalize, and confirm the
+finalized snapshot/PDF still show the **old** frozen text (plus the mirror-image explicit-Replace
+case, which should show the **new** text). This guarantee held in code, but was previously provable
+only by composing two separately-tested facts (frozen selections never silently resync; finalization
+only ever reads the already-saved draft) rather than by one direct test proving the full chain.
+
+Closed by adding two tests to
+`tests/Carowinds.Passdown.Documents.Tests/Associate/FinalizedPassdownSnapshotBuilderTests.cs`:
+`Build_SelectedNoteSourceEditedWithoutReplace_SnapshotStillShowsFrozenOldText` and
+`Build_SelectedNoteAfterExplicitReplace_SnapshotShowsNewText`. Both construct an
+`AssociateOperationalNoteSelection` with the exact field shape `AssociatePassdownService.
+SelectOperationalNoteAsync`/`ReplaceOperationalNoteWithCurrentAsync` produce, run it through the real
+`FinalizedPassdownSnapshotBuilder`, and assert the resulting `OperationalNotes` text is the frozen-old
+or explicitly-replaced-new text respectively — never a blend of the two. This was a test-coverage gap,
+not a functional defect; no production code changed.
+
+## Release rebuild result
+
+- Full non-live suite: **1242/1242** (up from the Phase 11E baseline of 1240 by the two tests above),
+  0 failed, 0 skipped, run clean twice before the fix and once again after it.
+- Build: `dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors.
+- Schema versions confirmed unchanged in code: database schema **10**, `AssociateDraftPayload` schema
+  **3**, `FinalizedPassdownSnapshot` schema **1**.
+- Windows release ZIP rebuilt (`Carowinds-Passdown-0.1.0-dev-win-x64.zip`), independently verified via
+  a byte-level `strings` search of the freshly published assemblies to contain Phase 11A–11E code
+  (`OperationalNotesService`, `OperationalNotesViewModel`, `DashboardOperationalNotesSummary`,
+  `AssociateOperationalNoteSelection`, `ReplaceOperationalNoteWithCurrentAsync`,
+  `OperationalNoteSourceComparison`, `Migration0010CreateOperationalNotesTable` all present), and
+  byte-for-byte re-inspected after an independent extraction. New SHA-256 recorded in
+  `docs/release-manifest.md`; the prior (Phase 10F) artifact is explicitly marked superseded.
+- `packaging/windows/TESTER-GUIDE.txt` and `packaging/windows/README-portable-release.md` updated to
+  describe the Operational Notes Manager, the Dashboard's Active Operational Notes summary, and the
+  explicit per-date inclusion/frozen-copy/Replace-with-Current-Version workflow.
+
+## Confidence gaps carried forward honestly
+
+No Windows host or VM was available in this session — the same limitation recorded for every prior
+Phase 7/9/10 rebuild from this dev host. **NOT EXECUTED**: the focused Windows Operational Notes smoke
+walkthrough, the live Windows finalization walkthrough (its automated equivalent now passes — see
+above), and Windows 100%/125%/150% display-scaling validation. Raster/pixel visual validation remains
+**PARTIAL** (construction-level real-XAML-loader checks pass; no bitmap/screenshot renderer exists in
+this codebase). None of these gaps is presented as a false PASS; see `docs/release-strategy.md` "Phase
+11F rebuild" → "Release confidence gaps" for the full table.
+
+## Deferred, still
+
+Reordering, text search, a Reopen operation, Alerts, an Operations Calendar, and the Manager workflow
+all remain out of scope for Phase 11 and are not implied to exist by this closeout.
+
+## Phase 11 complete
+
+With the one verification gap closed and every other Phase 11A–11E requirement confirmed against
+current code and a clean, twice-repeated full test run, **Phase 11 is complete**: persistent
+Operational Notes, their explicit opt-in inclusion into a daily passdown, frozen-copy/source-change
+behavior, and the Windows release artifact are all shipped and verified to the extent possible without
+a Windows host. Release readiness verdict: **READY WITH ACCEPTED LIMITATIONS** (see
+`docs/release-strategy.md` for the full verdict table).

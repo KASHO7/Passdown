@@ -95,6 +95,53 @@ public class FinalizedPassdownSnapshotBuilderTests
         Assert.Equal(1, FinalizedPassdownSnapshot.CurrentSchemaVersion);
     }
 
+    // Phase 11F Part M's required scenario, made explicit as its own regression test rather than left
+    // to be inferred from separate service-level and builder-level tests: select a persistent note
+    // (freezing its then-current text), the source note's text changes afterward, the supervisor does
+    // NOT explicitly replace — the finalized snapshot must still show the OLD frozen text. The
+    // "selection" here is constructed with the exact same field shape/order
+    // AssociatePassdownService.SelectOperationalNoteAsync uses, without needing that service's full
+    // repository/clock plumbing in this project.
+    [Fact]
+    public void Build_SelectedNoteSourceEditedWithoutReplace_SnapshotStillShowsFrozenOldText()
+    {
+        var frozenAtSelection = new AssociateOperationalNoteSelection(
+            Guid.NewGuid(), "South Gate scanner #3 out of service", "Direct guests to gate 2.",
+            OperationalNoteCategory.Equipment, OperationalNotePriority.Normal,
+            new DateOnly(2026, 8, 20), null, new DateTimeOffset(2026, 8, 21, 6, 0, 0, TimeSpan.Zero));
+
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        workspace = workspace with { Draft = workspace.Draft with { SelectedOperationalNotes = [frozenAtSelection] } };
+
+        // The source note's title/body changes after selection (e.g. an edit in Operational Notes
+        // Manager) — modeled here simply as "the frozen selection object is never touched," since
+        // nothing in this workspace holds a live reference back to a source OperationalNote at all.
+        var snapshot = Builder.Build(workspace, AsOf);
+
+        Assert.Contains("Persistent: South Gate scanner #3 out of service — Direct guests to gate 2.", snapshot.OperationalNotes);
+        Assert.DoesNotContain(snapshot.OperationalNotes, note => note.Contains("scanner repaired", StringComparison.Ordinal));
+    }
+
+    // The explicit-Replace counterpart: once a supervisor does call "Replace with Current Version"
+    // (AssociatePassdownService.ReplaceOperationalNoteWithCurrentAsync), the new selection overwrites
+    // the old one in the draft, and finalizing from that point on must show the NEW text.
+    [Fact]
+    public void Build_SelectedNoteAfterExplicitReplace_SnapshotShowsNewText()
+    {
+        var replacedSelection = new AssociateOperationalNoteSelection(
+            Guid.NewGuid(), "South Gate scanner #3 repaired", "Fully operational again.",
+            OperationalNoteCategory.Equipment, OperationalNotePriority.Normal,
+            new DateOnly(2026, 8, 20), null, new DateTimeOffset(2026, 8, 21, 7, 0, 0, TimeSpan.Zero));
+
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        workspace = workspace with { Draft = workspace.Draft with { SelectedOperationalNotes = [replacedSelection] } };
+
+        var snapshot = Builder.Build(workspace, AsOf);
+
+        Assert.Contains("Persistent: South Gate scanner #3 repaired — Fully operational again.", snapshot.OperationalNotes);
+        Assert.DoesNotContain(snapshot.OperationalNotes, note => note.Contains("out of service", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Build_NormalDay_FreezesProductDisplayNameAndPrice()
     {
