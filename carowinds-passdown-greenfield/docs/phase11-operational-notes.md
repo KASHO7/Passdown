@@ -1285,3 +1285,327 @@ persistent-note lines, exactly as it always did).
 `dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — **1176/1176** passed (66 Domain +
 326 Application + 94 Documents + 317 Infrastructure + 373 Ui), run twice to confirm no flakiness, 0
 failed, 0 skipped. No live internet was used or required.
+
+---
+
+# Phase 11E — Operational Notes filtering, carry-forward awareness, and source-change awareness
+
+Phase 11E refines the Operational Notes Manager and Associate → Notes screens built in 11A–11D
+without touching the model, the opt-in inclusion rule, or the selection-time freeze guarantee. Every
+Phase 11A–11D regression guarantee stays true: persistent notes are still never automatically
+included in a daily passdown, a selected copy is still frozen at selection time, and nothing short of
+an explicit new action (this phase adds exactly one — Replace with Current Version) can ever change
+already-selected content.
+
+## Category filter (Part A)
+
+`OperationalNotesViewModel.CategoryFilter` (`OperationalNoteCategoryFilterOption`,
+`Desktop/Presentation/OperationalNoteCategoryFilterOption.cs`) adds an "All" entry plus one option per
+`OperationalNoteCategoryOption.All` entry — reusing 11B's centralized category labels directly rather
+than a second mapping or a parallel enum (the option's `Value` is a nullable `OperationalNoteCategory`,
+`null` meaning "All"). It composes with `LifecycleFilter` in `ApplyFilter()`, filtering the same
+already-lifecycle-filtered `IEnumerable<OperationalNote>` — no separate pass, no re-sort.
+
+## Priority filter (Part B)
+
+`OperationalNotesViewModel.PriorityFilter` (`OperationalNotePriorityFilterOption`) mirrors the category
+filter's shape exactly — "All" plus `Normal`/`Important`, reusing `OperationalNotePriorityOption`'s
+labels. No new "severity" terminology was introduced; priority remains exactly what 11A defined it as
+(presentation/sort only, never a notification trigger).
+
+## Combined filter behavior (Part C/V)
+
+Lifecycle + Category + Priority compose predictably — each is a plain `Where` clause applied in
+sequence inside `ApplyFilter()` over the cached `_allNotes` list, never a competing re-implementation
+of relevance/lifecycle. Filter *state* (which tab/category/priority is selected) persists for the
+lifetime of the app session automatically, because `OperationalNotesViewModel` is already a singleton
+kept alive across navigation (established in 11B/11C) — no new state-preservation code was needed, and
+no filter state was added to the database (Part C's "preferred: in-memory only" was implemented as-is).
+Dashboard's own default-startup section is unaffected. The header row (`OperationalNotesView.axaml`)
+keeps the existing lifecycle tabs and adds `Category [All ▾]` / `Priority [All ▾]` plus a **Clear
+filters** button inside the same `WrapPanel`, so it wraps cleanly at 960×640 rather than growing a
+second fixed row (Part V).
+
+## Filter reset (Part D)
+
+`ClearFiltersCommand` resets Category and Priority back to "All" without disturbing the lifecycle tab
+— the lifecycle tabs are primary navigation ("what's active right now"), not a secondary narrowing
+filter, so clearing filters intentionally leaves the current lifecycle tab alone.
+`HasActiveSecondaryFilters` (`CategoryFilter.Value is not null || PriorityFilter.Value is not null`)
+gates the button's visibility. The two empty states stay distinct exactly as 11B defined them:
+`ShowEmptyState` ("No operational notes yet.") when nothing exists at all, vs.
+`ShowFilteredEmptyState` when notes exist but the current Lifecycle+Category+Priority combination
+hides all of them — `FilteredEmptyStateMessage` appends "Try clearing filters." only in the latter
+case when a secondary filter is active, so the two states read differently even when both are empty.
+
+## Carry-forward awareness (Parts E/F)
+
+`OperationalNoteCarryForwardFormatter` (`Desktop/Presentation/OperationalNotePresentation.cs`) is pure
+derived presentation, layered on the already-computed `OperationalNoteLifecycleState` — it never
+re-derives lifecycle/relevance itself, never duplicates a daily record, and adds no recurrence concept.
+It produces one short phrase per lifecycle state, relative when the date is very close:
+
+```
+Active, EffectiveThrough null      -> "Until resolved"
+Active, expires today              -> "Expires today"
+Active, expires tomorrow           -> "Expires tomorrow"
+Active, expires further out        -> "Through <date>"
+Upcoming, starts tomorrow          -> "Starts tomorrow"
+Upcoming, starts further out       -> "Starts <date>"
+Expired                            -> "Expired <date>"
+Resolved                           -> (no carry-forward text; the lifecycle badge already says everything relevant)
+```
+
+`CarryForwardText` was added to `OperationalNoteRowPresentation` and `OperationalNoteDetailPresentation`
+(Manager list/detail) and to `AssociateOperationalNoteSuggestionPresentation` (Associate → Notes'
+"Available for `<date>`" rows, satisfying Part T's "date relevance" column) — the same formatter in all
+three places, so wording can never drift between screens. It was deliberately **not** added to already-
+selected/frozen notes' presentation (`AssociateSelectedOperationalNotePresentation`): a frozen selection
+was Active at selection time by construction and never re-evaluates its own lifecycle against a later
+reference date, so a "carry-forward" phrase computed against "today" would be misleading there.
+
+## Source-change awareness (Parts G-L) and the schema decision (Parts M/N)
+
+`OperationalNoteSourceComparisonState` (`Application/Associate/OperationalNoteSourceComparison.cs`) is a
+new, purely informational enum — `Unchanged | ContentChanged | Resolved | NoLongerApplicable | Missing`
+— computed fresh on every `AssociatePassdownService.ComposeAsync` call, never persisted, and never
+capable of mutating a selection's frozen fields itself. **Schema decision (Part M): no new field was
+added to `AssociateOperationalNoteSelection`, and `AssociateDraftPayload.CurrentSchemaVersion` stays at
+3.** `OperationalNoteSourceComparison.Compute` compares the frozen selection's own already-existing
+Title/Body/Category/Priority/EffectiveFrom/EffectiveThrough fields directly against the live source
+note — a `SourceUpdatedAtUtcAtSelection` timestamp was considered and rejected as both unnecessary
+(direct field comparison is strictly more accurate — a note's `UpdatedAtUtc` can advance without any
+displayed field changing) and unneeded for backward compatibility, since every field the comparison
+needs already existed on schema 3. Precedence when multiple conditions could apply: source not found at
+all → `Missing`; else source `Resolved` → `Resolved` (even if its content also changed); else source
+`Active` but its date range no longer covers the selection's operating date → `NoLongerApplicable`; else
+a field-by-field content comparison → `ContentChanged` or `Unchanged`.
+
+`AssociateWorkspace` gained one new field, `SelectedOperationalNoteSourceStates` (a nullable
+`IReadOnlyDictionary<Guid, OperationalNoteSourceComparisonState>`, defaulting to `null`/empty so every
+pre-11E construction site of the record — five of them across production and test code — kept compiling
+unchanged). `AssociatePassdownService.ComposeAsync` computes it with exactly one
+`IOperationalNotesService.ListAsync()` call per compose (never per row, and never at all when nothing is
+selected), the same "one query per load" performance discipline 11C's Dashboard integration established.
+
+## Frozen-copy explanation (Part H)
+
+Associate → Notes' "Included Persistent Notes" panel now shows one plain-language line above the list
+— **"Included notes keep the version selected for this passdown."** — deliberately avoiding "snapshot"/
+"detached entity" wording, shown once for the section rather than repeated per row.
+
+## Source-changed action: Replace with Current Version (Parts I/O/P/R)
+
+`IAssociatePassdownService.ReplaceOperationalNoteWithCurrentAsync(operatingDate, operationalNoteId)` is
+the one new, deliberate, explicit path a selection's frozen content can ever change through. It re-reads
+the source note's current content (via `IOperationalNotesService.ListAsync`, not the relevance-filtered
+suggestion list — a supervisor may want to pull in a Resolved or no-longer-date-applicable source's
+current text too) and overwrites the selection **in place at its existing list index**, so the
+selection's position in the list is preserved rather than moving it to the end (Part R — verified by
+`ReplaceOperationalNoteWithCurrentAsync_PreservesSelectionOrder`). It is a safe no-op when the note is
+not currently selected, and throws only if the source note cannot be found at all. The Associate → Notes
+UI offers **Replace with Current Version** only when `ShowReplaceAction` is true, which is only when
+`SourceState == ContentChanged` — "Keep Included Version" needs no explicit control since doing nothing
+already keeps it, matching the spec's own three-option framing collapsed to the two that need a button.
+Mirrors `AddOperationalNoteAsync`/`RemoveOperationalNoteAsync` exactly in `AssociateViewModel`
+(flush-pending-autosave, call the service, guard against a concurrent date switch, apply the returned
+workspace) — it is a real, immediate save like every other selection change, not a second save system.
+
+## Resolved source behavior (Part J)
+
+When a selected note's source becomes Resolved, nothing is removed and nothing is auto-deselected. The
+row shows **"Source note is now resolved."** with no Replace action (replacing from a resolved source
+was evaluated and rejected — "Replace" exists to pull in a *content* update, not to re-affirm a
+resolved note's stale text). The frozen copy remains part of the draft until the supervisor clicks
+Remove.
+
+## Source no-longer-relevant behavior (Part K)
+
+When a selected note's source is edited so its effective date range no longer covers the operating date
+the selection was made for, the row shows **"Source note no longer applies to this date."** — again
+informational only, no auto-removal, no Replace action (there is no "current" applicable content to pull
+in for *this* date).
+
+## Source-missing behavior (Part L)
+
+If the source note cannot be found at all (defensive-only, since 11A/11B never added a hard delete), the
+row shows **"Source note unavailable."** The frozen copy remains fully usable — Associate draft
+round-trip, PDF generation, and finalization never re-read the source row at any point (this was already
+true from 11D; Phase 11E's own regression test
+`ReplaceOperationalNoteWithCurrentAsync_NeverMutatesSourceNoteInPlace` plus the Application-layer
+`OperationalNoteSourceComparisonTests.Compute_SourceIsNull_ReturnsMissing` cover it directly for this
+phase's own new code paths).
+
+## Backward compatibility (Part N)
+
+Automatic, not a special case: an older selection (created under 11D, before 11E existed) carries the
+exact same Title/Body/Category/Priority/EffectiveFrom/EffectiveThrough fields a brand-new selection
+does, so `OperationalNoteSourceComparison.Compute` treats it identically —
+`OperationalNoteSourceComparisonTests.Compute_BehavesIdenticallyForAnyAgeOfSelection_NoSpecialCasingNeeded`
+proves this directly. There is no "Unknown/not available" state in the final enum, because there was
+never a reason to need one once the schema stayed at 3.
+
+## Selected-note reordering — deferred (Parts Q/R)
+
+Evaluated and **deferred by design**. Up/Down buttons were the spec's own preferred shape if
+implemented, but selection order already reflects a supervisor's actual intent (the order notes were
+added, per 11D Part AP/AQ) and no concrete usability problem with that ordering surfaced during this
+phase's review. Adding Up/Down now would be speculative UI for a need that has not been demonstrated;
+revisit only if a future phase identifies a real ordering complaint. Selection order remains exactly
+what 11D established (append-on-select, in-place update on Replace) and is unaffected by this decision.
+
+## Search — deferred (Part W)
+
+Evaluated and **deferred by design**, per the spec's own stated preference. Lifecycle + Category +
+Priority filtering is sufficient for the note volumes this screen is expected to handle; adding text
+search now would be speculative complexity (fuzzy matching, indexing) for an unconfirmed need.
+
+## Available-suggestions and included-notes polish (Parts T/U)
+
+Available suggestion rows already showed Title/Category/Priority/date-range compactly (11D); this phase
+adds the same `CarryForwardText` "date relevance" hint used throughout the Manager screen, still no
+body preview, still a single-line `Add` action. Included/selected rows gained the frozen-copy
+explanation (Part H), the informational source-status line, and the conditional Replace action — kept
+to one extra compact row per selection, not a second card.
+
+## Remove wording (Part S)
+
+Reviewed and tightened: the Remove button's `AutomationProperties.Name` changed from `"Remove note
+{0}"` to **`"Remove {0} from this passdown"`**, and `AssociateSelectedOperationalNotePresentation.AccessibleSummary`
+now leads with "Remove from this passdown." instead of the bare "Remove." — both make explicit that
+this removes the note's *inclusion in this draft*, never the persistent source note itself (which stays
+manageable only from Operational Notes Manager's own Resolve action).
+
+## Dashboard polish (Part X)
+
+Reviewed; no changes made. `DashboardView.axaml`'s Active Operational Notes title `TextBlock` already
+carries `TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"` from Phase 11C, so a long
+title clips predictably with an ellipsis rather than overflowing the card — no polish gap was found.
+
+## Accessibility (Part Z) and keyboard workflow (Part AA)
+
+New `AutomationProperties.Name` values: `"Category filter"`, `"Priority filter"`, `"Clear filters"`
+(Operational Notes Manager); the Replace button's per-row `StringFormat`-templated name, `"Replace {0}
+with current version"` (Associate → Notes), verified directly against the compiled markup in
+`AssociateViewAccessibilityTests.ProductRowAndCustomItemTemplates_DeclareAccessibleNamePatterns` (the
+same technique 11D used for Add/Remove, since per-row template names are not reliably realized in an
+unattached headless container). Every source-comparison state (`SourceStatusText`) is plain text, never
+color-only. Every new control is a plain `ComboBox`/`Button`, keyboard-reachable with FluentTheme's
+default focus ring — no new mouse-only interaction was introduced anywhere in this phase.
+
+## Desktop density: 1280×860 and 960×640 (Parts AB/AC)
+
+Operational Notes Manager: the filter row's `WrapPanel` now carries five lifecycle tabs plus two
+ComboBoxes plus a conditional Clear-filters button; at 1280×860 it fits on one line, and at 960×640 it
+wraps onto a second line rather than clipping or hiding a control — the same `WrapPanel` mechanism the
+lifecycle tabs already relied on. List/detail master-detail proportions are unchanged. Associate →
+Notes: the new frozen-copy explanation and source-status/Replace row add at most two short lines per
+selected note; the existing per-section `ScrollViewer`s absorb the added height at 960×640 exactly as
+they already did for 11D's own content. No horizontal clipping, no invisible actions, and no truncated
+status labels were introduced — every new status/label string is short and untrimmed by design.
+
+## Windows scaling (Part AD)
+
+**NOT EXECUTED.** This phase's development host is Fedora Linux per `CLAUDE.md`'s platform section; no
+Windows 11 VM was available to inspect 100%/125%/150% scaling. Every new control uses the same
+`DynamicResource`-based styling and relative sizing (`WrapPanel`, `ScrollViewer`, no fixed pixel
+Width/Height beyond the existing `MinWidth` on the two new ComboBoxes) already established in 11A–11D,
+which were themselves flagged the same way for Windows VM spot-checking before shipping.
+
+## Privacy (Part AF)
+
+No note title/body, frozen selection content, or source-comparison content was added to any log call.
+`AssociateViewModel`'s existing `AddOperationalNoteAsync`/`RemoveOperationalNoteAsync` log patterns
+(operational-note id + operating date only, on failure) were extended verbatim for the new
+`ReplaceOperationalNoteAsync` — same shape, same fields, nothing new logged.
+`SqliteDatabaseDiagnosticsProvider` is untouched by this phase, exactly as every prior Phase 11 sub-phase
+left it.
+
+## PDF / finalization regression (Part AG)
+
+No Documents-layer code changed in this phase. `AssociatePassdownDocumentModelBuilder.BuildOperationalNotes`
+already reads `AssociateDraftPayload.SelectedOperationalNotes` generically (11D); since
+`ReplaceOperationalNoteWithCurrentAsync` writes its updated content into that exact same field through
+the exact same `SaveDraftAsync` path every other selection change already uses, the existing 11D PDF/
+finalization/History test coverage already proves the pipeline handles whatever content sits in that
+list — no new Documents-layer test was needed to prove a code path that didn't change. What *was* added
+at the Application layer: `ReplaceOperationalNoteWithCurrentAsync_AutosavesTheNewFrozenCopy` (the
+replaced content survives a reload) and the "no automatic sync" regression theory
+(`NoAutomaticSync_ReloadOrCheckOnline_NeverUpdatesFrozenSelection`, parameterized over both
+`LoadAssociateDateAsync` and `CheckAssociateDateOnlineAsync`) proving a source edit is never silently
+absorbed into a selection by anything other than the one explicit Replace action.
+
+## Schema / version report (Part AJ)
+
+- **Database schema: 10** — unchanged since 11A. No migration was added; nothing in this phase touches
+  SQLite table shape.
+- **`AssociateDraftPayload.CurrentSchemaVersion`: 3 — unchanged from 11D.** Part M's decision: source-
+  change awareness is computed live from fields the schema already carried; no new JSON property was
+  added, so no version bump and no new backward-compatibility branch were needed in `DeserializeDraft`.
+- **`FinalizedPassdownSnapshot.CurrentSchemaVersion`: 1 — unchanged.** This phase adds no new frozen
+  field to a finalized snapshot.
+
+## Tests added (Phase 11E)
+
+- `Carowinds.Passdown.Application.Tests/Associate/OperationalNoteSourceComparisonTests.cs` (new file) —
+  13 cases: unchanged, each of the five single-field-changed content-change cases, Resolved (including
+  precedence over a simultaneous content change), no-longer-applicable, missing, the
+  any-age-of-selection backward-compatibility proof, and `ComputeAll`'s keyed-batch behavior.
+- `Carowinds.Passdown.Application.Tests/Associate/AssociatePassdownServiceTests.cs` — 12 new cases:
+  composed-workspace source states for Unchanged/ContentChanged/Resolved/NoLongerApplicable/no-
+  selections, Replace updating the frozen copy (content, order preservation, safe no-op when not
+  selected, autosave persistence, source-note non-mutation), and the parameterized
+  reload-vs-check-online no-automatic-sync regression.
+- `Carowinds.Passdown.Ui.Tests/OperationalNotesViewModelFilterTests.cs` (new file) — 28 cases: category
+  filter defaults + each of the seven categories, priority filter defaults + each of two priorities +
+  All, lifecycle+category, lifecycle+priority, category+priority, all three composed, the
+  filtered-vs-no-notes-at-all empty-state distinction, `HasActiveSecondaryFilters`, Clear Filters,
+  filter-state survival across Reload, and seven carry-forward label cases (until-resolved,
+  expires-today, expires-tomorrow, through-date, starts-tomorrow, resolved-has-no-label, and the label
+  appearing in the detail presentation too).
+- `Carowinds.Passdown.Ui.Tests/AssociateViewModelOperationalNoteSelectionTests.cs` — 8 new cases: no
+  source status when unchanged, each of the four informational source-comparison states surfacing the
+  right text/Replace-visibility, Replace updating the frozen copy and autosaving, Replace never mutating
+  the source list in place, and a reload alone never applying a Replace.
+- `Carowinds.Passdown.Ui.Tests/OperationalNotesViewTests.cs` — 2 new cases (filtered-empty-state and
+  category+priority-filter construction) plus three new automation-name assertions (Category filter,
+  Priority filter, Clear filters) added to the existing critical-automation-names test.
+- `Carowinds.Passdown.Ui.Tests/AssociateViewAccessibilityTests.cs` — 1 new case constructing all four
+  source-comparison states at once (proving `ShowReplaceAction` is true only for ContentChanged) plus
+  two new `StringFormat` markup assertions (Remove's updated wording, Replace's new pattern) added to
+  the existing template-pattern test.
+- `Carowinds.Passdown.Ui.Tests/TestSupport/FakeAssociatePassdownService.cs` — extended with
+  `AllOperationalNotes` (mirrors `IOperationalNotesService.ListAsync`), `ReplaceOperationalNoteCalls`,
+  and `ReplaceOperationalNoteWithCurrentAsync`; `BuildWorkspace` now computes
+  `SelectedOperationalNoteSourceStates` via the same `OperationalNoteSourceComparison.ComputeAll` the
+  real service uses (no duplicated comparison logic in the test double).
+
+64 new tests total (1176 Phase 11D baseline + 64 = 1240: 25 Application + 39 Ui).
+
+## Deferred to 11F (and evaluated-and-rejected items)
+
+- Selected-note Up/Down reordering (Parts Q/R) — evaluated and deferred by design; no concrete need
+  demonstrated.
+- Text search across Operational Notes (Part W) — evaluated and deferred by design per the spec's own
+  stated preference.
+- The final Phase 11 audit and release rebuild (Phase 11F) — the release ZIP was intentionally not
+  rebuilt by this phase.
+- Alerts, an Operations Calendar, and the Manager workflow remain out of scope, unchanged from
+  11A–11D/`CLAUDE.md`.
+- Windows 100%/125%/150% scaling spot-checks — **NOT EXECUTED**, no Windows 11 VM available in this
+  environment; flagged for pre-ship verification exactly as every prior Phase 9-11 document already
+  flags its own Windows-scaling gap.
+
+## Full validation (Phase 11E)
+
+`dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors.
+`dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — **1240/1240** passed (66 Domain +
+351 Application + 94 Documents + 317 Infrastructure + 412 Ui), run twice to confirm no flakiness, 0
+failed, 0 skipped. No live internet was used or required.
+
+One unrelated, pre-existing flaky test was observed during the first full-suite run:
+`FinalizedPassdownProjectionTests.BuildProjection_NormalDay_PdfBytesMatchDirectGenerationFromSameModel`
+failed once with a single-byte difference consistent with a PDF metadata/creation-timestamp race between
+two independent `Generate` calls in the same test (confirmed unrelated to this phase's changes — it
+passed on an unmodified checkout of this branch, and passed consistently across three repeated isolated
+runs afterward). No code in `Carowinds.Passdown.Documents` was touched by Phase 11E.

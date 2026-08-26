@@ -24,10 +24,18 @@ public sealed record AssociateProductCategoryStatus(
 /// saved manual draft with whatever official data is currently cached. Never itself the product of
 /// a network call; see <see cref="IAssociatePassdownService.LoadAssociateDateAsync"/>.
 /// </summary>
+/// <param name="SelectedOperationalNoteSourceStates">
+/// Phase 11E Part G: an informational <see cref="OperationalNoteSourceComparisonState"/> per entry in
+/// <see cref="Associate.AssociateDraftPayload.SelectedOperationalNotes"/>, keyed by
+/// <see cref="AssociateOperationalNoteSelection.SourceOperationalNoteId"/> — computed fresh on every
+/// compose, never persisted. Defaults to <see langword="null"/> (treated as empty by every reader) so
+/// every pre-11E construction site of this record keeps compiling unchanged.
+/// </param>
 public sealed record AssociateWorkspace(
     DateOnly OperatingDate,
     AssociateDraftPayload Draft,
     AssociateParkHoursView ParkHours,
     IReadOnlyList<AssociateProduct> Products,
     IReadOnlyList<AssociateProductCategoryStatus> CategoryStatuses,
-    AssociateSaveStatus SaveStatus);
+    AssociateSaveStatus SaveStatus,
+    IReadOnlyDictionary<Guid, OperationalNoteSourceComparisonState>? SelectedOperationalNoteSourceStates = null);

@@ -29,6 +29,11 @@ public partial class AssociateOperationalNoteSuggestionRowViewModel : Observable
 
     public string DateRangeText { get; }
 
+    /// <summary>Short relative "date relevance" hint (Phase 11E Part T), e.g. "Expires today"/"Through Aug 30" — <see langword="null"/> only in practice-unreachable states, since every suggestion here is Active by construction.</summary>
+    public string? CarryForwardText { get; }
+
+    public bool HasCarryForwardText => !string.IsNullOrEmpty(CarryForwardText);
+
     public string AccessibleSummary { get; }
 
     public AssociateOperationalNoteSuggestionRowViewModel(AssociateOperationalNoteSuggestionPresentation presentation, Func<Guid, Task> onAdd)
@@ -43,6 +48,7 @@ public partial class AssociateOperationalNoteSuggestionRowViewModel : Observable
         PriorityLabel = presentation.PriorityLabel;
         IsImportant = presentation.IsImportant;
         DateRangeText = presentation.DateRangeText;
+        CarryForwardText = presentation.CarryForwardText;
         AccessibleSummary = presentation.AccessibleSummary;
     }
 
@@ -59,6 +65,7 @@ public partial class AssociateOperationalNoteSuggestionRowViewModel : Observable
 public partial class AssociateSelectedOperationalNoteRowViewModel : ObservableObject
 {
     private readonly Func<Guid, Task> _onRemove;
+    private readonly Func<Guid, Task> _onReplace;
 
     public Guid SourceOperationalNoteId { get; }
 
@@ -76,13 +83,23 @@ public partial class AssociateSelectedOperationalNoteRowViewModel : ObservableOb
 
     public string DateRangeText { get; }
 
+    /// <summary>Informational only (Phase 11E Parts G-L) — <see langword="null"/> when the source is unchanged; never affects <see cref="Title"/>/<see cref="Body"/>/etc. above, which stay frozen regardless.</summary>
+    public string? SourceStatusText { get; }
+
+    public bool HasSourceStatus => !string.IsNullOrEmpty(SourceStatusText);
+
+    /// <summary>Whether "Replace with Current Version" (Phase 11E Part I) should be offered — only when the source's content actually changed, never for Resolved/NoLongerApplicable/Missing (Parts J/K/L leave those to Remove-or-keep).</summary>
+    public bool ShowReplaceAction { get; }
+
     public string AccessibleSummary { get; }
 
-    public AssociateSelectedOperationalNoteRowViewModel(AssociateSelectedOperationalNotePresentation presentation, Func<Guid, Task> onRemove)
+    public AssociateSelectedOperationalNoteRowViewModel(AssociateSelectedOperationalNotePresentation presentation, Func<Guid, Task> onRemove, Func<Guid, Task> onReplace)
     {
         ArgumentNullException.ThrowIfNull(presentation);
         ArgumentNullException.ThrowIfNull(onRemove);
+        ArgumentNullException.ThrowIfNull(onReplace);
         _onRemove = onRemove;
+        _onReplace = onReplace;
 
         SourceOperationalNoteId = presentation.SourceOperationalNoteId;
         Title = presentation.Title;
@@ -91,9 +108,14 @@ public partial class AssociateSelectedOperationalNoteRowViewModel : ObservableOb
         PriorityLabel = presentation.PriorityLabel;
         IsImportant = presentation.IsImportant;
         DateRangeText = presentation.DateRangeText;
+        SourceStatusText = presentation.SourceStatusText;
+        ShowReplaceAction = presentation.ShowReplaceAction;
         AccessibleSummary = presentation.AccessibleSummary;
     }
 
     [RelayCommand]
     private Task Remove() => _onRemove(SourceOperationalNoteId);
+
+    [RelayCommand]
+    private Task Replace() => _onReplace(SourceOperationalNoteId);
 }

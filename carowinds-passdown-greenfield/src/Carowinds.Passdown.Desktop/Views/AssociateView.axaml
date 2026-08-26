@@ -764,6 +764,12 @@
               <TextBlock Text="Included Persistent Notes" Classes="sectionTitle" Margin="0"
                          AutomationProperties.Name="Included persistent operational notes" />
 
+              <!-- Phase 11E Part H: plain-language explanation that inclusion freezes a copy — shown
+                   once for the section, not per row, since it is true for every included note. -->
+              <TextBlock Text="Included notes keep the version selected for this passdown."
+                         Classes="fieldHint" Margin="0"
+                         IsVisible="{Binding HasSelectedOperationalNotes}" />
+
               <TextBlock Text="No persistent operational notes included."
                          Classes="muted"
                          IsVisible="{Binding !HasSelectedOperationalNotes}" />
@@ -778,30 +784,47 @@
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:AssociateSelectedOperationalNoteRowViewModel">
                     <Border Classes="inset" Margin="0" AutomationProperties.Name="{Binding AccessibleSummary}">
-                      <Grid ColumnDefinitions="Auto,*,Auto">
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top" Margin="0,0,10,0">
-                          <Border Classes="chip" IsVisible="{Binding IsImportant}">
-                            <TextBlock Text="Important" Classes="priorityText important" />
-                          </Border>
-                          <Border Classes="chip">
-                            <TextBlock Text="{Binding CategoryLabel}" />
-                          </Border>
-                        </StackPanel>
+                      <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top" Margin="0,0,10,0">
+                            <Border Classes="chip" IsVisible="{Binding IsImportant}">
+                              <TextBlock Text="Important" Classes="priorityText important" />
+                            </Border>
+                            <Border Classes="chip">
+                              <TextBlock Text="{Binding CategoryLabel}" />
+                            </Border>
+                          </StackPanel>
 
-                        <StackPanel Grid.Column="1" Spacing="2" Margin="0,0,16,0">
-                          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                          <TextBlock Text="{Binding Body}"
-                                     IsVisible="{Binding HasBody}"
-                                     Classes="muted" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" />
-                          <TextBlock Text="{Binding DateRangeText}" Classes="fieldHint" Margin="0" />
-                        </StackPanel>
+                          <StackPanel Grid.Column="1" Spacing="2" Margin="0,0,16,0">
+                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Body}"
+                                       IsVisible="{Binding HasBody}"
+                                       Classes="muted" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding DateRangeText}" Classes="fieldHint" Margin="0" />
+                          </StackPanel>
 
-                        <Button Grid.Column="2"
-                                Content="Remove"
-                                Command="{Binding RemoveCommand}"
-                                VerticalAlignment="Top"
-                                AutomationProperties.Name="{Binding Title, StringFormat='Remove note {0}'}" />
-                      </Grid>
+                          <!-- Remove means "remove from this passdown", never "delete/resolve the source note" (spec Part S) — the automation name spells this out explicitly. -->
+                          <Button Grid.Column="2"
+                                  Content="Remove"
+                                  Command="{Binding RemoveCommand}"
+                                  VerticalAlignment="Top"
+                                  AutomationProperties.Name="{Binding Title, StringFormat='Remove {0} from this passdown'}" />
+                        </Grid>
+
+                        <!-- Source-changed awareness (Phase 11E Parts G-L): informational only — never
+                             touches the frozen Title/Body/etc. above unless the supervisor explicitly
+                             clicks Replace. -->
+                        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasSourceStatus}">
+                          <TextBlock Grid.Column="0" Text="{Binding SourceStatusText}" Classes="fieldHint" Margin="0"
+                                     TextWrapping="Wrap" VerticalAlignment="Center" />
+                          <Button Grid.Column="1"
+                                  Content="Replace with Current Version"
+                                  Classes="secondaryAction"
+                                  Command="{Binding ReplaceCommand}"
+                                  IsVisible="{Binding ShowReplaceAction}"
+                                  AutomationProperties.Name="{Binding Title, StringFormat='Replace {0} with current version'}" />
+                        </Grid>
+                      </StackPanel>
                     </Border>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
@@ -844,6 +867,8 @@
                         <StackPanel Grid.Column="1" Spacing="2" Margin="0,0,16,0">
                           <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
                           <TextBlock Text="{Binding DateRangeText}" Classes="fieldHint" Margin="0" />
+                          <TextBlock Text="{Binding CarryForwardText}" Classes="fieldHint" Margin="0"
+                                     IsVisible="{Binding HasCarryForwardText}" />
                         </StackPanel>
 
                         <Button Grid.Column="2"

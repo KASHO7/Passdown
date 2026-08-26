@@ -161,7 +161,7 @@
       </StackPanel>
     </Border>
 
-    <!-- Filter tabs + New Note (spec Part G/J) -->
+    <!-- Filter tabs + category/priority filters + New Note (spec Part G/J, Phase 11E Part A/B/V) -->
     <Border Grid.Row="1" Padding="20,10" Background="{DynamicResource PassdownSurfaceTintBrush}"
             BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
       <Grid ColumnDefinitions="*,Auto">
@@ -186,6 +186,34 @@
                   Content="Resolved" Command="{Binding SetFilterCommand}"
                   CommandParameter="{x:Static vm:OperationalNoteLifecycleFilter.Resolved}"
                   AutomationProperties.Name="Resolved notes filter" />
+
+          <StackPanel Orientation="Horizontal" Spacing="4" Margin="16,0,0,0" VerticalAlignment="Center">
+            <TextBlock Text="Category" Classes="muted" VerticalAlignment="Center" />
+            <ComboBox ItemsSource="{Binding CategoryFilterOptions}" SelectedItem="{Binding CategoryFilter}"
+                      MinWidth="140" AutomationProperties.Name="Category filter">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="presentation:OperationalNoteCategoryFilterOption">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+
+          <StackPanel Orientation="Horizontal" Spacing="4" Margin="10,0,0,0" VerticalAlignment="Center">
+            <TextBlock Text="Priority" Classes="muted" VerticalAlignment="Center" />
+            <ComboBox ItemsSource="{Binding PriorityFilterOptions}" SelectedItem="{Binding PriorityFilter}"
+                      MinWidth="110" AutomationProperties.Name="Priority filter">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="presentation:OperationalNotePriorityFilterOption">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+
+          <Button Classes="secondaryAction" Content="Clear filters" Command="{Binding ClearFiltersCommand}"
+                  Margin="10,0,0,0" IsVisible="{Binding HasActiveSecondaryFilters}"
+                  AutomationProperties.Name="Clear filters" />
         </WrapPanel>
         <Button Grid.Column="1" Classes="primaryAction" Content="+ New Note"
                 Command="{Binding NewNoteCommand}"
@@ -238,6 +266,8 @@
                     <TextBlock Classes="priorityText" Classes.important="{Binding IsImportant}" Text="{Binding PriorityLabel}" />
                   </StackPanel>
                   <TextBlock Classes="muted" Text="{Binding DateRangeText}" />
+                  <TextBlock Classes="muted" Text="{Binding CarryForwardText}"
+                             IsVisible="{Binding CarryForwardText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                   <Border Classes="chip" HorizontalAlignment="Left">
                     <TextBlock Text="{Binding LifecycleLabel}" />
                   </Border>
@@ -295,6 +325,10 @@
                 <TextBlock Text="{Binding SelectedDetail.EffectiveThroughText}" />
               </StackPanel>
             </Grid>
+
+            <!-- Carry-forward relevance (Phase 11E Part E/F) — derived only, never a separate record. -->
+            <TextBlock Text="{Binding SelectedDetail.CarryForwardText}" Classes="muted"
+                       IsVisible="{Binding SelectedDetail.CarryForwardText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
             <!-- Spec Part O: a resolved note shows Resolved + its timestamp, and is otherwise read-only for good (no Edit/Resolve controls below). -->
             <StackPanel Spacing="2" IsVisible="{Binding SelectedDetail.IsResolved}">

@@ -139,6 +139,61 @@ public class AssociateViewAccessibilityTests
         Assert.NotNull(view);
     }
 
+    // Phase 11E Parts G-L: every source-comparison state constructs cleanly, including the
+    // Replace-with-Current-Version action (ContentChanged) and the three informational-only states
+    // that deliberately show no Replace action (Resolved/NoLongerApplicable/Missing).
+    [Fact]
+    public async Task AssociateView_WithSourceChangedSelections_ConstructsCleanly()
+    {
+        var changed = new AssociateOperationalNoteSelection(
+            Guid.NewGuid(), "South Gate scanner #3 out of service", "Direct guests to gate 2.",
+            OperationalNoteCategory.Equipment, OperationalNotePriority.Important, Today, null, DateTimeOffset.UtcNow);
+        var resolved = new AssociateOperationalNoteSelection(
+            Guid.NewGuid(), "Group check-in support at North Gate", null,
+            OperationalNoteCategory.GuestServices, OperationalNotePriority.Normal, Today, null, DateTimeOffset.UtcNow);
+        var noLongerApplicable = new AssociateOperationalNoteSelection(
+            Guid.NewGuid(), "Storm drainage backup near Fury 325", null,
+            OperationalNoteCategory.Operations, OperationalNotePriority.Normal, Today, null, DateTimeOffset.UtcNow);
+        var missing = new AssociateOperationalNoteSelection(
+            Guid.NewGuid(), "Temporary staffing shortage", null,
+            OperationalNoteCategory.Staffing, OperationalNotePriority.Normal, Today, null, DateTimeOffset.UtcNow);
+
+        var sourceStates = new Dictionary<Guid, OperationalNoteSourceComparisonState>
+        {
+            [changed.SourceOperationalNoteId] = OperationalNoteSourceComparisonState.ContentChanged,
+            [resolved.SourceOperationalNoteId] = OperationalNoteSourceComparisonState.Resolved,
+            [noLongerApplicable.SourceOperationalNoteId] = OperationalNoteSourceComparisonState.NoLongerApplicable,
+            [missing.SourceOperationalNoteId] = OperationalNoteSourceComparisonState.Missing,
+        };
+
+        var service = new FakeAssociatePassdownService
+        {
+            WorkspaceFactory = date => new AssociateWorkspace(
+                date,
+                AssociateDraftPayload.CreateDefault() with { SelectedOperationalNotes = [changed, resolved, noLongerApplicable, missing] },
+                new AssociateParkHoursView(
+                    ParkHoursCalculator.Calculate(false, new TimeOnly(9, 0), new TimeOnly(21, 0), false, null, null, false, null, null),
+                    new AssociateVerificationInfo(AssociateVerificationState.Verified, DateTimeOffset.UtcNow, null, null),
+                    OfficialIsClosed: false, OfficialOpening: new TimeOnly(9, 0), OfficialClosing: new TimeOnly(21, 0)),
+                Products: [],
+                CategoryStatuses: [],
+                AssociateSaveStatus.NeverSaved,
+                sourceStates),
+        };
+
+        var viewModel = new AssociateViewModel(service, new FakeClock(new DateTimeOffset(2026, 8, 21, 15, 0, 0, TimeSpan.Zero)));
+        await viewModel.PendingLoad;
+
+        Assert.Equal(4, viewModel.SelectedOperationalNotes.Count);
+        Assert.True(viewModel.SelectedOperationalNotes.Single(n => n.SourceOperationalNoteId == changed.SourceOperationalNoteId).ShowReplaceAction);
+        Assert.False(viewModel.SelectedOperationalNotes.Single(n => n.SourceOperationalNoteId == resolved.SourceOperationalNoteId).ShowReplaceAction);
+        Assert.False(viewModel.SelectedOperationalNotes.Single(n => n.SourceOperationalNoteId == noLongerApplicable.SourceOperationalNoteId).ShowReplaceAction);
+        Assert.False(viewModel.SelectedOperationalNotes.Single(n => n.SourceOperationalNoteId == missing.SourceOperationalNoteId).ShowReplaceAction);
+
+        var view = new AssociateView { DataContext = viewModel };
+        Assert.NotNull(view);
+    }
+
     [Fact]
     public void ProductRowAndCustomItemTemplates_DeclareAccessibleNamePatterns()
     {
@@ -148,7 +203,8 @@ public class AssociateViewAccessibilityTests
         Assert.Contains("StringFormat='Display price override for {0}'", markup);
         Assert.Contains("StringFormat='Use official price for {0}'", markup);
         Assert.Contains("StringFormat='Remove {0}'", markup);
-        Assert.Contains("StringFormat='Remove note {0}'", markup);
+        Assert.Contains("StringFormat='Remove {0} from this passdown'", markup);
+        Assert.Contains("StringFormat='Replace {0} with current version'", markup);
         Assert.Contains("StringFormat='Add note {0}'", markup);
     }
 

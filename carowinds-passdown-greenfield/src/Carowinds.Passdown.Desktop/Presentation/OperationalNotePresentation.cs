@@ -13,10 +13,13 @@ namespace Carowinds.Passdown.Desktop.Presentation;
 public sealed record OperationalNoteRowPresentation(
     Guid Id,
     string Title,
+    OperationalNoteCategory Category,
     string CategoryLabel,
+    OperationalNotePriority Priority,
     string PriorityLabel,
     bool IsImportant,
     string DateRangeText,
+    string? CarryForwardText,
     OperationalNoteLifecycleState LifecycleState,
     string LifecycleLabel)
 {
@@ -28,10 +31,13 @@ public sealed record OperationalNoteRowPresentation(
         return new OperationalNoteRowPresentation(
             note.Id,
             note.Title,
+            note.Category,
             OperationalNoteCategoryOption.For(note.Category).Label,
+            note.Priority,
             OperationalNotePriorityOption.For(note.Priority).Label,
             note.Priority == OperationalNotePriority.Important,
             OperationalNoteDateRangeFormatter.Format(note, lifecycle, referenceDate),
+            OperationalNoteCarryForwardFormatter.Format(lifecycle, note.EffectiveFrom, note.EffectiveThrough, referenceDate),
             lifecycle,
             LifecycleLabelFor(lifecycle));
     }
@@ -61,6 +67,7 @@ public sealed record OperationalNoteDetailPresentation(
     string EffectiveFromText,
     string EffectiveThroughText,
     string DateRangeText,
+    string? CarryForwardText,
     OperationalNoteLifecycleState LifecycleState,
     string LifecycleLabel,
     bool IsResolved,
@@ -83,6 +90,7 @@ public sealed record OperationalNoteDetailPresentation(
             FormatDate(note.EffectiveFrom, referenceDate),
             note.EffectiveThrough is { } through ? FormatDate(through, referenceDate) : "Until resolved",
             OperationalNoteDateRangeFormatter.Format(note, lifecycle, referenceDate),
+            OperationalNoteCarryForwardFormatter.Format(lifecycle, note.EffectiveFrom, note.EffectiveThrough, referenceDate),
             lifecycle,
             OperationalNoteRowPresentation.LifecycleLabelFor(lifecycle),
             isResolved,
@@ -129,5 +137,49 @@ internal static class OperationalNoteDateRangeFormatter
     {
         var format = date.Year == referenceDate.Year ? "MMM d" : "MMM d, yyyy";
         return date.ToDateTime(TimeOnly.MinValue).ToString(format, CultureInfo.InvariantCulture);
+    }
+}
+
+/// <summary>
+/// "Carry-forward" relevance text (Phase 11E Parts E/F) — a short, relative-when-close phrase
+/// answering "does this note still apply, and for how long" without a supervisor having to do date
+/// arithmetic against <see cref="OperationalNoteDateRangeFormatter"/>'s absolute range text. This is
+/// purely derived presentation, layered on the same already-computed <see cref="OperationalNoteLifecycleState"/>
+/// every other Phase 11 surface uses — it never re-derives lifecycle/relevance itself (spec Part F), and
+/// it never mutates or duplicates a daily record (no recurrence, no copy-forward). Returns
+/// <see langword="null"/> for <see cref="OperationalNoteLifecycleState.Resolved"/>, since a resolved
+/// note's own lifecycle label already says everything relevant here.
+/// </summary>
+internal static class OperationalNoteCarryForwardFormatter
+{
+    public static string? Format(OperationalNoteLifecycleState lifecycle, DateOnly effectiveFrom, DateOnly? effectiveThrough, DateOnly referenceDate)
+    {
+        switch (lifecycle)
+        {
+            case OperationalNoteLifecycleState.Upcoming:
+                return (effectiveFrom.DayNumber - referenceDate.DayNumber) switch
+                {
+                    1 => "Starts tomorrow",
+                    _ => $"Starts {OperationalNoteDateRangeFormatter.FormatDate(effectiveFrom, referenceDate)}",
+                };
+
+            case OperationalNoteLifecycleState.Active when effectiveThrough is null:
+                return "Until resolved";
+
+            case OperationalNoteLifecycleState.Active:
+                return (effectiveThrough!.Value.DayNumber - referenceDate.DayNumber) switch
+                {
+                    0 => "Expires today",
+                    1 => "Expires tomorrow",
+                    _ => $"Through {OperationalNoteDateRangeFormatter.FormatDate(effectiveThrough.Value, referenceDate)}",
+                };
+
+            case OperationalNoteLifecycleState.Expired:
+                // Derive() only reports Expired when EffectiveThrough has passed, so it is always set here.
+                return $"Expired {OperationalNoteDateRangeFormatter.FormatDate(effectiveThrough!.Value, referenceDate)}";
+
+            default:
+                return null;
+        }
     }
 }

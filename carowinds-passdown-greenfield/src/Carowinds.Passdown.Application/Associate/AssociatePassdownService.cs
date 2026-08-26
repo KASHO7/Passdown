@@ -138,6 +138,42 @@ public sealed class AssociatePassdownService(
         return await ComposeAsync(operatingDate, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Phase 11E Part I/O: the one deliberate, explicit way an already-selected note's frozen copy can
+    /// ever change — never a silent resync (Part P). Re-reads the source note's *current* content
+    /// (via <see cref="IOperationalNotesService.ListAsync"/>, not <see cref="GetRelevantOperationalNoteSuggestionsAsync"/>,
+    /// since a supervisor may deliberately want to pull in a Resolved or no-longer-date-applicable
+    /// source's current text too — Parts G/I) and overwrites the selection **in place** at its existing
+    /// list index, so selection order is preserved rather than moving the note to the end (Part R). A
+    /// no-op, returning the unchanged recomposed workspace, when the note is not currently selected.
+    /// Throws <see cref="InvalidOperationException"/> only when the source note cannot be found at all
+    /// (Part L) — nothing here mutates the source note itself.
+    /// </summary>
+    public async Task<AssociateWorkspace> ReplaceOperationalNoteWithCurrentAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken cancellationToken = default)
+    {
+        var draft = await LoadDraftPayloadAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+
+        var selections = draft.SelectedOperationalNotes.ToList();
+        var index = selections.FindIndex(selection => selection.SourceOperationalNoteId == operationalNoteId);
+        if (index < 0)
+        {
+            return await ComposeAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+        }
+
+        var allNotes = await operationalNotesService.ListAsync(cancellationToken).ConfigureAwait(false);
+        var source = allNotes.FirstOrDefault(note => note.Id == operationalNoteId)
+            ?? throw new InvalidOperationException($"Operational note {operationalNoteId} is no longer available to replace.");
+
+        selections[index] = new AssociateOperationalNoteSelection(
+            source.Id, source.Title, source.Body, source.Category, source.Priority,
+            source.EffectiveFrom, source.EffectiveThrough, clock.UtcNow);
+
+        var updated = draft with { SelectedOperationalNotes = selections };
+        await SaveDraftAsync(operatingDate, updated, cancellationToken).ConfigureAwait(false);
+
+        return await ComposeAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task<AssociateDraftPayload> LoadDraftPayloadAsync(DateOnly operatingDate, CancellationToken cancellationToken)
     {
         var draftRecord = await draftRepository.GetAsync(operatingDate, cancellationToken).ConfigureAwait(false);
@@ -189,7 +225,26 @@ public sealed class AssociatePassdownService(
             .Select(category => ComposeCategoryStatus(category, datedByCategory.GetValueOrDefault(category), asOf))
             .ToList();
 
-        return new AssociateWorkspace(operatingDate, draft, parkHours, products, categoryStatuses, saveStatus);
+        var selectedNoteSourceStates = await ComposeSelectedOperationalNoteSourceStatesAsync(operatingDate, draft.SelectedOperationalNotes, cancellationToken).ConfigureAwait(false);
+
+        return new AssociateWorkspace(operatingDate, draft, parkHours, products, categoryStatuses, saveStatus, selectedNoteSourceStates);
+    }
+
+    /// <summary>
+    /// Phase 11E Part G: one <see cref="IOperationalNotesService.ListAsync"/> call per compose (never
+    /// per row, and never at all when there is nothing selected) feeds <see cref="OperationalNoteSourceComparison.ComputeAll"/>
+    /// — informational only, and never mutates <paramref name="selections"/> or any source note.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<Guid, OperationalNoteSourceComparisonState>> ComposeSelectedOperationalNoteSourceStatesAsync(
+        DateOnly operatingDate, IReadOnlyList<AssociateOperationalNoteSelection> selections, CancellationToken cancellationToken)
+    {
+        if (selections.Count == 0)
+        {
+            return new Dictionary<Guid, OperationalNoteSourceComparisonState>();
+        }
+
+        var allNotes = await operationalNotesService.ListAsync(cancellationToken).ConfigureAwait(false);
+        return OperationalNoteSourceComparison.ComputeAll(selections, allNotes, operatingDate);
     }
 
     /// <summary>

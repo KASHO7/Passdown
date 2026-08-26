@@ -2,6 +2,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.LogicalTree;
 using Carowinds.Passdown.Application.OperationalNotes;
+using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
@@ -135,6 +136,43 @@ public class OperationalNotesViewTests
         Assert.Same(viewModel, view.DataContext);
     }
 
+    // Phase 11E Part D: filters narrowing the list to nothing still constructs cleanly, showing the
+    // filtered-empty-state text rather than the "no notes at all" state.
+    [Fact]
+    public async Task OperationalNotesView_FilteredEmptyState_ConstructsWithoutError()
+    {
+        var viewModel = CreateViewModel(MakeNote("A", category: OperationalNoteCategory.Staffing));
+        await viewModel.PendingLoad;
+        var view = new OperationalNotesView { DataContext = viewModel };
+
+        viewModel.CategoryFilter = OperationalNoteCategoryFilterOption.All
+            .Single(o => o.Value == OperationalNoteCategory.Equipment);
+
+        Assert.True(viewModel.ShowFilteredEmptyState);
+        Assert.False(viewModel.ShowEmptyState);
+        Assert.Same(viewModel, view.DataContext);
+    }
+
+    // Phase 11E Part V: category/priority filters compose cleanly alongside the lifecycle tabs.
+    [Fact]
+    public async Task OperationalNotesView_CategoryAndPriorityFilters_ConstructWithoutError()
+    {
+        var viewModel = CreateViewModel(
+            MakeNote("Important Equipment", category: OperationalNoteCategory.Equipment, priority: OperationalNotePriority.Important),
+            MakeNote("Normal Staffing", category: OperationalNoteCategory.Staffing));
+        await viewModel.PendingLoad;
+        var view = new OperationalNotesView { DataContext = viewModel };
+
+        viewModel.CategoryFilter = OperationalNoteCategoryFilterOption.All
+            .Single(o => o.Value == OperationalNoteCategory.Equipment);
+        viewModel.PriorityFilter = OperationalNotePriorityFilterOption.All
+            .Single(o => o.Value == OperationalNotePriority.Important);
+
+        Assert.Equal(["Important Equipment"], viewModel.Notes.Select(n => n.Title));
+        Assert.True(viewModel.HasActiveSecondaryFilters);
+        Assert.Same(viewModel, view.DataContext);
+    }
+
     // 21 (long content): a very long title/body still constructs cleanly.
     [Fact]
     public async Task OperationalNotesView_LongTitleAndBody_ConstructsWithoutError()
@@ -172,6 +210,9 @@ public class OperationalNotesViewTests
         Assert.Contains("Upcoming notes filter", names);
         Assert.Contains("Expired notes filter", names);
         Assert.Contains("Resolved notes filter", names);
+        Assert.Contains("Category filter", names);
+        Assert.Contains("Priority filter", names);
+        Assert.Contains("Clear filters", names);
         Assert.Contains("Edit", names);
         Assert.Contains("Resolve", names);
 

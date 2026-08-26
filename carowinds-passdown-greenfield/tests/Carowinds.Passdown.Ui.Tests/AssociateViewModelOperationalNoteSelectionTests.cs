@@ -190,4 +190,127 @@ public class AssociateViewModelOperationalNoteSelectionTests
         var selected = Assert.Single(viewModel.SelectedOperationalNotes);
         Assert.False(string.IsNullOrWhiteSpace(selected.AccessibleSummary));
     }
+
+    // ===================== Phase 11E: source-change awareness + Replace with Current Version =====================
+
+    private static async Task<(AssociateViewModel ViewModel, FakeAssociatePassdownService Service, OperationalNote Note)> SelectScannerNoteAsync()
+    {
+        var note = ScannerNote(Today);
+        var (viewModel, service, _) = CreateViewModel(s =>
+        {
+            s.RelevantOperationalNotesByDate[Today] = [note];
+            s.AllOperationalNotes.Add(note);
+        });
+        await viewModel.PendingLoad;
+        await viewModel.AvailableOperationalNoteSuggestions.Single().AddCommand.ExecuteAsync(null);
+        return (viewModel, service, note);
+    }
+
+    [Fact]
+    public async Task SelectedNote_SourceUnchanged_HasNoSourceStatusOrReplaceAction()
+    {
+        var (viewModel, _, _) = await SelectScannerNoteAsync();
+
+        var selected = Assert.Single(viewModel.SelectedOperationalNotes);
+        Assert.False(selected.HasSourceStatus);
+        Assert.False(selected.ShowReplaceAction);
+    }
+
+    [Fact]
+    public async Task SelectedNote_SourceEdited_ShowsChangedStatusAndReplaceAction()
+    {
+        var (viewModel, service, note) = await SelectScannerNoteAsync();
+        service.AllOperationalNotes[0] = note with { Title = "Scanner repaired; use normally" };
+
+        // Reload re-composes SelectedOperationalNoteSourceStates from the (now-edited) source list —
+        // never touches the frozen selection itself (Part P).
+        await viewModel.CheckOnlineCommand.ExecuteAsync(null);
+
+        var selected = Assert.Single(viewModel.SelectedOperationalNotes);
+        Assert.Equal("South Gate scanner #3 out of service", selected.Title); // still frozen
+        Assert.True(selected.HasSourceStatus);
+        Assert.Equal("Source note changed since inclusion.", selected.SourceStatusText);
+        Assert.True(selected.ShowReplaceAction);
+    }
+
+    [Fact]
+    public async Task SelectedNote_SourceResolved_ShowsResolvedStatus_NoReplaceAction()
+    {
+        var (viewModel, service, note) = await SelectScannerNoteAsync();
+        service.AllOperationalNotes[0] = note with { Status = OperationalNoteStatus.Resolved, ResolvedAtUtc = FixedNow };
+
+        await viewModel.CheckOnlineCommand.ExecuteAsync(null);
+
+        var selected = Assert.Single(viewModel.SelectedOperationalNotes);
+        Assert.Equal("Source note is now resolved.", selected.SourceStatusText);
+        Assert.False(selected.ShowReplaceAction);
+    }
+
+    [Fact]
+    public async Task SelectedNote_SourceNoLongerAppliesToDate_ShowsNoLongerApplicableStatus()
+    {
+        var (viewModel, service, note) = await SelectScannerNoteAsync();
+        service.AllOperationalNotes[0] = note with { EffectiveFrom = OtherDate, EffectiveThrough = OtherDate };
+
+        await viewModel.CheckOnlineCommand.ExecuteAsync(null);
+
+        var selected = Assert.Single(viewModel.SelectedOperationalNotes);
+        Assert.Equal("Source note no longer applies to this date.", selected.SourceStatusText);
+        Assert.False(selected.ShowReplaceAction);
+    }
+
+    [Fact]
+    public async Task SelectedNote_SourceMissing_ShowsUnavailableStatus()
+    {
+        var (viewModel, service, _) = await SelectScannerNoteAsync();
+        service.AllOperationalNotes.Clear();
+
+        await viewModel.CheckOnlineCommand.ExecuteAsync(null);
+
+        var selected = Assert.Single(viewModel.SelectedOperationalNotes);
+        Assert.Equal("Source note unavailable.", selected.SourceStatusText);
+        Assert.False(selected.ShowReplaceAction);
+    }
+
+    [Fact]
+    public async Task ReplaceCommand_UpdatesFrozenCopyToCurrentSourceContent_AndAutosaves()
+    {
+        var (viewModel, service, note) = await SelectScannerNoteAsync();
+        service.AllOperationalNotes[0] = note with { Title = "Scanner repaired; use normally", Body = "All clear." };
+        await viewModel.CheckOnlineCommand.ExecuteAsync(null);
+
+        await viewModel.SelectedOperationalNotes.Single().ReplaceCommand.ExecuteAsync(null);
+
+        var selected = Assert.Single(viewModel.SelectedOperationalNotes);
+        Assert.Equal("Scanner repaired; use normally", selected.Title);
+        Assert.Equal("All clear.", selected.Body);
+        Assert.False(selected.HasSourceStatus);
+        Assert.Contains((Today, note.Id), service.ReplaceOperationalNoteCalls);
+    }
+
+    [Fact]
+    public async Task ReplaceCommand_NeverMutatesSourceNoteInPlace()
+    {
+        var (viewModel, service, note) = await SelectScannerNoteAsync();
+        service.AllOperationalNotes[0] = note with { Title = "Scanner repaired; use normally" };
+        await viewModel.CheckOnlineCommand.ExecuteAsync(null);
+
+        await viewModel.SelectedOperationalNotes.Single().ReplaceCommand.ExecuteAsync(null);
+
+        Assert.Equal("Scanner repaired; use normally", service.AllOperationalNotes[0].Title);
+    }
+
+    // Part P: reloading (Check Online) alone never applies a Replace — only the explicit ReplaceCommand does.
+    [Fact]
+    public async Task ReloadAlone_NeverReplacesFrozenContent_EvenWhenSourceChanged()
+    {
+        var (viewModel, service, note) = await SelectScannerNoteAsync();
+        service.AllOperationalNotes[0] = note with { Title = "Scanner repaired; use normally" };
+
+        await viewModel.CheckOnlineCommand.ExecuteAsync(null);
+        await viewModel.CheckOnlineCommand.ExecuteAsync(null);
+
+        var selected = Assert.Single(viewModel.SelectedOperationalNotes);
+        Assert.Equal("South Gate scanner #3 out of service", selected.Title);
+    }
 }

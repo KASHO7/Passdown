@@ -54,6 +54,9 @@ public partial class AssociateViewModel : ViewModelBase
 {
     private static readonly TimeSpan DefaultAutosaveDebounce = TimeSpan.FromMilliseconds(800);
 
+    /// <summary>Fallback for <see cref="AssociateWorkspace.SelectedOperationalNoteSourceStates"/> when it is <see langword="null"/> (Phase 11E Part N: pre-11E workspace construction sites) — every selection reads as <see cref="OperationalNoteSourceComparisonState.Unchanged"/> rather than the ViewModel special-casing null.</summary>
+    private static readonly IReadOnlyDictionary<Guid, OperationalNoteSourceComparisonState> EmptySourceStates = new Dictionary<Guid, OperationalNoteSourceComparisonState>();
+
     private readonly IAssociatePassdownService _service;
     private readonly IAssociatePassdownPdfExportService _pdfExportService;
     private readonly IPdfSaveFilePicker _pdfSavePicker;
@@ -686,6 +689,33 @@ public partial class AssociateViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// The one deliberate way an already-selected note's frozen copy can change (Phase 11E Part I) —
+    /// pulls the source note's current display content in explicitly, never automatically (Part P).
+    /// Mirrors <see cref="AddOperationalNoteAsync"/>/<see cref="RemoveOperationalNoteAsync"/> exactly:
+    /// flush-then-call-then-apply, with the same in-flight date-switch guard (Part Z).
+    /// </summary>
+    private async Task ReplaceOperationalNoteAsync(Guid operationalNoteId)
+    {
+        await FlushPendingAutosaveAsync().ConfigureAwait(true);
+        var date = SelectedDate;
+        try
+        {
+            var workspace = await _service.ReplaceOperationalNoteWithCurrentAsync(date, operationalNoteId).ConfigureAwait(true);
+            if (date != SelectedDate)
+            {
+                return;
+            }
+
+            ApplyWorkspaceToFields(workspace);
+            await RefreshOperationalNoteSuggestionsAsync(date).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogError(ex, "Failed to replace operational note {OperationalNoteId} for {OperatingDate}.", operationalNoteId, date);
+        }
+    }
+
+    /// <summary>
     /// Recomputes <see cref="AvailableOperationalNoteSuggestions"/> for <paramref name="date"/> —
     /// every persistent note currently relevant for that date, minus whatever is already in
     /// <see cref="SelectedOperationalNotes"/> (Phase 11D Part U). Local-only; a failure degrades to
@@ -828,9 +858,13 @@ public partial class AssociateViewModel : ViewModelBase
 
             OperationalNotesText = string.Join(Environment.NewLine, draft.OperationalNotes);
 
+            var sourceStates = workspace.SelectedOperationalNoteSourceStates ?? EmptySourceStates;
             SelectedOperationalNotes = draft.SelectedOperationalNotes
                 .Select(selection => new AssociateSelectedOperationalNoteRowViewModel(
-                    AssociateSelectedOperationalNotePresentation.Build(selection), RemoveOperationalNoteAsync))
+                    AssociateSelectedOperationalNotePresentation.Build(
+                        selection, sourceStates.GetValueOrDefault(selection.SourceOperationalNoteId, OperationalNoteSourceComparisonState.Unchanged)),
+                    RemoveOperationalNoteAsync,
+                    ReplaceOperationalNoteAsync))
                 .ToList();
 
             SelectedDailyFeatureTypeOption = DailyFeatureTypeOption.For(draft.DailyFeatureType);

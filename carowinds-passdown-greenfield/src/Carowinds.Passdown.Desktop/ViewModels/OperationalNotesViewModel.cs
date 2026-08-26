@@ -81,6 +81,18 @@ public partial class OperationalNotesViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(FilteredEmptyStateMessage))]
     public partial OperationalNoteLifecycleFilter LifecycleFilter { get; set; } = OperationalNoteLifecycleFilter.Active;
 
+    /// <summary>Category filter (Phase 11E Part A) — composes with <see cref="LifecycleFilter"/> and <see cref="PriorityFilter"/>; <see cref="OperationalNoteCategoryFilterOption.AllOption"/> means no category restriction.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActiveSecondaryFilters))]
+    [NotifyPropertyChangedFor(nameof(FilteredEmptyStateMessage))]
+    public partial OperationalNoteCategoryFilterOption CategoryFilter { get; set; } = OperationalNoteCategoryFilterOption.AllOption;
+
+    /// <summary>Priority filter (Phase 11E Part B) — composes with <see cref="LifecycleFilter"/> and <see cref="CategoryFilter"/>; deliberately just Normal/Important/All, no new severity terminology.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActiveSecondaryFilters))]
+    [NotifyPropertyChangedFor(nameof(FilteredEmptyStateMessage))]
+    public partial OperationalNotePriorityFilterOption PriorityFilter { get; set; } = OperationalNotePriorityFilterOption.AllOption;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmptyState))]
     [NotifyPropertyChangedFor(nameof(ShowFilteredEmptyState))]
@@ -198,14 +210,32 @@ public partial class OperationalNotesViewModel : ViewModelBase
     /// <summary>Spec Part U: notes exist, but none match the current filter.</summary>
     public bool ShowFilteredEmptyState => !IsLoading && _allNotes.Count > 0 && Notes.Count == 0 && string.IsNullOrEmpty(ListErrorMessage);
 
-    public string FilteredEmptyStateMessage => LifecycleFilter switch
+    /// <summary>Spec Part D: distinguishes "no notes exist" from "no notes match the current filters", and (when category/priority narrow the view further) says so rather than only naming the lifecycle bucket.</summary>
+    public string FilteredEmptyStateMessage
     {
-        OperationalNoteLifecycleFilter.Active => "No active operational notes.",
-        OperationalNoteLifecycleFilter.Upcoming => "No upcoming operational notes.",
-        OperationalNoteLifecycleFilter.Expired => "No expired operational notes.",
-        OperationalNoteLifecycleFilter.Resolved => "No resolved operational notes.",
-        _ => "No operational notes match this filter.",
-    };
+        get
+        {
+            var lifecycleMessage = LifecycleFilter switch
+            {
+                OperationalNoteLifecycleFilter.Active => "No active operational notes.",
+                OperationalNoteLifecycleFilter.Upcoming => "No upcoming operational notes.",
+                OperationalNoteLifecycleFilter.Expired => "No expired operational notes.",
+                OperationalNoteLifecycleFilter.Resolved => "No resolved operational notes.",
+                _ => "No operational notes match this filter.",
+            };
+
+            return HasActiveSecondaryFilters ? $"{lifecycleMessage} Try clearing filters." : lifecycleMessage;
+        }
+    }
+
+    /// <summary>The fixed category filter choices (spec Part A) — "All" plus the same closed set every other Operational Notes surface labels via <see cref="OperationalNoteCategoryOption"/>.</summary>
+    public IReadOnlyList<OperationalNoteCategoryFilterOption> CategoryFilterOptions => OperationalNoteCategoryFilterOption.All;
+
+    /// <summary>The fixed priority filter choices (spec Part B).</summary>
+    public IReadOnlyList<OperationalNotePriorityFilterOption> PriorityFilterOptions => OperationalNotePriorityFilterOption.All;
+
+    /// <summary>Spec Part D: whether Category and/or Priority currently narrow the view — drives the "Clear filters" affordance. <see cref="LifecycleFilter"/> is a primary navigation tab, not counted here.</summary>
+    public bool HasActiveSecondaryFilters => CategoryFilter.Value is not null || PriorityFilter.Value is not null;
 
     /// <summary>The fixed category choices for the editor's ComboBox (spec Part J/S) — the same closed set <see cref="OperationalNoteCategoryOption.For"/> uses to label every row/detail, never a second list.</summary>
     public IReadOnlyList<OperationalNoteCategoryOption> EditorCategoryOptions => OperationalNoteCategoryOption.All;
@@ -243,6 +273,18 @@ public partial class OperationalNotesViewModel : ViewModelBase
     }
 
     partial void OnLifecycleFilterChanged(OperationalNoteLifecycleFilter value) => ApplyFilter();
+
+    partial void OnCategoryFilterChanged(OperationalNoteCategoryFilterOption value) => ApplyFilter();
+
+    partial void OnPriorityFilterChanged(OperationalNotePriorityFilterOption value) => ApplyFilter();
+
+    /// <summary>Spec Part D: resets Category/Priority back to "All" without disturbing the lifecycle tab, which is primary navigation rather than a secondary narrowing filter.</summary>
+    [RelayCommand]
+    private void ClearFilters()
+    {
+        CategoryFilter = OperationalNoteCategoryFilterOption.AllOption;
+        PriorityFilter = OperationalNotePriorityFilterOption.AllOption;
+    }
 
     /// <summary>Cancels any pending resolve confirmation whenever the selection itself changes, and rebuilds <see cref="SelectedDetail"/> from the cached full note (never re-fetched — spec Part V's local-only guarantee applies to every read here, not only Reload).</summary>
     partial void OnSelectedNoteChanged(OperationalNoteRowPresentation? value)
@@ -298,6 +340,16 @@ public partial class OperationalNotesViewModel : ViewModelBase
             OperationalNoteLifecycleFilter.Resolved => _allNotes.Where(n => OperationalNoteLifecycle.Derive(n, referenceDate) == OperationalNoteLifecycleState.Resolved),
             _ => _allNotes,
         };
+
+        if (CategoryFilter.Value is { } category)
+        {
+            filtered = filtered.Where(n => n.Category == category);
+        }
+
+        if (PriorityFilter.Value is { } priority)
+        {
+            filtered = filtered.Where(n => n.Priority == priority);
+        }
 
         Notes = filtered.Select(n => OperationalNoteRowPresentation.Build(n, referenceDate)).ToList();
         SelectedNote = previousSelectedId is { } id ? Notes.FirstOrDefault(row => row.Id == id) : null;

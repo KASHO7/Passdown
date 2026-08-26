@@ -1161,4 +1161,173 @@ public class AssociatePassdownServiceTests
         Assert.Empty(suggestionsForToday);
         Assert.Single(suggestionsForFarFuture);
     }
+
+    // ===================== Phase 11E: source-change awareness + Replace with Current Version =====================
+
+    [Fact]
+    public async Task ComposedWorkspace_UnchangedSource_ReportsUnchangedState()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, Date);
+        await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+
+        Assert.Equal(OperationalNoteSourceComparisonState.Unchanged, workspace.SelectedOperationalNoteSourceStates![note.Id]);
+    }
+
+    [Fact]
+    public async Task ComposedWorkspace_SourceEdited_ReportsContentChanged()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, Date);
+        await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+
+        await env.OperationalNotes.UpdateAsync(note.Id, new OperationalNoteDraft(
+            "Scanner repaired; use normally", "All clear.", OperationalNoteCategory.Equipment, OperationalNotePriority.Important, Date, null));
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+
+        Assert.Equal(OperationalNoteSourceComparisonState.ContentChanged, workspace.SelectedOperationalNoteSourceStates![note.Id]);
+    }
+
+    [Fact]
+    public async Task ComposedWorkspace_SourceResolved_ReportsResolvedState()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, Date);
+        await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+
+        await env.OperationalNotes.ResolveAsync(note.Id);
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+
+        Assert.Equal(OperationalNoteSourceComparisonState.Resolved, workspace.SelectedOperationalNoteSourceStates![note.Id]);
+    }
+
+    [Fact]
+    public async Task ComposedWorkspace_SourceDateRangeNoLongerCoversSelectionDate_ReportsNoLongerApplicable()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, Date);
+        await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+
+        await env.OperationalNotes.UpdateAsync(note.Id, new OperationalNoteDraft(
+            note.Title, note.Body, note.Category, note.Priority, OtherDate, OtherDate));
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+
+        Assert.Equal(OperationalNoteSourceComparisonState.NoLongerApplicable, workspace.SelectedOperationalNoteSourceStates![note.Id]);
+    }
+
+    [Fact]
+    public async Task ComposedWorkspace_NoSelections_SourceStatesIsEmpty()
+    {
+        var env = CreateEnvironment();
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+
+        Assert.Empty(workspace.SelectedOperationalNoteSourceStates!);
+    }
+
+    [Fact]
+    public async Task ReplaceOperationalNoteWithCurrentAsync_ContentChanged_UpdatesFrozenCopyToCurrentSourceContent()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, Date);
+        await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+
+        await env.OperationalNotes.UpdateAsync(note.Id, new OperationalNoteDraft(
+            "Scanner repaired; use normally", "All clear.", OperationalNoteCategory.Equipment, OperationalNotePriority.Important, Date, null));
+
+        var workspace = await env.Service.ReplaceOperationalNoteWithCurrentAsync(Date, note.Id);
+
+        var selection = Assert.Single(workspace.Draft.SelectedOperationalNotes);
+        Assert.Equal("Scanner repaired; use normally", selection.Title);
+        Assert.Equal("All clear.", selection.Body);
+        Assert.Equal(OperationalNotePriority.Important, selection.Priority);
+        Assert.Equal(OperationalNoteSourceComparisonState.Unchanged, workspace.SelectedOperationalNoteSourceStates![note.Id]);
+    }
+
+    // Part R: replacing preserves the selection's list position rather than moving it to the end.
+    [Fact]
+    public async Task ReplaceOperationalNoteWithCurrentAsync_PreservesSelectionOrder()
+    {
+        var env = CreateEnvironment();
+        var noteA = await CreateScannerNoteAsync(env, Date);
+        var noteB = await env.OperationalNotes.CreateAsync(new OperationalNoteDraft(
+            "Group check-in support at North Gate", null, OperationalNoteCategory.GuestServices, OperationalNotePriority.Normal, Date, null));
+        await env.Service.SelectOperationalNoteAsync(Date, noteA.Id);
+        await env.Service.SelectOperationalNoteAsync(Date, noteB.Id);
+
+        await env.OperationalNotes.UpdateAsync(noteA.Id, new OperationalNoteDraft(
+            "Scanner repaired", null, OperationalNoteCategory.Equipment, OperationalNotePriority.Normal, Date, null));
+
+        var workspace = await env.Service.ReplaceOperationalNoteWithCurrentAsync(Date, noteA.Id);
+
+        Assert.Equal([noteA.Id, noteB.Id], workspace.Draft.SelectedOperationalNotes.Select(s => s.SourceOperationalNoteId));
+        Assert.Equal("Scanner repaired", workspace.Draft.SelectedOperationalNotes[0].Title);
+    }
+
+    [Fact]
+    public async Task ReplaceOperationalNoteWithCurrentAsync_NotCurrentlySelected_IsSafeNoOp()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, Date);
+
+        var workspace = await env.Service.ReplaceOperationalNoteWithCurrentAsync(Date, note.Id);
+
+        Assert.Empty(workspace.Draft.SelectedOperationalNotes);
+    }
+
+    [Fact]
+    public async Task ReplaceOperationalNoteWithCurrentAsync_AutosavesTheNewFrozenCopy()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, Date);
+        await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+        await env.OperationalNotes.UpdateAsync(note.Id, new OperationalNoteDraft(
+            "Scanner repaired", null, OperationalNoteCategory.Equipment, OperationalNotePriority.Normal, Date, null));
+
+        await env.Service.ReplaceOperationalNoteWithCurrentAsync(Date, note.Id);
+
+        var reloaded = await env.Service.LoadAssociateDateAsync(Date);
+        Assert.Equal("Scanner repaired", Assert.Single(reloaded.Draft.SelectedOperationalNotes).Title);
+    }
+
+    [Fact]
+    public async Task ReplaceOperationalNoteWithCurrentAsync_NeverMutatesSourceNote()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, Date);
+        await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+
+        await env.Service.ReplaceOperationalNoteWithCurrentAsync(Date, note.Id);
+
+        var reloaded = await env.OperationalNotes.ListAsync();
+        var stored = Assert.Single(reloaded);
+        Assert.Equal(note.UpdatedAtUtc, stored.UpdatedAtUtc);
+    }
+
+    // Part P: no code path other than an explicit Replace ever changes a selection's frozen content.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task NoAutomaticSync_ReloadOrCheckOnline_NeverUpdatesFrozenSelection(bool checkOnline)
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, Date);
+        await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+
+        await env.OperationalNotes.UpdateAsync(note.Id, new OperationalNoteDraft(
+            "Scanner repaired; use normally", "All clear.", OperationalNoteCategory.Equipment, OperationalNotePriority.Important, Date, null));
+
+        var workspace = checkOnline
+            ? (await env.Service.CheckAssociateDateOnlineAsync(Date)).Workspace
+            : await env.Service.LoadAssociateDateAsync(Date);
+
+        var selection = Assert.Single(workspace.Draft.SelectedOperationalNotes);
+        Assert.Equal("South Gate scanner #3 out of service", selection.Title);
+        Assert.Equal(OperationalNoteSourceComparisonState.ContentChanged, workspace.SelectedOperationalNoteSourceStates![note.Id]);
+    }
 }

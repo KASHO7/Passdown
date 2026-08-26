@@ -70,4 +70,13 @@ public interface IAssociatePassdownService
     /// Never mutates the source <see cref="OperationalNote"/> row.
     /// </summary>
     Task<AssociateWorkspace> DeselectOperationalNoteAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 11E Part I/O: replaces an already-selected note's frozen copy with the source note's
+    /// current display content — the one deliberate, explicit path a selection's frozen content can
+    /// ever change through (never automatic; Part P). Preserves the selection's existing list position.
+    /// A no-op when the note is not currently selected; throws <see cref="InvalidOperationException"/>
+    /// only if the source note cannot be found at all. Never mutates the source <see cref="OperationalNote"/> row.
+    /// </summary>
+    Task<AssociateWorkspace> ReplaceOperationalNoteWithCurrentAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken cancellationToken = default);
 }

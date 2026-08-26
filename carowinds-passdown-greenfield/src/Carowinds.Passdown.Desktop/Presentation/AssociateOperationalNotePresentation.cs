@@ -16,7 +16,8 @@ public sealed record AssociateOperationalNoteSuggestionPresentation(
     string CategoryLabel,
     string PriorityLabel,
     bool IsImportant,
-    string DateRangeText)
+    string DateRangeText,
+    string? CarryForwardText)
 {
     public string AccessibleSummary => IsImportant
         ? $"Add. Important. {CategoryLabel}. {Title}. {DateRangeText}."
@@ -29,8 +30,12 @@ public sealed record AssociateOperationalNoteSuggestionPresentation(
         // Every candidate here already came from IAssociatePassdownService.GetRelevantOperationalNoteSuggestionsAsync
         // (Phase 11D Part E), so its lifecycle for referenceDate is always Active by construction —
         // never re-derived, only assumed for the shared formatter's Upcoming-vs-range branch.
-        var dateRangeText = OperationalNoteDateRangeFormatter.Format(
-            note.EffectiveFrom, note.EffectiveThrough, OperationalNoteLifecycleState.Active, referenceDate);
+        const OperationalNoteLifecycleState lifecycle = OperationalNoteLifecycleState.Active;
+        var dateRangeText = OperationalNoteDateRangeFormatter.Format(note.EffectiveFrom, note.EffectiveThrough, lifecycle, referenceDate);
+
+        // Phase 11E Part T: a short relative "date relevance" hint alongside the absolute range, using
+        // the same carry-forward formatter every other Operational Notes surface uses.
+        var carryForwardText = OperationalNoteCarryForwardFormatter.Format(lifecycle, note.EffectiveFrom, note.EffectiveThrough, referenceDate);
 
         return new AssociateOperationalNoteSuggestionPresentation(
             note.Id,
@@ -38,7 +43,8 @@ public sealed record AssociateOperationalNoteSuggestionPresentation(
             OperationalNoteCategoryOption.For(note.Category).Label,
             OperationalNotePriorityOption.For(note.Priority).Label,
             note.Priority == OperationalNotePriority.Important,
-            dateRangeText);
+            dateRangeText,
+            carryForwardText);
     }
 }
 
@@ -55,13 +61,30 @@ public sealed record AssociateSelectedOperationalNotePresentation(
     string CategoryLabel,
     string PriorityLabel,
     bool IsImportant,
-    string DateRangeText)
+    string DateRangeText,
+    OperationalNoteSourceComparisonState SourceState,
+    string? SourceStatusText,
+    bool ShowReplaceAction)
 {
-    public string AccessibleSummary => IsImportant
-        ? $"Remove. Important. {CategoryLabel}. {Title}."
-        : $"Remove. {CategoryLabel}. {Title}.";
+    public string AccessibleSummary
+    {
+        get
+        {
+            var prefix = IsImportant
+                ? $"Remove from this passdown. Important. {CategoryLabel}. {Title}."
+                : $"Remove from this passdown. {CategoryLabel}. {Title}.";
+            return SourceStatusText is null ? prefix : $"{prefix} {SourceStatusText}";
+        }
+    }
 
-    public static AssociateSelectedOperationalNotePresentation Build(AssociateOperationalNoteSelection selection)
+    /// <summary>
+    /// Phase 11E Part H: a short, non-technical explanation that a selected note's content is frozen —
+    /// deliberately avoids "snapshot"/"detached entity" wording. Shown once above the section, not
+    /// per-row, since it is true for every row in the list.
+    /// </summary>
+    public const string FrozenCopyExplanation = "Included notes keep the version selected for this passdown.";
+
+    public static AssociateSelectedOperationalNotePresentation Build(AssociateOperationalNoteSelection selection, OperationalNoteSourceComparisonState sourceState)
     {
         ArgumentNullException.ThrowIfNull(selection);
 
@@ -71,6 +94,19 @@ public sealed record AssociateSelectedOperationalNotePresentation(
         var dateRangeText = OperationalNoteDateRangeFormatter.Format(
             selection.EffectiveFrom, selection.EffectiveThrough, OperationalNoteLifecycleState.Active, selection.EffectiveFrom);
 
+        // Phase 11E Parts G-L: informational only — the frozen fields above are never touched by this
+        // status text. Replace with Current Version (Part I) is only offered for ContentChanged; a
+        // Resolved/NoLongerApplicable/Missing source is surfaced as plain informational text and the
+        // supervisor is left to choose Remove (or keep) themselves (Parts J/K/L).
+        var (statusText, showReplace) = sourceState switch
+        {
+            OperationalNoteSourceComparisonState.ContentChanged => ("Source note changed since inclusion.", true),
+            OperationalNoteSourceComparisonState.Resolved => ("Source note is now resolved.", false),
+            OperationalNoteSourceComparisonState.NoLongerApplicable => ("Source note no longer applies to this date.", false),
+            OperationalNoteSourceComparisonState.Missing => ("Source note unavailable.", false),
+            _ => (null as string, false),
+        };
+
         return new AssociateSelectedOperationalNotePresentation(
             selection.SourceOperationalNoteId,
             selection.Title,
@@ -78,6 +114,9 @@ public sealed record AssociateSelectedOperationalNotePresentation(
             OperationalNoteCategoryOption.For(selection.Category).Label,
             OperationalNotePriorityOption.For(selection.Priority).Label,
             selection.Priority == OperationalNotePriority.Important,
-            dateRangeText);
+            dateRangeText,
+            sourceState,
+            statusText,
+            showReplace);
     }
 }
