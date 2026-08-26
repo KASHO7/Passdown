@@ -93,6 +93,7 @@ internal sealed class FakeOperationsDashboardService : IOperationsDashboardServi
         DailyFeatureType: null,
         DailyFeatureText: null,
         Notes: DashboardNotesSummary.Empty,
+        ActiveOperationalNotes: DashboardOperationalNotesSummary.Empty,
         DataHealth: DefaultDataHealth(),
         LatestFinalized: null,
         GeneratedAt: DateTimeOffset.UtcNow);

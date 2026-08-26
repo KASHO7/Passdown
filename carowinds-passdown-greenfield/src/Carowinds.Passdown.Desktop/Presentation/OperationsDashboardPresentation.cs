@@ -30,6 +30,7 @@ public sealed record OperationsDashboardPresentation(
     string DailyFeatureText,
     string NotesSummaryText,
     IReadOnlyList<string> NotesPreviewLines,
+    DashboardOperationalNotesPresentation ActiveOperationalNotes,
     DashboardDataHealthPresentation DataHealth,
     PassdownHistorySummaryPresentation? LatestFinalized,
     string GeneratedAtText)
@@ -90,6 +91,7 @@ public sealed record OperationsDashboardPresentation(
             .Select(line => Truncate(line, MaxNotesPreviewLineLength))
             .ToList();
 
+        var activeOperationalNotes = DashboardOperationalNotesPresentation.Build(snapshot.ActiveOperationalNotes, snapshot.OperatingDate);
         var dataHealth = DashboardDataHealthPresentation.Build(snapshot.DataHealth);
 
         var latestFinalized = snapshot.LatestFinalized is { } summary
@@ -110,6 +112,7 @@ public sealed record OperationsDashboardPresentation(
             dailyFeatureText,
             notesSummaryText,
             notesPreviewLines,
+            activeOperationalNotes,
             dataHealth,
             latestFinalized,
             $"Updated {FormatTimestamp(snapshot.GeneratedAt)}");

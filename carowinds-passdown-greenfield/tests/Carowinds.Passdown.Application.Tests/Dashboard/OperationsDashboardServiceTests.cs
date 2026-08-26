@@ -3,6 +3,7 @@ using System.Text.Json;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Finalization;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
@@ -33,9 +34,10 @@ public class OperationsDashboardServiceTests
         InMemoryCatalogProductRepository CatalogProducts,
         FakeRefreshOrchestrator RefreshOrchestrator,
         CountingFinalizedPassdownRepository FinalizedPassdowns,
+        IOperationalNotesService OperationalNotes,
         FakeClock Clock);
 
-    private static TestEnvironment CreateEnvironment(FakeClock? clock = null)
+    private static TestEnvironment CreateEnvironment(FakeClock? clock = null, IOperationalNotesService? operationalNotes = null)
     {
         clock ??= new FakeClock(FixedNow);
         var drafts = new InMemoryAssociateDraftRepository();
@@ -44,8 +46,9 @@ public class OperationsDashboardServiceTests
         var refreshOrchestrator = new FakeRefreshOrchestrator();
         var associateService = new AssociatePassdownService(drafts, datedResults, catalogProducts, refreshOrchestrator, clock);
         var finalizedPassdowns = new CountingFinalizedPassdownRepository();
-        var service = new OperationsDashboardService(associateService, finalizedPassdowns, clock);
-        return new TestEnvironment(service, drafts, datedResults, catalogProducts, refreshOrchestrator, finalizedPassdowns, clock);
+        operationalNotes ??= new OperationalNotesService(new InMemoryOperationalNoteRepository(), clock);
+        var service = new OperationsDashboardService(associateService, finalizedPassdowns, operationalNotes, clock);
+        return new TestEnvironment(service, drafts, datedResults, catalogProducts, refreshOrchestrator, finalizedPassdowns, operationalNotes, clock);
     }
 
     private static Task SaveDraftAsync(TestEnvironment env, AssociateDraftPayload draft) =>
@@ -612,6 +615,232 @@ public class OperationsDashboardServiceTests
 
         Assert.Equal(new DateOnly(2026, 1, 1).AddDays(49), snapshot.LatestFinalized!.PassdownDate);
         Assert.Equal(0, env.FinalizedPassdowns.GetByDateCallCount);
+    }
+
+    // ==================================================================================
+    // Phase 11C: Dashboard integration for persistent Operational Notes (read-only summary).
+    // ==================================================================================
+
+    private static Task<OperationalNote> CreateNoteAsync(
+        TestEnvironment env,
+        string title,
+        DateOnly effectiveFrom,
+        DateOnly? effectiveThrough = null,
+        OperationalNotePriority priority = OperationalNotePriority.Normal,
+        OperationalNoteCategory category = OperationalNoteCategory.General) =>
+        env.OperationalNotes.CreateAsync(new OperationalNoteDraft(title, null, category, priority, effectiveFrom, effectiveThrough));
+
+    // #1/#7/#9: an Active note whose range covers today (including "starts today", "null
+    // EffectiveThrough") appears in ActiveOperationalNotes.
+    [Fact]
+    public async Task LoadAsync_RelevantActiveNote_AppearsInActiveOperationalNotes()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateNoteAsync(env, "South Gate scanner #3 out of service", Date, category: OperationalNoteCategory.Equipment);
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(1, snapshot.ActiveOperationalNotes.Count);
+        var item = Assert.Single(snapshot.ActiveOperationalNotes.Items);
+        Assert.Equal(note.Id, item.Id);
+        Assert.Equal("South Gate scanner #3 out of service", item.Title);
+        Assert.Equal(OperationalNoteCategory.Equipment, item.Category);
+    }
+
+    // #7: EffectiveThrough == today is still relevant (boundary inclusive).
+    [Fact]
+    public async Task LoadAsync_NoteEndingToday_Included()
+    {
+        var env = CreateEnvironment();
+        await CreateNoteAsync(env, "Ends today", Date.AddDays(-5), Date);
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(1, snapshot.ActiveOperationalNotes.Count);
+    }
+
+    // #8: EffectiveThrough == yesterday is Expired, never shown as active today.
+    [Fact]
+    public async Task LoadAsync_NoteEndingYesterday_NotIncluded()
+    {
+        var env = CreateEnvironment();
+        await CreateNoteAsync(env, "Ended yesterday", Date.AddDays(-10), Date.AddDays(-1));
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(0, snapshot.ActiveOperationalNotes.Count);
+        Assert.Empty(snapshot.ActiveOperationalNotes.Items);
+    }
+
+    // #4: Upcoming (EffectiveFrom in the future) must never appear as active today.
+    [Fact]
+    public async Task LoadAsync_UpcomingNote_NotIncluded()
+    {
+        var env = CreateEnvironment();
+        await CreateNoteAsync(env, "Starts tomorrow", Date.AddDays(1));
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(0, snapshot.ActiveOperationalNotes.Count);
+    }
+
+    // #6: a resolved note is never active today, even if its date range still covers today.
+    [Fact]
+    public async Task LoadAsync_ResolvedNote_NotIncluded()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateNoteAsync(env, "Resolved but date range covers today", Date.AddDays(-5), Date.AddDays(5));
+        await env.OperationalNotes.ResolveAsync(note.Id);
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(0, snapshot.ActiveOperationalNotes.Count);
+    }
+
+    // #2/#3: Important sorts first, reusing the shared OperationalNoteOrdering.ByRelevance rule
+    // (never a competing Dashboard-specific sort).
+    [Fact]
+    public async Task LoadAsync_ImportantNoteSortsBeforeNormal_UsingSharedRelevanceOrdering()
+    {
+        var env = CreateEnvironment();
+        var normal = await CreateNoteAsync(env, "Normal note", Date.AddDays(-1));
+        var important = await CreateNoteAsync(env, "Important note", Date, priority: OperationalNotePriority.Important);
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(2, snapshot.ActiveOperationalNotes.Count);
+        Assert.Equal(important.Id, snapshot.ActiveOperationalNotes.Items[0].Id);
+        Assert.Equal(normal.Id, snapshot.ActiveOperationalNotes.Items[1].Id);
+        Assert.Equal(1, snapshot.ActiveOperationalNotes.ImportantCount);
+    }
+
+    // #13: the preview is bounded to MaxPreviewCount, while Count keeps the true total (#14: overflow
+    // is never hidden).
+    [Fact]
+    public async Task LoadAsync_MoreRelevantNotesThanPreviewLimit_BoundsItemsButKeepsTrueCount()
+    {
+        var env = CreateEnvironment();
+        for (var i = 0; i < 5; i++)
+        {
+            await CreateNoteAsync(env, $"Note {i}", Date.AddDays(-i));
+        }
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(5, snapshot.ActiveOperationalNotes.Count);
+        Assert.Equal(DashboardOperationalNotesSummary.MaxPreviewCount, snapshot.ActiveOperationalNotes.Items.Count);
+    }
+
+    // #15: zero relevant notes -> an empty, non-failed summary (distinct from a load failure).
+    [Fact]
+    public async Task LoadAsync_NoRelevantNotes_ReportsEmptySummary()
+    {
+        var env = CreateEnvironment();
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(0, snapshot.ActiveOperationalNotes.Count);
+        Assert.Empty(snapshot.ActiveOperationalNotes.Items);
+        Assert.False(snapshot.ActiveOperationalNotes.LoadFailed);
+    }
+
+    // #11/#12: Dashboard relevance uses the operating date the snapshot itself resolves to (Eastern
+    // "today" via GetTodayAsync, never Associate's own SelectedDate — this service has no dependency
+    // capable of reading that in the first place).
+    [Fact]
+    public async Task GetTodayAsync_RelevantNote_UsesEasternTodayForOperationalNoteRelevance()
+    {
+        var lateUtcClock = new FakeClock(new DateTimeOffset(2026, 8, 22, 2, 30, 0, TimeSpan.Zero)); // 10:30 PM EDT on 2026-08-21
+        var env = CreateEnvironment(lateUtcClock);
+        await CreateNoteAsync(env, "Relevant to Eastern today", new DateOnly(2026, 8, 21));
+
+        var snapshot = await env.Service.GetTodayAsync();
+
+        Assert.Equal(new DateOnly(2026, 8, 21), snapshot.OperatingDate);
+        Assert.Equal(1, snapshot.ActiveOperationalNotes.Count);
+    }
+
+    // #23/#25/#26/#27: persistent notes are read-only suggestions — loading the Dashboard must never
+    // mutate the current Associate draft's own Notes field. The two note concepts stay independent.
+    [Fact]
+    public async Task LoadAsync_PersistentNotesPresent_NeverMutatesAssociateDraftNotes()
+    {
+        var env = CreateEnvironment();
+        await SaveDraftAsync(env, AssociateDraftPayload.CreateDefault() with { OperationalNotes = ["Gate 3 closed."] });
+        await CreateNoteAsync(env, "South Gate scanner #3 out of service", Date);
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(["Gate 3 closed."], snapshot.Notes.PreviewLines);
+        Assert.DoesNotContain(snapshot.Notes.PreviewLines, line => line.Contains("scanner", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // Phase 11C Part AI: a local persistent-notes query failure degrades only that section — the rest
+    // of the snapshot (e.g. passdown status) still loads normally, and nothing throws.
+    [Fact]
+    public async Task LoadAsync_OperationalNotesQueryFails_DegradesOnlyThatSectionWithoutFailingSnapshot()
+    {
+        var env = CreateEnvironment(operationalNotes: new ThrowingOperationalNotesService());
+        await SaveDraftAsync(env, AssociateDraftPayload.CreateDefault());
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.True(snapshot.ActiveOperationalNotes.LoadFailed);
+        Assert.Equal(0, snapshot.ActiveOperationalNotes.Count);
+        Assert.Empty(snapshot.ActiveOperationalNotes.Items);
+        Assert.Equal(DashboardPassdownStatus.DraftInProgress, snapshot.PassdownStatus.Status);
+    }
+
+    // Phase 11C Part AK: exactly one relevance query per Dashboard load — no N+1 per rendered row.
+    [Fact]
+    public async Task LoadAsync_QueriesOperationalNotesExactlyOncePerLoad()
+    {
+        var counting = new CountingOperationalNotesService(new OperationalNotesService(new InMemoryOperationalNoteRepository(), new FakeClock(FixedNow)));
+        var env = CreateEnvironment(operationalNotes: counting);
+        await CreateNoteAsync(env, "Note", Date);
+
+        await env.Service.LoadAsync(Date);
+
+        Assert.Equal(1, counting.ListRelevantForDateCallCount);
+    }
+
+    /// <summary>Records call counts around the real <see cref="OperationalNotesService"/> (Phase 11C Part AK) — not a scripted double, so a passing test proves the real relevance/ordering rules were actually reused.</summary>
+    private sealed class CountingOperationalNotesService(IOperationalNotesService inner) : IOperationalNotesService
+    {
+        public int ListRelevantForDateCallCount { get; private set; }
+
+        public Task<OperationalNote> CreateAsync(OperationalNoteDraft draft, CancellationToken cancellationToken = default) =>
+            inner.CreateAsync(draft, cancellationToken);
+
+        public Task<OperationalNote> UpdateAsync(Guid id, OperationalNoteDraft draft, CancellationToken cancellationToken = default) =>
+            inner.UpdateAsync(id, draft, cancellationToken);
+
+        public Task<OperationalNote> ResolveAsync(Guid id, CancellationToken cancellationToken = default) =>
+            inner.ResolveAsync(id, cancellationToken);
+
+        public Task<IReadOnlyList<OperationalNote>> ListAsync(CancellationToken cancellationToken = default) =>
+            inner.ListAsync(cancellationToken);
+
+        public Task<IReadOnlyList<OperationalNote>> ListRelevantForDateAsync(DateOnly operatingDate, CancellationToken cancellationToken = default)
+        {
+            ListRelevantForDateCallCount++;
+            return inner.ListRelevantForDateAsync(operatingDate, cancellationToken);
+        }
+    }
+
+    /// <summary>Phase 11C Part AI: a scripted failure so the Dashboard's own degrade-gracefully behavior can be proven independent of the real service's own error handling (it has none to trigger deliberately).</summary>
+    private sealed class ThrowingOperationalNotesService : IOperationalNotesService
+    {
+        public Task<OperationalNote> CreateAsync(OperationalNoteDraft draft, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<OperationalNote> UpdateAsync(Guid id, OperationalNoteDraft draft, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<OperationalNote> ResolveAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<OperationalNote>> ListAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<OperationalNote>> ListRelevantForDateAsync(DateOnly operatingDate, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Simulated local operational-notes query failure.");
     }
 
     private static SourceEvidence Evidence(RetrievalStatus status, DateTimeOffset? timeChecked = null) =>

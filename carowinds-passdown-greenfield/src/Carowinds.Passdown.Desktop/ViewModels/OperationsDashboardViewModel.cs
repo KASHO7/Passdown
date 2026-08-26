@@ -30,6 +30,7 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(HasSnapshot))]
     [NotifyCanExecuteChangedFor(nameof(OpenPassdownCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenNotesCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenOperationalNotesCommand))]
     public partial OperationsDashboardSnapshot? Snapshot { get; set; }
 
     [ObservableProperty]
@@ -77,6 +78,15 @@ public partial class OperationsDashboardViewModel : ViewModelBase
 
     /// <summary>Raised when the "Open History" action is used (Phase 10A Part O) — routes to the existing read-only History screen.</summary>
     public event EventHandler? OpenHistoryRequested;
+
+    /// <summary>
+    /// Raised when "Open Operational Notes" is used (Phase 11C Part O/P) — routes to the existing
+    /// top-level Operational Notes section as a whole. Deliberately generic navigation, not a
+    /// "View Today's Active Notes" deep link that would force <see cref="OperationalNotesViewModel.LifecycleFilter"/>
+    /// to a specific value (Part P/Q evaluated and deferred that variant) — a supervisor's existing
+    /// filter/selection state in that screen is preserved exactly as it was.
+    /// </summary>
+    public event EventHandler? OpenOperationalNotesRequested;
 
     public OperationsDashboardViewModel(IOperationsDashboardService service, ILogger<OperationsDashboardViewModel>? logger = null)
     {
@@ -193,4 +203,8 @@ public partial class OperationsDashboardViewModel : ViewModelBase
 
     [RelayCommand]
     private void OpenHistory() => OpenHistoryRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>"Open Operational Notes" (Phase 11C Part O) — gated the same way as Open Passdown/Open Notes (a snapshot must exist), even though the target screen itself has no dependency on the Dashboard snapshot.</summary>
+    [RelayCommand(CanExecute = nameof(CanOpenPassdown))]
+    private void OpenOperationalNotes() => OpenOperationalNotesRequested?.Invoke(this, EventArgs.Empty);
 }

@@ -61,6 +61,11 @@ public partial class MainViewModel : ViewModelBase
         };
         Dashboard.OpenHistoryRequested += (_, _) => ShowHistorySection();
 
+        // Phase 11C Part O/P: generic navigation to the existing Operational Notes section — never
+        // resets Notes.LifecycleFilter/SelectedNote, so a supervisor's existing filter/selection state
+        // there is preserved exactly as it was before Dashboard routed here.
+        Dashboard.OpenOperationalNotesRequested += (_, _) => ShowOperationalNotesSection();
+
         // Phase 11B Part X: the smallest Notes-specific unsaved-changes guard, not a generic
         // navigation-guard framework. OperationalNotesViewModel.IsEditing is the one signal this type
         // observes; whenever it changes, the three other section buttons' enabled state is

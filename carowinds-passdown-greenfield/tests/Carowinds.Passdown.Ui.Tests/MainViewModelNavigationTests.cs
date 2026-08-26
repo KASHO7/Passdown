@@ -105,6 +105,36 @@ public class MainViewModelNavigationTests
         Assert.Equal(AppSection.History, main.SelectedSection);
     }
 
+    // Phase 11C Part O: Dashboard -> Operational Notes navigation (via "Open Operational Notes").
+    [Fact]
+    public async Task DashboardOpenOperationalNotesCommand_NavigatesToOperationalNotesSection()
+    {
+        var main = CreateMainViewModel(out var dashboard, out _, out _, out _);
+        await dashboard.PendingLoad;
+
+        dashboard.OpenOperationalNotesCommand.Execute(null);
+
+        Assert.Equal(AppSection.OperationalNotes, main.SelectedSection);
+        Assert.True(main.IsOperationalNotesSectionSelected);
+    }
+
+    // Phase 11C Part P/Q: generic "Open Operational Notes" navigation must never force the
+    // OperationalNotesViewModel's own filter/selection — a supervisor's existing state there survives
+    // the round trip exactly as it was.
+    [Fact]
+    public async Task DashboardOpenOperationalNotesCommand_PreservesExistingLifecycleFilter()
+    {
+        var main = CreateMainViewModel(out var dashboard, out _, out var notes, out _);
+        await dashboard.PendingLoad;
+        await notes.PendingLoad;
+        notes.LifecycleFilter = OperationalNoteLifecycleFilter.Resolved;
+
+        dashboard.OpenOperationalNotesCommand.Execute(null);
+
+        Assert.Equal(AppSection.OperationalNotes, main.SelectedSection);
+        Assert.Equal(OperationalNoteLifecycleFilter.Resolved, notes.LifecycleFilter);
+    }
+
     // 23: selecting a History record never changes AssociateViewModel.SelectedDate.
     [Fact]
     public async Task SelectingHistoryRecord_NeverChangesAssociateSelectedDate()

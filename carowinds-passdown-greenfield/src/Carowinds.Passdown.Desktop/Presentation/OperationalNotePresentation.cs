@@ -102,17 +102,26 @@ public sealed record OperationalNoteDetailPresentation(
 /// </summary>
 internal static class OperationalNoteDateRangeFormatter
 {
-    public static string Format(OperationalNote note, OperationalNoteLifecycleState lifecycle, DateOnly referenceDate)
+    public static string Format(OperationalNote note, OperationalNoteLifecycleState lifecycle, DateOnly referenceDate) =>
+        Format(note.EffectiveFrom, note.EffectiveThrough, lifecycle, referenceDate);
+
+    /// <summary>
+    /// The primitive-field overload (Phase 11C Part L) — lets a caller with only
+    /// <c>EffectiveFrom</c>/<c>EffectiveThrough</c> (e.g. the Dashboard's lightweight
+    /// <see cref="Application.Dashboard.DashboardOperationalNoteItem"/>, which carries no full
+    /// <see cref="OperationalNote"/>) reuse this exact formatter instead of a second, competing one.
+    /// </summary>
+    public static string Format(DateOnly effectiveFrom, DateOnly? effectiveThrough, OperationalNoteLifecycleState lifecycle, DateOnly referenceDate)
     {
         // Upcoming (spec Part Q): lead with "Starts <date>" rather than a from/through range, since the
         // range hasn't begun yet and isn't the operationally relevant fact.
         if (lifecycle == OperationalNoteLifecycleState.Upcoming)
         {
-            return $"Starts {FormatDate(note.EffectiveFrom, referenceDate)}";
+            return $"Starts {FormatDate(effectiveFrom, referenceDate)}";
         }
 
-        var from = FormatDate(note.EffectiveFrom, referenceDate);
-        var through = note.EffectiveThrough is { } effectiveThrough ? FormatDate(effectiveThrough, referenceDate) : "Until resolved";
+        var from = FormatDate(effectiveFrom, referenceDate);
+        var through = effectiveThrough is { } through2 ? FormatDate(through2, referenceDate) : "Until resolved";
         return $"{from} – {through}";
     }
 

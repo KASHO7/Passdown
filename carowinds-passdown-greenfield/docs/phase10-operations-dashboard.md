@@ -1602,3 +1602,16 @@ and not implied to exist by anything above:
   derivation.
 
 Phase 11 has not started.
+
+---
+
+## Addendum — Phase 11C Dashboard integration
+
+Phase 11C (`docs/phase11-operational-notes.md`) added a second, distinct Dashboard panel, **"Active
+Operational Notes"**, summarizing persistent Operational Notes (Phase 11A/11B) relevant to today's
+Eastern date. The panel documented above as **"Operational Notes"** (today's Associate draft notes,
+Part H/J of this document) was renamed to **"Passdown Notes"** specifically to keep the two concepts
+distinguishable — its underlying data source (`AssociateDraftPayload.OperationalNotes`,
+`DashboardNotesSummary`) is otherwise unchanged. See `docs/phase11-operational-notes.md`'s own Phase
+11C section for the full read model, relevance/ordering reuse, navigation, and test details; this
+document's prior Phase 10A–10F history above is left as originally recorded.

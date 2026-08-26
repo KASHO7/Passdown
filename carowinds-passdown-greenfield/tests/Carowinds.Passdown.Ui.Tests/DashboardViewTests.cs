@@ -4,6 +4,7 @@ using Avalonia.LogicalTree;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Finalization;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Desktop.ViewModels;
@@ -57,7 +58,13 @@ public class DashboardViewTests
         Assert.Contains("Today's Operation", names);
         Assert.Contains("Passdown Status", names);
         Assert.Contains("Today at a Glance", names);
-        Assert.Contains("Operational Notes", names);
+
+        // Phase 11C Part AF/AH: renamed from "Operational Notes" to "Passdown Notes" specifically
+        // because this phase introduces a second, distinct "Active operational notes" panel next to
+        // it (persistent, supervisor-managed notes) — the two must never share a name or heading.
+        Assert.Contains("Passdown Notes", names);
+        Assert.Contains("Active operational notes", names);
+        Assert.Contains("Open operational notes", names);
     }
 
     // Phase 10E Part R: a dedicated busy indicator for Check Online (distinct from the header's
@@ -331,5 +338,200 @@ public class DashboardViewTests
 
         Assert.Same(viewModel, view.DataContext);
         Assert.NotEqual("Open", viewModel.Presentation!.ParkStatusBadgeText);
+    }
+
+    // ==================================================================================
+    // Phase 11C: Active Operational Notes — the Dashboard's read-only persistent-notes summary.
+    // ==================================================================================
+
+    private static DashboardOperationalNoteItem NoteItem(string title, OperationalNoteCategory category = OperationalNoteCategory.General, OperationalNotePriority priority = OperationalNotePriority.Normal) =>
+        new(Guid.NewGuid(), title, category, priority, FakeOperationsDashboardService.DefaultDate, null);
+
+    [Fact]
+    public async Task DashboardView_NoActiveOperationalNotes_ConstructsWithEmptyState()
+    {
+        var viewModel = new OperationsDashboardViewModel(new FakeOperationsDashboardService());
+        await viewModel.PendingLoad;
+
+        var view = new DashboardView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+        Assert.True(viewModel.Presentation!.ActiveOperationalNotes.ShowEmptyState);
+    }
+
+    [Fact]
+    public async Task DashboardView_OneImportantActiveOperationalNote_ConstructsWithoutError()
+    {
+        var item = NoteItem("South Gate scanner #3 out of service", OperationalNoteCategory.Equipment, OperationalNotePriority.Important);
+        var service = new FakeOperationsDashboardService
+        {
+            SnapshotFactory = date => FakeOperationsDashboardService.DefaultSnapshot(date) with
+            {
+                ActiveOperationalNotes = new DashboardOperationalNotesSummary(1, 1, [item], false),
+            },
+        };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        var view = new DashboardView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+        Assert.Single(viewModel.Presentation!.ActiveOperationalNotes.Items);
+        Assert.True(viewModel.Presentation!.ActiveOperationalNotes.Items[0].IsImportant);
+    }
+
+    [Fact]
+    public async Task DashboardView_ThreeActiveOperationalNotes_NoOverflowIndicator()
+    {
+        var items = new[] { NoteItem("Note 1"), NoteItem("Note 2"), NoteItem("Note 3") };
+        var service = new FakeOperationsDashboardService
+        {
+            SnapshotFactory = date => FakeOperationsDashboardService.DefaultSnapshot(date) with
+            {
+                ActiveOperationalNotes = new DashboardOperationalNotesSummary(3, 0, items, false),
+            },
+        };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        var view = new DashboardView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+        Assert.False(viewModel.Presentation!.ActiveOperationalNotes.HasOverflow);
+    }
+
+    // Ten-plus relevant notes: the preview stays bounded and the overflow indicator never hides that
+    // more notes exist (Phase 11C Part H).
+    [Fact]
+    public async Task DashboardView_TenPlusActiveOperationalNotes_ShowsBoundedPreviewWithOverflow()
+    {
+        var previewItems = new[] { NoteItem("Note 1"), NoteItem("Note 2"), NoteItem("Note 3") };
+        var service = new FakeOperationsDashboardService
+        {
+            SnapshotFactory = date => FakeOperationsDashboardService.DefaultSnapshot(date) with
+            {
+                ActiveOperationalNotes = new DashboardOperationalNotesSummary(12, 2, previewItems, false),
+            },
+        };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        var view = new DashboardView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+        Assert.Equal(3, viewModel.Presentation!.ActiveOperationalNotes.Items.Count);
+        Assert.True(viewModel.Presentation!.ActiveOperationalNotes.HasOverflow);
+        Assert.Contains("9", viewModel.Presentation!.ActiveOperationalNotes.OverflowText);
+    }
+
+    // A very long title must still construct cleanly — presentation-only bounding via TextTrimming in
+    // the view, never a persisted truncation (Phase 11C Part AG).
+    [Fact]
+    public async Task DashboardView_LongActiveOperationalNoteTitle_ConstructsWithoutError()
+    {
+        var longTitle = new string('a', 500);
+        var item = NoteItem(longTitle);
+        var service = new FakeOperationsDashboardService
+        {
+            SnapshotFactory = date => FakeOperationsDashboardService.DefaultSnapshot(date) with
+            {
+                ActiveOperationalNotes = new DashboardOperationalNotesSummary(1, 0, [item], false),
+            },
+        };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        var view = new DashboardView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+        Assert.Equal(longTitle, viewModel.Presentation!.ActiveOperationalNotes.Items[0].Title);
+    }
+
+    // Both note concepts populated at once (Passdown Notes + Active Operational Notes) construct
+    // cleanly side by side — proving the two never collide or get merged into one list.
+    [Fact]
+    public async Task DashboardView_PassdownNotesAndActiveOperationalNotesBothPresent_ConstructsWithoutError()
+    {
+        var item = NoteItem("Group check-in support at North Gate", OperationalNoteCategory.Staffing);
+        var service = new FakeOperationsDashboardService
+        {
+            SnapshotFactory = date => FakeOperationsDashboardService.DefaultSnapshot(date) with
+            {
+                Notes = new DashboardNotesSummary(true, ["Gate 3 closed.", "VIP tour at 11."], 2),
+                ActiveOperationalNotes = new DashboardOperationalNotesSummary(1, 0, [item], false),
+            },
+        };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        var view = new DashboardView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+        Assert.True(viewModel.Presentation!.NotesPreviewLines.Count > 0);
+        Assert.Single(viewModel.Presentation!.ActiveOperationalNotes.Items);
+    }
+
+    // Phase 11C Part AI: a local operational-notes load failure must not crash the screen or blank the
+    // rest of the Dashboard.
+    [Fact]
+    public async Task DashboardView_ActiveOperationalNotesLoadFailed_ConstructsWithErrorMessage()
+    {
+        var service = new FakeOperationsDashboardService
+        {
+            SnapshotFactory = date => FakeOperationsDashboardService.DefaultSnapshot(date) with
+            {
+                ActiveOperationalNotes = new DashboardOperationalNotesSummary(0, 0, [], true),
+            },
+        };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        var view = new DashboardView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+        Assert.True(viewModel.Presentation!.ActiveOperationalNotes.LoadFailed);
+        Assert.False(viewModel.Presentation!.ActiveOperationalNotes.ShowEmptyState);
+    }
+
+    // A Data Status warning alongside active operational notes must still construct cleanly — the two
+    // surfaces are independent (Phase 11C Part AB).
+    [Fact]
+    public async Task DashboardView_DataStatusWarningPlusActiveOperationalNotes_ConstructsWithoutError()
+    {
+        var item = NoteItem("Note during a data issue", OperationalNoteCategory.Operations, OperationalNotePriority.Important);
+        var service = new FakeOperationsDashboardService
+        {
+            SnapshotFactory = date =>
+            {
+                var snapshot = FakeOperationsDashboardService.DefaultSnapshot(date);
+                return snapshot with
+                {
+                    DataHealth = snapshot.DataHealth with { OverallStatus = DashboardOverallDataStatus.VerificationIssue },
+                    ActiveOperationalNotes = new DashboardOperationalNotesSummary(1, 1, [item], false),
+                };
+            },
+        };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        var view = new DashboardView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+        Assert.Equal(DashboardOverallDataStatus.VerificationIssue, viewModel.Snapshot!.DataHealth.OverallStatus);
+        Assert.Single(viewModel.Presentation!.ActiveOperationalNotes.Items);
+    }
+
+    // Phase 11C Part O: "Open Operational Notes" raises its own navigation event.
+    [Fact]
+    public async Task OpenOperationalNotesCommand_RaisesOpenOperationalNotesRequested()
+    {
+        var viewModel = new OperationsDashboardViewModel(new FakeOperationsDashboardService());
+        await viewModel.PendingLoad;
+
+        var raised = false;
+        viewModel.OpenOperationalNotesRequested += (_, _) => raised = true;
+        viewModel.OpenOperationalNotesCommand.Execute(null);
+
+        Assert.True(raised);
     }
 }

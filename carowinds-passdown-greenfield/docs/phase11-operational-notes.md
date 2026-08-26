@@ -633,3 +633,279 @@ tests listed above), 0 failed, 0 skipped. No live internet was used or required.
 `dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors.
 `dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — see the Phase 11A commit's
 final report for the exact count. No live internet was used or required.
+
+---
+
+# Phase 11C — Dashboard integration for persistent Operational Notes
+
+Phase 11C surfaces persistent Operational Notes (11A/11B) on the Operations Dashboard: a compact,
+read-only "Active Operational Notes" panel answering "are there any persistent operational notes I
+need to know about today?" This is strictly a **read-only summary integration** — no selection UI, no
+"Include in today's passdown" affordance, and no code path that copies a persistent note's content
+into the Associate draft. That remains Phase 11D's explicit, user-driven work.
+
+## Two distinct note concepts, kept visually and architecturally separate (Part A/R/AF)
+
+The Dashboard already had an "Operational Notes" preview sourced from today's Associate draft
+(`DashboardNotesSummary`, Phase 10A). Phase 11C adds a second, unrelated concept —
+`DashboardOperationalNotesSummary`, built from the persistent `operational_notes` table — and
+deliberately never merges the two into one list or one heading. The existing panel was renamed from
+"Operational Notes" to **"Passdown Notes"** specifically because the new panel needed the "Operational
+Notes" name for the persistent concept (**"Active Operational Notes"**); nothing about
+`AssociateDraftPayload.OperationalNotes` itself was renamed, only the Dashboard's own display heading
+and its `AutomationProperties.Name` (`DashboardView.axaml`).
+
+## Read model (Part B, `Application/Dashboard/OperationsDashboardSnapshot.cs`)
+
+```csharp
+public sealed record DashboardOperationalNoteItem(
+    Guid Id, string Title, OperationalNoteCategory Category, OperationalNotePriority Priority,
+    DateOnly EffectiveFrom, DateOnly? EffectiveThrough);
+
+public sealed record DashboardOperationalNotesSummary(
+    int Count, int ImportantCount, IReadOnlyList<DashboardOperationalNoteItem> Items, bool LoadFailed)
+{
+    public const int MaxPreviewCount = 3;
+    public static DashboardOperationalNotesSummary Empty { get; } = new(0, 0, [], false);
+}
+```
+
+`OperationsDashboardSnapshot` gained one new field, `ActiveOperationalNotes`. Deliberately no `Body`
+(Part I — a dense summary surface, not the full detail Operational Notes Manager already shows) and
+no pre-formatted display strings (Part B/K/L — the Desktop presentation layer owns all wording, same
+separation every other snapshot field already follows). `Items` is a plain Application-layer type
+(enums/`DateOnly`/`string`/`Guid` only) — no Avalonia dependency.
+
+## Service dependency (Part C, `Application/Dashboard/OperationsDashboardService.cs`)
+
+`OperationsDashboardService` gained one new constructor dependency, `IOperationalNotesService`
+(already registered — no new DI registration was needed). `BuildActiveOperationalNotesAsync` makes
+**exactly one** call to the existing `IOperationalNotesService.ListRelevantForDateAsync(operatingDate)`
+per snapshot build (Part AK — no N+1 per rendered row, proven by
+`OperationsDashboardServiceTests.LoadAsync_QueriesOperationalNotesExactlyOncePerLoad` wrapping the
+real service and counting calls) and does not re-implement relevance or ordering — both come from
+11A's `OperationalNoteRelevance`/`OperationalNoteOrdering.ByRelevance` transitively through that one
+call (Part C/F).
+
+## Eastern Today semantics (Part D)
+
+Relevance is evaluated against the same `operatingDate` `BuildSnapshotAsync` already uses for every
+other field — Dashboard's own Eastern "today" via `GetTodayAsync()` → `TodayEastern()`, never
+`AssociateViewModel.SelectedDate`. `OperationsDashboardService` has no dependency capable of reading
+Associate's selected date in the first place.
+`OperationsDashboardServiceTests.GetTodayAsync_RelevantNote_UsesEasternTodayForOperationalNoteRelevance`
+seeds a note effective for the Eastern calendar date near a UTC day boundary and asserts it appears,
+mirroring the same late-UTC-clock technique Phase 10A's own Eastern-today test uses.
+
+## Relevance and ordering (Part E/F)
+
+Both are reused, never reimplemented: `IOperationalNotesService.ListRelevantForDateAsync` already
+applies `OperationalNoteRelevance.IsRelevantForDate` (Status Active; `EffectiveFrom <= today`;
+`EffectiveThrough is null or >= today`) and `OperationalNoteOrdering.ByRelevance` (Important first,
+then `EffectiveFrom` ascending, then `CreatedAtUtc`, then `Id`). Upcoming, Expired, and Resolved notes
+never appear — covered by
+`LoadAsync_UpcomingNote_NotIncluded`/`LoadAsync_NoteEndingYesterday_NotIncluded`/`LoadAsync_ResolvedNote_NotIncluded`,
+plus boundary cases (`LoadAsync_NoteEndingToday_Included`, a note starting today, a `null`
+`EffectiveThrough`) and the Important-sorts-first case
+(`LoadAsync_ImportantNoteSortsBeforeNormal_UsingSharedRelevanceOrdering`).
+
+## Preview limit and overflow (Part H)
+
+`DashboardOperationalNotesSummary.MaxPreviewCount = 3` — the Dashboard shows at most the first 3
+relevant notes (in relevance order), while `Count` always carries the true total.
+`DashboardOperationalNotesPresentation.Build` computes `HasOverflow`/`OverflowText` (`"+ N more active
+notes"`) from `Count - Items.Count`, so a supervisor is never left thinking there are only 3 relevant
+notes when more exist (`LoadAsync_MoreRelevantNotesThanPreviewLimit_BoundsItemsButKeepsTrueCount`,
+`DashboardView_TenPlusActiveOperationalNotes_ShowsBoundedPreviewWithOverflow`).
+
+## Body-preview decision (Part I)
+
+**Title only**, plus category/priority/date-range metadata — no `Body` field on
+`DashboardOperationalNoteItem` at all. This was the preferred option in the spec and was implemented
+as-is: body content can be long, Operational Notes Manager already shows full detail, and the
+Dashboard's density goal (Part AG) is better served by more rows of title-only content than by fewer
+rows with wrapped body text.
+
+## Important-priority presentation (Part J)
+
+Important sorts first (via the shared ordering above) and is communicated with the word "Important"
+as a text badge (`TextBlock.priorityText.important`, reusing the exact style class/brush
+`OperationalNotesView` already established in 11B) — never red/alarm styling. A Normal-priority row
+shows no priority text at all in the compact visual layout (matching the spec's own wireframe
+example), but `DashboardOperationalNoteItemPresentation.AccessibleSummary` still names every note's
+priority/category/title/date-range in text for automation (Part AH).
+
+## Category/date-range presentation reuse (Part K/L)
+
+`DashboardOperationalNoteItemPresentation.Build` reuses `OperationalNoteCategoryOption.For`/
+`OperationalNotePriorityOption.For` (11B's centralized enum-to-label mapping) directly — no second
+mapping. Date-range text reuses `OperationalNoteDateRangeFormatter`, extended with one new overload
+taking primitive `EffectiveFrom`/`EffectiveThrough` fields (the original overload now delegates to it)
+so the Dashboard's lightweight `DashboardOperationalNoteItem` — which carries no full `OperationalNote`
+— can call the exact same formatter Operational Notes Manager uses, rather than a second, competing
+date formatter.
+
+## Empty and error states (Part M/AI)
+
+`DashboardOperationalNotesPresentation.ShowEmptyState` is true only when the query succeeded and
+returned nothing relevant ("No active operational notes for today."); `LoadFailed` is a distinct state
+("Unable to load operational notes.") and the two are mutually exclusive by construction. A failure
+inside `IOperationalNotesService.ListRelevantForDateAsync` is caught in
+`OperationsDashboardService.BuildActiveOperationalNotesAsync` alone — one targeted try/catch, not a
+general partial-result framework — so the rest of the Dashboard snapshot (park status, passdown
+status, Data Status, etc.) still loads normally even if the local notes query throws
+(`LoadAsync_OperationalNotesQueryFails_DegradesOnlyThatSectionWithoutFailingSnapshot`).
+
+## Navigation: Open Operational Notes (Part O/P/Q)
+
+`OperationsDashboardViewModel` gained `OpenOperationalNotesRequested` (event) and
+`OpenOperationalNotesCommand`, mirroring `OpenHistoryCommand`'s shape exactly.
+`MainViewModel` — the sole owner of top-level navigation — wires it to the existing
+`ShowOperationalNotesSection()`, the same command the top-level nav bar's own "Operational Notes"
+button already uses. This is deliberately **generic navigation**, not a "View Today's Active Notes"
+deep link that would force `OperationalNotesViewModel.LifecycleFilter` to `Active` — that variant was
+evaluated (Part Q) and deferred: forcing the filter would silently discard whatever filter/selection a
+supervisor already had open. `OperationalNotesViewModel` is a singleton kept alive for the app's
+lifetime (unchanged since 11B), so its filter/selection state survives the round trip automatically —
+no new state-preservation code was needed, only the navigation wiring itself
+(`DashboardOpenOperationalNotesCommand_PreservesExistingLifecycleFilter`).
+
+## Reload / navigation-refresh behavior (Part U/V/W/X/Y/Z/AA)
+
+`OperationsDashboardViewModel.ReloadCommand` is unchanged mechanically (still calls
+`IOperationsDashboardService.GetTodayAsync()`), but because `BuildSnapshotAsync` now also recomputes
+`ActiveOperationalNotes` from the same local query, pressing **Reload** naturally picks up anything
+changed in Operational Notes Manager since the last load — a newly created relevant note, a resolved
+note dropping out, or an expired note extended back into relevance — with no polling or event-bus
+infrastructure added, the same pattern Phase 10C already established for "Reload picks up newly
+finalized metadata." No automatic/event-driven refresh was added; a supervisor revisits Dashboard or
+presses Reload to see a change made elsewhere, exactly like every other Phase 10 surface.
+
+## No automatic passdown inclusion (Part S) — the critical regression guarantee
+
+Loading or reloading the Dashboard, with any number of relevant persistent notes present, never reads
+`AssociateDraftPayload.OperationalNotes`, never calls `IAssociatePassdownService.SaveAsync`, and never
+touches a finalized snapshot or PDF.
+`LoadAsync_PersistentNotesPresent_NeverMutatesAssociateDraftNotes` seeds both a saved Associate draft
+notes list and a persistent note whose title could plausibly collide, then asserts the draft's own
+preview lines are completely unaffected. There is no "Include"/"Add to Passdown"/"Use in Passdown"/
+"Copy to Notes" button anywhere in this phase's UI (Part T) — the only action on a persistent note from
+the Dashboard is **Open Operational Notes**, which only navigates.
+
+## Data Status and History independence (Part AB/AC)
+
+`DashboardDataHealthSummary`/`DashboardOverallDataStatus` (Phase 10D) are entirely unaffected —
+`OperationsDashboardService.BuildDataHealth` was not touched, and persistent notes are never counted
+as a retrieval source, given a confidence/freshness classification, or included in
+`DashboardSourceStatusEntry`. `LatestFinalized`/History integration (Phase 10C) is likewise untouched —
+no persistent-note field was added anywhere near `FinalizedPassdownSummary` or the finalization path.
+
+## Local-only guarantee (Part AJ)
+
+`IOperationalNotesService`/`SqliteOperationalNoteRepository` already had no HTTP/Playwright/browser
+dependency (11A); `OperationsDashboardService`'s own no-refresh-dependency reflection test
+(`Constructor_HasNoRefreshOrchestratorOrRetrievalDependency`) still passes unchanged with the new
+constructor parameter added, since `IOperationalNotesService` itself carries no such dependency either.
+
+## Performance (Part AK)
+
+One `ListRelevantForDateAsync` call per Dashboard load, already bounded server-side by
+`SqliteOperationalNoteRepository.ListRelevantForDateAsync`'s own status/date-range SQL filter (11A) —
+never one query per rendered preview row. Verified directly
+(`LoadAsync_QueriesOperationalNotesExactlyOncePerLoad`), not just implied by code inspection.
+
+## Privacy (Part AD)
+
+Note titles are intentionally shown in the Dashboard UI (an intended operational surface, same as
+Operational Notes Manager) — but nothing about this phase touches
+`SqliteDatabaseDiagnosticsProvider` or any log call; no title/body was added to any diagnostic or log
+message anywhere in `OperationsDashboardService`/`OperationsDashboardViewModel`.
+
+## Accessibility (Part AH)
+
+`AutomationProperties.Name` values added/changed: `"Passdown Notes"` (renamed from `"Operational
+Notes"`), `"Active operational notes"` (the new panel), `"Open operational notes"` (the new
+navigation button). Each preview row carries a composed `AutomationProperties.Name` from
+`DashboardOperationalNoteItemPresentation.AccessibleSummary` (e.g. `"Important. Equipment. South Gate
+scanner #3 out of service. Aug 20 – Until resolved."`) so priority/category/title/date-range are always
+available in text regardless of the compact visual layout that only shows "Important" for Important
+notes. No new focusable control besides the one navigation button; the preview rows themselves are
+plain `TextBlock`s inside a non-interactive `ItemsControl`, not tab stops.
+
+## Desktop density / layout (Part AE/AG)
+
+The Dashboard's prior `[Operational Notes | Latest Finalized]` two-column row was restructured to
+`[Passdown Notes | Active Operational Notes]` on one row, with **Latest Finalized** moved to its own
+full-width row directly below — the arrangement the spec itself suggested, chosen because it avoids
+squeezing three panels into one row and keeps each preview row compact (category + optional
+"Important" badge, title, date-range text — three short lines, not a card). At 1280×860 this adds one
+row's worth of height versus Phase 10's layout; the page's existing `ScrollViewer` (unchanged) absorbs
+that at 960×640.
+
+## Schema (Part AO)
+
+No migration was added. Database schema remains **10**; snapshot schema remains **1** — this
+integration is entirely read-only against 11A's already-existing table.
+
+## Visual validation (Part AN) — PARTIAL
+
+Same constraint as every prior Phase 9/10/11 document: no pixel/bitmap screenshot renderer exists in
+this codebase. Every representative state from the spec's list was exercised through Avalonia's real
+XAML loader in `DashboardViewTests` instead: no active notes (empty state), one Important note, three
+active notes (no overflow), 10+ active notes (bounded preview + overflow text), a 500-character title,
+both note concepts populated together, a load-failure state, and a Data Status warning combined with
+active notes. Recorded honestly as **PARTIAL**, matching every prior phase's precedent — actual
+on-screen appearance should be spot-checked in a Windows 11 VM per `CLAUDE.md`'s platform guidance
+before this ships.
+
+## Deferred work (11D–11F, and evaluated-and-rejected items)
+
+- **Phase 11D** — explicit, per-note, user-selected inclusion into an Associate Passdown draft. No
+  code path toward this exists yet; `DashboardOperationalNoteItem`/`DashboardOperationalNotesSummary`
+  carry no "included"/"selected" state of any kind.
+- **Phase 11E** — category/priority filtering, carry-forward, further Operational Notes Manager UX
+  polish.
+- **Phase 11F** — final Phase 11 audit and release rebuild (the release ZIP was intentionally not
+  rebuilt by this phase).
+- A **"View Today's Active Notes" deep link** that would force `OperationalNotesViewModel.LifecycleFilter`
+  to `Active` (Part Q) — evaluated and deferred in favor of generic "Open Operational Notes" navigation,
+  which preserves whatever filter/selection state a supervisor already had.
+- Alerts, an Operations Calendar, and the Manager workflow remain out of scope, unchanged from 11A/11B/
+  `CLAUDE.md`.
+
+## Tests added (Phase 11C)
+
+- `Carowinds.Passdown.Application.Tests/Dashboard/OperationsDashboardServiceTests.cs` — 12 new cases:
+  a relevant Active note appears; a note ending today is included, a note ending yesterday is not; an
+  Upcoming note is excluded; a Resolved note is excluded even when its date range covers today;
+  Important sorts before Normal via the shared ordering; the preview is bounded to `MaxPreviewCount`
+  while `Count` keeps the true total; zero relevant notes reports an empty (non-failed) summary;
+  Eastern-today resolution (independent of Associate's own date, which this service cannot read
+  anyway); persistent notes present never mutate the Associate draft's own notes; a query failure
+  degrades only the operational-notes section without failing the rest of the snapshot; and the
+  relevance query runs exactly once per load.
+- `Carowinds.Passdown.Ui.Tests/DashboardOperationalNotesPresentationTests.cs` (new file) — 10 cases:
+  empty state, load-failed state (distinct from empty), centralized category/priority label reuse,
+  null/non-null `EffectiveThrough` date-range text, overflow computation (present and absent),
+  accessible-summary composition for Normal vs. Important notes, and an unbounded (presentation-layer)
+  long title.
+- `Carowinds.Passdown.Ui.Tests/DashboardViewTests.cs` — 9 new cases: no active notes, one Important
+  note, three active notes (no overflow), 10+ notes (bounded preview + overflow), a long title, both
+  note concepts populated together, a load-failure state, a Data Status warning combined with active
+  notes, and the `OpenOperationalNotesCommand` navigation-event test; the existing automation-name
+  assertion was updated for the `"Passdown Notes"`/`"Active operational notes"`/`"Open operational
+  notes"` names.
+- `Carowinds.Passdown.Ui.Tests/MainViewModelNavigationTests.cs` — 2 new cases: Dashboard's "Open
+  Operational Notes" navigates to the Operational Notes section, and does so without disturbing an
+  already-selected `LifecycleFilter`.
+- `Carowinds.Passdown.Ui.Tests/TestSupport/FakeOperationsDashboardService.cs` — `DefaultSnapshot` now
+  populates `ActiveOperationalNotes: DashboardOperationalNotesSummary.Empty`.
+
+33 new tests total (1103 Phase 11B baseline + 33 = 1136: 12 Application + 21 Ui).
+
+## Full validation (Phase 11C)
+
+`dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors.
+`dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — **1136/1136** passed (66 Domain +
+309 Application + 82 Documents + 317 Infrastructure + 362 Ui), run twice to confirm no flakiness, 0
+failed, 0 skipped. No live internet was used or required.

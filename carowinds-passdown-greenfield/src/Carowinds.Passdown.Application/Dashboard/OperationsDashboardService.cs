@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Time;
@@ -11,14 +12,19 @@ namespace Carowinds.Passdown.Application.Dashboard;
 /// <see cref="IOperationsDashboardService"/> built entirely as a projection over existing
 /// Application-layer state (Phase 10A Part C/J):
 /// <see cref="IAssociatePassdownService.LoadAssociateDateAsync"/> for the composed hours/draft/
-/// verification state (already local-only by its own contract) and
+/// verification state (already local-only by its own contract),
 /// <see cref="IFinalizedPassdownRepository"/> for finalization metadata only — never
 /// <c>GetByDateAsync</c>, so a dashboard load can never materialize a historical PDF blob (Phase
-/// 10A Part S). No HTTP/Playwright/Task Scheduler dependency exists on this type by construction.
+/// 10A Part S) — and (Phase 11C Part C) <see cref="IOperationalNotesService"/> for persistent
+/// Operational Notes relevant to the same operating date, reusing its existing
+/// <see cref="IOperationalNotesService.ListRelevantForDateAsync"/> relevance/ordering rules rather
+/// than a second implementation. No HTTP/Playwright/Task Scheduler dependency exists on this type by
+/// construction.
 /// </summary>
 public sealed class OperationsDashboardService(
     IAssociatePassdownService associatePassdownService,
     IFinalizedPassdownRepository finalizedPassdownRepository,
+    IOperationalNotesService operationalNotesService,
     IClock clock) : IOperationsDashboardService
 {
     public Task<OperationsDashboardSnapshot> GetTodayAsync(CancellationToken cancellationToken = default) =>
@@ -57,6 +63,7 @@ public sealed class OperationsDashboardService(
             || workspace.Draft.EarlyRideTime.ParticipatingAttractions.Count > 0;
 
         var notes = BuildNotesSummary(workspace.Draft.OperationalNotes);
+        var activeOperationalNotes = await BuildActiveOperationalNotesAsync(operatingDate, cancellationToken).ConfigureAwait(false);
         var dataHealth = BuildDataHealth(workspace);
 
         return new OperationsDashboardSnapshot(
@@ -70,9 +77,42 @@ public sealed class OperationsDashboardService(
             workspace.Draft.DailyFeatureType,
             workspace.Draft.DailyFeatureText,
             notes,
+            activeOperationalNotes,
             dataHealth,
             latestFinalized,
             clock.UtcNow);
+    }
+
+    /// <summary>
+    /// Persistent Operational Notes relevant to <paramref name="operatingDate"/> (Phase 11C Part
+    /// B/C/D/E) — one call to the existing, authoritative
+    /// <see cref="IOperationalNotesService.ListRelevantForDateAsync"/> (already Important-first
+    /// ordered per <see cref="OperationalNoteOrdering.ByRelevance"/> — never a second relevance or
+    /// ordering rule), bounded here to <see cref="DashboardOperationalNotesSummary.MaxPreviewCount"/>
+    /// preview items while <see cref="DashboardOperationalNotesSummary.Count"/> keeps the true total
+    /// (Part H). A failure querying local persistent notes degrades only this section (Part AI)
+    /// rather than the whole Dashboard snapshot — deliberately just one try/catch, not a general
+    /// partial-result framework, since nothing else on the Dashboard currently needs one.
+    /// </summary>
+    private async Task<DashboardOperationalNotesSummary> BuildActiveOperationalNotesAsync(DateOnly operatingDate, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<OperationalNote> relevant;
+        try
+        {
+            relevant = await operationalNotesService.ListRelevantForDateAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return DashboardOperationalNotesSummary.Empty with { LoadFailed = true };
+        }
+
+        var importantCount = relevant.Count(note => note.Priority == OperationalNotePriority.Important);
+        var items = relevant
+            .Take(DashboardOperationalNotesSummary.MaxPreviewCount)
+            .Select(note => new DashboardOperationalNoteItem(note.Id, note.Title, note.Category, note.Priority, note.EffectiveFrom, note.EffectiveThrough))
+            .ToList();
+
+        return new DashboardOperationalNotesSummary(relevant.Count, importantCount, items, LoadFailed: false);
     }
 
     private DateOnly TodayEastern() => DateOnly.FromDateTime(EasternTimeZone.ConvertFromUtc(clock.UtcNow).DateTime);

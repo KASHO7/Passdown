@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Domain;
 
@@ -124,6 +125,46 @@ public sealed record DashboardNotesSummary(bool HasNotes, IReadOnlyList<string> 
 }
 
 /// <summary>
+/// One persistent <see cref="OperationalNote"/>'s lightweight Dashboard preview (Phase 11C Part B) —
+/// title-first, no <see cref="OperationalNote.Body"/> (Part I: the Dashboard is a summary surface;
+/// full detail lives in Operational Notes Manager). Carries the raw enum/date fields rather than
+/// pre-formatted strings so the Desktop presentation layer owns all wording (Part K/L), matching how
+/// every other <c>OperationsDashboardSnapshot</c> field already separates data from display text.
+/// </summary>
+public sealed record DashboardOperationalNoteItem(
+    Guid Id,
+    string Title,
+    OperationalNoteCategory Category,
+    OperationalNotePriority Priority,
+    DateOnly EffectiveFrom,
+    DateOnly? EffectiveThrough);
+
+/// <summary>
+/// Persistent Operational Notes relevant to today's Eastern date (Phase 11C Part B/D/E) — an entirely
+/// distinct concept from <see cref="DashboardNotesSummary"/> (today's own Associate draft notes, Part
+/// A/R): this summarizes the separate, supervisor-managed <see cref="OperationalNote"/> table instead.
+/// Built from exactly one <see cref="OperationalNotes.IOperationalNotesService.ListRelevantForDateAsync"/>
+/// call (Part C/AK — never a second relevance/ordering implementation); <see cref="Items"/> is already
+/// bounded to <see cref="MaxPreviewCount"/> in the shared <see cref="OperationalNoteOrdering.ByRelevance"/>
+/// order (Part F/H), while <see cref="Count"/> is the true total so the Desktop layer can show an
+/// overflow indicator without ever hiding that more notes exist. Persistent notes are suggestions only
+/// — nothing here is ever consumed to mutate an Associate draft, PDF, or finalized History record (Part
+/// S/T). <see cref="LoadFailed"/> lets this one section degrade independently if the local notes query
+/// fails, without failing the rest of the Dashboard snapshot (Part AI).
+/// </summary>
+public sealed record DashboardOperationalNotesSummary(
+    int Count,
+    int ImportantCount,
+    IReadOnlyList<DashboardOperationalNoteItem> Items,
+    bool LoadFailed)
+{
+    /// <summary>Dashboard preview bound (Phase 11C Part H) — a summary surface, not a full list; every note remains one click away via Operational Notes Manager.</summary>
+    public const int MaxPreviewCount = 3;
+
+    public static DashboardOperationalNotesSummary Empty { get; } = new(0, 0, [], false);
+}
+
+/// <summary>
 /// The Application-layer projection a supervisor's Operations Dashboard is built from (Phase 10A
 /// Part E) — a summary over already-composed <see cref="AssociateWorkspace"/> state and existing
 /// finalization metadata, never a second business-rule implementation of park hours, freshness,
@@ -150,6 +191,7 @@ public sealed record OperationsDashboardSnapshot(
     DailyFeatureType? DailyFeatureType,
     string? DailyFeatureText,
     DashboardNotesSummary Notes,
+    DashboardOperationalNotesSummary ActiveOperationalNotes,
     DashboardDataHealthSummary DataHealth,
     FinalizedPassdownSummary? LatestFinalized,
     DateTimeOffset GeneratedAt);

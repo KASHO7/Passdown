@@ -77,6 +77,19 @@
       <Setter Property="Margin" Value="0,0,0,4" />
     </Style>
 
+    <!-- Phase 11C Part J: the Priority text on an active-note preview row — restrained accent +
+         weight for Important, never alarm-style color, matching OperationalNotesView's own
+         convention exactly (the word "Important" itself communicates priority; this is reinforcement
+         only). -->
+    <Style Selector="TextBlock.priorityText">
+      <Setter Property="FontSize" Value="12.5" />
+      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+    </Style>
+    <Style Selector="TextBlock.priorityText.important">
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownChipAccentForegroundBrush}" />
+    </Style>
+
     <Style Selector="Button.primaryAction">
       <Setter Property="Background" Value="{DynamicResource PassdownAccentBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource PassdownHeaderForegroundBrush}" />
@@ -283,14 +296,18 @@
             </StackPanel>
           </Border>
 
-          <!-- Operational notes preview + Passdown/History integration surface, side by side (spec
-               Phase 10C Part B/P: the most recent finalized passdown's metadata only — never the
-               frozen snapshot or PDF). -->
+          <!-- Passdown Notes (today's Associate draft, unchanged from Phase 10) beside Active
+               Operational Notes (Phase 11C: persistent, supervisor-managed notes relevant today) —
+               kept as two clearly separate panels/headings so the two concepts can never be confused
+               (spec Part A/AF). The panel was renamed from "Operational Notes" to "Passdown Notes"
+               specifically because Phase 11C introduces a second, differently-scoped "operational
+               notes" concept next to it. -->
           <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
 
-            <Border Grid.Column="0" Classes="panel" AutomationProperties.Name="Operational Notes">
+            <Border Grid.Column="0" Classes="panel" AutomationProperties.Name="Passdown Notes">
               <StackPanel Spacing="6">
-                <TextBlock Text="Operational Notes" Classes="sectionTitle" Margin="0" />
+                <TextBlock Text="Passdown Notes" Classes="sectionTitle" Margin="0" />
+                <TextBlock Text="Today's notes entered for the Associate Passdown" Classes="muted" Margin="0,0,0,4" />
                 <TextBlock Text="{Binding Presentation.NotesSummaryText}" FontWeight="SemiBold" />
                 <ItemsControl ItemsSource="{Binding Presentation.NotesPreviewLines}">
                   <ItemsControl.ItemTemplate>
@@ -306,26 +323,73 @@
               </StackPanel>
             </Border>
 
-            <Border Grid.Column="1" Classes="panel" AutomationProperties.Name="Latest finalized passdown">
+            <!-- Phase 11C: persistent Operational Notes relevant to today's Eastern date (spec Part
+                 B/D/E) — read-only, no editor controls, no "Include"/"Add to Passdown" affordance
+                 (Part T). Bounded to the first 3 relevant notes (Part H) with an overflow line when
+                 more exist; Important notes sort first via the shared OperationalNoteOrdering.ByRelevance
+                 rule (Part F/J), communicated with text, never color-only. -->
+            <Border Grid.Column="1" Classes="panel" AutomationProperties.Name="Active operational notes">
               <StackPanel Spacing="6">
-                <TextBlock Text="Latest Finalized" Classes="sectionTitle" Margin="0" />
+                <TextBlock Text="Active Operational Notes" Classes="sectionTitle" Margin="0" />
+                <TextBlock Text="Persistent notes relevant today" Classes="muted" Margin="0,0,0,4" />
 
-                <StackPanel Spacing="2" IsVisible="{Binding Presentation.LatestFinalized, Converter={x:Static ObjectConverters.IsNotNull}}">
-                  <TextBlock Text="{Binding Presentation.LatestFinalized.PassdownDateText}" FontWeight="SemiBold" FontSize="15" />
-                  <TextBlock Text="{Binding Presentation.LatestFinalized.FinalizedText}" Classes="muted" />
-                  <TextBlock Text="{Binding Presentation.LatestFinalized.OriginText}" Classes="muted" />
-                </StackPanel>
-                <TextBlock Text="No finalized passdowns yet." Classes="muted"
-                           IsVisible="{Binding Presentation.LatestFinalized, Converter={x:Static ObjectConverters.IsNull}}" />
+                <TextBlock Text="Unable to load operational notes." Classes="fieldError"
+                           IsVisible="{Binding Presentation.ActiveOperationalNotes.LoadFailed}" />
 
-                <Button Content="Open History" Classes="secondaryAction" Margin="0,6,0,0" HorizontalAlignment="Left"
-                        Command="{Binding OpenHistoryCommand}"
-                        AutomationProperties.Name="Open History"
-                        AutomationProperties.HelpText="Opens the read-only Passdown History screen." />
+                <TextBlock Text="No active operational notes for today." Classes="muted"
+                           IsVisible="{Binding Presentation.ActiveOperationalNotes.ShowEmptyState}" />
+
+                <ItemsControl ItemsSource="{Binding Presentation.ActiveOperationalNotes.Items}"
+                              IsVisible="{Binding Presentation.ActiveOperationalNotes.HasNotes}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="presentation:DashboardOperationalNoteItemPresentation">
+                      <StackPanel Spacing="1" Margin="0,0,0,8"
+                                  AutomationProperties.Name="{Binding AccessibleSummary}">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                          <TextBlock Classes="priorityText important" Text="Important" IsVisible="{Binding IsImportant}" />
+                          <TextBlock Classes="priorityText important" Text="·" IsVisible="{Binding IsImportant}" />
+                          <TextBlock Text="{Binding CategoryLabel}" Classes="muted" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding Title}" TextWrapping="Wrap" FontWeight="SemiBold" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding DateRangeText}" Classes="muted" />
+                      </StackPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Text="{Binding Presentation.ActiveOperationalNotes.OverflowText}" Classes="muted"
+                           IsVisible="{Binding Presentation.ActiveOperationalNotes.HasOverflow}" />
+
+                <Button Content="Open Operational Notes" Classes="secondaryAction" Margin="0,6,0,0" HorizontalAlignment="Left"
+                        Command="{Binding OpenOperationalNotesCommand}"
+                        AutomationProperties.Name="Open operational notes"
+                        AutomationProperties.HelpText="Opens the Operational Notes manager." />
               </StackPanel>
             </Border>
 
           </Grid>
+
+          <!-- Latest Finalized (spec Phase 10C Part B/P) now spans full width on its own row — moved
+               out of the two-column row above to make space for Active Operational Notes (spec Part
+               AE), the most recent finalized passdown's metadata only, never the frozen snapshot or PDF. -->
+          <Border Classes="panel" AutomationProperties.Name="Latest finalized passdown">
+            <StackPanel Spacing="6">
+              <TextBlock Text="Latest Finalized" Classes="sectionTitle" Margin="0" />
+
+              <StackPanel Spacing="2" IsVisible="{Binding Presentation.LatestFinalized, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <TextBlock Text="{Binding Presentation.LatestFinalized.PassdownDateText}" FontWeight="SemiBold" FontSize="15" />
+                <TextBlock Text="{Binding Presentation.LatestFinalized.FinalizedText}" Classes="muted" />
+                <TextBlock Text="{Binding Presentation.LatestFinalized.OriginText}" Classes="muted" />
+              </StackPanel>
+              <TextBlock Text="No finalized passdowns yet." Classes="muted"
+                         IsVisible="{Binding Presentation.LatestFinalized, Converter={x:Static ObjectConverters.IsNull}}" />
+
+              <Button Content="Open History" Classes="secondaryAction" Margin="0,6,0,0" HorizontalAlignment="Left"
+                      Command="{Binding OpenHistoryCommand}"
+                      AutomationProperties.Name="Open History"
+                      AutomationProperties.HelpText="Opens the read-only Passdown History screen." />
+            </StackPanel>
+          </Border>
 
         </StackPanel>
 
