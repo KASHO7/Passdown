@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Documents.Tests.Associate.TestSupport;
 using Carowinds.Passdown.Domain;
@@ -117,6 +118,89 @@ public sealed class AssociatePassdownDocumentModelBuilderTests
         var hiddenWorkspace = workspace with { Draft = workspace.Draft with { SectionSelection = PassdownSectionSelection.AllIncluded with { IncludeOperationalNotes = false } } };
         var hidden = AssociatePassdownDocumentModelBuilder.Build(hiddenWorkspace, GeneratedAt);
         Assert.Empty(hidden.OperationalNotes);
+    }
+
+    private static AssociateOperationalNoteSelection ScannerSelection(OperationalNotePriority priority = OperationalNotePriority.Normal, string? body = "Direct guests to gate 2.") =>
+        new(Guid.NewGuid(), "South Gate scanner #3 out of service", body, OperationalNoteCategory.Equipment, priority,
+            new DateOnly(2026, 8, 20), null, new DateTimeOffset(2026, 8, 21, 6, 0, 0, TimeSpan.Zero));
+
+    // Phase 11D Part AB/L: selected persistent notes are combined with the manual daily notes into
+    // the same flat AssociatePassdownDocumentModel.OperationalNotes list (no new document-model or
+    // snapshot field — see docs/phase11-operational-notes.md's Phase 11D schema decision), manual
+    // notes first, then selected persistent notes in selection order.
+    [Fact]
+    public void SelectedOperationalNotes_AppendedAfterManualNotes_WithPersistentPrefix()
+    {
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        var manualCount = workspace.Draft.OperationalNotes.Count;
+        workspace = workspace with { Draft = workspace.Draft with { SelectedOperationalNotes = [ScannerSelection()] } };
+
+        var model = AssociatePassdownDocumentModelBuilder.Build(workspace, GeneratedAt);
+
+        Assert.Equal(manualCount + 1, model.OperationalNotes.Count);
+        Assert.Equal(workspace.Draft.OperationalNotes, model.OperationalNotes.Take(manualCount));
+        Assert.Equal("Persistent: South Gate scanner #3 out of service — Direct guests to gate 2.", model.OperationalNotes[manualCount]);
+    }
+
+    [Fact]
+    public void SelectedOperationalNotes_ImportantPriority_PrefixedWithImportant()
+    {
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        workspace = workspace with
+        {
+            Draft = workspace.Draft with { SelectedOperationalNotes = [ScannerSelection(OperationalNotePriority.Important, body: null)] },
+        };
+
+        var model = AssociatePassdownDocumentModelBuilder.Build(workspace, GeneratedAt);
+
+        Assert.Equal("Persistent (Important): South Gate scanner #3 out of service", model.OperationalNotes[^1]);
+    }
+
+    [Fact]
+    public void SelectedOperationalNotes_NoManualNotesButOneSelected_StillAppearsInPanel()
+    {
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        workspace = workspace with
+        {
+            Draft = workspace.Draft with { OperationalNotes = [], SelectedOperationalNotes = [ScannerSelection()] },
+        };
+
+        var model = AssociatePassdownDocumentModelBuilder.Build(workspace, GeneratedAt);
+
+        Assert.Single(model.OperationalNotes);
+    }
+
+    [Fact]
+    public void SelectedOperationalNotes_HiddenWithOperationalNotesSection()
+    {
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        workspace = workspace with
+        {
+            Draft = workspace.Draft with
+            {
+                SelectedOperationalNotes = [ScannerSelection()],
+                SectionSelection = PassdownSectionSelection.AllIncluded with { IncludeOperationalNotes = false },
+            },
+        };
+
+        var model = AssociatePassdownDocumentModelBuilder.Build(workspace, GeneratedAt);
+
+        Assert.Empty(model.OperationalNotes);
+    }
+
+    // Part AB: no internal id/timestamp/status ever reaches the PDF/snapshot display content.
+    [Fact]
+    public void SelectedOperationalNotes_NeverExposesSourceIdOrTimestamps()
+    {
+        var selection = ScannerSelection();
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        workspace = workspace with { Draft = workspace.Draft with { OperationalNotes = [], SelectedOperationalNotes = [selection] } };
+
+        var model = AssociatePassdownDocumentModelBuilder.Build(workspace, GeneratedAt);
+
+        var line = Assert.Single(model.OperationalNotes);
+        Assert.DoesNotContain(selection.SourceOperationalNoteId.ToString(), line);
+        Assert.DoesNotContain(selection.SelectedAtUtc.Year.ToString(), line);
     }
 
     /// <summary>Mandatory content has no corresponding flag in <see cref="PassdownSectionSelection"/> at all, so excluding every optional section cannot remove it from the model.</summary>

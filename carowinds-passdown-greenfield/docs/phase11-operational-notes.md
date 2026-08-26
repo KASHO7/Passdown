@@ -909,3 +909,379 @@ before this ships.
 `dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — **1136/1136** passed (66 Domain +
 309 Application + 82 Documents + 317 Infrastructure + 362 Ui), run twice to confirm no flakiness, 0
 failed, 0 skipped. No live internet was used or required.
+
+---
+
+# Phase 11D — Explicit inclusion of persistent Operational Notes into the Associate Passdown
+
+Phase 11D is the bridge 11A's own documentation named up front: the one, explicit, user-driven path
+from a persistent Operational Note (11A–11C) into one specific day's Associate Passdown. Every rule
+11A–11C already established stays true — **persistent notes are never automatically included in any
+daily passdown.** Selecting a note is a deliberate supervisor action taken from Associate → Notes,
+never a byproduct of viewing the Dashboard or the Operational Notes Manager.
+
+```
+persistent note
+    |
+    v
+relevant/available suggestion for the Associate-selected date
+    |
+    v
+supervisor clicks "Add"                          <- Phase 11D (this document)
+    |
+    v
+frozen copy becomes part of that day's Associate draft
+    |
+    v
+manual daily notes + frozen copies together in the PDF/finalized snapshot
+```
+
+## Inclusion model — frozen per-draft copy, not a live reference (Part A)
+
+`AssociateOperationalNoteSelection` (`Application/Associate/AssociateDraftPayload.cs`):
+
+```csharp
+public sealed record AssociateOperationalNoteSelection(
+    Guid SourceOperationalNoteId,
+    string Title,
+    string? Body,
+    OperationalNoteCategory Category,
+    OperationalNotePriority Priority,
+    DateOnly EffectiveFrom,
+    DateOnly? EffectiveThrough,
+    DateTimeOffset SelectedAtUtc);
+```
+
+`AssociateDraftPayload` gained one new field, `SelectedOperationalNotes: IReadOnlyList<AssociateOperationalNoteSelection>`.
+`SourceOperationalNoteId` is retained only as source identity for duplicate-selection prevention (Part
+H) — nothing in the Associate draft, PDF, or finalized snapshot ever re-reads the live
+`operational_notes` row through it. Every other field is a plain copied value, frozen at the moment of
+selection (Part B).
+
+## Selection-time freeze and no silent resync (Parts B/C)
+
+`AssociatePassdownService.SelectOperationalNoteAsync` (`Application/Associate/AssociatePassdownService.cs`)
+is the one place a persistent note's content is ever copied: it re-reads the current
+`OperationalNote` via `IOperationalNotesService.ListRelevantForDateAsync`, builds a new
+`AssociateOperationalNoteSelection` from its current fields, and saves it into that date's draft. There
+is no background sync, no scheduled refresh of an already-selected copy, and no code path that
+re-derives a selection from its `SourceOperationalNoteId` after the fact. Editing, resolving, or
+re-dating the source note afterward leaves every already-selected copy completely untouched — proved
+directly by `AssociatePassdownServiceTests.SourceEditAfterSelection_DoesNotMutateSelectedCopy`/
+`SourceResolveAfterSelection_DoesNotRemoveSelectedCopy`/`SourceDateChangeAfterSelection_DoesNotRemoveSelectedCopy`.
+
+## Date-specific selections (Part D/Z)
+
+Selections live entirely inside `AssociateDraftPayload.SelectedOperationalNotes` — a field of the
+already per-`PassdownDate` `associate_drafts` row. There is no `OperationalNote.IsIncluded` or any
+other global inclusion flag on the persistent-note table; a note selected for Aug 26 has no relationship
+at all to whether it is selected for Aug 27. `AssociateViewModel` reloads both
+`SelectedOperationalNotes` and `AvailableOperationalNoteSuggestions` on every date switch
+(`LoadDateAsync` → `RefreshOperationalNoteSuggestionsAsync`), so switching dates can never leak one
+date's selections into another's screen state — regression-tested end to end in
+`AssociateViewModelOperationalNoteSelectionTests.SwitchingDate_ShowsOnlyThatDatesSelectionsAndSuggestions`.
+
+## Relevant suggestions use the Associate-selected date, not Eastern "today" (Part E/F)
+
+`IAssociatePassdownService.GetRelevantOperationalNoteSuggestionsAsync(operatingDate)` is a thin
+pass-through to `IOperationalNotesService.ListRelevantForDateAsync(operatingDate)` — the same
+relevance rule (`OperationalNoteRelevance.IsRelevantForDate`) and ordering (`OperationalNoteOrdering.ByRelevance`)
+11A/11C already established, called with whatever date `AssociateViewModel.SelectedDate` currently is.
+This is deliberately **not** Dashboard's `TodayEastern()` — `AssociatePassdownService` has no way to
+read that value in the first place, and `GetRelevantOperationalNoteSuggestionsAsync_UsesAssociateSelectedDate_NotEasternToday`
+proves a note relevant only 30 days out is offered when that future date is selected. Only Active,
+in-range notes are ever offered as suggestions; Upcoming/Expired/Resolved notes never appear (inherited
+directly from `OperationalNoteRelevance`/`ListRelevantForDateAsync`, not re-implemented).
+
+## Duplicate prevention and idempotent selection (Part H)
+
+`SelectOperationalNoteAsync` checks `draft.SelectedOperationalNotes.Any(s => s.SourceOperationalNoteId == operationalNoteId)`
+before ever building a new frozen copy; a second `Select(noteId)` while already selected is a pure
+no-op — one copy, never two (`SelectOperationalNoteAsync_CalledTwice_IsIdempotent`).
+
+## Reselect after deselect (Part I)
+
+Deselecting removes the frozen copy entirely (no tombstone). A later reselect of the same source note
+is treated as a brand-new explicit decision: it copies whatever the source note says *at that later
+moment*, not the earlier frozen text (`Reselect_AfterDeselect_CopiesCurrentSourceContent_NotTheOldFrozenCopy`).
+This is deliberate, not an oversight — the whole point of an explicit re-selection is that the
+supervisor is choosing the note's current content again.
+
+## Validation on selection (Part O/P)
+
+`SelectOperationalNoteAsync` throws `InvalidOperationException` when the id is unknown or not
+currently relevant for the requested date — a defensive check against a stale/invalid id, since the
+Associate → Notes UI only ever offers ids drawn from `GetRelevantOperationalNoteSuggestionsAsync`, not
+a normal user-facing validation path. Selecting/deselecting never calls `IOperationalNotesService.UpdateAsync`/
+`ResolveAsync`, never touches the source note's `UpdatedAtUtc`, and adds no inclusion state to it —
+`SelectOperationalNoteAsync_NeverMutatesSourceNote` reloads the source note after a select+deselect
+round trip and asserts its `UpdatedAtUtc`/`Status`/`ResolvedAtUtc` are byte-for-byte unchanged.
+
+## Persistence strategy (Part J) and schema decision (Part K)
+
+**Nested JSON inside the existing `AssociateDraft.PayloadJson`** — no new table, no new migration.
+`AssociateDraftPayload` (like every other Associate draft field) is opaque JSON to
+`SqliteAssociateDraftRepository`; adding `SelectedOperationalNotes` is exactly the same shape of change
+Phase 8A's `PassdownSectionSelection` already made to this same payload. A dedicated child table keyed
+by draft/date was considered and rejected: it would require a join wherever a draft is composed, add a
+second write inside `SaveDraftAsync`'s single `INSERT ... ON CONFLICT`, and buy nothing this payload
+doesn't already give for free (autosave already persists the whole payload atomically per date).
+
+`AssociateDraftPayload.CurrentSchemaVersion` bumped **2 → 3** (Phase 8A's rename/section-selection bump
+was 1 → 2). **Database schema (`PRAGMA user_version`) stays at 10** — no `Migration0011` was added,
+because `associate_drafts.payload_json`/`schema_version` already exist and already tolerate an evolving
+payload shape; the column types didn't change. `AssociatePassdownService.DeserializeDraft` backfills a
+missing `SelectedOperationalNotes` property (absent in every pre-11D draft's JSON) to `[]`, mirroring
+the exact pattern already used for `SectionSelection`/`DailyFeatureType` — proved by
+`LegacyDraft_WithoutSelectedOperationalNotesProperty_DefaultsToEmpty` and the migration/backward-compat
+tests below.
+
+## Finalized snapshot schema decision (Part L) — stays at 1
+
+`FinalizedPassdownSnapshot.OperationalNotes` was already a plain `IReadOnlyList<string>` — the exact
+already-resolved display lines the PDF's Operational Notes panel renders (Phase 9's own "frozen
+display values, not live references" design). `AssociatePassdownDocumentModelBuilder.BuildOperationalNotes`
+now populates that same list with the manual daily notes first, then one formatted line per selected
+persistent note (`"Persistent: <title> — <body>"`, or `"Persistent (Important): <title>"` for an
+Important-priority selection with no body) — still a flat list of already-resolved strings, the exact
+shape `FinalizedPassdownSnapshotBuilder.MapSnapshot` already copied unchanged. No new document-model or
+snapshot field was needed, so `FinalizedPassdownSnapshot.CurrentSchemaVersion` **stays at 1** —
+confirmed directly by `FinalizedPassdownSnapshotBuilderTests.Build_SelectedPersistentNote_FreezesIntoOperationalNotesList`.
+The tradeoff, made deliberately: History's flat bulleted list does not carry a separate "Daily
+Notes:"/"Included Operational Notes:" visual sub-heading the way the spec's own preferred PDF wireframe
+showed — the `"Persistent"`/`"Persistent (Important)"` text prefix is the distinction that survives into
+both the PDF and History, which the spec's own fallback text ("combine under one Operational Notes area
+but preserve distinction visually") explicitly sanctions.
+
+## Associate-layer service API (Part N)
+
+```csharp
+Task<IReadOnlyList<OperationalNote>> GetRelevantOperationalNoteSuggestionsAsync(DateOnly operatingDate, CancellationToken ct = default);
+Task<AssociateWorkspace> SelectOperationalNoteAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken ct = default);
+Task<AssociateWorkspace> DeselectOperationalNoteAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken ct = default);
+```
+
+Added to `IAssociatePassdownService`/`AssociatePassdownService`, which gained one new constructor
+dependency, `IOperationalNotesService` — the one, explicit, intentional bridge between the two Phase 11
+subsystems. `AssociateViewModel`'s own constructor is **unchanged**: it still depends only on
+`IAssociatePassdownService`/`IClock`/etc., with no `IOperationalNotesService` reference of its own,
+preserving Phase 11B's `AssociateViewModel_HasNoOperationalNotesServiceDependency` regression test
+exactly as written — every persistent-note operation the UI needs is reached through
+`IAssociatePassdownService`, never a second dependency injected into the ViewModel. `Select`/`DeselectOperationalNoteAsync`
+each perform a plain read-modify-write against the saved draft record (read → mutate `SelectedOperationalNotes`
+→ `SaveDraftAsync` → recompose) rather than requiring the UI to copy fields or touch the repository
+directly.
+
+## Autosave integration (Part Q/R/AT/AU)
+
+Selection does not ride the existing 800ms debounce timer — `AddOperationalNoteAsync`/`RemoveOperationalNoteAsync`
+(`AssociateViewModel`) first call `FlushPendingAutosaveAsync()` (the same synchronous drain
+`CheckOnlineAsync`/`CreatePdfAsync` already use before their own async work) so the Application-layer
+read-modify-write always operates against exactly what is on screen, then call
+`SelectOperationalNoteAsync`/`DeselectOperationalNoteAsync` directly — an immediate save, not a second
+save-status system. The returned `AssociateWorkspace` is applied back through the same
+`ApplyWorkspaceToFields` every load/Check-Online/save already uses, so `SaveStatusText`/`AutosaveState`
+behave identically to any other draft change: selecting/deselecting a note is a real save, reflected in
+the footer immediately. A stale in-flight select/deselect is guarded against a concurrent date switch
+(`if (date != SelectedDate) return;`), mirroring the existing `_loadVersion` guard pattern.
+
+## Associate Notes UI (Part S/T/U/V)
+
+Added entirely inside **Associate Passdown → Notes** (`AssociateView.axaml`), never Dashboard and never
+a new top-level screen. Three structurally distinct panels, top to bottom:
+
+1. **Daily Passdown Notes** — the existing multiline manual-notes editor, renamed from "Operational
+   Notes" to make room for the new persistent-note panels' own use of that name, with no behavior
+   change (still `OperationalNotesText` → `AssociateDraftPayload.OperationalNotes`).
+2. **Included Persistent Notes** — `SelectedOperationalNotes`, each row showing category/priority
+   chips, title, an optional body preview, date-range text, and a **Remove** button. Empty state: "No
+   persistent operational notes included."
+3. **"Available for \<date\>"** — `AvailableOperationalNoteSuggestions` (already-selected sources
+   excluded), each row showing category/priority chips, title, date-range text, and an **Add** button
+   (no checkbox — selection autosaves immediately and has its own dedicated section, so a clear button
+   action reads better than a checkbox that would imply toggling in place). Empty state: "No persistent
+   operational notes are available for this date."
+
+Manual notes and persistent-note selections are structurally independent view-model collections
+(`OperationalNotesText` vs. `SelectedOperationalNotes`/`AvailableOperationalNoteSuggestions`); selecting
+a persistent note never appends into the manual textbox and deselecting never removes manual text
+(`AddAndRemove_NeverChangeManualOperationalNotesText`).
+
+## Ordering decision (Part AP/AQ)
+
+Selected notes are shown in **selection order** — the order a supervisor added them — because that
+reflects their actual intent for the passdown, not a re-sort by relevance/priority every time the list
+renders. `SelectOperationalNoteAsync` appends to the end of `SelectedOperationalNotes`
+(`[.. draft.SelectedOperationalNotes, selection]`); nothing reorders that list afterward.
+`SelectedOperationalNotes_PreserveSelectionOrder` proves two selections come back in the order they were
+added, not creation order or alphabetical order. Available suggestions keep the existing shared
+relevance ordering (`OperationalNoteOrdering.ByRelevance` via `ListRelevantForDateAsync`), unrelated to
+selection order. No drag/drop or Up/Down reordering was added — deferred, per spec, to 11E if ever
+needed.
+
+## Selection limit decision (Part AR)
+
+No artificial cap. `SelectedOperationalNotes` has no `MaxCount`-style constant anywhere in the model or
+service layer — the existing one-page PDF overflow policy (`AssociatePassdownPreflightService`/the
+generator's own page-count check) is the only backstop, exactly as it already is for manual notes and
+every product category.
+
+## Source-changed / source-resolved indicators — deferred (Parts W/X)
+
+Not implemented in 11D, by design. `AssociateOperationalNoteSelection` carries no `SourceUpdatedAtUtc`
+and there is no code path comparing a selected copy's frozen content against the source note's current
+state. A selected copy remains exactly as selected even after its source is edited or resolved — this
+is the load-bearing guarantee this phase exists to prove, not an oversight to fix later. Any
+"source changed since you selected this" indicator is explicitly deferred to 11E.
+
+## PDF presentation (Part AB/AC)
+
+`AssociatePassdownDocumentModelBuilder.BuildOperationalNotes` combines both sources into the one
+existing `AssociatePassdownDocumentModel.OperationalNotes` list `AssociatePassdownPdfGenerator.ComposeNotes`
+already rendered — manual notes first (unlabeled, exactly as before), then one bulleted line per
+selected persistent note, prefixed `"Persistent: "` or `"Persistent (Important): "`. No source
+Guid/timestamp/internal status ever reaches the page
+(`SelectedOperationalNotes_NeverExposesSourceIdOrTimestamps`/`SelectedOperationalNote_NeverExposesSourceIdInPdf`).
+Gated by the same `PassdownSectionSelection.IncludeOperationalNotes` flag as before: hiding the
+Operational Notes section hides both manual and selected content together. The existing one-page
+overflow policy is unchanged and untouched — 0/1/3/many selections, a long title/body, and manual +
+selected notes together all still render within the strict one-page layout or fail preflight exactly as
+before (`AssociatePassdownPdfGeneratorTests`' new Phase 11D cases).
+
+## Finalization (Part AD/AF/AG)
+
+`FinalizedPassdownFinalizationService.FinalizeAsync` is completely unchanged by this phase — it still
+builds `AssociatePassdownDocumentModel` exactly once via `AssociatePassdownDocumentModelBuilder.Build`
+(which now includes `BuildOperationalNotes`'s combined list) and derives both the snapshot and the
+frozen PDF from that single instance. Finalization never queries `IOperationalNoteRepository`/
+`IOperationalNotesService` at all — the source of truth at finalization time is exclusively the already
+saved `AssociateDraft.SelectedOperationalNotes`, read once when the workspace was composed before
+`FinalizeAsync` was called. If a source `OperationalNote` row were ever unavailable/corrupt after
+selection, finalization would still succeed unaffected, since nothing in the finalization path ever
+looks it up again.
+
+## History immutability (Part AE/AI)
+
+`HistoryView`/`PassdownHistoryViewModel`/`IPassdownHistoryService` are untouched — History renders
+`SelectedDetail.Snapshot.OperationalNotes` exactly as it already did, which now simply includes any
+selected-note lines that were present at finalization time, frozen. No live link back to a persistent
+note exists anywhere in History; a post-finalization edit to the source note, or to the day's draft
+selections, can never change an already-finalized row (proved end to end in
+`Phase11DIntegrationTests.SelectedNoteContent_SurvivesSourceEdit_ThroughReload_Pdf_AndFinalization`).
+
+## Dashboard and Operational Notes Manager independence (Parts AJ/AK)
+
+Dashboard's "Active Operational Notes" panel (11C) is entirely unmodified — no Add/Include button, no
+checkbox, no code path capable of reaching `AssociateDraftPayload.SelectedOperationalNotes`. The
+Operational Notes Manager (11B) is likewise unmodified — no global "Included" badge was added to any
+row, since a single source note can be selected for Aug 26, not Aug 27, and selected again Aug 28,
+making any single global flag misleading by construction.
+
+## Privacy (Part AN)
+
+No selected note's title/body, and no frozen `SelectedOperationalNotes` JSON, ever appears in a log
+call — `AddOperationalNoteAsync`/`RemoveOperationalNoteAsync` log only the operational-note id and
+operating date on failure (`_logger?.LogError(ex, "... {OperationalNoteId} for {OperatingDate}.", ...)`),
+matching every other Phase 11 diagnostic-privacy convention. `SqliteDatabaseDiagnosticsProvider` never
+queried `associate_drafts` before this phase and still doesn't — it only ever reports `PRAGMA
+user_version`, file size, and WAL presence (unchanged since Phase 7F), so a selected note's content is
+structurally unreachable from a diagnostics export regardless of what `SelectedOperationalNotes`
+contains.
+
+## Accessibility (Part AS)
+
+`AutomationProperties.Name` values added: `"Included persistent operational notes"` and `"Available
+persistent operational notes"` (the two new section headings, always present regardless of content), a
+composed `AccessibleSummary` per row (e.g. `"Add. Important. Equipment. South Gate scanner #3 out of
+service. Aug 20 – Until resolved."` / `"Remove. Important. Equipment. South Gate scanner #3 out of
+service."`) so priority/category/title/date-range are always available in text, and per-row
+`StringFormat`-templated names on the Add/Remove buttons themselves (`"Add note {0}"`/`"Remove note
+{0}"`). Priority is communicated as the word "Important" (reusing the same restrained accent/weight
+convention 11B/11C already established — never color alone), and every control (`Button`s inside plain
+`ItemsControl`s) is keyboard-reachable with the FluentTheme default focus ring.
+
+## Visual validation (Part BA) — PARTIAL
+
+Same honestly-recorded limitation as every prior Phase 9/10/11 document: no pixel/bitmap renderer
+exists in this codebase. `AssociateViewAccessibilityTests.AssociateView_WithSelectedAndAvailablePersistentNotes_ConstructsCleanly`
+constructs the real `AssociateView` through Avalonia's XAML loader with two selected notes (Important +
+Normal, one with a 180-character title and a 3500-character body) and one available suggestion — every
+binding/`DataTemplate` path is proved valid, but on-screen density/spacing was not pixel-verified.
+Structural/binding coverage: no persistent notes available, relevant suggestions available, one
+selected, several selected, Important + Normal, long title/body, manual notes + several selected, and a
+date switch are all exercised through `AssociateViewModelOperationalNoteSelectionTests`/
+`AssociateViewAccessibilityTests`, but actual on-screen appearance should still be spot-checked in a
+Windows 11 VM per `CLAUDE.md`'s platform guidance before this ships.
+
+## Migration / backward compatibility (Part AO)
+
+A pre-11D draft's persisted JSON has no `SelectedOperationalNotes` property at all; the plain
+`JsonSerializer.Deserialize<AssociateDraftPayload>` call leaves it `null`, and `DeserializeDraft`
+backfills it to `[]` — exactly the same presence-based pattern already used for `SectionSelection`/
+`DailyFeatureType`/`IncludeHauntedAttractions`. No migration fabricates a selection; existing finalized
+History rows remain readable unchanged (their `FinalizedPassdownSnapshot.OperationalNotes` was already
+just a flat string list, so a pre-11D row round-trips through the same deserializer with zero
+persistent-note lines, exactly as it always did).
+
+## Deferred to 11E/11F
+
+- Source-changed / source-resolved indicators on an already-selected note (Parts W/X).
+- Manual drag/drop or Up/Down reordering of selected notes (Part AQ).
+- Category/priority filtering in Operational Notes Manager, carry-forward, and further UX polish
+  (unchanged from 11B/11C's own deferred list).
+- The final Phase 11 audit and release rebuild (Phase 11F) — the release ZIP was intentionally not
+  rebuilt by this phase.
+- Alerts, an Operations Calendar, and the Manager workflow remain out of scope, unchanged from
+  11A/11B/11C/`CLAUDE.md`.
+
+## Tests added (Phase 11D)
+
+- `Carowinds.Passdown.Application.Tests/Associate/AssociatePassdownServiceTests.cs` — 17 new cases:
+  relevant/non-relevant/nonexistent source selection, content-copy-on-select, idempotent duplicate
+  select, deselect (including safe no-op on a never-selected note), reselect-copies-current-content,
+  source-edit/-resolve/-date-change-after-selection independence, date-specific selections (including
+  cross-date isolation), selection-order preservation, legacy-draft backward compatibility, source-note
+  non-mutation, no-refresh-orchestrator-dependency, manual-notes independence, and
+  Associate-selected-date (not Eastern today) relevance.
+- `Carowinds.Passdown.Documents.Tests/Associate/AssociatePassdownDocumentModelBuilderTests.cs` — 5 new
+  cases: manual+selected combination and ordering, Important-priority prefix, selected-only (no manual
+  notes), section-visibility gating, and no source id/timestamp exposure.
+- `Carowinds.Passdown.Documents.Tests/Associate/FinalizedPassdownSnapshotBuilderTests.cs` — 1 new case
+  proving the frozen snapshot content and the unchanged `CurrentSchemaVersion == 1`.
+- `Carowinds.Passdown.Documents.Tests/Associate/AssociatePassdownPdfGeneratorTests.cs` — 6 new cases:
+  zero/one/many selected notes, manual+selected together, a removed selection disappearing from a
+  regenerated PDF, and no source id in the rendered page — all still within the strict one-page policy.
+- `Carowinds.Passdown.Ui.Tests/AssociateViewModelOperationalNoteSelectionTests.cs` (new file) — 9
+  cases: suggestion loading, empty available/selected states, Add/Remove commands moving notes between
+  sections and persisting, survival across a date switch, cross-date isolation, manual-notes
+  independence, and non-empty accessible summaries.
+- `Carowinds.Passdown.Ui.Tests/AssociateViewAccessibilityTests.cs` — 1 new populated-state construction
+  test (Important + Normal, long title/body, one suggestion), plus extended assertions in the existing
+  automation-name and `StringFormat`-markup tests for the two new section names and the Add/Remove
+  patterns.
+- `Carowinds.Passdown.Ui.Tests/ScheduledRefresh/Phase11DIntegrationTests.cs` (new file) — 1 case: the
+  realistic end-to-end scenario against a real temp-file SQLite database and the real Application/
+  Infrastructure/Documents pipeline (create note → select for a date → edit source → reload → still
+  frozen → PDF still frozen → finalize → History still frozen → live source reflects the edit).
+- `Carowinds.Passdown.Ui.Tests/TestSupport/FakeAssociatePassdownService.cs` — extended with a scriptable
+  per-date suggestion list and real select/deselect semantics against its existing per-date draft store
+  (no new test cases of its own — a shared test double used by the cases above).
+
+40 new tests total (1136 Phase 11C baseline + 40 = 1176: 17 Application + 12 Documents + 11 Ui).
+
+## Schema / version report
+
+- **Database schema: 10** — unchanged from 11A/11B/11C. `associate_drafts` already stores an opaque,
+  evolving JSON payload; no new table or column was needed for `SelectedOperationalNotes`.
+- **`AssociateDraftPayload.CurrentSchemaVersion`: 2 → 3** — the payload's own JSON shape gained one new
+  property; `DeserializeDraft` backfills it to `[]` for every older persisted draft.
+- **`FinalizedPassdownSnapshot.CurrentSchemaVersion`: 1 — unchanged.** Selected persistent notes are
+  represented as additional formatted strings in the existing generic `OperationalNotes` list, not a new
+  structured field.
+
+## Full validation (Phase 11D)
+
+`dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors.
+`dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — **1176/1176** passed (66 Domain +
+326 Application + 94 Documents + 317 Infrastructure + 373 Ui), run twice to confirm no flakiness, 0
+failed, 0 skipped. No live internet was used or required.

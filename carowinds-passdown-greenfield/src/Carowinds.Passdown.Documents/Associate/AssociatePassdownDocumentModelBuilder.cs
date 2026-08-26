@@ -1,5 +1,6 @@
 using System.Globalization;
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Hours;
 
@@ -30,7 +31,7 @@ public static class AssociatePassdownDocumentModelBuilder
             new PdfAttendance(workspace.Draft.ProjectedAttendance, workspace.Draft.PreSolds),
             BuildEarlyRideTime(workspace.Draft.EarlyRideTime),
             BuildDailyFeature(workspace.Draft),
-            workspace.Draft.SectionSelection.IncludeOperationalNotes ? workspace.Draft.OperationalNotes : [],
+            BuildOperationalNotes(workspace.Draft),
             productCategories,
             HasUnverifiedProductPricing(workspace),
             FormatTimestamp(generatedAt));
@@ -108,6 +109,43 @@ public static class AssociatePassdownDocumentModelBuilder
     {
         var enabled = !string.IsNullOrWhiteSpace(details.Details) || details.ParticipatingAttractions.Count > 0;
         return new PdfEarlyRideTime(enabled, string.IsNullOrWhiteSpace(details.Details) ? null : details.Details.Trim(), details.ParticipatingAttractions);
+    }
+
+    /// <summary>
+    /// Phase 11D Part AB/L: the Operational Notes panel's content is the associate's own manual
+    /// daily notes followed by any persistent notes the supervisor explicitly selected for this date
+    /// — both already-frozen display strings, combined into the same list
+    /// <see cref="AssociatePassdownDocumentModel.OperationalNotes"/> already was before Phase 11D, so
+    /// no new document-model field or finalized-snapshot field is needed (snapshot schema stays at
+    /// 1). Manual notes lines print unlabeled exactly as before; a selected persistent note's line is
+    /// prefixed with "Persistent" (plus "Important" when applicable) so the two sources stay visually
+    /// distinguishable within the one shared bulleted panel (<c>AssociatePassdownPdfGenerator.ComposeNotes</c>).
+    /// Gated by the same <see cref="PassdownSectionSelection.IncludeOperationalNotes"/> flag as
+    /// before — hiding the Operational Notes section hides both manual and selected content.
+    /// </summary>
+    private static IReadOnlyList<string> BuildOperationalNotes(AssociateDraftPayload draft)
+    {
+        if (!draft.SectionSelection.IncludeOperationalNotes)
+        {
+            return [];
+        }
+
+        var lines = new List<string>(draft.OperationalNotes);
+        lines.AddRange(draft.SelectedOperationalNotes.Select(FormatSelectedOperationalNote));
+        return lines;
+    }
+
+    private static string FormatSelectedOperationalNote(AssociateOperationalNoteSelection selection)
+    {
+        var prefix = selection.Priority == OperationalNotePriority.Important
+            ? "Persistent (Important)"
+            : "Persistent";
+
+        var text = string.IsNullOrWhiteSpace(selection.Body)
+            ? selection.Title
+            : $"{selection.Title} — {selection.Body}";
+
+        return $"{prefix}: {text}";
     }
 
     private static PdfDailyFeature BuildDailyFeature(AssociateDraftPayload draft)

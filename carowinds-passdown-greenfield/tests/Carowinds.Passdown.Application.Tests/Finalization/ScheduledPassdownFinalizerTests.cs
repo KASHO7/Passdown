@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Finalization;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Tests.TestSupport;
 using Carowinds.Passdown.Application.Time;
@@ -35,7 +36,8 @@ public class ScheduledPassdownFinalizerTests
         var datedResults = new InMemoryDatedResultRepository();
         var catalogProducts = new InMemoryCatalogProductRepository();
         var refreshOrchestrator = new FakeRefreshOrchestrator();
-        var associateService = new AssociatePassdownService(drafts, datedResults, catalogProducts, refreshOrchestrator, clock);
+        var associateService = new AssociatePassdownService(
+            drafts, datedResults, catalogProducts, refreshOrchestrator, new OperationalNotesService(new InMemoryOperationalNoteRepository(), clock), clock);
 
         var finalizedRepository = new InMemoryFinalizedPassdownRepository();
         var snapshotBuilder = new FakeFinalizedPassdownSnapshotBuilder();
@@ -109,7 +111,8 @@ public class ScheduledPassdownFinalizerTests
         // Composes a full default AssociateWorkspace for Date0825 without ever saving a draft row —
         // mirrors what merely displaying the Associate screen for this date would do.
         var associateService = new AssociatePassdownService(
-            env.Drafts, new InMemoryDatedResultRepository(), new InMemoryCatalogProductRepository(), env.RefreshOrchestrator, env.Clock);
+            env.Drafts, new InMemoryDatedResultRepository(), new InMemoryCatalogProductRepository(), env.RefreshOrchestrator,
+            new OperationalNotesService(new InMemoryOperationalNoteRepository(), env.Clock), env.Clock);
         _ = await associateService.LoadAssociateDateAsync(Date0825);
 
         var summary = await env.Finalizer.FinalizeEligibleAsync();

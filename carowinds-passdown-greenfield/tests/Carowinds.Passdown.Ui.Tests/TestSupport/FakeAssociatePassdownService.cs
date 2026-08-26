@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Hours;
@@ -112,6 +113,54 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
         var savedAt = DateTimeOffset.UtcNow;
         _savedAt[operatingDate] = savedAt;
         return new AssociateSaveStatus(AssociateSaveState.Saved, savedAt);
+    }
+
+    /// <summary>Scripted persistent-note suggestions per date (Phase 11D) — a test seeds this the way it seeds <see cref="WorkspaceFactory"/>.</summary>
+    public Dictionary<DateOnly, List<OperationalNote>> RelevantOperationalNotesByDate { get; } = [];
+
+    public List<(DateOnly OperatingDate, Guid OperationalNoteId)> SelectOperationalNoteCalls { get; } = [];
+
+    public List<(DateOnly OperatingDate, Guid OperationalNoteId)> DeselectOperationalNoteCalls { get; } = [];
+
+    public Task<IReadOnlyList<OperationalNote>> GetRelevantOperationalNoteSuggestionsAsync(DateOnly operatingDate, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<OperationalNote>>(RelevantOperationalNotesByDate.GetValueOrDefault(operatingDate, []));
+
+    /// <summary>Mirrors the real service's read-modify-write against the per-date draft store, including throwing for an id absent from <see cref="RelevantOperationalNotesByDate"/> (Part O).</summary>
+    public Task<AssociateWorkspace> SelectOperationalNoteAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken cancellationToken = default)
+    {
+        SelectOperationalNoteCalls.Add((operatingDate, operationalNoteId));
+
+        var draft = _savedDrafts.GetValueOrDefault(operatingDate, AssociateDraftPayload.CreateDefault());
+        if (!draft.SelectedOperationalNotes.Any(selection => selection.SourceOperationalNoteId == operationalNoteId))
+        {
+            var source = RelevantOperationalNotesByDate.GetValueOrDefault(operatingDate, []).FirstOrDefault(note => note.Id == operationalNoteId)
+                ?? throw new InvalidOperationException($"Operational note {operationalNoteId} is not available to select for {operatingDate:yyyy-MM-dd}.");
+
+            var selection = new AssociateOperationalNoteSelection(
+                source.Id, source.Title, source.Body, source.Category, source.Priority,
+                source.EffectiveFrom, source.EffectiveThrough, DateTimeOffset.UtcNow);
+
+            draft = draft with { SelectedOperationalNotes = [.. draft.SelectedOperationalNotes, selection] };
+            _savedDrafts[operatingDate] = draft;
+            _savedAt[operatingDate] = DateTimeOffset.UtcNow;
+        }
+
+        return Task.FromResult(BuildWorkspace(operatingDate));
+    }
+
+    public Task<AssociateWorkspace> DeselectOperationalNoteAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken cancellationToken = default)
+    {
+        DeselectOperationalNoteCalls.Add((operatingDate, operationalNoteId));
+
+        var draft = _savedDrafts.GetValueOrDefault(operatingDate, AssociateDraftPayload.CreateDefault());
+        draft = draft with
+        {
+            SelectedOperationalNotes = draft.SelectedOperationalNotes.Where(selection => selection.SourceOperationalNoteId != operationalNoteId).ToList(),
+        };
+        _savedDrafts[operatingDate] = draft;
+        _savedAt[operatingDate] = DateTimeOffset.UtcNow;
+
+        return Task.FromResult(BuildWorkspace(operatingDate));
     }
 
     private AssociateWorkspace BuildWorkspace(DateOnly date)

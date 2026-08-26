@@ -98,6 +98,18 @@
       <Setter Property="FontWeight" Value="Medium" />
     </Style>
 
+    <!-- Phase 11D Part V/AS: the Priority text on an included/available persistent-note row —
+         restrained accent + weight for Important, never alarm-style color, matching
+         OperationalNotesView's/DashboardView's own convention exactly. -->
+    <Style Selector="TextBlock.priorityText">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+    <Style Selector="TextBlock.priorityText.important">
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownChipAccentForegroundBrush}" />
+    </Style>
+
     <!-- Primary/secondary action buttons: Check Online is the one obvious primary action on the
          screen; Create PDF stays strong but visually secondary (spec §10.2/Part L). -->
     <Style Selector="Button.primaryAction">
@@ -725,20 +737,130 @@
 
       <ScrollViewer Grid.Column="1" Padding="24,20,24,24"
                     IsVisible="{Binding IsNotesSectionSelected}">
-        <!-- Operational notes (Part E): full width, comfortable multiline entry — the actual
-             editing surface for the Overview section's read-only summary card. -->
-        <Border Classes="panel">
-          <StackPanel Spacing="8">
-            <TextBlock Text="Operational Notes" Classes="sectionTitle" Margin="0" />
-            <TextBox Text="{Binding OperationalNotesText}"
-                     AcceptsReturn="True"
-                     TextWrapping="Wrap"
-                     MinHeight="360"
-                     Background="{DynamicResource PassdownSubtleSurfaceBrush}"
-                     PlaceholderText="Important operational notes, one line per note"
-                     AutomationProperties.Name="Operational notes" />
-          </StackPanel>
-        </Border>
+        <StackPanel Spacing="16">
+
+          <!-- Daily Passdown Notes (Part E): full width, comfortable multiline entry — the actual
+               editing surface for the Overview section's read-only summary card. Deliberately
+               independent of the persistent-note sections below (Part AA) — selecting/deselecting a
+               persistent note never reads or writes this text. -->
+          <Border Classes="panel">
+            <StackPanel Spacing="8">
+              <TextBlock Text="Daily Passdown Notes" Classes="sectionTitle" Margin="0" />
+              <TextBox Text="{Binding OperationalNotesText}"
+                       AcceptsReturn="True"
+                       TextWrapping="Wrap"
+                       MinHeight="200"
+                       Background="{DynamicResource PassdownSubtleSurfaceBrush}"
+                       PlaceholderText="Important operational notes, one line per note"
+                       AutomationProperties.Name="Operational notes" />
+            </StackPanel>
+          </Border>
+
+          <!-- Included Persistent Notes (Phase 11D Part T/V): frozen copies the supervisor has
+               explicitly selected for this date — structurally distinct from the manual notes above,
+               never merged into that text box. -->
+          <Border Classes="panel">
+            <StackPanel Spacing="8">
+              <TextBlock Text="Included Persistent Notes" Classes="sectionTitle" Margin="0"
+                         AutomationProperties.Name="Included persistent operational notes" />
+
+              <TextBlock Text="No persistent operational notes included."
+                         Classes="muted"
+                         IsVisible="{Binding !HasSelectedOperationalNotes}" />
+
+              <ItemsControl ItemsSource="{Binding SelectedOperationalNotes}"
+                            IsVisible="{Binding HasSelectedOperationalNotes}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Spacing="8" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:AssociateSelectedOperationalNoteRowViewModel">
+                    <Border Classes="inset" Margin="0" AutomationProperties.Name="{Binding AccessibleSummary}">
+                      <Grid ColumnDefinitions="Auto,*,Auto">
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top" Margin="0,0,10,0">
+                          <Border Classes="chip" IsVisible="{Binding IsImportant}">
+                            <TextBlock Text="Important" Classes="priorityText important" />
+                          </Border>
+                          <Border Classes="chip">
+                            <TextBlock Text="{Binding CategoryLabel}" />
+                          </Border>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Spacing="2" Margin="0,0,16,0">
+                          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                          <TextBlock Text="{Binding Body}"
+                                     IsVisible="{Binding HasBody}"
+                                     Classes="muted" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding DateRangeText}" Classes="fieldHint" Margin="0" />
+                        </StackPanel>
+
+                        <Button Grid.Column="2"
+                                Content="Remove"
+                                Command="{Binding RemoveCommand}"
+                                VerticalAlignment="Top"
+                                AutomationProperties.Name="{Binding Title, StringFormat='Remove note {0}'}" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+
+          <!-- Available persistent-note suggestions (Phase 11D Part E/U): relevant for the
+               Associate-selected date, minus whatever is already included above. Selecting is
+               explicit (Add) — nothing here is ever auto-included. -->
+          <Border Classes="panel">
+            <StackPanel Spacing="8">
+              <TextBlock Text="{Binding AvailableOperationalNoteSuggestionsHeading}" Classes="sectionTitle" Margin="0"
+                         AutomationProperties.Name="Available persistent operational notes" />
+
+              <TextBlock Text="No persistent operational notes are available for this date."
+                         Classes="muted"
+                         IsVisible="{Binding !HasAvailableOperationalNoteSuggestions}" />
+
+              <ItemsControl ItemsSource="{Binding AvailableOperationalNoteSuggestions}"
+                            IsVisible="{Binding HasAvailableOperationalNoteSuggestions}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Spacing="8" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:AssociateOperationalNoteSuggestionRowViewModel">
+                    <Border Classes="inset" Margin="0" AutomationProperties.Name="{Binding AccessibleSummary}">
+                      <Grid ColumnDefinitions="Auto,*,Auto">
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top" Margin="0,0,10,0">
+                          <Border Classes="chip" IsVisible="{Binding IsImportant}">
+                            <TextBlock Text="Important" Classes="priorityText important" />
+                          </Border>
+                          <Border Classes="chip">
+                            <TextBlock Text="{Binding CategoryLabel}" />
+                          </Border>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Spacing="2" Margin="0,0,16,0">
+                          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                          <TextBlock Text="{Binding DateRangeText}" Classes="fieldHint" Margin="0" />
+                        </StackPanel>
+
+                        <Button Grid.Column="2"
+                                Content="Add"
+                                Classes="secondaryAction"
+                                Command="{Binding AddCommand}"
+                                VerticalAlignment="Top"
+                                AutomationProperties.Name="{Binding Title, StringFormat='Add note {0}'}" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+
+        </StackPanel>
       </ScrollViewer>
 
     </Grid>

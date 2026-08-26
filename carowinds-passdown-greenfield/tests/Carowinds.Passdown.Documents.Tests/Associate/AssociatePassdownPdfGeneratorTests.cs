@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Documents.Tests.Associate.TestSupport;
 using Carowinds.Passdown.Domain;
@@ -211,6 +212,99 @@ public sealed class AssociatePassdownPdfGeneratorTests
     }
 
     private static string RemoveWhitespace(string value) => new(value.Where(c => !char.IsWhiteSpace(c)).ToArray());
+
+    private static AssociateOperationalNoteSelection Selection(string title, string? body = null, OperationalNotePriority priority = OperationalNotePriority.Normal) =>
+        new(Guid.NewGuid(), title, body, OperationalNoteCategory.Equipment, priority, new DateOnly(2026, 8, 20), null, DateTimeOffset.UtcNow);
+
+    // Phase 11D Part AW/AC: selected persistent notes render alongside manual notes, still within the
+    // existing one-page overflow policy — 0/1/3/many selections, long titles/bodies, and manual notes
+    // + selected notes together.
+    [Fact]
+    public void ZeroSelectedOperationalNotes_BehavesLikePre11D()
+    {
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        var withoutSelections = BuildModel(workspace);
+
+        Assert.Equal(workspace.Draft.OperationalNotes.Count, withoutSelections.OperationalNotes.Count);
+    }
+
+    [Fact]
+    public void OneSelectedOperationalNote_AppearsOnThePage()
+    {
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        workspace = workspace with { Draft = workspace.Draft with { SelectedOperationalNotes = [Selection("South Gate scanner #3 out of service")] } };
+
+        var result = Generator.Generate(BuildModel(workspace));
+
+        Assert.Equal(AssociatePassdownPdfStatus.Generated, result.Status);
+        Assert.Equal(1, PdfInspector.CountPages(result.PdfBytes!));
+        Assert.Contains("South Gate scanner #3 out of service", PdfInspector.ExtractAllText(result.PdfBytes!));
+    }
+
+    [Fact]
+    public void MultipleSelectedOperationalNotes_AllAppearOnThePage()
+    {
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        var selections = new[]
+        {
+            Selection("South Gate scanner #3 out of service"),
+            Selection("Group check-in support at North Gate"),
+            Selection("Entrance scanner maintenance", priority: OperationalNotePriority.Important),
+        };
+        workspace = workspace with { Draft = workspace.Draft with { SelectedOperationalNotes = selections } };
+
+        var result = Generator.Generate(BuildModel(workspace));
+
+        Assert.Equal(1, PdfInspector.CountPages(result.PdfBytes!));
+        var text = PdfInspector.ExtractAllText(result.PdfBytes!);
+        foreach (var selection in selections)
+        {
+            Assert.Contains(selection.Title, text);
+        }
+    }
+
+    [Fact]
+    public void ManualNotesAndSelectedOperationalNotes_BothAppearTogether()
+    {
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        workspace = workspace with { Draft = workspace.Draft with { SelectedOperationalNotes = [Selection("South Gate scanner #3 out of service")] } };
+        var model = BuildModel(workspace);
+
+        var result = Generator.Generate(model);
+        var text = PdfInspector.ExtractAllText(result.PdfBytes!);
+
+        foreach (var manualNote in workspace.Draft.OperationalNotes)
+        {
+            Assert.Contains(manualNote, text);
+        }
+        Assert.Contains("South Gate scanner #3 out of service", text);
+    }
+
+    [Fact]
+    public void RemovedSelection_NoLongerAppearsInRegeneratedPdf()
+    {
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        var selected = workspace with { Draft = workspace.Draft with { SelectedOperationalNotes = [Selection("South Gate scanner #3 out of service")] } };
+        var deselected = workspace with { Draft = workspace.Draft with { SelectedOperationalNotes = [] } };
+
+        var withSelection = Generator.Generate(BuildModel(selected));
+        var withoutSelection = Generator.Generate(BuildModel(deselected));
+
+        Assert.Contains("South Gate scanner #3 out of service", PdfInspector.ExtractAllText(withSelection.PdfBytes!));
+        Assert.DoesNotContain("South Gate scanner #3 out of service", PdfInspector.ExtractAllText(withoutSelection.PdfBytes!));
+    }
+
+    [Fact]
+    public void SelectedOperationalNote_NeverExposesSourceIdInPdf()
+    {
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        var selection = Selection("South Gate scanner #3 out of service");
+        workspace = workspace with { Draft = workspace.Draft with { SelectedOperationalNotes = [selection] } };
+
+        var result = Generator.Generate(BuildModel(workspace));
+
+        Assert.DoesNotContain(selection.SourceOperationalNoteId.ToString(), PdfInspector.ExtractAllText(result.PdfBytes!));
+    }
 
     // Spec correction: a realistic heavy day still renders every included product and note in full
     // on the single page — nothing is silently dropped or truncated to force a one-page fit.

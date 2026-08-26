@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Finalization;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Documents.Tests.Associate.TestSupport;
 
@@ -72,6 +73,26 @@ public class FinalizedPassdownSnapshotBuilderTests
         var snapshot = Builder.Build(workspace, AsOf);
 
         Assert.Equal(workspace.Draft.OperationalNotes, snapshot.OperationalNotes);
+    }
+
+    // Phase 11D Part L: the finalized snapshot represents a selected persistent note as part of the
+    // existing generic OperationalNotes string list — no new structured field, so
+    // FinalizedPassdownSnapshot.CurrentSchemaVersion correctly stays at 1 (asserted below).
+    [Fact]
+    public void Build_SelectedPersistentNote_FreezesIntoOperationalNotesList()
+    {
+        var selection = new AssociateOperationalNoteSelection(
+            Guid.NewGuid(), "South Gate scanner #3 out of service", "Direct guests to gate 2.",
+            OperationalNoteCategory.Equipment, OperationalNotePriority.Normal,
+            new DateOnly(2026, 8, 20), null, new DateTimeOffset(2026, 8, 21, 6, 0, 0, TimeSpan.Zero));
+
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        workspace = workspace with { Draft = workspace.Draft with { SelectedOperationalNotes = [selection] } };
+
+        var snapshot = Builder.Build(workspace, AsOf);
+
+        Assert.Contains("Persistent: South Gate scanner #3 out of service — Direct guests to gate 2.", snapshot.OperationalNotes);
+        Assert.Equal(1, FinalizedPassdownSnapshot.CurrentSchemaVersion);
     }
 
     [Fact]

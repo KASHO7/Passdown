@@ -1,5 +1,7 @@
 using Carowinds.Passdown.Application.Refresh;
 
+using Carowinds.Passdown.Application.OperationalNotes;
+
 namespace Carowinds.Passdown.Application.Associate;
 
 /// <summary>
@@ -43,4 +45,29 @@ public interface IAssociatePassdownService
     /// <see cref="AssociateSaveStatus"/> while awaiting it.
     /// </summary>
     Task<AssociateSaveStatus> SaveDraftAsync(DateOnly operatingDate, AssociateDraftPayload draft, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 11D: persistent Operational Notes relevant to <paramref name="operatingDate"/> — the
+    /// Associate-selected date, not Dashboard's Eastern "today" (spec Phase 11D Part E). Suggestions
+    /// only; this never mutates the draft. The caller is responsible for excluding notes already
+    /// present in the loaded workspace's <see cref="AssociateDraftPayload.SelectedOperationalNotes"/>.
+    /// </summary>
+    Task<IReadOnlyList<OperationalNote>> GetRelevantOperationalNoteSuggestionsAsync(DateOnly operatingDate, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Explicit, user-driven inclusion of one persistent note into <paramref name="operatingDate"/>'s
+    /// Associate draft (spec Phase 11D Parts A/B/O): freezes the note's current display content into
+    /// a new <see cref="AssociateOperationalNoteSelection"/>, persists it as part of the draft, and
+    /// returns the recomposed workspace. Idempotent while already selected; throws
+    /// <see cref="InvalidOperationException"/> if the note is unknown or not currently relevant for
+    /// this date. Never mutates the source <see cref="OperationalNote"/> row.
+    /// </summary>
+    Task<AssociateWorkspace> SelectOperationalNoteAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Removes a previously selected note's frozen copy from <paramref name="operatingDate"/>'s
+    /// Associate draft (spec Phase 11D Part AH). Safe to call for a note that was never selected.
+    /// Never mutates the source <see cref="OperationalNote"/> row.
+    /// </summary>
+    Task<AssociateWorkspace> DeselectOperationalNoteAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken cancellationToken = default);
 }

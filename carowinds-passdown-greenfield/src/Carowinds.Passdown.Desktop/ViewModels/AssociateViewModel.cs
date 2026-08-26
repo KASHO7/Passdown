@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Diagnostics;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Presentation;
@@ -103,6 +104,7 @@ public partial class AssociateViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedDateForPicker))]
+    [NotifyPropertyChangedFor(nameof(AvailableOperationalNoteSuggestionsHeading))]
     public partial DateOnly SelectedDate { get; set; }
 
     /// <summary>
@@ -219,6 +221,34 @@ public partial class AssociateViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial string? OperationalNotesText { get; set; }
+
+    /// <summary>
+    /// Persistent Operational Notes the supervisor has explicitly selected for the date currently in
+    /// edit (Phase 11D Part V), in selection order (Part AP) — built from the frozen
+    /// <see cref="AssociateDraftPayload.SelectedOperationalNotes"/> copies, never from a live
+    /// <see cref="OperationalNote"/> lookup. Independent of <see cref="OperationalNotesText"/> (Part
+    /// AA): selecting/deselecting a persistent note never reads or writes the manual notes text.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSelectedOperationalNotes))]
+    public partial IReadOnlyList<AssociateSelectedOperationalNoteRowViewModel> SelectedOperationalNotes { get; set; } = [];
+
+    /// <summary>
+    /// Persistent notes relevant to the date currently in edit that are not already selected (Phase
+    /// 11D Part E/U) — recomputed on every date load and after every Add/Remove (Part AL), never
+    /// polled. Uses the Associate-selected date, not Dashboard's Eastern "today".
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasAvailableOperationalNoteSuggestions))]
+    public partial IReadOnlyList<AssociateOperationalNoteSuggestionRowViewModel> AvailableOperationalNoteSuggestions { get; set; } = [];
+
+    public bool HasSelectedOperationalNotes => SelectedOperationalNotes.Count > 0;
+
+    public bool HasAvailableOperationalNoteSuggestions => AvailableOperationalNoteSuggestions.Count > 0;
+
+    /// <summary>"Available for Aug 26" — the Associate-selected date, not Dashboard's Eastern "today" (Phase 11D Part E/U).</summary>
+    public string AvailableOperationalNoteSuggestionsHeading =>
+        $"Available for {SelectedDate.ToDateTime(TimeOnly.MinValue).ToString("MMM d", CultureInfo.InvariantCulture)}";
 
     [ObservableProperty]
     public partial DailyFeatureTypeOption SelectedDailyFeatureTypeOption { get; set; } = DailyFeatureTypeOption.All[0];
@@ -433,6 +463,7 @@ public partial class AssociateViewModel : ViewModelBase
             }
 
             ApplyWorkspaceToFields(workspace);
+            await RefreshOperationalNoteSuggestionsAsync(date).ConfigureAwait(true);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -601,6 +632,93 @@ public partial class AssociateViewModel : ViewModelBase
         ScheduleAutosave();
     }
 
+    /// <summary>
+    /// Explicit inclusion of one persistent Operational Note into the date currently in edit (Phase
+    /// 11D Part B/Q). Flushes any pending manual-field edit first so the Application-layer
+    /// read-modify-write in <see cref="IAssociatePassdownService.SelectOperationalNoteAsync"/>
+    /// operates against exactly what is on screen, not stale on-disk state. The returned workspace
+    /// (already persisted — this is an immediate save, not routed through the debounce timer) is
+    /// applied back via <see cref="ApplyWorkspaceToFields"/> exactly like a Check Online result, so
+    /// <see cref="SelectedOperationalNotes"/> and every other field stay consistent with what was
+    /// actually saved.
+    /// </summary>
+    private async Task AddOperationalNoteAsync(Guid operationalNoteId)
+    {
+        await FlushPendingAutosaveAsync().ConfigureAwait(true);
+        var date = SelectedDate;
+        try
+        {
+            var workspace = await _service.SelectOperationalNoteAsync(date, operationalNoteId).ConfigureAwait(true);
+            if (date != SelectedDate)
+            {
+                return; // superseded by a date switch while the selection was in flight (Part Z).
+            }
+
+            ApplyWorkspaceToFields(workspace);
+            await RefreshOperationalNoteSuggestionsAsync(date).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogError(ex, "Failed to select operational note {OperationalNoteId} for {OperatingDate}.", operationalNoteId, date);
+        }
+    }
+
+    /// <summary>Removes a previously selected persistent note from the date currently in edit (Phase 11D Part AH) — mirrors <see cref="AddOperationalNoteAsync"/>.</summary>
+    private async Task RemoveOperationalNoteAsync(Guid operationalNoteId)
+    {
+        await FlushPendingAutosaveAsync().ConfigureAwait(true);
+        var date = SelectedDate;
+        try
+        {
+            var workspace = await _service.DeselectOperationalNoteAsync(date, operationalNoteId).ConfigureAwait(true);
+            if (date != SelectedDate)
+            {
+                return;
+            }
+
+            ApplyWorkspaceToFields(workspace);
+            await RefreshOperationalNoteSuggestionsAsync(date).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogError(ex, "Failed to deselect operational note {OperationalNoteId} for {OperatingDate}.", operationalNoteId, date);
+        }
+    }
+
+    /// <summary>
+    /// Recomputes <see cref="AvailableOperationalNoteSuggestions"/> for <paramref name="date"/> —
+    /// every persistent note currently relevant for that date, minus whatever is already in
+    /// <see cref="SelectedOperationalNotes"/> (Phase 11D Part U). Local-only; a failure degrades to
+    /// an empty suggestion list rather than surfacing an error, since this is a secondary/advisory
+    /// list, not the draft itself. Guarded against a date switch that completed while this call was
+    /// in flight (Part Z) exactly like <see cref="AddOperationalNoteAsync"/>.
+    /// </summary>
+    private async Task RefreshOperationalNoteSuggestionsAsync(DateOnly date)
+    {
+        IReadOnlyList<OperationalNote> relevant;
+        try
+        {
+            relevant = await _service.GetRelevantOperationalNoteSuggestionsAsync(date).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogError(ex, "Failed to load operational note suggestions for {OperatingDate}.", date);
+            relevant = [];
+        }
+
+        if (date != SelectedDate)
+        {
+            return;
+        }
+
+        var selectedIds = SelectedOperationalNotes.Select(row => row.SourceOperationalNoteId).ToHashSet();
+        AvailableOperationalNoteSuggestions = relevant
+            .Where(note => !selectedIds.Contains(note.Id))
+            .Select(note => new AssociateOperationalNoteSuggestionRowViewModel(
+                AssociateOperationalNoteSuggestionPresentation.Build(note, date), AddOperationalNoteAsync))
+            .ToList();
+    }
+
     partial void OnManualHoursOverrideEnabledChanged(bool value) => ScheduleAutosave();
 
     partial void OnManualOpeningTimeChanged(TimeSpan? value) => ScheduleAutosave();
@@ -709,6 +827,11 @@ public partial class AssociateViewModel : ViewModelBase
             ParticipatingAttractionsText = string.Join(Environment.NewLine, draft.EarlyRideTime.ParticipatingAttractions);
 
             OperationalNotesText = string.Join(Environment.NewLine, draft.OperationalNotes);
+
+            SelectedOperationalNotes = draft.SelectedOperationalNotes
+                .Select(selection => new AssociateSelectedOperationalNoteRowViewModel(
+                    AssociateSelectedOperationalNotePresentation.Build(selection), RemoveOperationalNoteAsync))
+                .ToList();
 
             SelectedDailyFeatureTypeOption = DailyFeatureTypeOption.For(draft.DailyFeatureType);
             DailyFeatureText = draft.DailyFeatureText;

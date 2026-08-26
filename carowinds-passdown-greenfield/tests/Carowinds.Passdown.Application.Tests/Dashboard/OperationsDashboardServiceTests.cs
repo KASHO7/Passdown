@@ -44,9 +44,9 @@ public class OperationsDashboardServiceTests
         var datedResults = new InMemoryDatedResultRepository();
         var catalogProducts = new InMemoryCatalogProductRepository();
         var refreshOrchestrator = new FakeRefreshOrchestrator();
-        var associateService = new AssociatePassdownService(drafts, datedResults, catalogProducts, refreshOrchestrator, clock);
-        var finalizedPassdowns = new CountingFinalizedPassdownRepository();
         operationalNotes ??= new OperationalNotesService(new InMemoryOperationalNoteRepository(), clock);
+        var associateService = new AssociatePassdownService(drafts, datedResults, catalogProducts, refreshOrchestrator, operationalNotes, clock);
+        var finalizedPassdowns = new CountingFinalizedPassdownRepository();
         var service = new OperationsDashboardService(associateService, finalizedPassdowns, operationalNotes, clock);
         return new TestEnvironment(service, drafts, datedResults, catalogProducts, refreshOrchestrator, finalizedPassdowns, operationalNotes, clock);
     }

@@ -2,6 +2,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.LogicalTree;
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
 using Carowinds.Passdown.Domain;
@@ -83,6 +84,59 @@ public class AssociateViewAccessibilityTests
         Assert.Contains("Save status", names);
         Assert.Contains("Operational notes", names);
         Assert.Contains("Add a custom or internal product", names);
+
+        // Phase 11D Part AS: the two persistent-note section headings are always present, regardless
+        // of whether any note is currently included/available.
+        Assert.Contains("Included persistent operational notes", names);
+        Assert.Contains("Available persistent operational notes", names);
+    }
+
+    // Phase 11D Part BA: structural/binding validation for a populated Included + Available
+    // persistent-notes state (several selections, Important + Normal, a long title/body) — no raster
+    // renderer exists in this environment (see docs/phase11-operational-notes.md), so this proves
+    // every binding/DataTemplate path constructs cleanly rather than claiming a pixel PASS.
+    [Fact]
+    public async Task AssociateView_WithSelectedAndAvailablePersistentNotes_ConstructsCleanly()
+    {
+        var longTitle = new string('T', 180);
+        var longBody = new string('B', 3500);
+        var selection = new AssociateOperationalNoteSelection(
+            Guid.NewGuid(), "South Gate scanner #3 out of service", "Direct guests to gate 2.",
+            OperationalNoteCategory.Equipment, OperationalNotePriority.Important,
+            Today, null, DateTimeOffset.UtcNow);
+        var longSelection = new AssociateOperationalNoteSelection(
+            Guid.NewGuid(), longTitle, longBody,
+            OperationalNoteCategory.Operations, OperationalNotePriority.Normal,
+            Today, null, DateTimeOffset.UtcNow);
+
+        var suggestion = new OperationalNote(
+            Guid.NewGuid(), "Group check-in support at North Gate", null,
+            OperationalNoteCategory.GuestServices, OperationalNotePriority.Normal,
+            Today, Today, OperationalNoteStatus.Active, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null);
+
+        var service = new FakeAssociatePassdownService
+        {
+            WorkspaceFactory = date => new AssociateWorkspace(
+                date,
+                AssociateDraftPayload.CreateDefault() with { SelectedOperationalNotes = [selection, longSelection] },
+                new AssociateParkHoursView(
+                    ParkHoursCalculator.Calculate(false, new TimeOnly(9, 0), new TimeOnly(21, 0), false, null, null, false, null, null),
+                    new AssociateVerificationInfo(AssociateVerificationState.Verified, DateTimeOffset.UtcNow, null, null),
+                    OfficialIsClosed: false, OfficialOpening: new TimeOnly(9, 0), OfficialClosing: new TimeOnly(21, 0)),
+                Products: [],
+                CategoryStatuses: [],
+                AssociateSaveStatus.NeverSaved),
+        };
+        service.RelevantOperationalNotesByDate[Today] = [suggestion];
+
+        var viewModel = new AssociateViewModel(service, new FakeClock(new DateTimeOffset(2026, 8, 21, 15, 0, 0, TimeSpan.Zero)));
+        await viewModel.PendingLoad;
+
+        Assert.Equal(2, viewModel.SelectedOperationalNotes.Count);
+        Assert.Single(viewModel.AvailableOperationalNoteSuggestions);
+
+        var view = new AssociateView { DataContext = viewModel };
+        Assert.NotNull(view);
     }
 
     [Fact]
@@ -94,6 +148,8 @@ public class AssociateViewAccessibilityTests
         Assert.Contains("StringFormat='Display price override for {0}'", markup);
         Assert.Contains("StringFormat='Use official price for {0}'", markup);
         Assert.Contains("StringFormat='Remove {0}'", markup);
+        Assert.Contains("StringFormat='Remove note {0}'", markup);
+        Assert.Contains("StringFormat='Add note {0}'", markup);
     }
 
     private static string FindRepoFile(string relativePath)

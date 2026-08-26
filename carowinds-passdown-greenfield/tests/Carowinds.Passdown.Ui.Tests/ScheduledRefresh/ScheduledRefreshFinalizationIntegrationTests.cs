@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Finalization;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Time;
@@ -47,7 +48,9 @@ public class ScheduledRefreshFinalizationIntegrationTests
         var catalogProducts = new SqliteCatalogProductRepository(connectionFactory);
         var finalizedPassdowns = new SqliteFinalizedPassdownRepository(connectionFactory);
 
-        var associateService = new AssociatePassdownService(drafts, datedResults, catalogProducts, new ThrowingRefreshOrchestrator(), clock);
+        var associateService = new AssociatePassdownService(
+            drafts, datedResults, catalogProducts, new ThrowingRefreshOrchestrator(),
+            new OperationalNotesService(new InMemoryOperationalNoteRepository(), clock), clock);
         var snapshotBuilder = new FinalizedPassdownSnapshotBuilder();
         var finalizationService = new FinalizedPassdownFinalizationService(finalizedPassdowns, snapshotBuilder);
         var finalizer = new ScheduledPassdownFinalizer(

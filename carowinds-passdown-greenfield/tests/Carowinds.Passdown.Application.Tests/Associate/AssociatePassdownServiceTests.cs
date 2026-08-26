@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Tests.TestSupport;
@@ -23,17 +24,19 @@ public class AssociatePassdownServiceTests
         InMemoryDatedResultRepository DatedResults,
         InMemoryCatalogProductRepository CatalogProducts,
         FakeRefreshOrchestrator RefreshOrchestrator,
+        IOperationalNotesService OperationalNotes,
         FakeClock Clock);
 
-    private static TestEnvironment CreateEnvironment(FakeClock? clock = null)
+    private static TestEnvironment CreateEnvironment(FakeClock? clock = null, IOperationalNotesService? operationalNotes = null)
     {
         clock ??= new FakeClock(FixedNow);
         var drafts = new InMemoryAssociateDraftRepository();
         var datedResults = new InMemoryDatedResultRepository();
         var catalogProducts = new InMemoryCatalogProductRepository();
         var refreshOrchestrator = new FakeRefreshOrchestrator();
-        var service = new AssociatePassdownService(drafts, datedResults, catalogProducts, refreshOrchestrator, clock);
-        return new TestEnvironment(service, drafts, datedResults, catalogProducts, refreshOrchestrator, clock);
+        operationalNotes ??= new OperationalNotesService(new InMemoryOperationalNoteRepository(), clock);
+        var service = new AssociatePassdownService(drafts, datedResults, catalogProducts, refreshOrchestrator, operationalNotes, clock);
+        return new TestEnvironment(service, drafts, datedResults, catalogProducts, refreshOrchestrator, operationalNotes, clock);
     }
 
     private static SourceEvidence Evidence(RetrievalStatus status, DateTimeOffset timeChecked, DateOnly? requestedDate = null) =>
@@ -106,6 +109,7 @@ public class AssociatePassdownServiceTests
         Assert.Equal(expected.ProductOverrides, actual.ProductOverrides);
         Assert.Equal(expected.CustomProducts, actual.CustomProducts);
         Assert.Equal(expected.SectionSelection, actual.SectionSelection);
+        Assert.Equal(expected.SelectedOperationalNotes, actual.SelectedOperationalNotes);
     }
 
     // ===================== Phase 8A: Daily Feature / section selection =====================
@@ -239,7 +243,8 @@ public class AssociatePassdownServiceTests
                 ["dated|DatedAdmissionTickets|PKG1"] = new ProductDraftOverride(false, 42.50m),
             },
             CustomProducts: [new CustomProductEntry("custom-1", "Group Rate", 10m, "Ask manager", true)],
-            SectionSelection: new PassdownSectionSelection(true, false, true, false, true, false, true));
+            SectionSelection: new PassdownSectionSelection(true, false, true, false, true, false, true),
+            SelectedOperationalNotes: []);
 
         await env.Service.SaveDraftAsync(Date, draft);
         var workspace = await env.Service.LoadAssociateDateAsync(Date);
@@ -878,7 +883,8 @@ public class AssociatePassdownServiceTests
                 new CustomProductEntry("group-1", "School Group Rate", 25m, "Contact groups desk", true),
                 new CustomProductEntry("promo-1", "Employee Family Day", null, null, false),
             ],
-            SectionSelection: PassdownSectionSelection.AllIncluded with { IncludeSeasonPasses = false });
+            SectionSelection: PassdownSectionSelection.AllIncluded with { IncludeSeasonPasses = false },
+            SelectedOperationalNotes: []);
 
         await env.Service.SaveDraftAsync(Date, draft);
         var persisted = await env.Drafts.GetAsync(Date);
@@ -895,5 +901,264 @@ public class AssociatePassdownServiceTests
         Assert.Equal(3, workspace.Draft.ProductOverrides.Count);
         Assert.Equal(3, workspace.Draft.EarlyRideTime.ParticipatingAttractions.Count);
         Assert.Equal(3, workspace.Draft.OperationalNotes.Count);
+    }
+
+    // ===================== Phase 11D: persistent-note selection =====================
+
+    private static Task<OperationalNote> CreateScannerNoteAsync(TestEnvironment env, DateOnly effectiveFrom, DateOnly? effectiveThrough = null) =>
+        env.OperationalNotes.CreateAsync(new OperationalNoteDraft(
+            "South Gate scanner #3 out of service", "Direct guests to gate 2.",
+            OperationalNoteCategory.Equipment, OperationalNotePriority.Normal, effectiveFrom, effectiveThrough));
+
+    [Fact]
+    public async Task SelectOperationalNoteAsync_RelevantSource_AddsFrozenSelection()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, Date);
+
+        var workspace = await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+
+        var selection = Assert.Single(workspace.Draft.SelectedOperationalNotes);
+        Assert.Equal(note.Id, selection.SourceOperationalNoteId);
+        Assert.Equal(note.Title, selection.Title);
+        Assert.Equal(note.Body, selection.Body);
+        Assert.Equal(note.Category, selection.Category);
+        Assert.Equal(note.Priority, selection.Priority);
+        Assert.Equal(note.EffectiveFrom, selection.EffectiveFrom);
+        Assert.Equal(note.EffectiveThrough, selection.EffectiveThrough);
+    }
+
+    [Fact]
+    public async Task SelectOperationalNoteAsync_NoteNotRelevantForDate_Throws()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, effectiveFrom: OtherDate, effectiveThrough: OtherDate);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => env.Service.SelectOperationalNoteAsync(Date, note.Id));
+    }
+
+    [Fact]
+    public async Task SelectOperationalNoteAsync_UnknownId_Throws()
+    {
+        var env = CreateEnvironment();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => env.Service.SelectOperationalNoteAsync(Date, Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task SelectOperationalNoteAsync_CalledTwice_IsIdempotent()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, Date);
+
+        await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+        var workspace = await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+
+        Assert.Single(workspace.Draft.SelectedOperationalNotes);
+    }
+
+    [Fact]
+    public async Task DeselectOperationalNoteAsync_RemovesSelection()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, Date);
+        await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+
+        var workspace = await env.Service.DeselectOperationalNoteAsync(Date, note.Id);
+
+        Assert.Empty(workspace.Draft.SelectedOperationalNotes);
+    }
+
+    [Fact]
+    public async Task DeselectOperationalNoteAsync_NeverSelected_IsSafeNoOp()
+    {
+        var env = CreateEnvironment();
+
+        var workspace = await env.Service.DeselectOperationalNoteAsync(Date, Guid.NewGuid());
+
+        Assert.Empty(workspace.Draft.SelectedOperationalNotes);
+    }
+
+    // Part I: a second, later selection after a deselect is a new explicit decision — it copies
+    // whatever the source note currently says, not the earlier frozen content.
+    [Fact]
+    public async Task Reselect_AfterDeselect_CopiesCurrentSourceContent_NotTheOldFrozenCopy()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, Date);
+        await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+        await env.Service.DeselectOperationalNoteAsync(Date, note.Id);
+
+        await env.OperationalNotes.UpdateAsync(note.Id, new OperationalNoteDraft(
+            "Scanner repaired; use normally", null, OperationalNoteCategory.Equipment, OperationalNotePriority.Normal, Date, null));
+
+        var workspace = await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+
+        var selection = Assert.Single(workspace.Draft.SelectedOperationalNotes);
+        Assert.Equal("Scanner repaired; use normally", selection.Title);
+        Assert.Null(selection.Body);
+    }
+
+    // Central Phase 11D guarantee (spec Part B/C/AD): editing/resolving/re-dating the source note
+    // after selection must never silently rewrite or remove the already-selected frozen copy.
+    [Fact]
+    public async Task SourceEditAfterSelection_DoesNotMutateSelectedCopy()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, Date);
+        await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+
+        await env.OperationalNotes.UpdateAsync(note.Id, new OperationalNoteDraft(
+            "Scanner repaired; use normally", "All clear.", OperationalNoteCategory.Equipment, OperationalNotePriority.Important, Date, null));
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+
+        var selection = Assert.Single(workspace.Draft.SelectedOperationalNotes);
+        Assert.Equal("South Gate scanner #3 out of service", selection.Title);
+        Assert.Equal("Direct guests to gate 2.", selection.Body);
+        Assert.Equal(OperationalNotePriority.Normal, selection.Priority);
+    }
+
+    [Fact]
+    public async Task SourceResolveAfterSelection_DoesNotRemoveSelectedCopy()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, Date);
+        await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+
+        await env.OperationalNotes.ResolveAsync(note.Id);
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+        Assert.Single(workspace.Draft.SelectedOperationalNotes);
+    }
+
+    [Fact]
+    public async Task SourceDateChangeAfterSelection_DoesNotRemoveSelectedCopy()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, Date);
+        await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+
+        // The source note's own range moves entirely off Date; the selected copy stays.
+        await env.OperationalNotes.UpdateAsync(note.Id, new OperationalNoteDraft(
+            note.Title, note.Body, note.Category, note.Priority, OtherDate, OtherDate));
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+        var selection = Assert.Single(workspace.Draft.SelectedOperationalNotes);
+        Assert.Equal(Date, selection.EffectiveFrom);
+    }
+
+    [Fact]
+    public async Task Selections_AreDateSpecific_NeverLeakAcrossDates()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, Date, effectiveThrough: OtherDate);
+        await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+
+        var otherDateWorkspace = await env.Service.LoadAssociateDateAsync(OtherDate);
+        Assert.Empty(otherDateWorkspace.Draft.SelectedOperationalNotes);
+
+        var dateWorkspace = await env.Service.LoadAssociateDateAsync(Date);
+        Assert.Single(dateWorkspace.Draft.SelectedOperationalNotes);
+    }
+
+    [Fact]
+    public async Task SelectedOperationalNotes_PreserveSelectionOrder()
+    {
+        var env = CreateEnvironment();
+        var noteA = await CreateScannerNoteAsync(env, Date);
+        var noteB = await env.OperationalNotes.CreateAsync(new OperationalNoteDraft(
+            "Group check-in support at North Gate", null, OperationalNoteCategory.GuestServices, OperationalNotePriority.Normal, Date, null));
+
+        await env.Service.SelectOperationalNoteAsync(Date, noteB.Id);
+        var workspace = await env.Service.SelectOperationalNoteAsync(Date, noteA.Id);
+
+        Assert.Equal([noteB.Id, noteA.Id], workspace.Draft.SelectedOperationalNotes.Select(s => s.SourceOperationalNoteId));
+    }
+
+    [Fact]
+    public async Task LegacyDraft_WithoutSelectedOperationalNotesProperty_DefaultsToEmpty()
+    {
+        var env = CreateEnvironment();
+        var legacyJson = """
+            {
+                "ManualHoursOverride": { "Enabled": false, "OpeningTime": null, "ClosingTime": null },
+                "PrivateBuyout": { "Enabled": false, "OpeningTime": null, "ClosingTime": null, "Details": null },
+                "ProjectedAttendance": null,
+                "PreSolds": null,
+                "EarlyRideTime": { "Details": null, "ParticipatingAttractions": [] },
+                "OperationalNotes": ["Pre-11D note"],
+                "DailyFeatureType": null,
+                "DailyFeatureText": null,
+                "ProductOverrides": {},
+                "CustomProducts": [],
+                "SectionSelection": {
+                    "IncludeDailyAdmission": true, "IncludeFastLane": true, "IncludePromotions": true,
+                    "IncludeSeasonPasses": true, "IncludeAddOns": true, "IncludeOperationalNotes": true,
+                    "IncludeHauntedAttractions": true
+                }
+            }
+            """;
+        await env.Drafts.SaveAsync(new AssociateDraft(Date, SchemaVersion: 2, PayloadJson: legacyJson, UpdatedAt: FixedNow));
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+
+        Assert.Empty(workspace.Draft.SelectedOperationalNotes);
+        Assert.Equal(["Pre-11D note"], workspace.Draft.OperationalNotes);
+    }
+
+    [Fact]
+    public async Task SelectOperationalNoteAsync_NeverMutatesSourceNote()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, Date);
+
+        await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+        await env.Service.DeselectOperationalNoteAsync(Date, note.Id);
+
+        var reloaded = await env.OperationalNotes.ListAsync();
+        var stored = Assert.Single(reloaded);
+        Assert.Equal(note.UpdatedAtUtc, stored.UpdatedAtUtc);
+        Assert.Equal(OperationalNoteStatus.Active, stored.Status);
+        Assert.Null(stored.ResolvedAtUtc);
+    }
+
+    [Fact]
+    public async Task SelectDeselect_NeverInvokeRefreshOrchestrator()
+    {
+        var env = CreateEnvironment();
+        var note = await CreateScannerNoteAsync(env, Date);
+
+        await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+        await env.Service.DeselectOperationalNoteAsync(Date, note.Id);
+
+        Assert.Empty(env.RefreshOrchestrator.ManualDateRefreshCalls);
+        Assert.Equal(0, env.RefreshOrchestrator.ScheduledRefreshCallCount);
+    }
+
+    [Fact]
+    public async Task SelectOperationalNoteAsync_DoesNotAffectManualOperationalNotesText()
+    {
+        var env = CreateEnvironment();
+        await env.Service.SaveDraftAsync(Date, AssociateDraftPayload.CreateDefault() with { OperationalNotes = ["A manual note"] });
+        var note = await CreateScannerNoteAsync(env, Date);
+
+        var workspace = await env.Service.SelectOperationalNoteAsync(Date, note.Id);
+
+        Assert.Equal(["A manual note"], workspace.Draft.OperationalNotes);
+    }
+
+    [Fact]
+    public async Task GetRelevantOperationalNoteSuggestionsAsync_UsesAssociateSelectedDate_NotEasternToday()
+    {
+        var env = CreateEnvironment();
+        var farFutureDate = Date.AddDays(30);
+        await CreateScannerNoteAsync(env, farFutureDate);
+
+        var suggestionsForToday = await env.Service.GetRelevantOperationalNoteSuggestionsAsync(Date);
+        var suggestionsForFarFuture = await env.Service.GetRelevantOperationalNoteSuggestionsAsync(farFutureDate);
+
+        Assert.Empty(suggestionsForToday);
+        Assert.Single(suggestionsForFarFuture);
     }
 }

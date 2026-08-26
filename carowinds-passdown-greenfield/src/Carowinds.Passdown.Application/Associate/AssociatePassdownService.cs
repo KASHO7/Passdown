@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Carowinds.Passdown.Application.Catalog;
 using Carowinds.Passdown.Application.Freshness;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
@@ -18,12 +19,20 @@ namespace Carowinds.Passdown.Application.Associate;
 /// a date load composes from whatever is already cached, and only an explicit online check ever
 /// calls the orchestrator (spec §6.3) — see <see cref="LoadAssociateDateAsync"/> vs.
 /// <see cref="CheckAssociateDateOnlineAsync"/>.
+///
+/// Phase 11D adds <see cref="IOperationalNotesService"/> as this service's one bridge to the
+/// persistent Operational Notes table — the only place in the codebase allowed to copy a
+/// persistent note's content into an Associate draft, and only in response to an explicit
+/// <see cref="SelectOperationalNoteAsync"/> call (never automatically). The Desktop
+/// <c>AssociateViewModel</c> deliberately still has no <see cref="IOperationalNotesService"/>
+/// dependency of its own — every persistent-note operation it needs goes through this service.
 /// </summary>
 public sealed class AssociatePassdownService(
     IAssociateDraftRepository draftRepository,
     IDatedResultRepository datedResultRepository,
     ICatalogProductRepository catalogProductRepository,
     IRefreshOrchestrator refreshOrchestrator,
+    IOperationalNotesService operationalNotesService,
     IClock clock) : IAssociatePassdownService
 {
     private static readonly SourceCategory[] CatalogCategories =
@@ -65,6 +74,74 @@ public sealed class AssociatePassdownService(
         await draftRepository.SaveAsync(record, cancellationToken).ConfigureAwait(false);
 
         return new AssociateSaveStatus(AssociateSaveState.Saved, now);
+    }
+
+    /// <summary>
+    /// Phase 11D Part E/F: persistent notes relevant to <paramref name="operatingDate"/> — the
+    /// Associate-selected date, deliberately never Dashboard's Eastern "today" — in the same
+    /// relevance/ordering already proven by <see cref="IOperationalNotesService.ListRelevantForDateAsync"/>.
+    /// These are suggestions only; nothing here selects one automatically (Part S carried forward
+    /// from Phase 11A/11C).
+    /// </summary>
+    public Task<IReadOnlyList<OperationalNote>> GetRelevantOperationalNoteSuggestionsAsync(DateOnly operatingDate, CancellationToken cancellationToken = default) =>
+        operationalNotesService.ListRelevantForDateAsync(operatingDate, cancellationToken);
+
+    /// <summary>
+    /// Phase 11D Part B/O: freezes a copy of <paramref name="operationalNoteId"/>'s current display
+    /// content into <paramref name="operatingDate"/>'s draft. Re-reads the saved draft directly
+    /// (not any in-memory caller state) so this is safe to call after the caller has already flushed
+    /// its own pending edits. Idempotent while already selected (Part H); throws when the note is
+    /// unknown or not currently relevant for this date (Part O) — the UI only ever offers ids drawn
+    /// from <see cref="GetRelevantOperationalNoteSuggestionsAsync"/>, so this is a defensive check
+    /// against a stale/invalid id, not a normal user-facing validation path.
+    /// </summary>
+    public async Task<AssociateWorkspace> SelectOperationalNoteAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken cancellationToken = default)
+    {
+        var draft = await LoadDraftPayloadAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+
+        if (draft.SelectedOperationalNotes.Any(selection => selection.SourceOperationalNoteId == operationalNoteId))
+        {
+            return await ComposeAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+        }
+
+        var relevant = await operationalNotesService.ListRelevantForDateAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+        var source = relevant.FirstOrDefault(note => note.Id == operationalNoteId)
+            ?? throw new InvalidOperationException($"Operational note {operationalNoteId} is not available to select for {operatingDate:yyyy-MM-dd}.");
+
+        var selection = new AssociateOperationalNoteSelection(
+            source.Id, source.Title, source.Body, source.Category, source.Priority,
+            source.EffectiveFrom, source.EffectiveThrough, clock.UtcNow);
+
+        var updated = draft with { SelectedOperationalNotes = [.. draft.SelectedOperationalNotes, selection] };
+        await SaveDraftAsync(operatingDate, updated, cancellationToken).ConfigureAwait(false);
+
+        return await ComposeAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Phase 11D Part H/AH: removes a selected note's frozen copy from <paramref name="operatingDate"/>'s
+    /// draft. Safe/idempotent when the note was never selected (Part AV #8) — no tombstone, matching
+    /// how the rest of the draft is a plain overwrite of current state.
+    /// </summary>
+    public async Task<AssociateWorkspace> DeselectOperationalNoteAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken cancellationToken = default)
+    {
+        var draft = await LoadDraftPayloadAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+
+        var updated = draft with
+        {
+            SelectedOperationalNotes = draft.SelectedOperationalNotes
+                .Where(selection => selection.SourceOperationalNoteId != operationalNoteId)
+                .ToList(),
+        };
+
+        await SaveDraftAsync(operatingDate, updated, cancellationToken).ConfigureAwait(false);
+        return await ComposeAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<AssociateDraftPayload> LoadDraftPayloadAsync(DateOnly operatingDate, CancellationToken cancellationToken)
+    {
+        var draftRecord = await draftRepository.GetAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+        return draftRecord is null ? AssociateDraftPayload.CreateDefault() : DeserializeDraft(draftRecord.PayloadJson);
     }
 
     private async Task<AssociateWorkspace> ComposeAsync(DateOnly operatingDate, CancellationToken cancellationToken)
@@ -149,7 +226,12 @@ public sealed class AssociatePassdownService(
             sectionSelection = sectionSelection with { IncludeHauntedAttractions = true };
         }
 
-        return payload with { SectionSelection = sectionSelection };
+        // Phase 11D Part AO: a pre-11D payload has no "SelectedOperationalNotes" property at all, so
+        // the plain deserialize above leaves it null — a legacy draft must load with zero selections,
+        // never a fabricated one, matching every other optional-field migration in this method.
+        var selectedOperationalNotes = payload.SelectedOperationalNotes ?? [];
+
+        return payload with { SectionSelection = sectionSelection, SelectedOperationalNotes = selectedOperationalNotes };
     }
 
     private static bool HasIncludeHauntedAttractionsProperty(string payloadJson)

@@ -1,3 +1,5 @@
+using Carowinds.Passdown.Application.OperationalNotes;
+
 namespace Carowinds.Passdown.Application.Associate;
 
 /// <summary>
@@ -70,6 +72,25 @@ public sealed record ProductDraftOverride(bool IncludeOnPdf, decimal? DisplayPri
 public sealed record CustomProductEntry(string Id, string DisplayName, decimal? Price, string? Notes, bool IncludeOnPdf);
 
 /// <summary>
+/// A frozen, per-draft copy of a persistent <see cref="OperationalNote"/> a supervisor explicitly
+/// chose to include in one specific day's Associate Passdown (Phase 11D Part A/B). Every display
+/// field is copied at selection time and never re-read from the live <c>operational_notes</c> row
+/// afterward — editing, resolving, or otherwise changing the source note must never silently rewrite
+/// an already-selected copy (Phase 11D Part B/C). <see cref="SourceOperationalNoteId"/> is retained
+/// only as source identity (duplicate-selection prevention, Part H), never as a live reference the
+/// draft depends on to render or finalize.
+/// </summary>
+public sealed record AssociateOperationalNoteSelection(
+    Guid SourceOperationalNoteId,
+    string Title,
+    string? Body,
+    OperationalNoteCategory Category,
+    OperationalNotePriority Priority,
+    DateOnly EffectiveFrom,
+    DateOnly? EffectiveThrough,
+    DateTimeOffset SelectedAtUtc);
+
+/// <summary>
 /// Everything an associate enters by hand for one operating date (spec §8.1), independent of any
 /// officially retrieved data. This is the exact shape persisted as
 /// <see cref="Persistence.AssociateDraft.PayloadJson"/> — kept entirely separate from cached
@@ -87,15 +108,17 @@ public sealed record AssociateDraftPayload(
     string? DailyFeatureText,
     IReadOnlyDictionary<string, ProductDraftOverride> ProductOverrides,
     IReadOnlyList<CustomProductEntry> CustomProducts,
-    PassdownSectionSelection SectionSelection)
+    PassdownSectionSelection SectionSelection,
+    IReadOnlyList<AssociateOperationalNoteSelection> SelectedOperationalNotes)
 {
     /// <summary>
     /// Current schema version for <see cref="Persistence.AssociateDraft.SchemaVersion"/> — bump when
     /// this shape changes incompatibly. Phase 8A bumped 1 -> 2 for the Daily Fun -> Daily Feature
-    /// rename plus <see cref="SectionSelection"/>; see <see cref="AssociatePassdownService.DeserializeDraft"/>
-    /// for how an older persisted payload is migrated forward on read.
+    /// rename plus <see cref="SectionSelection"/>; Phase 11D bumps 2 -> 3 for <see cref="SelectedOperationalNotes"/>.
+    /// See <see cref="AssociatePassdownService.DeserializeDraft"/> for how an older persisted payload
+    /// is migrated forward on read.
     /// </summary>
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     /// <summary>The draft an operating date starts with before an associate has entered anything (spec §8.3's "no draft -> default draft").</summary>
     public static AssociateDraftPayload CreateDefault() => new(
@@ -109,5 +132,6 @@ public sealed record AssociateDraftPayload(
         DailyFeatureText: null,
         ProductOverrides: new Dictionary<string, ProductDraftOverride>(),
         CustomProducts: [],
-        SectionSelection: PassdownSectionSelection.AllIncluded);
+        SectionSelection: PassdownSectionSelection.AllIncluded,
+        SelectedOperationalNotes: []);
 }
