@@ -1699,6 +1699,14 @@ represented as one.
 
 None of the above is presented as a false PASS.
 
+### Phase 9 documentation closeout (superseded by Phase 10F for the current artifact)
+
+The narrative below (Phase 9 requirements audit, immutability/order/schema/privacy/navigation
+audits, release rebuild) is retained as the historical record of the Phase 9F rebuild. The artifact
+it produced (`ccd41c76a79824b3e923e23d209b0ac15e4bf8059b491a17004ce4ca8f1979c4`) is itself now
+superseded by the Phase 10F rebuild below — see `docs/release-manifest.md` for current-vs-superseded
+artifact identity.
+
 ### Phase 9 documentation closeout
 
 `docs/phase9-finalization.md` gained a final "Phase 9 complete" section (see that document) covering
@@ -1739,4 +1747,403 @@ execution (visual, PDF-open/save, and Task Scheduler-with-finalization checks) �
 new risks Phase 9 introduced beyond what Phase 7E/7F already carried for this dev-host-only build
 process, and all of which are recorded above rather than glossed over. `0.1.0-dev` remains an
 explicit pre-release development version, not a production 1.0 release.
+
+## Phase 10F rebuild — release closeout for the full Phase 10 Operations Dashboard
+
+Not a new numbered product phase (Phase 10 itself spans 10A–10F) — this is the release rebuild that
+closes out Phase 10 as a shipped feature set, mirroring exactly how Phase 9F closed out Phase 9 above.
+`docs/release-manifest.md` is the authoritative record of exactly what this rebuild produced
+(SHA-256, sizes, file/entry counts, test count, schema version); this section records the narrative,
+the audit performed, and what was/was not re-verified.
+
+### What changed since the Phase 9F artifact
+
+The entire Phase 10A–10E Operations Dashboard, previously validated only by the automated suite,
+never packaged:
+
+- **10A** — Dashboard foundation: a new "Dashboard" top-level section (sibling of "Associate
+  Passdown"/"History"), the app's new default startup screen, `OperationsDashboardSnapshot`/
+  `OperationsDashboardService`/`OperationsDashboardViewModel`/`DashboardView` read model/service/
+  view-model/view stack. "Today" is resolved in America/New_York, independent of Associate's own
+  selected date. Local-only load — no HTTP/Playwright/Task-Scheduler-capable constructor dependency
+  exists on the Dashboard service or view model (true by constructor signature, reflection-tested).
+- **10B** — Today's Operational Summary content polish: Park Status/Passdown Status/Today at a
+  Glance (attendance, pre-solds, Early Ride Time, Daily Feature)/Operational Notes preview, wording
+  aligned with `AssociateView`'s own vocabulary, bounded truncation for long free-text content.
+- **10C** — Passdown/History/Notes integration: a "Latest Finalized" panel (metadata-only, highest
+  `PassdownDate` wins, never deserializes a historical snapshot or PDF blob), and targeted "Open
+  Passdown"/"Open Notes" deep links into Associate's own Overview/Notes sections (via a
+  view-model-owned `AssociateSection` rail) rather than a single generic "open Associate" fallback.
+- **10D** — Data Status: a 5-state overall aggregate (`Current`/`SomeStale`/`SomeUnavailable`/
+  `VerificationIssue`/`NoPublishedData`) over all 7 source categories, an explicit "Check Online"
+  action that reuses the existing `IAssociatePassdownService.CheckAssociateDateOnlineAsync` path (no
+  second retrieval implementation), success-only "Last verified" vs. attempt-based "Last checked"
+  timestamps kept distinct, and `Closed`/`NotPublished` correctly kept out of the failure buckets.
+- **10E** — targeted visual/accessibility polish: automation names completed on all six panels, a
+  dedicated Check Online busy indicator distinct from the header's reload indicator, a `WrapPanel`
+  fix for the Data Status count-chip row at the 960×640 fallback width, tightened internal spacing on
+  the Data Status card. No business/schema change.
+
+No retrieval, Associate-editing, finalization, or History-immutability behavior changed. No Manager
+workflow, Alerts system, Operations Calendar, or persistent Notes Manager was added — all remain
+explicitly deferred (CLAUDE.md "Current scope decision"). The product version was not changed
+(`0.1.0-dev` remains the single authoritative version, `Directory.Build.props`).
+
+### Final Phase 10 requirements audit (Part A)
+
+Reviewed Phase 10A–10E as one system rather than trusting each phase's own summary in isolation —
+spot-checked the load-bearing claims directly against current code (constructor signatures, migration
+registration, repository interface shape) and a fresh full test run, not just against prior
+documentation:
+
+| Requirement | Evidence | Status |
+|---|---|---|
+| Dashboard is a first-class top-level section | `MainWindow.axaml` section strip: Dashboard / Associate Passdown / History; `AppSection` enum | PASS |
+| Dashboard is default startup | `MainViewModel.SelectedSection` initializer: `= AppSection.Dashboard` | PASS |
+| Dashboard uses Eastern "Today" | `OperationsDashboardService.GetTodayAsync` → `EasternTimeZone`/`IClock`, never `DateTime.Now`/`.UtcNow` | PASS |
+| Dashboard date independent of Associate selected date | `OperationsDashboardService` never reads `AssociateViewModel.SelectedDate`; `MainViewModelNavigationTests` | PASS |
+| Dashboard load is local-only | `OperationsDashboardService(IAssociatePassdownService, IFinalizedPassdownRepository, IClock)` — no HTTP/refresh/PDF-capable dependency, confirmed by reading the constructor directly | PASS |
+| Park Status / effective hours | `DashboardParkStatusSummary` reuses `ParkHoursCalculator`/`ParkHoursPresentation` — no second hours formatter | PASS |
+| Custom hours / private buyout | `IsManualOverrideApplied`/`IsPrivateBuyoutApplied` classification in `BuildParkStatus`; `DashboardView_EachParkStatus_ConstructsWithoutError` theory | PASS |
+| Closed / NotPublished / Unavailable states | All 7 `DashboardParkStatus` values classified, never fabricated as `Open` | PASS |
+| Passdown Status | `DashboardPassdownStatusSummary` from `AssociateWorkspace.SaveStatus` + `IFinalizedPassdownRepository` metadata | PASS |
+| Attendance / Pre-solds | "Not entered" empty-state text matches `AssociateView`'s own; `0` distinct from missing | PASS |
+| Early Ride Time | "Not set" empty-state text; enabled/disabled both render | PASS |
+| Daily Feature | Bounded 140-char truncation; empty/present logic in `OperationsDashboardPresentation.Build` | PASS |
+| Operational Notes preview | 3-line prefix of `AssociateDraftPayload.OperationalNotes`, 100-char per-line bound, no second persistence model | PASS |
+| Latest-finalized metadata integration | `FinalizedPassdownSummary`, highest `PassdownDate` wins (explicit `Aggregate`, not repository ordering) | PASS |
+| History metadata-only guarantee | `IFinalizedPassdownRepository.GetByDateAsync` never called by Dashboard — `LoadAsync_LargeFinalizedHistorySet_RemainsMetadataOnly` (50-row seed, `GetByDateCallCount == 0`) | PASS |
+| Open Passdown routing | `OpenAssociateOverviewRequested` → `Associate.SelectedSection = AssociateSection.Overview` | PASS |
+| Open Notes deep-link | `OpenAssociateNotesRequested` → `Associate.SelectedSection = AssociateSection.Notes` | PASS |
+| Open History routing | `OpenHistoryRequested` → `ShowHistorySectionCommand` | PASS |
+| Associate date preservation | Neither navigation handler touches `AssociateViewModel.SelectedDate` | PASS |
+| History state preservation | `PassdownHistoryViewModel` constructed once at composition root, `IsVisible`-only toggling; `NavigatingHistoryThenDashboardThenHistory_PreservesHistorySelection` | PASS |
+| Data Status aggregation (5 states) | `DashboardOverallDataStatus`; deterministic precedence in `BuildDataHealth` | PASS |
+| Closed is not a confidence failure | `Classify(Closed) => Current`; `LoadAsync_ParkHoursVerifiedClosed_CountsAsCurrentNotIssue` | PASS |
+| NotPublished semantics (informational) | Only degrades to `NoPublishedData` when `CurrentCount == 0`; `LoadAsync_OneCategoryNotPublished_OverallStaysCurrentWhenAnotherIsCurrent` | PASS |
+| Stale / LKG semantics | `Stale` is attempt-vs-success derived (`LastKnownGood<T>.IsStale`), not a time window; old success value/timestamp preserved through a later failure | PASS |
+| Error vs. Unavailable distinction | Distinct buckets/counts (`VerificationIssueCount` vs. `UnavailableCount`), distinct precedence | PASS |
+| Verification-timestamp semantics | `LastVerifiedAt` success-only (Park Hours, catalog categories); `LastCheckedAt` attempt-based, never relabeled "verified" (dated-tracked categories) | PASS |
+| Explicit Check Online | `CheckOnlineCommand` reuses `IAssociatePassdownService.CheckAssociateDateOnlineAsync` — no second retrieval implementation; `IsCheckingOnline` cannot run concurrently with `ReloadCommand` | PASS |
+| Local-only Reload Summary | `ReloadCommand` → `GetTodayAsync()` only; `LoadAsync_NeverTriggersOnlineRefresh` asserts empty `ManualDateRefreshCalls` | PASS |
+| Partial refresh / LKG behavior | `CheckOnlineAsync_FailedRefresh_PreservesLastKnownGood`; failure shows plain-language message, never a raw exception | PASS |
+| Accessibility (automation names, keyboard, no color-only status) | All six panels + all actions carry `AutomationProperties.Name`; every status is plain-language text, not color-only; tab order manually traced with no focus traps | PASS |
+| Long-content safety | Daily Feature/notes truncation bounds; `DashboardView_LongDailyFeatureAndNotes_ConstructsWithBoundedText` | PASS |
+| Desktop density (1280×860 no oversized cards) | Reviewed directly — Grid-based two-column panels, no per-source cards, `WrapPanel` fix for count chips | PASS |
+| No Manager/Calendar/Alerts/Notes-Manager workflow added | No such UI/ViewModel/navigation entry exists anywhere in the Phase 10 diff | DEFERRED BY DESIGN |
+| Windows 100%/125%/150% scaling | No Windows host available in this or the Phase 10E session | NOT EXECUTED |
+| Raster/pixel visual validation | No bitmap/screenshot renderer exists in this codebase (unchanged since Phase 9E) | PARTIAL (construction-level PASS; pixel-level NOT EXECUTED) |
+
+No item required a code fix during this audit — every claim in `docs/phase10-operations-dashboard.md`
+held up against direct inspection of the current code and a fresh full test run (982/982 on a clean
+run).
+
+### Architecture audit (Part B)
+
+Re-read the Dashboard's own dependency chain directly:
+
+```
+existing Application state/services
+        |
+        v
+OperationsDashboardService (IAssociatePassdownService, IFinalizedPassdownRepository, IClock)
+        |
+        v
+OperationsDashboardSnapshot
+        |
+        v
+OperationsDashboardViewModel (IOperationsDashboardService, ILogger?)
+        |
+        v
+DashboardView.axaml
+```
+
+- **No direct SQL from ViewModel/View**: `grep`-confirmed — no `SqliteConnection`/`SELECT`/`INSERT`
+  string appears in `OperationsDashboardViewModel.cs` or `DashboardView.axaml.cs`.
+- **No direct HTTP from Dashboard load**: `OperationsDashboardService`'s constructor is exactly
+  `(IAssociatePassdownService, IFinalizedPassdownRepository, IClock)` — no `HttpClient`/
+  `IRefreshOrchestrator`-typed parameter exists; `OperationsDashboardViewModel`'s constructor is
+  exactly `(IOperationsDashboardService, ILogger<OperationsDashboardViewModel>?)`.
+- **No browser dependency**: neither type references `IJobBrowserSessionFactory`/Playwright.
+- **No duplicated hours/freshness/finalization logic**: `BuildParkStatus` reuses
+  `ParkHoursCalculator`/`AssociateParkHoursView` computed elsewhere; `BuildDataHealth` reuses
+  `AssociateVerificationState` values computed by the existing Associate composition path; no second
+  finalization-eligibility or hours-arithmetic implementation exists in `Dashboard/`.
+- **`MainViewModel` coordinates top-level navigation**: `SelectedSection`/`ShowDashboardSection`/
+  `ShowAssociateSection`/`ShowHistorySection` remain the single owner; Dashboard's own view model has
+  zero reference to `AppSection`/`AssociateViewModel`, only raising plain events.
+- **`AssociateViewModel` owns its internal section**: `AssociateSection` (`Overview`/`Products`/
+  `Notes`) lives on `AssociateViewModel`, not on Dashboard or `MainViewModel`.
+- **History remains separate**: `PassdownHistoryViewModel` has no Dashboard-typed dependency.
+- **Dashboard remains a projection, not an editor**: no `TextBox`/`CheckBox`/save/edit control exists
+  anywhere in `DashboardView.axaml` — confirmed by direct read; every control is a `TextBlock`,
+  `Border`, or a navigation/refresh `Button`.
+
+No architecture violation found; no fix was needed.
+
+### Local-only startup audit (Part C)
+
+Confirmed directly: `App.OnFrameworkInitializationCompleted` constructs the composition root, applies
+migrations, opens `MainWindow` (which now renders Dashboard by default per Part A), and only then
+fires `StartupCatchUpRefresh` as a detached background task — unrelated to which section renders
+first, since it never references a specific view model. `OperationsDashboardViewModel`'s constructor
+fires a fire-and-forget **local** load (`IOperationsDashboardService.GetTodayAsync()`) — no HTTP,
+Playwright, Check Online, or scheduled-refresh-host call is reachable from the Dashboard's own
+construction path, confirmed by the same constructor-signature check as Part B.
+
+### Dashboard date isolation audit (Part D)
+
+Re-confirmed: `OperationsDashboardService` never reads `AssociateViewModel.SelectedDate` anywhere in
+`Dashboard/OperationsDashboardService.cs`; `MainViewModelNavigationTests` covers Open
+Passdown/Open Notes both landing on whatever date Associate already has selected, and plain
+section-switching (Dashboard ↔ Associate ↔ History) never touching `SelectedDate` or Associate's
+internal `AssociateSection`. No regression found; no new coverage was needed.
+
+### History integration audit (Part E)
+
+Re-confirmed the metadata-only guarantee from the Dashboard's own call site:
+`IFinalizedPassdownRepository.GetByDateAsync` (the only method that can return `PdfBytes`/
+`SnapshotJson`) is never called anywhere in `OperationsDashboardService`. "Latest finalized" is
+computed by an explicit highest-`PassdownDate` `Aggregate` over `ListAsync`'s result — never a
+`SqliteFinalizedPassdownRepository`-ordering assumption. A no-PDF legacy row and a malformed/
+future-schema row both still populate `LatestFinalized` correctly, because the Dashboard never
+deserializes `SnapshotJson` or touches the PDF column in the first place — there is nothing on that
+path to fail on. `Open History` routes through the same single `ShowHistorySectionCommand`
+`MainViewModel` already owned before Phase 10 — no new cross-ViewModel coupling was introduced.
+
+### Data Status semantics audit (Part F)
+
+Re-derived the precedence directly from `OperationsDashboardService.BuildDataHealth`:
+
+```
+VerificationIssueCount > 0   -> VerificationIssue
+StaleCount > 0                 -> SomeStale
+UnavailableCount > 0            -> SomeUnavailable
+CurrentCount == 0               -> NoPublishedData
+otherwise                       -> Current
+```
+
+Confirmed: `Error` maps to `VerificationIssue`; `Stale` stays a distinct bucket, derived from
+`LastKnownGood<T>.IsStale` (attempt-vs-success), never a time-window comparison; `Unavailable` stays
+distinct from `VerificationIssue`; `NotPublished` never degrades the overall status on its own —
+it only participates via `NoPublishedData` when nothing else is confirmed either; `Closed` (a
+genuinely verified "park is closed") counts as `Current`, not an issue; `LastVerifiedAt` is populated
+only from success evidence and is never a failed attempt's timestamp; a stale value's old
+`LastVerifiedAt` survives a later failed attempt untouched. No new time-window freshness system was
+introduced or found. Matches `docs/phase10-operations-dashboard.md` Phase 10D exactly.
+
+### Check Online audit (Part G)
+
+Confirmed `CheckOnlineCommand` calls `IOperationsDashboardService.CheckOnlineAsync`, which itself
+calls the same `IAssociatePassdownService.CheckAssociateDateOnlineAsync`/
+`IRefreshOrchestrator.RunManualDateRefreshAsync` path Associate's own Check Online already uses — no
+second retrieval implementation exists. `IsCheckingOnline` and `IsLoading` (Reload) each
+cross-reference the other's `CanExecute`, so neither can run concurrently with the other or with
+itself. Current local values stay visible while busy (no blanking). A failed Check Online preserves
+the existing snapshot and shows a plain-language message — no raw exception, URL, or HTTP status is
+ever surfaced (the presentation types have no field capable of carrying one). Reload Summary
+(`ReloadCommand` → `GetTodayAsync()`) stays local-only and is a visibly distinct action/label from
+Check Online, both on the header and the Data Status card. No violation found.
+
+### Dashboard UI / accessibility audit (Parts H/I)
+
+Reviewed `DashboardView.axaml` directly against the 1280×860 target and the 960×640 `ScrollViewer`
+fallback (unchanged structurally since Phase 10E, which already closed the count-chip-clipping and
+automation-name gaps this audit would otherwise have flagged). All named panels/actions
+(Dashboard/Associate Passdown/History section buttons, Today's Operation, Passdown Status, Today at a
+Glance, Operational Notes, Latest Finalized, Data Status, Open Passdown, Open Notes, Open History,
+Reload/"Refresh", Check Online) carry `AutomationProperties.Name`, confirmed by reading the XAML and
+by `DashboardView_WithSnapshot_ExposesCriticalAutomationNames` passing. No status is color-only.
+Keyboard tab order and disabled-while-busy behavior were re-confirmed unchanged from Phase 10E's own
+manual trace. No omission found; no fix was needed.
+
+### Diagnostic privacy audit (Part J)
+
+`grep -rl Dashboard` over `Application/Diagnostics/` and `Infrastructure/Diagnostics/` returns nothing
+— `DiagnosticReportBuilder`/`DiagnosticExportService` were not touched by any Phase 10 subphase and
+have no reference to `DashboardDataHealthSummary`/`DashboardSourceStatusEntry`/any Dashboard type.
+Diagnostics still report only version/schema metadata, source statuses/timestamps, task existence, and
+finalized counts/dates — never draft content, Operational Notes text, Daily Feature text, finalized
+snapshot JSON, or PDF bytes. No expansion was made; none was needed.
+
+### Database / schema audit (Part K)
+
+Confirmed directly from `App.axaml.cs`'s migration registration: exactly Migrations 0001–0009 are
+registered, unchanged from Phase 9F — **no Migration0010 or later exists**. Current schema version:
+**9**. `FinalizedPassdownSnapshot.CurrentSchemaVersion = 1` — unchanged. `PortableLifecycleTests`
+(unmodified) still covers schema 1→9 and 8→9 upgrades; `MigrationRunnerTests`' newer-than-known-version
+guard is unaffected. Phase 9's finalized data remains readable — nothing in Phase 10 reads or writes
+`finalized_passdowns` differently than Phase 9C/9D established.
+
+### Final automated validation (Part L)
+
+1. `dotnet build CarowindsPassdown.slnx` — **PASS**, 0 warnings, 0 errors.
+2. `dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` (run 1) — **PASS**, **982/982**
+   (66 Domain + 256 Application + 82 Documents + 287 Infrastructure + 291 Ui), matching Phase 10E's
+   documented baseline exactly.
+3. `dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` (run 2) — **981/982**: one
+   failure in `NoManagerWorkflowTests.AssociateView_LogicalTree_ContainsNoManagerLabeledControl`, an
+   `Avalonia.ClassBindingManager.Bind`/XAML-loader race under this suite's parallel test execution.
+   This is the **same pre-existing flake first recorded in Phase 6D** (`docs/architecture.md`,
+   "Pre-existing test flake") — not a new regression, not related to any Phase 10 change (the failing
+   test lives in `AssociateView`'s Manager-workflow-absence check, a file Phase 10 did not touch).
+   Re-running just `Carowinds.Passdown.Ui.Tests` on its own immediately afterward passed **291/291**
+   cleanly, confirming the failure is a parallel-execution timing race, not a deterministic defect —
+   consistent with the flake's documented history (present in Phase 6D's own re-run, absent from
+   Phase 9F's, present again here). No test was weakened or disabled to make this "pass"; the root
+   cause (Avalonia headless XAML binding under xUnit's parallel test collections) was identified,
+   matches precedent, and is recorded honestly rather than hidden.
+
+### Release rebuild (Parts M–Q)
+
+Performed on this (non-Windows, macOS) dev host — no `pwsh` available, same limitation as every prior
+Phase 7/9/10 rebuild:
+
+1. `dotnet publish src/Carowinds.Passdown.Desktop/Carowinds.Passdown.Desktop.csproj -c Release -r win-x64 --self-contained true -o artifacts/publish/win-x64 -p:PlaywrightPlatform=win-x64` — PASS, 271 files, 134 MB after `.pdb` removal (`Publish-Windows.ps1`'s exact command, staging cleaned first).
+2. Before staging, the freshly published `Carowinds.Passdown.Desktop.dll`/`.Application.dll` were searched directly (`strings` over the actual built assembly, not timestamps) for Phase 10A–10E-only symbols — see `docs/release-manifest.md` "How this artifact was produced" for the exact list — all present (`OperationsDashboardViewModel` ×46, `DashboardView` ×49, `DashboardDataHealthPresentation` ×25, etc.), proving this publish is not a stale Phase 9F reuse.
+3. Staged into `artifacts/release-staging/Carowinds-Passdown-0.1.0-dev-win-x64/` exactly per `Build-PortableRelease.ps1`'s logic: publish output, `tools/Install-ScheduledRefresh.ps1`, `tools/Uninstall-ScheduledRefresh.ps1`, both `.cmd` helpers, `README.txt` (updated this rebuild — see Part T below), `TESTER-GUIDE.txt` (updated this rebuild — see Part T below).
+4. Forbidden-pattern check (`.git`, `.db`/`-wal`/`-shm`, `CLAUDE.md`, `AGENT_BUILD_SPEC.md`, `.pdb`, `*playwright*`, `*.Tests.dll`, `.dylib`/`.so`, `.DS_Store`) — clean, both on the staged folder and again on a fresh extraction of the finished ZIP. (An initial substring-based check flagged `Tmds.DBus.Protocol.dll` as a false positive against a loose `*.db*` pattern; re-run with the same extension-anchored globs `Build-PortableRelease.ps1` itself uses confirmed it is not a match — a Linux D-Bus interop assembly pulled in transitively by Avalonia's cross-platform package graph, present in every prior Windows publish of this app, harmless and unused on the shipped Windows target.)
+5. `zip -r -X -9` into `artifacts/releases/Carowinds-Passdown-0.1.0-dev-win-x64.zip`; `shasum -a 256` computed fresh (see `docs/release-manifest.md` for the exact value — it differs from every prior artifact's hash, confirming this is not a stale reuse).
+6. Release content audit: 277 files, 280 zip entries (277 files + 3 directories: release root, `LatoFont\`, `tools\`), 61,331,017 bytes compressed, 139,629,103 bytes extracted. Executable, `appsettings.json`, all managed/native runtime DLLs, README/tester-guide, both `.cmd` helpers, and `tools/` all present; no `.pdb`, no Playwright, no test assemblies, no dev docs, no user data, no non-Windows binaries.
+7. Independent verification: the ZIP was extracted fresh to a scratch directory outside `artifacts/`; `diff -rq` against the staging folder reported byte-for-byte identical content; `Carowinds.Passdown.Desktop.dll`'s SHA-256 inside the re-extracted ZIP was independently confirmed to match the staged copy; the Phase 10 symbol search (step 2 above) was repeated against the re-extracted ZIP's own assemblies and found identical results.
+
+### Tester guide / README updates (Part T)
+
+Both `packaging/windows/TESTER-GUIDE.txt` and `packaging/windows/README-portable-release.md` predated
+Phase 10A and described Associate Passdown as the app's landing screen. Updated this rebuild:
+
+- `TESTER-GUIDE.txt` renumbered to insert a new step 3 ("The Dashboard (default screen)") describing
+  Park Status, Passdown Status, Today at a Glance, Operational Notes preview, Latest Finalized, and
+  Data Status/Check Online in plain language, plus a new step 4 walking through Open Passdown/Open
+  Notes/Open History; the later step referencing the app's date picker was updated to point at the
+  Associate Passdown screen explicitly (Dashboard has no date picker of its own). No architecture
+  vocabulary (read models, services, view models) was introduced.
+- `README-portable-release.md` gained a short "The Dashboard" paragraph in the same plain-language
+  style, immediately after "Getting started." Neither file was turned into a technical design
+  document.
+
+### Focused Windows smoke check (Part V)
+
+**NOT EXECUTED.** No Windows machine or VM was available in this session/environment — the same
+limitation recorded for every prior Phase 7/9/10 rebuild performed from this dev host. Before treating
+this rebuilt artifact as Windows-proven for the Dashboard specifically, the following focused smoke
+pass (not a full Phase 7E rerun) against this exact ZIP is the recommended next manual step —
+`packaging/windows/TESTER-GUIDE.txt` steps 2–4 cover the same ground for a nontechnical tester:
+
+1. Extract the rebuilt ZIP; launch `Carowinds.Passdown.Desktop.exe`.
+2. Confirm the Dashboard is the default landing screen, with the three-section strip
+   (Dashboard/Associate Passdown/History) visible and Dashboard active.
+3. Confirm Park Status, Today at a Glance, Operational Notes preview, Latest Finalized (if any test
+   data exists), and Data Status all render with real values (not blank cards).
+4. Click "Refresh" (header) — confirm it completes instantly with no online activity.
+5. Click "Open Passdown" — confirm it opens Associate Passdown's Overview. Return to Dashboard.
+6. Click "Open Notes" — confirm it opens Associate Passdown's Notes area, and that the previously
+   selected Associate date was preserved across both round trips.
+7. Click "Open History" — confirm History opens and behaves correctly on return to Dashboard.
+8. Click "Check Online" on the Data Status card — confirm the dedicated busy indicator appears, the
+   existing values stay visible while busy, and the result (success, partial, or failure) renders in
+   plain language with no raw exception/URL/HTTP detail.
+9. Confirm "Export Diagnostics" still works and its output contains no draft/note/Daily-Feature/
+   snapshot/PDF content.
+10. Confirm no startup or migration regression (schema still resolves to 9).
+
+### Windows scaling validation (Part W)
+
+**NOT EXECUTED**, per the same no-Windows-host limitation carried forward from Phase 10E (which
+already recorded 100%/125%/150% as NOT EXECUTED for the same reason — no Windows machine reachable in
+this environment, macOS/darwin dev host only). No source or layout change occurred between Phase 10E
+and this rebuild that would affect this status.
+
+### Phase 9 regression smoke (Part X)
+
+**NOT EXECUTED**, per the same no-Windows-host limitation. `Phase9EIntegrationTests.cs` (real SQLite,
+real hosts) continues to stand in for this on the dev host, unaffected by any Phase 10 change — Phase
+10 did not touch finalization/History code, and the full non-live suite (including those tests)
+passes.
+
+### Automatic-refresh helper smoke (Part Y)
+
+**NOT EXECUTED** for live Task Scheduler install/rebind, per the same no-Windows-host limitation.
+Static content coverage remains green: `PortableSetupHelperTests` (17 tests, part of the 982/982
+total) confirms both `.cmd` helpers exist at the release root, resolve their own directory via
+`%~dp0`, contain no developer-specific path, never permanently change execution policy, and stay in
+sync with `ScheduledTaskPlan.TaskName`/`CommandLineArguments.ScheduledRefreshFlag` — unaffected by any
+Phase 10 change (Phase 10 touched no file under `Application/Refresh`, `Infrastructure/Storage`, or
+`packaging/windows/*.ps1`/`*.cmd`).
+
+### Visual confidence gap (Part Z)
+
+No native Windows manual inspection was performed this rebuild (no Windows host available), so there
+is no new manual-visual evidence to distinguish from headless raster validation. Headless raster
+validation itself remains unavailable in this codebase (no bitmap/screenshot renderer exists) — this
+is **not** called a PASS; it is carried forward as **PARTIAL** (construction-level real-XAML-loader
+checks: PASS; pixel-level: NOT EXECUTED), exactly matching Phase 10A–10E's own honest precedent.
+
+### Release confidence gaps (Part AA), carried forward honestly
+
+| # | Item | Classification |
+|---|---|---|
+| 1 | Dashboard pixel-level Windows visual validation | Not executed (Part Z) |
+| 2 | Windows 100%/125%/150% display-scaling validation | Not executed (Part W, carried from Phase 10E) |
+| 3 | Focused Windows Dashboard smoke test | Not executed (Part V) — no Windows host available |
+| 4 | Phase 9 History/finalization regression smoke on this rebuild | Not executed (Part X) — automated real-SQLite coverage stands in |
+| 5 | Automatic-refresh Task Scheduler live install/rebind on this rebuild | Not executed (Part Y) — static content coverage stands in |
+| 6 | Native x64 vs. ARM64-emulation Windows validation (carried from Phase 7E) | Non-blocking confidence gap |
+| 7 | Self-contained runtime on a clean machine with no .NET pre-installed (carried from Phase 7E/7F) | Non-blocking confidence gap |
+| 8 | Pre-existing `NoManagerWorkflowTests` Avalonia parallel-test flake | Non-blocking confidence gap — reproduced this session (Part L), same known cause since Phase 6D, standalone re-run passes cleanly |
+| 9 | Manager workflow, Alerts, Operations Calendar, persistent Notes Manager | Deferred by design — out of current release scope |
+| 10 | Revisions / manual finalization / delete-history | Deferred by design — none implemented |
+
+None of the above is presented as a false PASS.
+
+### Phase 10 documentation closeout
+
+`docs/phase10-operations-dashboard.md` gained a final "Phase 10 complete" section (see that document)
+covering 10A–10F and explicitly listing Alerts, an Operations Calendar, a persistent Notes Manager,
+the Manager workflow, and further freshness time-window redesign as intentionally deferred — not
+implied to exist.
+
+### Phase 10F rebuild verdict
+
+| # | Item | Result |
+|---|---|---|
+| 1 | Phase 10 requirements audit (32 items) | PASS |
+| 2 | Architecture audit | PASS — no violation found, no fix needed |
+| 3 | Local-only startup audit | PASS — unchanged |
+| 4 | Dashboard date isolation audit | PASS — unchanged |
+| 5 | History integration audit | PASS — metadata-only guarantee holds |
+| 6 | Data Status semantics audit | PASS — precedence/timestamp rules confirmed |
+| 7 | Check Online audit | PASS — single retrieval implementation, LKG preserved |
+| 8 | Dashboard UI / accessibility audit | PASS — no omission found |
+| 9 | Diagnostic privacy audit | PASS — no leakage found |
+| 10 | Database schema audit | PASS — schema version 9, snapshot schema 1, unchanged |
+| 11 | Full automated validation | PASS, 982/982 (run 1); 981/982 (run 2, one pre-existing flake, non-Dashboard, standalone re-run 291/291 clean); 0 warnings/errors |
+| 12 | Release rebuild (publish + package) | PASS |
+| 13 | Latest-code verification in artifact | PASS (byte-level symbol check, publish output and independently re-extracted ZIP) |
+| 14 | Release content audit | PASS |
+| 15 | New SHA-256 recorded | PASS — differs from every prior artifact; Phase 9F artifact explicitly marked superseded |
+| 16 | `docs/release-manifest.md` updated | PASS |
+| 17 | Tester guide / README updated for Dashboard | PASS |
+| 18 | Focused Windows Dashboard smoke test | **NOT EXECUTED** — no Windows host available |
+| 19 | Windows 100/125/150 scaling validation | **NOT EXECUTED** — no Windows host available |
+| 20 | Phase 9 regression smoke on this rebuild | **NOT EXECUTED** — automated coverage stands in |
+| 21 | Automatic-refresh helper live smoke on this rebuild | **NOT EXECUTED** — static content coverage stands in |
+| 22 | Phase 10 documentation closeout | PASS |
+
+### Phase 10F release readiness decision
+
+**READY WITH ACCEPTED LIMITATIONS.**
+
+Every Phase 10A–10E requirement was re-audited against current code and passes; no architecture
+violation, date-isolation regression, History-immutability risk, or diagnostics-privacy leak was
+found; the full non-live suite (982/982 on a clean run) and a clean build both pass; the release ZIP
+was rebuilt from the exact current commit, independently verified to contain Phase 10 Dashboard code
+via a byte-level assembly check on both the publish output and the re-extracted ZIP, and byte-for-byte
+re-inspected after extraction. The prior (Phase 9F) artifact is explicitly and unambiguously marked
+superseded — its real hash, not the mismatched hash named in the Phase 10F task brief (see
+`docs/release-manifest.md`'s "Note on a discrepancy" for that detail). The only open gaps are
+Windows-host execution (Dashboard visual, display-scaling, and focused smoke checks) — none of which
+are new risks Phase 10 introduced beyond what Phase 7E/9F already carried for this dev-host-only build
+process, and all of which are recorded above rather than glossed over. `0.1.0-dev` remains an explicit
+pre-release development version, not a production 1.0 release.
 

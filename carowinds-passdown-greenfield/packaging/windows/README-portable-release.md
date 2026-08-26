@@ -19,6 +19,15 @@ Getting started
 
 That's it — no setup screen, no sign-in, no separate download.
 
+The Dashboard
+--------------
+The app opens on the Dashboard — a one-screen summary of today's park status,
+passdown status, and data freshness, built from what's already saved on your
+computer (it loads instantly and never needs the internet on its own). Use
+"Open Passdown", "Open Notes", and "Open History" on the Dashboard to jump to the
+matching screen. "Check Online" on the Dashboard explicitly contacts the official
+Carowinds sources, the same as "Check Online" on the Associate Passdown screen.
+
 Where your data is stored
 --------------------------
 Everything you enter (drafts, cached park data) is stored on your own computer at:

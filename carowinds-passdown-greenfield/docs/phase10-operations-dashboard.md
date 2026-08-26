@@ -1524,3 +1524,81 @@ required. Schema: **9**. Snapshot schema: **1**.
 - Execute the deferred 100%/125%/150% Windows scaling and font/rendering
   checks on an actual Windows machine/VM (Parts X/Y, NOT EXECUTED here).
 - Final Phase 10 audit across 10A–10E as one release-readiness pass.
+
+---
+
+# Phase 10F — Final Audit and Release Closeout
+
+Phase 10F closes out Phase 10 as a shipped feature set. It adds no new production behavior — it is a
+final requirements audit of 10A–10E as one system, an architecture/isolation/immutability re-check, a
+release rebuild, and a documentation checkpoint. See `docs/release-strategy.md` "Phase 10F rebuild"
+for the full audit (32-item requirements matrix, architecture/startup/date-isolation/History/Data-Status/
+Check-Online/UI-accessibility/diagnostics-privacy/schema audits) and `docs/release-manifest.md` for the
+resulting artifact's exact identity.
+
+**Audit outcome.** Every Phase 10A–10E claim in this document was checked directly against current
+code and a fresh full test run rather than trusted from prior summaries alone: `OperationsDashboardService`'s
+constructor is still exactly `(IAssociatePassdownService, IFinalizedPassdownRepository, IClock)`,
+`OperationsDashboardViewModel`'s is still exactly `(IOperationsDashboardService, ILogger?)`, no SQL/HTTP
+string appears in the Dashboard's own ViewModel/View files, `MainViewModel.SelectedSection` still
+defaults to `AppSection.Dashboard`, the migration list registered in `App.axaml.cs` still ends at
+`Migration0009AddFinalizedPassdownPdfColumns` (schema version **9**, unchanged), and
+`FinalizedPassdownSnapshot.CurrentSchemaVersion` is still **1**. No defect was found; no code change
+was needed.
+
+**Validation.** `dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors.
+`dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — **982/982** on a clean run,
+identical to Phase 10E's count (no test added, removed, or weakened). A second full-solution run
+reproduced the pre-existing `NoManagerWorkflowTests` Avalonia parallel-execution flake first recorded
+in Phase 6D (`docs/architecture.md`) — unrelated to any Phase 10 file, and the same test file passed
+291/291 cleanly when re-run standalone immediately afterward. See `docs/release-strategy.md` "Phase
+10F rebuild" Part L for the full account.
+
+**Release rebuild.** The release ZIP that Phase 10's own subphases correctly left unrebuilt (Phase 9F's
+artifact predates the entire Operations Dashboard) has been rebuilt from this exact commit. The freshly
+published `Carowinds.Passdown.Desktop.dll`/`.Application.dll` were checked directly for Phase 10A–10E-only
+symbols (a byte-level `strings` search of the actual built assemblies, on both the pre-zip publish
+output and an independently re-extracted copy of the finished ZIP — not just file timestamps) to
+confirm this is not a stale reuse of the Phase 9F artifact — see `docs/release-manifest.md` for the
+exact symbol list and the resulting SHA-256/size/file-count. `packaging/windows/TESTER-GUIDE.txt` and
+`packaging/windows/README-portable-release.md` were updated with a short, plain-language description of
+the Dashboard as the app's new default landing screen (they described Associate Passdown as the landing
+screen before this rebuild, since Dashboard did not exist when they were last written).
+
+**A discrepancy in the task brief that requested this rebuild was found and corrected, not silently
+reconciled.** The SHA-256 the brief named as the artifact being superseded
+(`1684f9146534a7ed7f58cf9e4124cd558aabc6f5f8121dc91135ff46a426ba71`) does not match any artifact this
+repository's own history records; the actual prior-current artifact was the Phase 9F artifact
+(`ccd41c76a79824b3e923e23d209b0ac15e4bf8059b491a17004ce4ca8f1979c4`), verified directly against this
+document's and `docs/release-manifest.md`'s own pre-rebuild content. `docs/release-manifest.md` now
+supersedes the real hash and records this discrepancy explicitly, per CLAUDE.md's "never invent data"
+instruction — release identity is not exempt from that rule.
+
+**Remaining gaps, honestly recorded (not fixed this phase, not blockers):**
+- Dashboard pixel-level Windows visual validation — no bitmap/screenshot renderer exists in this
+  codebase; only real-XAML-loader construction-level checks (unchanged since Phase 9E/10A–10E).
+- Windows 100%/125%/150% display-scaling validation — not executed, no Windows host available in this
+  or the Phase 10E session (carried forward, not re-attempted or inferred from macOS/Linux).
+- A focused Windows Dashboard smoke test (Open Passdown/Open Notes/Open History round trips, Check
+  Online busy/result states, Export Diagnostics) against this exact rebuilt ZIP — not executed, no
+  Windows host available.
+- Phase 9 History/finalization regression smoke and automatic-refresh Task Scheduler live
+  install/rebind, both specifically against this rebuilt artifact — not executed; automated real-SQLite
+  integration tests and static `.cmd`-content tests stand in, unaffected by any Phase 10 change.
+- Carried forward from Phase 7E/7F/9F: native x64 (vs. ARM64 emulation) Windows validation, and
+  self-contained-runtime confidence on a machine with no .NET pre-installed.
+- The pre-existing `NoManagerWorkflowTests` Avalonia parallel-test flake (first recorded Phase 6D) —
+  reproduced once this session under full-solution parallel execution, confirmed non-deterministic
+  (clean standalone re-run), not a Phase 10 regression.
+
+**Phase 10 complete.** 10A (foundation) through 10F (release closeout) are done, audited, and shipped
+in the rebuilt artifact identified in `docs/release-manifest.md`. Intentionally **not** implemented,
+and not implied to exist by anything above:
+- persistent Alerts or notifications,
+- an Operations Calendar,
+- a persistent Notes Manager (Dashboard's Operational Notes remains a bounded preview only),
+- the Manager workflow (deferred per CLAUDE.md "Current scope decision"),
+- any new freshness/staleness time-window redesign beyond Domain's existing attempt-vs-success `Stale`
+  derivation.
+
+Phase 11 has not started.
