@@ -42,6 +42,7 @@ public class DashboardViewTests
 
         Assert.Contains("Open Passdown", names);
         Assert.Contains("Open History", names);
+        Assert.Contains("Open Notes", names);
         Assert.Contains("Refresh today's operations summary", names);
     }
 
@@ -80,5 +81,59 @@ public class DashboardViewTests
         var view = new DashboardView { DataContext = viewModel };
 
         Assert.Same(viewModel, view.DataContext);
+    }
+
+    // Phase 10B Part K/Z: a very long Daily Feature and a very long note line must still construct
+    // cleanly and render as bounded (truncated) presentation text, not raw multi-paragraph content.
+    [Fact]
+    public async Task DashboardView_LongDailyFeatureAndNotes_ConstructsWithBoundedText()
+    {
+        var longFeature = new string('a', 500);
+        var longNoteLine = new string('b', 400);
+        var service = new FakeOperationsDashboardService
+        {
+            SnapshotFactory = date => FakeOperationsDashboardService.DefaultSnapshot(date) with
+            {
+                DailyFeatureType = DailyFeatureType.UselessFactOfTheDay,
+                DailyFeatureText = longFeature,
+                Notes = new DashboardNotesSummary(true, [longNoteLine], 1),
+            },
+        };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        var view = new DashboardView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+        Assert.True(viewModel.Presentation!.DailyFeatureText.Length < longFeature.Length);
+        Assert.True(viewModel.Presentation!.NotesPreviewLines[0].Length < longNoteLine.Length);
+    }
+
+    // Phase 10B Part O/Z: NotPublished/Unavailable must construct and never be confused with Open —
+    // Closed/CustomHours/PrivateBuyout regressions are covered at the Application layer
+    // (OperationsDashboardServiceTests) and reused here, not recalculated.
+    [Theory]
+    [InlineData(DashboardParkStatus.Closed)]
+    [InlineData(DashboardParkStatus.NotPublished)]
+    [InlineData(DashboardParkStatus.Unavailable)]
+    [InlineData(DashboardParkStatus.CustomHours)]
+    [InlineData(DashboardParkStatus.PrivateBuyout)]
+    public async Task DashboardView_EachParkStatus_ConstructsWithoutError(DashboardParkStatus status)
+    {
+        var service = new FakeOperationsDashboardService
+        {
+            SnapshotFactory = date =>
+            {
+                var snapshot = FakeOperationsDashboardService.DefaultSnapshot(date);
+                return snapshot with { ParkStatus = snapshot.ParkStatus with { Status = status } };
+            },
+        };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        var view = new DashboardView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+        Assert.NotEqual("Open", viewModel.Presentation!.ParkStatusBadgeText);
     }
 }

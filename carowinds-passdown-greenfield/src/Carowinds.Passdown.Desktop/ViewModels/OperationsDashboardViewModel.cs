@@ -28,6 +28,7 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSnapshot))]
     [NotifyCanExecuteChangedFor(nameof(OpenPassdownCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenNotesCommand))]
     public partial OperationsDashboardSnapshot? Snapshot { get; set; }
 
     [ObservableProperty]
@@ -98,6 +99,16 @@ public partial class OperationsDashboardViewModel : ViewModelBase
 
     [RelayCommand(CanExecute = nameof(CanOpenPassdown))]
     private void OpenPassdown() => OpenAssociateRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>
+    /// "Open Notes" (Phase 10B Part J/T) — Associate Passdown has no separate Notes tab/section to
+    /// deep-link into (Operational Notes is one field on its single Overview screen), so routing
+    /// directly to a Notes sub-view would require an ugly coupling to Associate's internal layout.
+    /// This raises the same <see cref="OpenAssociateRequested"/> event as <see cref="OpenPassdownCommand"/>
+    /// and is documented as deferring a true Notes deep-link to Phase 10C.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanOpenPassdown))]
+    private void OpenNotes() => OpenAssociateRequested?.Invoke(this, EventArgs.Empty);
 
     private bool CanOpenPassdown() => HasSnapshot;
 

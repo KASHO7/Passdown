@@ -179,6 +179,37 @@ public class OperationsDashboardServiceTests
         Assert.Equal(DashboardParkStatus.PrivateBuyout, snapshot.ParkStatus.Status);
     }
 
+    // Phase 10B Part Y #5: an official source explicitly reporting "not published yet" for park
+    // hours (no manual override, no private buyout) -> NotPublished, never a bare "Not checked yet".
+    [Fact]
+    public async Task LoadAsync_ParkHoursNotPublished_ReportsNotPublished()
+    {
+        var env = CreateEnvironment();
+        await env.DatedResults.RecordSuccessAsync(
+            new DatedResultKey(SourceCategory.ParkHours, Date),
+            Evidence(RetrievalStatus.NotPublished),
+            payloadJson: null);
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(DashboardParkStatus.NotPublished, snapshot.ParkStatus.Status);
+    }
+
+    // Phase 10B Part Y #4: a failed retrieval attempt with no prior last-known-good -> Unavailable,
+    // which must never render/look like Open (spec Part C).
+    [Fact]
+    public async Task LoadAsync_ParkHoursUnavailable_ReportsUnavailable()
+    {
+        var env = CreateEnvironment();
+        await env.DatedResults.RecordFailedAttemptAsync(
+            new DatedResultKey(SourceCategory.ParkHours, Date),
+            Evidence(RetrievalStatus.Unavailable));
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(DashboardParkStatus.Unavailable, snapshot.ParkStatus.Status);
+    }
+
     // #13: notes summary derives only from the current date's draft — never a second persistence model.
     [Fact]
     public async Task LoadAsync_OperationalNotes_SummarizesFromDraftOnly()

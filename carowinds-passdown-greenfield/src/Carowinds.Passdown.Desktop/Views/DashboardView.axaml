@@ -104,8 +104,8 @@
             BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
       <Grid ColumnDefinitions="Auto,*,Auto">
         <StackPanel Grid.Column="0" Spacing="2">
-          <TextBlock Text="Today" Classes="pageTitle" />
-          <TextBlock Text="{Binding Presentation.OperatingDayLabel}" Classes="muted" />
+          <TextBlock Text="TODAY" Classes="sectionTitle" Margin="0" />
+          <TextBlock Text="{Binding Presentation.OperatingDayLabel}" Classes="pageTitle" />
         </StackPanel>
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
           <TextBlock Text="{Binding Presentation.GeneratedAtText}" Classes="muted" VerticalAlignment="Center"
@@ -164,15 +164,15 @@
                Feature as compact stat tiles, not full editing controls. -->
           <Border Classes="panel">
             <StackPanel Spacing="10">
-              <TextBlock Text="Daily Snapshot" Classes="sectionTitle" Margin="0" />
+              <TextBlock Text="Today at a Glance" Classes="sectionTitle" Margin="0" />
               <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="20">
                 <StackPanel Grid.Column="0" Spacing="0">
                   <TextBlock Text="PROJECTED ATTENDANCE" Classes="statLabel" />
-                  <TextBlock Text="{Binding Presentation.AttendanceText, FallbackValue='Not recorded', TargetNullValue='Not recorded'}" Classes="statValue" />
+                  <TextBlock Text="{Binding Presentation.AttendanceText}" Classes="statValue" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Spacing="0">
                   <TextBlock Text="PRE-SOLDS" Classes="statLabel" />
-                  <TextBlock Text="{Binding Presentation.PreSoldsText, FallbackValue='Not recorded', TargetNullValue='Not recorded'}" Classes="statValue" />
+                  <TextBlock Text="{Binding Presentation.PreSoldsText}" Classes="statValue" />
                 </StackPanel>
                 <StackPanel Grid.Column="2" Spacing="0">
                   <TextBlock Text="EARLY RIDE TIME" Classes="statLabel" />
@@ -180,10 +180,7 @@
                 </StackPanel>
                 <StackPanel Grid.Column="3" Spacing="0">
                   <TextBlock Text="{Binding Presentation.DailyFeatureLabel}" Classes="statLabel" />
-                  <TextBlock Text="{Binding Presentation.DailyFeatureText}" TextWrapping="Wrap" FontWeight="SemiBold"
-                             IsVisible="{Binding Presentation.DailyFeatureText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                  <TextBlock Text="Not set for today." Classes="muted"
-                             IsVisible="{Binding Presentation.DailyFeatureText, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
+                  <TextBlock Text="{Binding Presentation.DailyFeatureText}" TextWrapping="Wrap" FontWeight="SemiBold" />
                 </StackPanel>
               </Grid>
             </StackPanel>
@@ -214,6 +211,10 @@
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                <Button Content="Open Notes" Classes="secondaryAction" Margin="0,6,0,0" HorizontalAlignment="Left"
+                        Command="{Binding OpenNotesCommand}"
+                        AutomationProperties.Name="Open Notes"
+                        AutomationProperties.HelpText="Opens Associate Passdown, where operational notes can be reviewed and edited." />
               </StackPanel>
             </Border>
 

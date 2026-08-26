@@ -17,16 +17,21 @@ public sealed record OperationsDashboardPresentation(
     string PassdownStatusText,
     string? PassdownStatusDetailText,
     bool ShowOpenPassdownAction,
-    string? AttendanceText,
-    string? PreSoldsText,
+    string AttendanceText,
+    string PreSoldsText,
     string EarlyRideTimeText,
     string DailyFeatureLabel,
-    string? DailyFeatureText,
+    string DailyFeatureText,
     string NotesSummaryText,
     IReadOnlyList<string> NotesPreviewLines,
     string SourceHealthText,
     string GeneratedAtText)
 {
+    /// <summary>Presentation-only bound (spec Phase 10B Part K) — never applied to persisted draft data, only to the Dashboard's own read-only display strings.</summary>
+    private const int MaxDailyFeaturePreviewLength = 140;
+
+    private const int MaxNotesPreviewLineLength = 100;
+
     public static OperationsDashboardPresentation Build(OperationsDashboardSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -57,15 +62,26 @@ public sealed record OperationsDashboardPresentation(
             _ => ("Unknown", null, true),
         };
 
+        // "Not set" mirrors DailyFeatureTypeOption's own wording for an unset choice (Phase 10B Part H)
+        // rather than inventing a second "off" label.
         var earlyRideTimeText = snapshot.EarlyRideTimeEnabled
             ? (string.IsNullOrWhiteSpace(snapshot.EarlyRideTimeDetails) ? "Enabled" : snapshot.EarlyRideTimeDetails)
-            : "Not applicable today";
+            : "Not set";
 
         var dailyFeatureLabel = DailyFeatureTypeOption.For(snapshot.DailyFeatureType).Label;
+
+        // "Not entered" matches AssociateView's own PlaceholderText for these same fields (Phase 10B Part F/G/I) — never a new empty-state vocabulary.
+        var dailyFeatureText = string.IsNullOrWhiteSpace(snapshot.DailyFeatureText)
+            ? "Not entered"
+            : Truncate(snapshot.DailyFeatureText, MaxDailyFeaturePreviewLength);
 
         var notesSummaryText = snapshot.Notes.HasNotes
             ? $"{snapshot.Notes.TotalLineCount} note line{(snapshot.Notes.TotalLineCount == 1 ? string.Empty : "s")} entered"
             : "No operational notes entered";
+
+        var notesPreviewLines = snapshot.Notes.PreviewLines
+            .Select(line => Truncate(line, MaxNotesPreviewLineLength))
+            .ToList();
 
         var sourceHealthText = snapshot.SourceHealth.Health switch
         {
@@ -82,16 +98,23 @@ public sealed record OperationsDashboardPresentation(
             passdownText,
             passdownDetail,
             showOpenAction,
-            snapshot.ProjectedAttendance?.ToString(CultureInfo.InvariantCulture),
-            snapshot.PreSolds?.ToString(CultureInfo.InvariantCulture),
+            snapshot.ProjectedAttendance?.ToString(CultureInfo.InvariantCulture) ?? "Not entered",
+            snapshot.PreSolds?.ToString(CultureInfo.InvariantCulture) ?? "Not entered",
             earlyRideTimeText,
             dailyFeatureLabel,
-            snapshot.DailyFeatureText,
+            dailyFeatureText,
             notesSummaryText,
-            snapshot.Notes.PreviewLines,
+            notesPreviewLines,
             sourceHealthText,
             $"Updated {FormatTimestamp(snapshot.GeneratedAt)}");
     }
 
     private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d 'at' h:mm tt", CultureInfo.InvariantCulture);
+
+    /// <summary>Bounds one display string to a maximum length with an ellipsis (Phase 10B Part K) — presentation-only; the underlying draft value is never modified.</summary>
+    private static string Truncate(string value, int maxLength)
+    {
+        var trimmed = value.Trim();
+        return trimmed.Length <= maxLength ? trimmed : string.Concat(trimmed.AsSpan(0, maxLength).TrimEnd(), "…");
+    }
 }

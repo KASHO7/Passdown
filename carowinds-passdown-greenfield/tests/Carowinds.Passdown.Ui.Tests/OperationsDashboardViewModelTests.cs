@@ -62,6 +62,22 @@ public class OperationsDashboardViewModelTests
         Assert.True(raised);
     }
 
+    // Phase 10B Part J/T: "Open Notes" routes to Associate as a whole (no separate Notes tab exists
+    // to deep-link into yet) — same event as OpenPassdownCommand, distinct command/automation name.
+    [Fact]
+    public async Task OpenNotesCommand_RaisesOpenAssociateRequested()
+    {
+        var service = new FakeOperationsDashboardService();
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        var raised = false;
+        viewModel.OpenAssociateRequested += (_, _) => raised = true;
+        viewModel.OpenNotesCommand.Execute(null);
+
+        Assert.True(raised);
+    }
+
     [Fact]
     public async Task OpenHistoryCommand_RaisesOpenHistoryRequested()
     {
