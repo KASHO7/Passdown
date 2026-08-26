@@ -1,6 +1,7 @@
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Desktop.ViewModels;
+using Carowinds.Passdown.Infrastructure.Time;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
 
 namespace Carowinds.Passdown.Ui.Tests;
@@ -16,16 +17,20 @@ public class MainViewModelNavigationTests
     private static readonly DateOnly AssociateDate = new(2026, 8, 26);
     private static readonly DateOnly HistoryDate = new(2026, 8, 25);
 
-    private static MainViewModel CreateMainViewModel(out OperationsDashboardViewModel dashboard, out AssociateViewModel associate, out PassdownHistoryViewModel history)
+    private static MainViewModel CreateMainViewModel(out OperationsDashboardViewModel dashboard, out AssociateViewModel associate, out PassdownHistoryViewModel history) =>
+        CreateMainViewModel(out dashboard, out associate, out _, out history);
+
+    private static MainViewModel CreateMainViewModel(out OperationsDashboardViewModel dashboard, out AssociateViewModel associate, out OperationalNotesViewModel notes, out PassdownHistoryViewModel history)
     {
         dashboard = new OperationsDashboardViewModel(new FakeOperationsDashboardService());
         associate = new AssociateViewModel(new FakeAssociatePassdownService(), new FakeClock(new DateTimeOffset(AssociateDate.ToDateTime(new TimeOnly(15, 0)), TimeSpan.Zero)));
+        notes = new OperationalNotesViewModel(new FakeOperationalNotesService(), new SystemClock());
         var historyService = new FakePassdownHistoryService
         {
             Summaries = [new FinalizedPassdownSummary(HistoryDate, DateTimeOffset.UtcNow, FinalizationOrigin.Scheduled, true, 100)],
         };
         history = new PassdownHistoryViewModel(historyService, new FakeFinalizedPassdownPdfRetrievalService());
-        return new MainViewModel(dashboard, associate, history);
+        return new MainViewModel(dashboard, associate, notes, history);
     }
 
     // 2: top-level nav defaults to Dashboard (spec Phase 10A Part Q).
@@ -212,5 +217,136 @@ public class MainViewModelNavigationTests
         main.ShowHistorySectionCommand.Execute(null);
 
         Assert.Equal(HistoryDate, history.SelectedItem?.PassdownDate);
+    }
+
+    // Phase 11B Part AI #1/#2/#3/#4: top-level navigation now includes Operational Notes (and only
+    // it) between Associate Passdown and History — no Manager/Alerts/Calendar value exists at all.
+    [Fact]
+    public void AppSection_ContainsOperationalNotesAndNoManagerAlertsOrCalendar()
+    {
+        var values = Enum.GetNames<AppSection>();
+
+        Assert.Equal(["Dashboard", "AssociatePassdown", "OperationalNotes", "History"], values);
+    }
+
+    // Phase 11B Part AI #5: Dashboard remains the default startup section.
+    [Fact]
+    public void SelectedSection_StillDefaultsToDashboard_WithOperationalNotesAdded()
+    {
+        var main = CreateMainViewModel(out _, out _, out _, out _);
+
+        Assert.Equal(AppSection.Dashboard, main.SelectedSection);
+    }
+
+    // Phase 11B Part AI #6/#7: Dashboard <-> Operational Notes navigation.
+    [Fact]
+    public void DashboardToOperationalNotesAndBack_SwitchesSection()
+    {
+        var main = CreateMainViewModel(out _, out _, out _, out _);
+
+        main.ShowOperationalNotesSectionCommand.Execute(null);
+        Assert.Equal(AppSection.OperationalNotes, main.SelectedSection);
+        Assert.True(main.IsOperationalNotesSectionSelected);
+
+        main.ShowDashboardSectionCommand.Execute(null);
+        Assert.Equal(AppSection.Dashboard, main.SelectedSection);
+    }
+
+    // Phase 11B Part AI #8/#9: Operational Notes <-> Associate/History navigation.
+    [Fact]
+    public void OperationalNotesToAssociateAndHistory_SwitchesSection()
+    {
+        var main = CreateMainViewModel(out _, out _, out _, out _);
+        main.ShowOperationalNotesSectionCommand.Execute(null);
+
+        main.ShowAssociateSectionCommand.Execute(null);
+        Assert.Equal(AppSection.AssociatePassdown, main.SelectedSection);
+
+        main.ShowOperationalNotesSectionCommand.Execute(null);
+        main.ShowHistorySectionCommand.Execute(null);
+        Assert.Equal(AppSection.History, main.SelectedSection);
+    }
+
+    // Phase 11B Part AI #10/#11: Associate's SelectedDate and History's selection both survive a trip through Operational Notes.
+    [Fact]
+    public async Task NavigatingThroughOperationalNotes_PreservesAssociateDateAndHistorySelection()
+    {
+        var main = CreateMainViewModel(out _, out var associate, out _, out var history);
+        await associate.PendingLoad;
+        await history.PendingLoad;
+
+        main.ShowHistorySectionCommand.Execute(null);
+        history.SelectedItem = history.HistoryItems[0];
+        await history.PendingDetailLoad;
+
+        main.ShowOperationalNotesSectionCommand.Execute(null);
+        main.ShowAssociateSectionCommand.Execute(null);
+        main.ShowOperationalNotesSectionCommand.Execute(null);
+        main.ShowHistorySectionCommand.Execute(null);
+
+        Assert.Equal(AssociateDate, associate.SelectedDate);
+        Assert.Equal(HistoryDate, history.SelectedItem?.PassdownDate);
+    }
+
+    // Phase 11B Part AI #12: no persistent-note operation ever touches the Associate draft.
+    [Fact]
+    public async Task OperationalNoteOperations_NeverChangeAssociateDraft()
+    {
+        var main = CreateMainViewModel(out _, out var associate, out var notes, out _);
+        await associate.PendingLoad;
+        await notes.PendingLoad;
+        associate.ProjectedAttendanceText = "9000";
+        await associate.PendingAutosave;
+
+        notes.NewNoteCommand.Execute(null);
+        notes.EditorTitle = "A persistent note";
+        await notes.SaveCommand.ExecuteAsync(null);
+        notes.RequestResolveCommand.Execute(null);
+        await notes.ConfirmResolveCommand.ExecuteAsync(null);
+
+        Assert.Equal("9000", associate.ProjectedAttendanceText);
+        Assert.Equal(AssociateSection.Overview, associate.SelectedSection);
+    }
+
+    // Phase 11B Part AI #13/#14: structural proof that a persistent note's content can never reach an
+    // Associate PDF or finalized History — AssociateViewModel has no IOperationalNotesService
+    // dependency at all (mirrors the Application-layer constructor-reflection guarantee
+    // OperationalNotesServiceTests already proves for the reverse direction).
+    [Fact]
+    public void AssociateViewModel_HasNoOperationalNotesServiceDependency()
+    {
+        var parameterTypes = typeof(AssociateViewModel)
+            .GetConstructors()
+            .Single()
+            .GetParameters()
+            .Select(p => p.ParameterType);
+
+        Assert.DoesNotContain(parameterTypes, t => t == typeof(Carowinds.Passdown.Application.OperationalNotes.IOperationalNotesService));
+    }
+
+    // Phase 11B Part X: while the Operational Notes editor is dirty (Create/Edit in progress), the
+    // other three top-level section buttons are disabled — Save/Cancel re-enables them.
+    [Fact]
+    public async Task DirtyOperationalNotesEditor_DisablesOtherTopLevelSectionButtons()
+    {
+        var main = CreateMainViewModel(out _, out _, out var notes, out _);
+        await notes.PendingLoad;
+        main.ShowOperationalNotesSectionCommand.Execute(null);
+
+        notes.NewNoteCommand.Execute(null);
+
+        Assert.False(main.ShowDashboardSectionCommand.CanExecute(null));
+        Assert.False(main.ShowAssociateSectionCommand.CanExecute(null));
+        Assert.False(main.ShowHistorySectionCommand.CanExecute(null));
+        Assert.Equal(AppSection.OperationalNotes, main.SelectedSection);
+
+        notes.CancelCommand.Execute(null);
+
+        Assert.True(main.ShowDashboardSectionCommand.CanExecute(null));
+        Assert.True(main.ShowAssociateSectionCommand.CanExecute(null));
+        Assert.True(main.ShowHistorySectionCommand.CanExecute(null));
+
+        main.ShowDashboardSectionCommand.Execute(null);
+        Assert.Equal(AppSection.Dashboard, main.SelectedSection);
     }
 }

@@ -166,13 +166,18 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IOperationsDashboardService, OperationsDashboardService>();
         services.AddTransient<OperationsDashboardViewModel>();
 
-        // Phase 11A: the persistent Operational Notes domain/persistence/service foundation only.
+        // Phase 11A: the persistent Operational Notes domain/persistence/service foundation.
         // IOperationalNotesService depends on IOperationalNoteRepository/IClock only — nothing here
-        // writes into an Associate draft, and no UI is wired to it yet (Phase 11B owns the Notes
-        // Manager screen). A relevant persistent note is never automatically copied into a daily
-        // passdown (Phase 11D is the explicit, user-selected opt-in that will eventually do that).
+        // writes into an Associate draft. A relevant persistent note is never automatically copied
+        // into a daily passdown (Phase 11D is the explicit, user-selected opt-in that will eventually
+        // do that).
         services.AddSingleton<IOperationalNoteRepository, SqliteOperationalNoteRepository>();
         services.AddSingleton<IOperationalNotesService, OperationalNotesService>();
+
+        // Phase 11B: the Operational Notes Manager screen. OperationalNotesViewModel depends only on
+        // IOperationalNotesService/IClock (both already registered above) — the Notes Manager UI, not
+        // Dashboard integration (11C) or Associate-passdown inclusion (11D).
+        services.AddTransient<OperationalNotesViewModel>();
 
         // Phase 7F Part F/G: the sanitized diagnostic export pipeline. Reuses the already-registered
         // SqliteConnectionFactory/ISourceStateRepository/IReadOnlyList<SourceRegistration>/IClock —

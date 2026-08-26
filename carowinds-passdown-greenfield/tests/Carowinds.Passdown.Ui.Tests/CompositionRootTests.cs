@@ -91,9 +91,7 @@ public class CompositionRootTests
     }
 
     // Phase 11A: the persistent Operational Notes foundation's Application-layer seams resolve from
-    // the same composition root. No ViewModel/View is registered for it yet (Phase 11B owns the Notes
-    // Manager UI) and MainViewModel's own constructor is unaffected — proven by it still resolving
-    // above/below unchanged.
+    // the same composition root.
     [Fact]
     public void BuildServiceProvider_ResolvesOperationalNotesServices()
     {
@@ -101,5 +99,17 @@ public class CompositionRootTests
 
         Assert.NotNull(provider.GetRequiredService<IOperationalNoteRepository>());
         Assert.NotNull(provider.GetRequiredService<IOperationalNotesService>());
+    }
+
+    // Phase 11B: the Operational Notes Manager screen's Desktop-layer seam resolves from the same
+    // composition root, and MainViewModel now resolves with its fourth (Notes) constructor argument
+    // satisfied.
+    [Fact]
+    public void BuildServiceProvider_ResolvesOperationalNotesViewModel()
+    {
+        var provider = App.BuildServiceProvider();
+
+        Assert.NotNull(provider.GetRequiredService<OperationalNotesViewModel>());
+        Assert.NotNull(provider.GetRequiredService<MainViewModel>());
     }
 }

@@ -77,11 +77,15 @@
             </Grid>
         </Border>
 
-        <!-- App-shell section strip (spec Phase 9D Part A; extended Phase 10A Part A): the only
-             top-level navigation this app has — Dashboard (Phase 10A's supervisor summary/control
-             surface and the default startup section), Associate Passdown (the only editable
-             workflow), and History (Phase 9D's read-only archive). No Manager entry (CLAUDE.md
-             "current scope decision"). -->
+        <!-- App-shell section strip (spec Phase 9D Part A; extended Phase 10A Part A, Phase 11B Part
+             A): the only top-level navigation this app has — Dashboard (Phase 10A's supervisor
+             summary/control surface and the default startup section), Associate Passdown (the only
+             editable daily workflow), Operational Notes (Phase 11B's persistent supervisor-managed
+             notes manager — distinct from Associate's own daily Notes entry), and History (Phase 9D's
+             read-only archive). No Manager entry (CLAUDE.md "current scope decision"). Each button's
+             CanExecute (Dashboard/Associate/History only — Operational Notes itself is always
+             reachable) is disabled while Notes.IsEditing is true (spec Part X), so its own IsEnabled
+             need not be bound separately here. -->
         <Border DockPanel.Dock="Top" Background="{DynamicResource PassdownSurfaceTintBrush}"
                 BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
             <StackPanel Orientation="Horizontal">
@@ -91,25 +95,32 @@
                 <Button Classes="appSectionItem" Classes.active="{Binding IsAssociateSectionSelected}"
                         Content="Associate Passdown" Command="{Binding ShowAssociateSectionCommand}"
                         AutomationProperties.Name="Associate Passdown section" />
+                <Button Classes="appSectionItem" Classes.active="{Binding IsOperationalNotesSectionSelected}"
+                        Content="Operational Notes" Command="{Binding ShowOperationalNotesSectionCommand}"
+                        AutomationProperties.Name="Operational Notes section" />
                 <Button Classes="appSectionItem" Classes.active="{Binding IsHistorySectionSelected}"
                         Content="History" Command="{Binding ShowHistorySectionCommand}"
                         AutomationProperties.Name="History section" />
             </StackPanel>
         </Border>
 
-        <!-- All three sections are constructed once and stay alive for the app's lifetime (spec Part
+        <!-- All four sections are constructed once and stay alive for the app's lifetime (spec Part
              T): switching which one is visible never recreates the Associate screen's in-progress
              edits/autosave state and never touches AssociateViewModel.SelectedDate. -->
         <Grid>
             <!-- IsVisible is bound on the wrapping Border (still MainViewModel's own DataContext) —
                  the inner view's DataContext reassignment below changes the compiled-binding type for
-                 its own subtree, so IsDashboardSectionSelected/IsAssociateSectionSelected/IsHistorySectionSelected
-                 must not be bound on the same element as that DataContext switch. -->
+                 its own subtree, so IsDashboardSectionSelected/IsAssociateSectionSelected/
+                 IsOperationalNotesSectionSelected/IsHistorySectionSelected must not be bound on the
+                 same element as that DataContext switch. -->
             <Border IsVisible="{Binding IsDashboardSectionSelected}">
                 <views:DashboardView DataContext="{Binding Dashboard}" />
             </Border>
             <Border IsVisible="{Binding IsAssociateSectionSelected}">
                 <views:AssociateView DataContext="{Binding Associate}" />
+            </Border>
+            <Border IsVisible="{Binding IsOperationalNotesSectionSelected}">
+                <views:OperationalNotesView DataContext="{Binding Notes}" />
             </Border>
             <Border IsVisible="{Binding IsHistorySectionSelected}">
                 <views:HistoryView DataContext="{Binding History}" />

@@ -308,13 +308,297 @@ ViewModel or View is registered — there is nothing for a UI to bind to yet (Pa
 ## Planned subphases
 
 ```
-11A   persistent model/persistence/service foundation (this document)
-11B   Operational Notes Manager UI
+11A   persistent model/persistence/service foundation
+11B   Operational Notes Manager UI (this document's Phase 11B section, below)
 11C   Dashboard active-note integration
 11D   explicit user-selected inclusion into Associate Passdown
 11E   carry-forward/filtering/UX polish
 11F   final audit/release rebuild
 ```
+
+---
+
+# Phase 11B — Operational Notes Manager UI
+
+Phase 11B builds the supervisor-facing screen for browsing, creating, editing, and resolving
+persistent Operational Notes (Phase 11A's foundation). It is a CRUD-style management surface except
+there is **no hard delete** — resolving preserves the note as a historical record, exactly as 11A's
+`IOperationalNoteRepository`/`IOperationalNotesService` already guarantee. Phase 11B does not touch
+Dashboard, Associate Passdown, or History, does not add an "Include in today's passdown" workflow, and
+does not require a new database migration — schema stays **10**, snapshot schema stays **1**.
+
+## Navigation placement (Part A)
+
+`AppSection` (`MainViewModel.cs`) gained one value — `OperationalNotes` — placed between
+`AssociatePassdown` and `History`:
+
+```
+Dashboard | Associate Passdown | Operational Notes | History
+```
+
+The user-facing label is **"Operational Notes"**, not "Notes Manager" — matching how 11A's own
+documentation and this screen's own header already refer to the feature. No `Manager`/`Alerts`/
+`Calendar` value was added (`MainViewModelNavigationTests.AppSection_ContainsOperationalNotesAndNoManagerAlertsOrCalendar`
+asserts the exact four-value enum).
+
+## Default startup (Part B)
+
+Dashboard remains `SelectedSection`'s default (`AppSection.Dashboard`), unchanged by this phase.
+Regression-tested by `MainViewModelNavigationTests.SelectedSection_StillDefaultsToDashboard_WithOperationalNotesAdded`.
+
+## `OperationalNotesViewModel` (Part C)
+
+Depends on exactly `IOperationalNotesService` and `IClock` — the same two-dependency shape
+`OperationalNotesService` itself uses, and mirrors `AssociateViewModel`'s own
+`EasternTimeZone.ConvertFromUtc(clock.UtcNow)` convention for "today" (`ReferenceDate`), read fresh on
+every load/filter pass rather than cached once. It never queries SQLite directly, never recomputes
+relevance/lifecycle/ordering/validation itself — every one of those is reused from
+`OperationalNoteLifecycle`, `OperationalNoteOrdering`, and the service's own validation
+(`OperationalNotesServiceIntegrationTests` exercises the real service + an in-memory repository
+end-to-end specifically to prove this composition works, not just that the view model's own logic is
+internally consistent).
+
+## Manager layout (Part D/AE/AF)
+
+A Grid-based master/detail screen (`OperationalNotesView.axaml`): a header band, a filter/action row
+(`[All][Active][Upcoming][Expired][Resolved]` tabs + `+ New Note`), then a 340px note list beside a
+detail/editor column. At 1280×860 the list and detail/editor are visible simultaneously with no
+page-level scroll; each column has its own `ScrollViewer` for overflow. At 960×640 the same Grid
+reflows to the same proportions with per-column scrolling rather than clipping. Visual language (navy/
+blue accents, compact chip badges, restrained borders, no shadows/gradients/emoji) mirrors
+`HistoryView`/`DashboardView`'s existing self-contained `UserControl.Styles`, per the UI Polish skill.
+
+## Default/list filtering (Part F/G/H/I)
+
+Lifecycle filter tabs: **All | Active | Upcoming | Expired | Resolved**, default **Active** — the
+operationally useful default, with every other bucket one click away (including `All`, deliberately
+included rather than deferred, since it costs nothing extra once the four specific buckets already
+exist). Filtering is applied in `OperationalNotesViewModel.ApplyFilter` purely by calling
+`OperationalNoteLifecycle.Derive` over the already-`ByDefaultListOrder`-sorted cached list — no
+competing UI sort, no re-derivation of relevance rules.
+
+**Category and Priority filters are deliberately deferred to Phase 11E.** Five lifecycle tabs plus a
+category dropdown plus a priority toggle would not fit this screen's compact filter row without either
+wrapping awkwardly or growing the header — lifecycle state is the one dimension a supervisor needs
+immediately ("what's active right now"); category/priority are already visible per-row and don't need
+a second filtering axis for an initial release.
+
+## Create flow (Part J)
+
+`+ New Note` (`NewNoteCommand`) opens a create editor with: Title (required, ≤200 chars), Body
+(optional, ≤4000 chars), Category (required, closed `OperationalNoteCategoryOption` list — no "not
+set" entry, since Category itself has none), Priority (required, `Normal`/`Important`), Effective From
+(required, `CalendarDatePicker`, defaults to today), and Effective Through (optional, with an explicit
+**"Until resolved"** checkbox — checked by default — that clears/disables the date picker rather than
+requiring a far-future placeholder date). `Id`/`CreatedAtUtc`/`UpdatedAtUtc`/`ResolvedAtUtc` are never
+exposed — they remain system-managed by `OperationalNotesService`.
+
+## Edit flow (Part K)
+
+Selecting a note shows read-only detail first (`ShowReadOnlyDetail`); an explicit **Edit** button
+switches to the editor (`ShowEditor`), pre-populated from the selected note. This is the "reduce
+accidental edits" pattern the spec prefers, and is a clean fit for this screen since (unlike Associate
+Passdown's always-editable draft) a persistent note is not being actively worked on continuously.
+
+## Save/Cancel (Part L)
+
+**Save** validates through `IOperationalNotesService.CreateAsync`/`UpdateAsync` (the sole authority),
+reloads the list afterward, and re-selects the saved note — so the just-created/edited note becomes (or
+remains) the selection, unless the edit itself moved it out of the currently active filter (e.g.
+extending an Expired note's range while viewing the Expired tab — see Part P below), in which case it
+correctly drops out of view exactly like a successful Resolve does. **Cancel** discards every unsaved
+editor field and returns to the prior read-only detail/list state without calling the service at all.
+
+## Validation presentation (Part M)
+
+Two conditions get immediate client-side feedback before any service call, matching the spec's own
+examples verbatim: a blank title → **"Enter a title."**; Effective Through before Effective From →
+**"Effective Through cannot be before Effective From."** Any other `ArgumentException`/
+`ArgumentOutOfRangeException` the service still throws (e.g. an over-length title) is mapped to one
+generic **"This note could not be saved. Check the fields and try again."** — never a stack trace,
+exception type name, or raw SQLite error. The service's validation rules themselves are never
+duplicated; only these two specific early checks exist client-side.
+
+## Resolve behavior (Part N)
+
+**Resolve** is a two-step inline confirmation, not a modal dialog: clicking **Resolve**
+(`RequestResolveCommand`) shows "Mark this operational note resolved? This preserves the note but
+removes it from the Active list." with **Yes, Resolve**/**Cancel** buttons in place of the normal
+action row; confirming (`ConfirmResolveCommand`) calls `IOperationalNotesService.ResolveAsync`,
+reloads, and lets the note drop out of the current filter if it no longer matches (e.g. leaving the
+Active tab). No **Reopen** action exists, matching 11A's own deferred-by-design decision.
+
+## Resolved-note presentation (Part O)
+
+**Resolved notes are read-only in 11B**, deliberately: no Edit or Resolve control appears
+(`SelectedDetail.IsResolved` hides the entire action row), and the detail panel instead shows
+**Resolved** plus its timestamp (`ResolvedAtText`). This was a deliberate choice, not an oversight —
+since no Reopen operation exists yet, presenting Edit/Resolve controls on an already-resolved note
+would invite an editor that has nothing meaningful to do.
+
+## Expired-note behavior (Part P)
+
+Expired is a **derived** presentation state (`OperationalNoteLifecycleState.Expired`), never a
+persisted one — an expired note's `Status` stays `Active` in the database, and this screen never writes
+`Status = Resolved` for it. Expired notes remain fully editable; extending `EffectiveThrough` forward
+through the normal edit flow moves the note back to `Active` on save, exactly as the spec's own example
+describes. Covered by `OperationalNotesViewModelTests.ExpiredNote_CanBeEditedToExtendEffectiveThrough`.
+
+## Upcoming-note behavior (Part Q)
+
+Upcoming notes are fully editable and are never presented as inactive or an error state. The date-range
+formatter (`OperationalNoteDateRangeFormatter`) shows **"Starts \<date\>"** for an Upcoming note instead
+of a from/through range, since the range hasn't begun yet.
+
+## Important-priority presentation (Part R)
+
+Important is communicated primarily through **text** ("Important" appears as the Priority label
+itself, both in the list row and the detail chip row), reinforced with restrained weight/accent
+(`TextBlock.priorityText.important`, `Border.chipAccent` — the same blue "chip accent" brush already
+used elsewhere in the app, not an alarm-style red). Priority is never presented via color alone.
+
+## Category/date-range presentation (Part S/T)
+
+`OperationalNoteCategoryOption`/`OperationalNotePriorityOption` are the single, centralized places that
+map the closed enums to user-facing labels (e.g. `GuestServices` → "Guest Services") — reused
+identically by the create/edit ComboBoxes and by the list/detail presentation builders, so the mapping
+can never drift between the two. `OperationalNoteDateRangeFormatter` produces friendly text only
+("Aug 26 – Aug 30", "Aug 26 – Until resolved", "Starts Aug 30") — never a raw ISO value — and includes
+the year only when it differs from the reference date's year, since a bare "Aug 26" becomes ambiguous
+once a note can span a year boundary.
+
+## Empty states (Part U)
+
+Two distinct empty states, both handled in `OperationalNotesViewModel`/`OperationalNotesView`:
+**no notes at all** ("No operational notes yet. Create a note for information that should remain
+visible across days." plus its own `+ New Note` button) versus **notes exist but none match the current
+filter** (e.g. "No active operational notes.", one message per lifecycle bucket via
+`FilteredEmptyStateMessage`).
+
+## Local-only guarantee (Part V)
+
+Reload (`ReloadCommand`) calls only `IOperationalNotesService.ListAsync()` — the same local-only
+service 11A already proved has no HTTP/Playwright/browser dependency. It is not coupled to Check
+Online and never polls automatically.
+
+## Unsaved-changes handling (Part W/X)
+
+The simplest option that still prevents silently discarding work, deliberately not a global
+dirty-state framework or a modal dialog: while `EditorMode` is `Create` or `Edit`
+(`OperationalNotesViewModel.IsEditing`), **Reload**, **New Note**, **Edit**, and **Resolve** are all
+disabled via their own `CanExecute`, and the note list itself is disabled (`ListBox.IsEnabled` bound to
+`!IsEditing`) so a different row cannot even be clicked. The same signal is reused one level up for
+top-level navigation (Part X): `MainViewModel` subscribes to `OperationalNotesViewModel.IsEditing`
+changing and disables **Dashboard**/**Associate Passdown**/**History**'s own `CanExecute`
+(`CanLeaveOperationalNotesSection`) whenever the Operational Notes section is both currently shown and
+mid-edit — a Notes-specific guard, not a redesign of the app shell's navigation. A supervisor must
+explicitly Save or Cancel before any other section becomes reachable again.
+Covered by `MainViewModelNavigationTests.DirtyOperationalNotesEditor_DisablesOtherTopLevelSectionButtons`.
+
+## Associate Passdown separation (Part Y)
+
+`OperationalNotesViewModel` has no dependency on `AssociateViewModel`/`IAssociatePassdownService`, and
+`AssociateViewModel`'s own constructor has no `IOperationalNotesService` dependency
+(`MainViewModelNavigationTests.AssociateViewModel_HasNoOperationalNotesServiceDependency` — the same
+constructor-reflection pattern 11A already used in the opposite direction). Creating, editing, and
+resolving persistent notes never alters the current Associate draft, never triggers an Associate
+autosave, and (since there is no code path capable of reaching `AssociateDraftPayload.OperationalNotes`
+at all) can never appear in an Associate PDF or a finalized History snapshot. Regression-tested by
+`MainViewModelNavigationTests.OperationalNoteOperations_NeverChangeAssociateDraft`.
+
+## Dashboard separation (Part AA)
+
+`DashboardView`/`OperationsDashboardViewModel`/`OperationsDashboardService` are entirely unmodified by
+this phase — the Dashboard continues to show only today's Associate Operational Notes preview.
+Persistent notes gain no Dashboard surface until Phase 11C.
+
+## History separation (Part AB)
+
+`HistoryView`/`PassdownHistoryViewModel`/`IPassdownHistoryService` are entirely unmodified. Finalized
+History remains exactly as Phase 9 designed, with no reference to the Notes Manager or any
+`OperationalNote.Id`.
+
+## Privacy (Part AC)
+
+Every log call in `OperationalNotesViewModel` logs only the note's `Id` — never `Title`/`Body` — e.g.
+`"Operational note saved: {NoteId}"` / `"Operational note resolved: {NoteId}"`, matching 11A's own
+diagnostic-privacy convention.
+
+## Accessibility (Part AD)
+
+Every control the spec calls out carries an `AutomationProperties.Name`: the top-level section button
+("Operational Notes section"), the note list ("Operational notes list"), New Note, each lifecycle
+filter tab, Note title/body inputs, Category/Priority selectors, Effective From/Through, Save, Cancel,
+Edit, and Resolve (plus its own Confirm/Cancel Resolve pair). All controls are plain `Button`/`TextBox`/
+`ComboBox`/`CalendarDatePicker`/`CheckBox`/`ListBox` — every one keyboard-reachable with FluentTheme's
+default focus ring, and status (lifecycle, Important) is always presented as text, never color-only.
+Verified by `OperationalNotesViewTests.OperationalNotesView_ExposesCriticalAutomationNames`.
+
+## Desktop density (Part AE)
+
+Designed primarily for 1280×860 (list + detail/editor simultaneously visible, minimal page-level
+scroll); reflows acceptably to 960×640 via the same Grid proportions with per-column `ScrollViewer`
+scrolling rather than clipped or unreadable fields.
+
+## Visual validation (Part AM)
+
+**PARTIAL.** This environment has no raster/Skia renderer wired into the headless Avalonia test host
+(only `Avalonia.Headless`'s null-render backend), so pixel-level rendering cannot be captured or
+compared here — consistent with the spec's own instruction not to claim a pixel PASS without one.
+Structural/binding validation is thorough: every representative state (empty list, multiple Active
+notes, an Important note selected, Upcoming/Expired/Resolved detail, the create editor, the edit
+editor, a validation error, a very long title/body) constructs cleanly through Avalonia's real XAML
+loader in `OperationalNotesViewTests`, proving every binding, converter, and `DataTemplate` path is
+valid. Actual on-screen appearance should be spot-checked in a Windows 11 VM per `CLAUDE.md`'s platform
+guidance before this ships.
+
+## Schema/snapshot-schema confirmation (Part AL)
+
+No new migration was added. Database schema remains **10** (`Migration0010CreateOperationalNotesTable`,
+unchanged since 11A); snapshot schema remains **1**. This phase is UI-only on top of 11A's existing
+persistence.
+
+## Deferred work
+
+- 11C: Dashboard active-note integration.
+- 11D: explicit user-selected inclusion into an Associate Passdown draft — **persistent notes are still
+  never automatically included in any daily passdown**; no "Include in today's passdown" affordance
+  exists anywhere in this phase.
+- 11E: category/priority filtering, carry-forward, further UX polish.
+- 11F: final audit and release rebuild (the release ZIP was intentionally not rebuilt by this phase).
+- A Reopen operation for a resolved note, Alerts, an Operations Calendar, and the Manager workflow all
+  remain out of scope, as established in 11A/`CLAUDE.md`.
+
+## Tests added (Phase 11B)
+
+- `Carowinds.Passdown.Ui.Tests/OperationalNotesViewModelTests.cs` — 25 cases covering load/default
+  filter/filter switching, list ordering, selection, New Note/Edit/Save/Cancel for both create and
+  edit, both client-side validation messages, resolve + resolved-note read-only state, expired-note
+  edit/extend, upcoming-note edit, local-only reload, both empty states, Important/category/date-range
+  presentation, and the dirty-editor command-disabling guard.
+- `Carowinds.Passdown.Ui.Tests/OperationalNotesServiceIntegrationTests.cs` — the view model driven
+  against the *real* `OperationalNotesService` plus an in-memory `IOperationalNoteRepository` (create/
+  edit/resolve persistence, reload visibility, date-driven lifecycle, expired-stays-Active, filtering
+  never mutates, and a constructor-reflection no-network-dependency check).
+- `Carowinds.Passdown.Ui.Tests/OperationalNotesViewTests.cs` — headless XAML-loader construction for
+  the empty state, a populated list, the create/edit editors, resolved/expired detail, long content,
+  and the full automation-name assertion.
+- `Carowinds.Passdown.Ui.Tests/MainViewModelNavigationTests.cs` — extended with the four-value
+  `AppSection` assertion, Dashboard default retained, every pairwise navigation through Operational
+  Notes, Associate-date/History-selection preservation across it, the Associate-draft-separation
+  regression, the `AssociateViewModel` constructor-reflection guarantee, and the dirty-editor
+  top-level-navigation guard.
+- `Carowinds.Passdown.Ui.Tests/CompositionRootTests.cs` — added
+  `BuildServiceProvider_ResolvesOperationalNotesViewModel`.
+- `Carowinds.Passdown.Ui.Tests/TestSupport/FakeOperationalNotesService.cs` and
+  `InMemoryOperationalNoteRepository.cs` — new test doubles for the above.
+
+## Full validation (Phase 11B)
+
+`dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors.
+`dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — 1103/1103 passed (66 Domain +
+297 Application + 82 Documents + 317 Infrastructure + 341 Ui, up from 11A's 1054 baseline by the 49
+tests listed above), 0 failed, 0 skipped. No live internet was used or required.
 
 ## Tests added
 
