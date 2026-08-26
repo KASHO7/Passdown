@@ -628,6 +628,207 @@ navigation-preserves-Associate-state, no mutating command, no
 refresh/generator dependency) plus a `CompositionRootTests` addition
 resolving the new DI registrations.
 
+## Phase 9E — integration validation
+
+Phase 9E adds no new production behavior. It is an integration-validation pass over
+the complete Phase 9A–9D pipeline (draft → automatic finalization → refresh →
+History), using real temp-file SQLite databases and real Application/
+Infrastructure/Documents services end to end — never in-memory fakes for the
+pieces being validated — plus a review of what unit-level Phase 9A–9D coverage
+already proved. New tests live in
+`tests/Carowinds.Passdown.Ui.Tests/ScheduledRefresh/Phase9EIntegrationTests.cs`
+(nine integration tests) and as additional construction-level cases appended to
+`tests/Carowinds.Passdown.Ui.Tests/HistoryViewTests.cs` (four new cases). No
+revisions, manual finalization, delete-history, or Manager-workflow behavior was
+added; the 6:00 AM cutoff and finalize-before-refresh ordering are unchanged.
+
+**End-to-end pipeline (Part A/B).** `FullPipeline_RepresentativePassdown_...`
+seeds a saved draft with manual/effective park hours, attendance/pre-solds, a
+Daily Feature, an operational note, a representative official catalog product
+with a comparison price, and a custom product; advances a `FakeClock` to
+06:01 Eastern the following day; runs the real `ScheduledRefreshHost`; and
+verifies the finalized row, its frozen PDF, and — reading back through the real
+`PassdownHistoryService`/`FinalizedPassdownPdfRetrievalService` over the same
+SQLite file, not fakes — that the History listing, detail snapshot, and
+retrieved PDF bytes/hash/size all agree with what was just finalized. The same
+test then mutates the current catalog price, park hours, and draft (notes/Daily
+Feature) and re-reads the finalized record and History detail: the content
+hash, PDF hash, PDF bytes, and every frozen field are byte-for-byte unchanged.
+**PASS.**
+
+**Missed-run recovery (Part C).** `MissedRunRecovery_MultiDayDowntime_...`
+saves drafts for four consecutive dates, pre-finalizes one of them, sets the
+clock to a fourth day later, and runs the real scheduled host once: every
+eligible date finalizes, oldest first, the pre-existing record is left alone
+(not duplicated), History lists all four newest-first, origins are `Recovery`
+for the older missed dates and `Scheduled` for the one whose cutoff falls on
+the current Eastern calendar date, and the refresh runner is invoked exactly
+once after every recovery finalization completes. **PASS** (unit-level
+recovery/origin coverage in `ScheduledPassdownFinalizerTests` already existed;
+this adds the real-SQLite, real-History-read-back version).
+
+**No-draft / empty-date safety (Part D).** Already fully covered at the unit
+level (`ScheduledPassdownFinalizerTests.FinalizeEligibleAsync_NoSavedDraft_...`,
+`..._LoadableButUnsavedWorkspace_...`) — a loadable-but-never-saved workspace
+(every date) is never treated as eligible content; only a persisted draft row
+is. No new test needed. **PASS.**
+
+**Failure blocks refresh, then retry succeeds (Part E).**
+`RealPdfGenerationFailure_BlocksRefresh_PreservesState_ThenSucceedsOnRetryAfterFixed`
+uses a *real* failure — not a simulated/fake one — by saving a draft with
+40 custom products and six long operational notes, which the real
+`AssociatePassdownPdfGenerator`'s strict one-page layout genuinely rejects. The
+scheduled host returns `FatalFailure`, no finalized row is written, the refresh
+runner is never invoked, and the pre-refresh draft is unchanged. Re-saving the
+draft with normal representative content and re-running the same host then
+succeeds and the refresh runner is invoked. **PASS.**
+
+**Duplicate/idempotency (Part F).**
+`DuplicateInvocation_SameEligibleDate_ProducesOneRowAndSkipsOnSubsequentRuns`
+runs the real scheduled host three times for the same already-finalized date:
+one row (the same `Id` every time), one History entry, and the refresh runner
+still runs on every invocation (a duplicate-finalization skip is not a
+failure). `DuplicateInsert_BypassingApplicationCheck_UniqueIndexRejectsSecondRow`
+proves the database's unique index remains the final defense even if the
+application-level check-before-insert is bypassed. **PASS.**
+
+**History scale / BLOB efficiency, and malformed/legacy tolerance (Parts G/H/R).**
+`HistoryAtScale_MetadataOnlyListing_OneRowDetailAndPdfLoad_ToleratesBadRows`
+seeds 40 real finalized rows plus one legacy pre-9C row (no PDF columns), one
+malformed-JSON row, and one future-schema-version row (all via raw SQL, exactly
+as a real historical/corrupted row would exist) — 43 rows total. `ListAsync`
+still returns every row's metadata, newest-first, without throwing on the three
+bad rows (the repository's list query has never selected `pdf_bytes` — Phase
+9C — so scale here is a correctness/tolerance property, not a performance
+regression risk). Selecting one normal date loads only that date's detail/PDF.
+The legacy row's detail still renders with `HasFrozenPdf=false` and PDF
+retrieval returns null (never regenerates); the malformed and future-schema
+rows return `Snapshot=null` with a support-facing `UnavailableReason` and never
+throw. **PASS.**
+
+**Startup catch-up end-to-end (Part K).**
+`StartupCatchUp_MissedCutoff_FinalizesAndHistoryAppears` drives the real
+`StartupCatchUpRefresh.RunAsync` (not `ScheduledRefreshHost`) against a real
+database with an eligible saved draft: finalization runs, History gains the
+row, and the refresh runner is invoked once. **PASS.**
+
+**Overlap (Part L).** `Overlap_LockAlreadyHeld_NeverFinalizes_NeverRefreshes`
+manually acquires a real `FileScheduledRefreshLock` on a given path (simulating
+a concurrently running scheduled/catch-up process), then runs
+`ScheduledRefreshHost` with a lock factory pointed at the same path: the host
+returns `Overlap`, never touches the finalizer, and never invokes refresh — no
+duplicate finalization is possible while another holder has the lock.
+`FileScheduledRefreshLockTests` (Phase 6B) already covers the lock primitive in
+isolation; this is the Phase 9 finalization-specific case. **PASS.**
+
+**6:00 AM Eastern boundary, including a DST transition (Part M).**
+`DstBoundary_SpringForwardTransition_CutoffCorrectAtOrchestrationLevel` picks a
+passdown date whose cutoff (`2026-03-08 06:00 America/New_York`) falls on the
+actual 2026 spring-forward transition day, confirms the cutoff offset is
+already EDT (-4), and runs the real scheduled host both one second before and
+exactly at that cutoff instant: not-yet-finalized, then finalized. Existing
+unit-level coverage (`FinalizationEligibilityTests`,
+`ScheduledPassdownFinalizerTests.FinalizeEligibleAsync_DstAwareCutoffRemainsCorrect`)
+already proved EDT-vs-EST offsets generally; this is the orchestration-level
+check on an actual transition date the spec asked for. **PASS.**
+
+**History UI visual validation (Part N).** No pixel/bitmap screenshot renderer
+exists in this codebase (`Avalonia.Headless` is used for real-XAML-loader
+construction checks only, deliberately without `Avalonia.Headless.XUnit` — see
+`HeadlessTestSetup.cs`) — there was nothing to reuse for actual pixel
+inspection, and building one was out of scope for a validation phase. What
+Phase 9E adds is construction-level coverage for the states Phase 9D's
+`HistoryViewTests` didn't yet exercise: a Recovery-origin record, a no-PDF
+legacy record, a malformed/unsupported-schema detail (`Snapshot=null`,
+`UnavailableReason` set), and dense content (six long operational notes, a long
+Daily Feature, 25 product rows). All four construct through the real XAML
+loader without error. Layout inspection at 1280×860 vs. `MainWindow`'s
+`MinWidth="960"`/`MinHeight="640"` and no-scroll/clipping checks were **not**
+pixel-verified — this is a genuine, honestly-recorded limitation, not a claimed
+pass. **PARTIAL** (construction-level: PASS; pixel/visual-usability: NOT
+EXECUTED).
+
+**Windows manual validation (Part O).** No Windows host was available this
+session (same limitation recorded for every prior Windows-validation section in
+this repo, including `docs/release-manifest.md`). **NOT EXECUTED.**
+
+**History/Associate navigation review (Part P).** Reviewed `MainWindow.axaml`
+directly: History is a top-level section strip sibling to "Associate Passdown"
+(not nested inside `AssociateView`'s Overview/Products/Notes rail), the active
+section is visually obvious (accent underline + bold + accent foreground via
+`Classes.active`), there is no Manager entry point, and both views stay
+mounted/alive simultaneously so switching sections never disturbs Associate's
+in-progress state (already covered by `MainViewModelNavigationTests`). No
+layout change was needed. **PASS.**
+
+**Dense/long passdown (Part Q).** `AssociatePassdownPdfGeneratorTests` and
+`FinalizedPassdownProjectionTests` (Documents.Tests, pre-existing) already
+prove the overflow policy end to end at the Documents layer: valid dense
+content still fits one page, and content that doesn't fit is rejected outright
+(never truncated/corrupted) — this phase's own
+`RealPdfGenerationFailure_...` test (Part E, above) exercises that same
+rejection through the *real* end-to-end pipeline, and `HistoryView_DenseContent_...`
+(Part N, above) proves a dense-but-valid finalized record's History detail
+renders all 25 product rows without truncation. **PASS.**
+
+**Pre-9C compatibility (Part R).** Covered end-to-end by the legacy row in the
+Part G/H/R scale test above (through the real `PassdownHistoryService` and
+`FinalizedPassdownPdfRetrievalService`, not just the repository as
+`SqliteFinalizedPassdownRepositoryTests` already covered). **PASS.**
+
+**Migration/upgrade integration (Part S).** `PortableLifecycleTests` (already
+existing, Infrastructure.Tests) covers schema 1→9 and schema 8→9 (the Phase 9C
+PDF-column addition, preserving a pre-9C finalized row with null PDF columns).
+Schema 7→8 (the `finalized_passdowns` table's own creation atop a database that
+already has other populated tables) was not separately isolated as its own
+test — `Migration0008CreateFinalizedPassdownsTable` is a pure additive `CREATE
+TABLE`, the same shape as every other additive migration in this codebase, and
+carries materially lower risk than the schema-9 PDF-column addition already
+covered; not adding a redundant test for it here. `MigrationRunnerTests`
+already covers the newer-than-known-version downgrade guard generically (Phase
+7D), unaffected by Phase 9. **PASS.**
+
+**Diagnostic export privacy (Part T).** Already fully covered —
+`SqliteDatabaseDiagnosticsProviderTests.GetAsync_DatabaseContainsFinalizedPassdownWithSensitiveContent_NeverSurfacesItInDiagnostics`
+seeds a finalized row with a distinctive secret note and secret PDF marker
+bytes and asserts neither, nor any property containing "Pdf"/"Snapshot"/
+"OperationalNote", appears in the reported diagnostics. No new test needed.
+**PASS.**
+
+**Release impact (Part U).** `docs/release-manifest.md`'s current artifact
+(`Carowinds-Passdown-0.1.0-dev-win-x64.zip`, SHA-256
+`eb44854b11ca3e280c814a97d64cfeee8538aa37287c9d88cd5a7717af8b7b31`) predates all
+of Phase 9 (its recorded test count, 725/725, is from the Phase 8A/8B rebuild).
+**This release ZIP is now stale** — it contains none of Phase 9A–9E's
+finalization/History/frozen-PDF-storage code or the `finalized_passdowns`
+table/schema-9 migration. No release was rebuilt in Phase 9E (per scope: Phase
+9F owns the rebuild, new SHA-256, and release-manifest update). Any Windows
+validation artifact produced before that rebuild would need to be labeled
+test-only, not a release build; none was produced this phase (Part O above).
+
+**Tests added.** 13 new tests: 9 in `Phase9EIntegrationTests.cs` (Parts A, B,
+C, E, F ×2, G/H/R combined, K, L, M) and 4 appended to `HistoryViewTests.cs`
+(Parts N/H/R/Q). No existing test was removed, skipped, or weakened.
+
+**Final validation (Part X).** `dotnet build CarowindsPassdown.slnx` — 0
+warnings, 0 errors. `dotnet test CarowindsPassdown.slnx --filter
+"Category!=LiveSmoke"` — **858/858** passing (66 Domain + 221 Application + 82
+Documents + 287 Infrastructure + 202 Ui), run twice to confirm no flakiness. No
+live internet was used or required.
+
+**Remaining limitations, honestly recorded:**
+- History UI: no pixel/screenshot-based visual verification exists in this
+  codebase; only real-XAML-loader construction checks (Part N above).
+- Windows manual validation: not executed — no Windows host available (Part O).
+- Migration 7→8 in isolation (finalized_passdowns table creation atop a
+  populated pre-existing database) was assessed as low-risk rather than
+  separately tested (Part S).
+- The release ZIP/manifest is stale relative to HEAD; rebuilding it is
+  explicitly Phase 9F's scope, not Phase 9E's.
+
+Phase 9 is **not** being marked fully complete by this document — Phase 9F
+(release rebuild) and any findings from an eventual Windows pass remain open.
+
 ## Persistence additions (Phase 9B)
 
 `IAssociateDraftRepository.ListSavedDraftDatesAsync()`
