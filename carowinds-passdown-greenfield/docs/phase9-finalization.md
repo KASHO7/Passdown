@@ -6,10 +6,14 @@ cutoff, evaluated by the existing scheduled task and the interactive
 startup catch-up path, always before either ever runs a source refresh.
 Phase 9C extends every finalized record to also freeze the exact PDF
 bytes an associate would have printed at finalization time, atomically
-alongside the structured snapshot. Phase 9D (this document's current
-scope) adds the read-only Passdown History UI that browses those
-frozen records. No phase through 9D implements revisions, manual
-finalization, delete-history, or touches the Manager workflow.
+alongside the structured snapshot. Phase 9D adds the read-only
+Passdown History UI that browses those frozen records. Phase 9E is an
+end-to-end integration validation pass over the whole 9A–9D pipeline.
+Phase 9F (this document's current scope; see "Phase 9F — release
+closeout" below) closes out Phase 9 as a shipped feature set: a final
+requirements/immutability audit and the release rebuild. No phase
+through 9F implements revisions, manual finalization, delete-history,
+or touches the Manager workflow.
 
 ## Concept
 
@@ -847,3 +851,55 @@ itself depends only on `IAssociateDraftRepository`,
 `IAssociatePassdownService`, `IFinalizedPassdownRepository`,
 `IFinalizedPassdownFinalizationService`, and `IClock` — no HTTP,
 Playwright, `IRefreshOrchestrator`, or Windows Task Scheduler API.
+
+## Phase 9F — release closeout
+
+Phase 9F closes out Phase 9 as a shipped feature set. It adds no new production behavior — it is a
+final requirements audit of 9A–9E as one system, an immutability re-check, a release rebuild, and a
+documentation checkpoint. See `docs/release-strategy.md` "Phase 9F rebuild" for the full audit
+(requirements matrix, immutability/order/schema/privacy/navigation audits) and
+`docs/release-manifest.md` for the resulting artifact's exact identity.
+
+**Audit outcome.** Every Phase 9A–9E claim in this document was checked directly against current
+code and a fresh full test run rather than trusted from prior summaries alone: the repository stays
+insert-only (no `Update`/`Delete` method exists on `IFinalizedPassdownRepository`, no `UPDATE`/
+`DELETE` against `finalized_passdowns` exists anywhere in the codebase), `HistoryView.axaml` exposes
+only `OpenFinalPdfCommand`/`SavePdfCopyCommand` and no mutating control, the finalize-before-refresh
+ordering and 6:00 AM Eastern cutoff are unchanged, the current schema version is 9
+(`Migration0008CreateFinalizedPassdownsTable` + `Migration0009AddFinalizedPassdownPdfColumns`,
+additive atop unchanged Migrations 0001–0007), and diagnostics still never surface snapshot/PDF/note
+content. No defect was found; no code change was needed.
+
+**Validation.** `dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors.
+`dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — **858/858**, identical to
+Phase 9E's count (no test added, removed, or weakened).
+
+**Release rebuild.** The release ZIP that Phase 9E correctly flagged as stale
+(`docs/phase9-finalization.md` Phase 9E "Release impact") has been rebuilt from this exact commit.
+The freshly published Desktop/Application/Infrastructure/Documents assemblies were checked directly
+for Phase 9A–9D-only symbols (a byte-level `strings` search, not just file timestamps) to confirm
+this is not a stale reuse of the Phase 7/8 artifact — see `docs/release-manifest.md` for the exact
+symbol list and the resulting SHA-256/size/file-count. `packaging/windows/TESTER-GUIDE.txt` and
+`packaging/windows/README-portable-release.md` were updated with a short, plain-language description
+of Passdown History (they had none before Phase 9F, since History did not exist when they were last
+written).
+
+**Remaining gaps, honestly recorded (not fixed this phase, not blockers):**
+- History pixel-level Windows visual validation — no bitmap/screenshot renderer exists in this
+  codebase; only real-XAML-loader construction-level checks (unchanged since Phase 9E).
+- Native Windows PDF open/save (Open Final PDF / Save PDF Copy) — not executed, no Windows host
+  available.
+- Task Scheduler behavior with Phase 9 finalization inserted ahead of refresh — not executed on a
+  real Windows machine; stood in for by the real-SQLite, real-host `Phase9EIntegrationTests`.
+- Carried forward from Phase 7E/7F: native x64 (vs. ARM64 emulation) Windows validation, and
+  self-contained-runtime confidence on a machine with no .NET pre-installed.
+
+**Phase 9 complete.** 9A (immutable model) through 9F (release closeout) are done, audited, and
+shipped in the rebuilt artifact identified in `docs/release-manifest.md`. Intentionally **not**
+implemented, and not implied to exist by anything above:
+- revisions / version chains for a `PassdownDate` finalized more than once,
+- manual finalization (`FinalizationOrigin.Manual` has no producer),
+- delete-history (no delete control or command exists anywhere in the app),
+- the Manager workflow (deferred per CLAUDE.md "Current scope decision").
+
+Phase 10 has not started.

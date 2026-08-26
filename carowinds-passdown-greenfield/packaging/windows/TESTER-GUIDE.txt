@@ -85,7 +85,28 @@ version info, app health information, and recent activity logs. It does NOT incl
 anything you typed into the app (no drafts, no notes) and does not include your
 saved database.
 
-14. If something goes wrong
+14. Passdown History
+-----------------------
+Near the top of the window, next to "Associate Passdown", there's a "History"
+section. This is where finalized (past) passdowns live — a read-only record of
+exactly what associates saw for a given day.
+
+- A passdown finalizes automatically the morning after it happens (after 6:00 AM
+  the following day) — you don't need to do anything to make this happen, and there
+  is no button to finalize one manually.
+- Once a passdown is finalized, it never changes again. History does not have edit,
+  delete, or "undo" controls of any kind — that's intentional.
+- Click any date in the History list to see its details (park hours, attendance,
+  products, notes, etc.) exactly as they were finalized.
+- "Open Final PDF" opens the exact PDF an associate would have received that day.
+  "Save PDF Copy" lets you save that same exact PDF somewhere else. Both use the
+  original stored PDF — the app never regenerates or recreates it.
+- Some very old records may not have a stored PDF available; if so, the PDF buttons
+  won't appear for that record, and that's expected, not a bug.
+- Switching between "Associate Passdown" and "History" never loses your in-progress
+  work on the Associate side.
+
+15. If something goes wrong
 ------------------------------
 - Note exactly what you were doing and what you expected to happen instead.
 - Click "Export Diagnostics" (step 13) and save the resulting ZIP file.

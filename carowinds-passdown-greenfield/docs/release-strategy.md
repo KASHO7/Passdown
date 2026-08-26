@@ -1506,3 +1506,237 @@ against this exact ZIP.
 **Status: artifact rebuilt and internally verified; Windows-side confirmation remains outstanding**,
 same honest posture every prior rebuild recorded before its own first Windows pass.
 
+## Phase 9F rebuild — release closeout for the full Phase 9 finalization/History pipeline
+
+Not a new numbered product phase (Phase 9 itself spans 9A–9F) — this is the release rebuild that
+closes out Phase 9 as a shipped feature set, after `docs/phase9-finalization.md`'s Phase 9E marked
+the prior release ZIP explicitly stale. `docs/release-manifest.md` is the authoritative record of
+exactly what this rebuild produced (SHA-256, sizes, file count, test count, schema version); this
+section records the narrative, the audit performed, and what was/was not re-verified.
+
+### What changed since the Post-Phase-8 artifact
+
+The entire Phase 9A–9E pipeline, previously validated only by the automated suite, never packaged:
+
+- **9A** — immutable `finalized_passdowns` domain/storage model (schema version 8), one record per
+  `PassdownDate`, insert-only repository, unique index.
+- **9B** — automatic finalization: every eligible passdown finalizes at/after 6:00 AM Eastern the
+  day after it happened, always before that invocation's scheduled/catch-up refresh; multi-day
+  missed-run recovery, oldest first; a finalization failure blocks that invocation's refresh.
+- **9C** — exact frozen PDF bytes stored alongside every finalized snapshot (schema version 9,
+  additive), with SHA-256/size recorded; retrieval never regenerates; pre-9C rows keep `NULL` PDF
+  columns rather than being backfilled with a PDF that wouldn't be historically exact.
+- **9D** — a new top-level, read-only "Passdown History" section (sibling of "Associate Passdown",
+  not nested inside it): browse every finalized passdown, view its frozen detail, open/save its
+  exact frozen PDF. No edit/delete/finalize control exists anywhere in this screen.
+- **9E** — end-to-end integration validation of the whole pipeline against real SQLite databases
+  (13 new tests), no production behavior changed.
+
+No retrieval, Associate-editing, or other business-rule behavior changed. No Manager workflow, no
+manual finalization, no delete-history control was added — all three remain explicitly deferred
+(CLAUDE.md "Current scope decision"; `docs/phase9-finalization.md`). The product version was not
+changed (`0.1.0-dev` remains the single authoritative version, `Directory.Build.props`).
+
+### Final Phase 9 requirements audit (Part A)
+
+Reviewed Phase 9A–9E as one system rather than trusting each phase's own summary in isolation —
+spot-checked the load-bearing claims directly against current code/tests rather than only against
+prior documentation:
+
+| Requirement | Evidence | Status |
+|---|---|---|
+| Immutable finalized snapshot | `FinalizedPassdown`/`FinalizedPassdownSnapshot` are `sealed record`s; every snapshot list is defensively copied at build time | PASS |
+| One finalized record per date | Unique index `ux_finalized_passdowns_passdown_date` (`Migration0008`) + application check-before-insert (`FinalizedPassdownFinalizationService`) | PASS |
+| Automatic finalization cutoff (6:00 AM Eastern next day) | `FinalizationEligibility.EligibleForFinalizationAt`, DST-aware; `ScheduledRefreshHostTests`/`ScheduledPassdownFinalizerTests` | PASS |
+| Finalization-before-refresh ordering | `ScheduledRefreshHost.RunAsync`/`StartupCatchUpRefresh.RunAsync` both finalize before invoking `IScheduledRefreshRunner`; `Phase9EIntegrationTests` (real host, real SQLite) | PASS |
+| Persisted-draft eligibility | Only `IAssociateDraftRepository.ListSavedDraftDatesAsync()` entries are eligible — a loadable-but-unsaved workspace never is | PASS |
+| Missed-run recovery | Oldest-first, all-eligible-in-one-pass; `MissedRunRecovery_MultiDayDowntime_...` (real SQLite, 4-day gap) | PASS |
+| Idempotency | Re-running against an already-finalized date is a no-op (`AlreadyFinalizedCount`), never a duplicate row; unique index is final backstop even if the app-level check is bypassed | PASS |
+| Finalization failure blocks refresh | A real (not simulated) PDF-generation failure blocks that invocation's refresh, preserves pre-refresh state, and succeeds on retry after the underlying issue is fixed | PASS |
+| Exact frozen PDF storage | `PdfBytes` built from the same in-memory `AssociatePassdownDocumentModel` used for the snapshot, in the same transaction as the row insert | PASS |
+| Frozen PDF hash/size | `PdfSha256`/`PdfSizeBytes` always populated together with `PdfBytes`; `HasFrozenPdf` is the one derived check | PASS |
+| No PDF regeneration | `IFinalizedPassdownPdfRetrievalService` has no `IAssociatePassdownPdfGenerator`/`IFinalizedPassdownSnapshotBuilder` dependency — true by constructor signature | PASS |
+| Pre-9C no-PDF compatibility | `HasFrozenPdf=false` rows render detail normally, PDF actions hidden; legacy-row case in the Phase 9E scale test | PASS |
+| History list | Newest-first, metadata-only (`ListAsync` never selects `pdf_bytes`) | PASS |
+| History detail | Reads `SnapshotJson` only, never `AssociateWorkspace`/live catalog/live park hours | PASS |
+| History read-only behavior | `HistoryView.axaml` contains no `TextBox`/`CheckBox`/edit/delete/finalize control; `PassdownHistoryViewModel` defines no mutating command | PASS |
+| History/Associate state isolation | Both views mounted simultaneously, toggled via `IsVisible` only; switching sections never touches `AssociateViewModel.SelectedDate` (`MainViewModelNavigationTests`) | PASS |
+| Malformed/unknown-version handling | `IPassdownHistoryService.GetAsync` never throws — `Snapshot=null` + `UnavailableReason` for a newer-schema or malformed row, metadata/PDF actions stay usable | PASS |
+| Diagnostic privacy | `SqliteDatabaseDiagnosticsProviderTests` regression test with a secret snapshot note + PDF marker bytes, neither ever surfaces | PASS |
+| Migration safety | Schema 1→9, 7→9, and 8→9 all covered by `PortableLifecycleTests`; Migrations 0001–0007 untouched; 0008/0009 purely additive | PASS |
+| Unsupported-newer-schema guard | `UnsupportedSchemaVersionException` (Phase 7D, unaffected by Phase 9) still throws before touching a newer-than-known database | PASS |
+| No Manager workflow | No Manager UI/ViewModel/PDF path exists anywhere in the Phase 9 diff | DEFERRED BY DESIGN |
+
+No item required a fix during this audit — every claim in `docs/phase9-finalization.md` held up
+against direct inspection of the current code and a fresh full test run (858/858).
+
+### History immutability audit (Part B)
+
+Searched for `UpdateFinalizedPassdown`, `DeleteFinalizedPassdown`, any `UPDATE`/`DELETE` against
+`finalized_passdowns`, and any PDF-regeneration-on-read path: none exist anywhere in `src/` or
+`tests/`. `IFinalizedPassdownRepository` exposes exactly `GetByDateAsync`/`ExistsForDateAsync`/
+`AddAsync`/`ListAsync` — no `Update`/`Delete` method. `SqliteFinalizedPassdownRepository.AddAsync` is
+a single hand-written `INSERT`; `GetByDateAsync`/`ListAsync` are plain `SELECT`s. `HistoryView.axaml`
+was read directly: its only interactive controls are `OpenFinalPdfCommand`/`SavePdfCopyCommand`
+buttons — no `TextBox`, `CheckBox`, or any control that could mutate a row. No mutation path exists;
+no fix or regression test was needed.
+
+### Finalization order audit (Part C)
+
+Re-read `ScheduledRefreshHost.RunAsync` and `StartupCatchUpRefresh.RunAsync` directly: both still
+acquire the lock, run migrations, finalize eligible passdowns, and only then run the scheduled
+refresh — unchanged since Phase 9B. The interactive "Check Online" path
+(`AssociatePassdownService.CheckAssociateDateOnlineAsync`) still does not route through
+`IScheduledPassdownFinalizer`. The 6:00 AM Eastern cutoff and the single Task Scheduler task are
+unchanged; no second task or CLI flag exists.
+
+### Final database schema audit (Part D)
+
+Current schema version: **9**. `Migration0008CreateFinalizedPassdownsTable.Version => 8` and
+`Migration0009AddFinalizedPassdownPdfColumns.Version => 9` are both registered, unmodified, and
+additive; Migrations 0001–0007 are untouched. `PortableLifecycleTests` covers a clean schema reaching
+version 9, and historical-schema upgrades through the current migration list; `MigrationRunnerTests`
+covers the newer-than-known-version downgrade guard generically (unaffected by Phase 9). Re-running
+the full migration list against an already-current database is a no-op (idempotent).
+
+### Final data-privacy audit (Part E)
+
+Re-read `SqliteDatabaseDiagnosticsProvider`: it still only ever reports `PRAGMA user_version`, file
+size, and WAL presence — it has never queried `finalized_passdowns` and still doesn't.
+`SqliteDatabaseDiagnosticsProviderTests.GetAsync_DatabaseContainsFinalizedPassdownWithSensitiveContent_NeverSurfacesItInDiagnostics`
+(Phase 9C, still passing) seeds a finalized row with a distinctive secret note and PDF marker bytes
+and asserts neither, nor any snapshot/PDF/operational-note field, ever appears in the reported
+diagnostics. No leakage found; no fix needed.
+
+### Final UI/navigation audit (Part F)
+
+Re-read `MainWindow.axaml` directly: the top-level shell is exactly "Associate Passdown" / "History"
+side by side, with the active section visually distinguished (accent underline + bold + accent
+foreground). No Manager entry point exists anywhere. History's own header carries a "Finalized — Read
+Only" badge, and its list/detail panes contain no editable controls, making its read-only nature
+visually obvious without a redesign. No polish changes were made — none were needed.
+
+### Visual validation review (Part G)
+
+No pixel/bitmap screenshot renderer exists in this codebase — unchanged since Phase 9E's honest
+assessment (`Avalonia.Headless` is used for real-XAML-loader construction checks only, deliberately
+without `Avalonia.Headless.XUnit`). No source code changed between Phase 9E and this rebuild that
+would affect this status. **Status carried forward as PARTIAL** (construction-level: PASS across
+empty/populated/selected/dense/no-PDF/malformed-schema states, per Phase 9E's `HistoryViewTests`;
+pixel-level at 1280×860/960×640: NOT EXECUTED) — not upgraded to a false PASS.
+
+### Full automated validation (Part H)
+
+1. `dotnet build CarowindsPassdown.slnx` — **PASS**, 0 warnings, 0 errors.
+2. `dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — **PASS**, **858/858**
+   (66 Domain + 221 Application + 82 Documents + 287 Infrastructure + 202 Ui), matching Phase 9E's
+   count exactly (no test added/removed/weakened since).
+
+### Release rebuild (Parts I–M)
+
+Performed on this (non-Windows, macOS) dev host — no `pwsh` available, same limitation as every
+prior Phase 7/8/9 rebuild:
+
+1. `dotnet publish src/Carowinds.Passdown.Desktop/Carowinds.Passdown.Desktop.csproj -c Release -r win-x64 --self-contained true -o artifacts/publish/win-x64 -p:PlaywrightPlatform=win-x64` — PASS, 271 files, 134 MB after `.pdb` removal (`Publish-Windows.ps1`'s exact command).
+2. Before staging, the freshly published `Carowinds.Passdown.Desktop.dll`/`.Application.dll`/`.Infrastructure.dll`/`.Documents.dll` were searched directly (`strings` over the actual built assembly, not timestamps) for Phase 9A–9D-only symbols — see `docs/release-manifest.md` "How this artifact was produced" for the exact list — all present, proving this publish is not a stale Phase 7/8 reuse.
+3. Staged into `artifacts/release-staging/Carowinds-Passdown-0.1.0-dev-win-x64/` exactly per `Build-PortableRelease.ps1`'s logic: publish output, `tools/Install-ScheduledRefresh.ps1`, `tools/Uninstall-ScheduledRefresh.ps1`, both `.cmd` helpers, `README.txt` (updated this rebuild — see Part Q below), `TESTER-GUIDE.txt` (updated this rebuild — see Part P below).
+4. Forbidden-pattern check (`.git`, `.db`/`-wal`/`-shm`, `CLAUDE.md`, `AGENT_BUILD_SPEC.md`, `.pdb`, `*playwright*`, `*.Tests.dll`, `.dylib`/`.so`, `.DS_Store`) — clean, both on the staged folder and again on a fresh extraction of the finished ZIP.
+5. `zip -r -X -9` into `artifacts/releases/Carowinds-Passdown-0.1.0-dev-win-x64.zip`; `shasum -a 256` computed fresh (see `docs/release-manifest.md` for the exact value — it differs from every prior artifact's hash, confirming this is not a stale reuse).
+6. Release content audit: 277 files, 280 zip entries (277 files + 3 directories: release root, `LatoFont\`, `tools\`), 61,303,566 bytes compressed, 139,519,155 bytes extracted. Executable, `appsettings.json`, all managed/native runtime DLLs, README/tester-guide, both `.cmd` helpers, and `tools/` all present; no `.pdb`, no Playwright, no test assemblies, no dev docs, no user data, no non-Windows binaries.
+
+### Tester guide / README updates (Parts P/Q)
+
+Both `packaging/windows/TESTER-GUIDE.txt` and `packaging/windows/README-portable-release.md`
+predated Phase 9D and had no mention of Passdown History at all. Updated this rebuild:
+
+- `TESTER-GUIDE.txt` gained a new step ("14. Passdown History") in plain language: where History is,
+  that finalization happens automatically the morning after (no manual finalization control exists),
+  that finalized records never change, and how Open Final PDF/Save PDF Copy work — kept short,
+  no architecture vocabulary. `TesterGuidePackagingTests` (still asserts no `RefreshOrchestrator`/
+  `IUnitOfWork`/`LastKnownGood` and the "Export Diagnostics" mention) passes unchanged.
+- `README.txt` gained a short "Passdown History" paragraph in the same plain-language style. Neither
+  file was turned into a technical design document.
+
+### Focused Windows smoke check (Part R)
+
+**NOT EXECUTED.** No Windows machine or VM was available in this session/environment. This is
+recorded honestly rather than assumed passing. Before treating this rebuilt artifact as
+Windows-proven for History/finalization specifically, the following focused smoke pass (not a full
+Phase 7E rerun) is the recommended next manual step, against this exact ZIP:
+
+1. Extract the rebuilt ZIP; launch `Carowinds.Passdown.Desktop.exe`.
+2. Confirm the Associate UI opens normally, then click "History" in the top-level section strip.
+3. Confirm the History list renders (or shows the empty-state message if nothing has finalized yet
+   on that machine).
+4. If any record exists, select it and confirm the read-only detail renders; confirm the "Finalized —
+   Read Only" badge is visible.
+5. Click "Open Final PDF" and "Save PDF Copy"; confirm both produce/open the exact stored PDF.
+6. Switch back to "Associate Passdown" and confirm the previously-selected date/in-progress edits are
+   untouched.
+7. Confirm the `Enable`/`Disable Automatic Refresh.cmd` helpers are still present and functional.
+8. (Optional, if practical without touching real operational data) seed one eligible saved draft,
+   advance past the 6:00 AM Eastern cutoff, run the scheduled task manually, and confirm a new
+   History entry appears with a working frozen PDF.
+
+### Finalization Windows smoke (Part S)
+
+**NOT EXECUTED**, per the same no-Windows-host limitation. The real-SQLite, real-host integration
+tests in `Phase9EIntegrationTests.cs` (Parts A/B/C/E/F/K/L/M of Phase 9E) stand in for this on the
+dev host; they are not a substitute for an actual Task Scheduler run on Windows, and are not
+represented as one.
+
+### Release confidence gaps (Part T), carried forward honestly
+
+| # | Item | Classification |
+|---|---|---|
+| 1 | History pixel-level Windows visual validation | Not executed (Part G) |
+| 2 | Native Windows PDF open/save (Open Final PDF / Save PDF Copy) | Not executed |
+| 3 | Task Scheduler behavior with Phase 9 finalization inserted ahead of refresh | Not executed (Part S) |
+| 4 | Native x64 vs ARM64-emulation Windows validation (carried from Phase 7E) | Non-blocking confidence gap |
+| 5 | Self-contained runtime on a clean machine with no .NET pre-installed (carried from Phase 7E/7F) | Non-blocking confidence gap |
+| 6 | Manager workflow | Deferred by design — out of current release scope |
+| 7 | Revisions / manual finalization / delete-history | Deferred by design — none implemented |
+
+None of the above is presented as a false PASS.
+
+### Phase 9 documentation closeout
+
+`docs/phase9-finalization.md` gained a final "Phase 9 complete" section (see that document) covering
+9A–9F and explicitly listing revisions, manual finalization, delete-history, and the Manager workflow
+as intentionally deferred — not implied to exist.
+
+### Phase 9F rebuild verdict
+
+| # | Item | Result |
+|---|---|---|
+| 1 | Phase 9 requirements audit (18 items) | PASS |
+| 2 | History immutability audit | PASS — no mutation path found, no fix needed |
+| 3 | Finalization order audit | PASS — unchanged |
+| 4 | Database schema audit | PASS — schema version 9 |
+| 5 | Data-privacy audit | PASS — no leakage found |
+| 6 | UI/navigation audit | PASS — no redesign needed |
+| 7 | Visual validation | PARTIAL (construction-level PASS; pixel-level NOT EXECUTED) — honest carry-forward |
+| 8 | Full automated validation | PASS, 858/858, 0 warnings/errors |
+| 9 | Release rebuild (publish + package) | PASS |
+| 10 | Latest-code verification in artifact | PASS (byte-level symbol check across 4 assemblies) |
+| 11 | Release content audit | PASS |
+| 12 | New SHA-256 recorded | PASS — differs from every prior artifact |
+| 13 | `docs/release-manifest.md` updated | PASS |
+| 14 | Tester guide / README updated for History | PASS |
+| 15 | Focused Windows smoke check | **NOT EXECUTED** — no Windows host available |
+| 16 | Finalization Windows smoke check | **NOT EXECUTED** — no Windows host available |
+| 17 | Phase 9 documentation closeout | PASS |
+
+### Phase 9F release readiness decision
+
+**READY WITH ACCEPTED LIMITATIONS.**
+
+Every Phase 9A–9E requirement was re-audited against current code and passes; no mutation path into
+finalized history exists; the full non-live suite (858/858) and a clean build both pass; the release
+ZIP was rebuilt from the exact current commit, independently verified to contain Phase 9 code via a
+byte-level assembly check, and re-inspected after extraction. The only open gaps are Windows-host
+execution (visual, PDF-open/save, and Task Scheduler-with-finalization checks) — none of which are
+new risks Phase 9 introduced beyond what Phase 7E/7F already carried for this dev-host-only build
+process, and all of which are recorded above rather than glossed over. `0.1.0-dev` remains an
+explicit pre-release development version, not a production 1.0 release.
+

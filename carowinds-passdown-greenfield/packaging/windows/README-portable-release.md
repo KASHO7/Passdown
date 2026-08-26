@@ -35,6 +35,14 @@ Logs live at:
 New to testing this app? See TESTER-GUIDE.txt in this same folder for a short
 step-by-step walkthrough.
 
+Passdown History
+-----------------
+Next to "Associate Passdown" at the top of the window is a "History" section. Each
+day's passdown finalizes automatically the morning after it happens (after 6:00 AM
+the following day) and is stored exactly as associates saw it, including the exact
+PDF — nothing in History can be edited or deleted, and nothing is ever regenerated.
+Use it to look up or re-print an exact past passdown at any time.
+
 Something not working?
 ------------------------
 Click "Export Diagnostics" inside the app (next to "Create PDF") and save the
