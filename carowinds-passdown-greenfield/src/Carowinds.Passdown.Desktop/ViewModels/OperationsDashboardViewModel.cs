@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Dashboard;
+using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Desktop.Presentation;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -36,11 +37,29 @@ public partial class OperationsDashboardViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmptyOrErrorState))]
+    [NotifyCanExecuteChangedFor(nameof(CheckOnlineCommand))]
     public partial bool IsLoading { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmptyOrErrorState))]
     public partial string? ErrorMessage { get; set; }
+
+    /// <summary>Busy state for the explicit Check Online action (Phase 10D Part N) — distinct from <see cref="IsLoading"/> (the local-only load/reload), so the two never appear as the same "loading" state to a screen reader.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CheckOnlineCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ReloadCommand))]
+    public partial bool IsCheckingOnline { get; set; }
+
+    /// <summary>"Checking official sources…" / per-source progress text, shown only while <see cref="IsCheckingOnline"/> is true (Part N).</summary>
+    [ObservableProperty]
+    public partial string? CheckOnlineStatusMessage { get; set; }
+
+    /// <summary>The plain-language result of the most recent Check Online action (Part N/T) — reuses <see cref="RefreshMessages"/>, never a raw exception message.</summary>
+    [ObservableProperty]
+    public partial string? CheckOnlineResultMessage { get; set; }
+
+    [ObservableProperty]
+    public partial bool CheckOnlineHadIssues { get; set; }
 
     /// <summary>
     /// Raised when the "Open Passdown" action is used (Phase 10A Part O; Phase 10C Part G) — routes to
@@ -82,8 +101,55 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     /// refresh event; a user revisits/reopens it to see persisted state that changed elsewhere
     /// (e.g. after the background <c>StartupCatchUpRefresh</c> completes).
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanReload))]
     private async Task ReloadAsync() => await LoadAsync().ConfigureAwait(true);
+
+    private bool CanReload() => !IsCheckingOnline;
+
+    /// <summary>
+    /// Explicit "Check Online" (Phase 10D Part L/M/N): reuses the exact same manual-date refresh
+    /// workflow the Associate screen's own Check Online action calls (via
+    /// <see cref="IOperationsDashboardService.CheckOnlineAsync"/>, which itself reuses
+    /// <c>IAssociatePassdownService.CheckAssociateDateOnlineAsync</c> — no second refresh
+    /// implementation exists here). <see cref="CanCheckOnline"/> disables re-entry while either this
+    /// or a local reload is already running, so repeated clicks can never start a concurrent refresh
+    /// (Part N).
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanCheckOnline))]
+    private async Task CheckOnlineAsync()
+    {
+        IsCheckingOnline = true;
+        CheckOnlineResultMessage = null;
+        CheckOnlineHadIssues = false;
+        CheckOnlineStatusMessage = RefreshMessages.InProgressDefault;
+
+        var progress = new Progress<RefreshProgress>(p => CheckOnlineStatusMessage = RefreshMessages.Progress(p));
+
+        try
+        {
+            var result = await _service.CheckOnlineAsync(progress).ConfigureAwait(true);
+            Snapshot = result.Snapshot;
+            Presentation = OperationsDashboardPresentation.Build(result.Snapshot);
+            CheckOnlineResultMessage = RefreshMessages.Summary(result.Summary);
+            CheckOnlineHadIssues = result.Summary.Failed > 0 || result.Summary.Cancelled > 0;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Mirrors AssociateViewModel.CheckOnlineAsync's own handling: each source already fails
+            // independently inside the refresh orchestrator, so reaching here means the check itself
+            // could not run at all — the Dashboard's existing local values are left untouched.
+            _logger?.LogError(ex, "Check Online failed unexpectedly from the dashboard.");
+            CheckOnlineResultMessage = "Could not check online right now. Locally saved information is unchanged.";
+            CheckOnlineHadIssues = true;
+        }
+        finally
+        {
+            IsCheckingOnline = false;
+            CheckOnlineStatusMessage = null;
+        }
+    }
+
+    private bool CanCheckOnline() => !IsLoading && !IsCheckingOnline;
 
     private async Task LoadAsync()
     {

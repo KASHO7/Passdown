@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
+             xmlns:presentation="using:Carowinds.Passdown.Desktop.Presentation"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="860"
@@ -186,17 +187,100 @@
             </StackPanel>
           </Border>
 
-          <!-- Data/verification summary + operational notes preview, side by side (spec Part M). -->
+          <!-- Data Status (Phase 10D Part K): the Dashboard's compact data-confidence surface —
+               "are today's displayed values current enough to trust operationally?", never absolute
+               correctness. Given its own full-width row (rather than squeezed into half of a
+               two-column row) because Phase 10D gave it a source breakdown and the explicit Check
+               Online action, making it the page's most information-dense panel after the hero row. -->
+          <Border Classes="panel" AutomationProperties.Name="Data status">
+            <StackPanel Spacing="10">
+
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Spacing="2">
+                  <TextBlock Text="DATA STATUS" Classes="sectionTitle" Margin="0" />
+                  <TextBlock Text="{Binding Presentation.DataHealth.OverallHeadline}" FontSize="17" FontWeight="Bold" />
+                  <TextBlock Text="{Binding Presentation.DataHealth.OverallDetailText}" Classes="muted" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding Presentation.DataHealth.LastVerifiedText}" Classes="muted" Margin="0,2,0,0"
+                             IsVisible="{Binding Presentation.DataHealth.LastVerifiedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Spacing="6" HorizontalAlignment="Right">
+                  <Button Content="Check Online" Classes="primaryAction" HorizontalAlignment="Right"
+                          Command="{Binding CheckOnlineCommand}"
+                          AutomationProperties.Name="Check Online"
+                          AutomationProperties.HelpText="Checks official Carowinds/Six Flags sources now and updates today's information." />
+                  <TextBlock Text="{Binding CheckOnlineStatusMessage}" Classes="muted" HorizontalAlignment="Right"
+                             TextWrapping="Wrap" MaxWidth="230" TextAlignment="Right"
+                             IsVisible="{Binding CheckOnlineStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  <TextBlock Text="{Binding CheckOnlineResultMessage}" Classes="muted" FontWeight="SemiBold"
+                             TextWrapping="Wrap" MaxWidth="230" TextAlignment="Right"
+                             IsVisible="{Binding CheckOnlineResultMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+              </Grid>
+
+              <ItemsControl ItemsSource="{Binding Presentation.DataHealth.Counts}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="8" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="presentation:DashboardCountChip">
+                    <Border Classes="chip">
+                      <StackPanel Orientation="Horizontal" Spacing="4">
+                        <TextBlock Text="{Binding CountText}" FontWeight="Bold" />
+                        <TextBlock Text="{Binding Label}" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="24">
+                <StackPanel Grid.Column="0" Spacing="4">
+                  <TextBlock Text="TODAY'S OPERATION" Classes="statLabel" />
+                  <ItemsControl ItemsSource="{Binding Presentation.DataHealth.OperationalSources}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="presentation:DashboardSourceStatusPresentation">
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,3"
+                              ToolTip.Tip="{Binding TimestampText}"
+                              AutomationProperties.Name="{Binding CategoryLabel}"
+                              AutomationProperties.HelpText="{Binding TimestampText}">
+                          <TextBlock Grid.Column="0" Text="{Binding CategoryLabel}" />
+                          <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontWeight="SemiBold" />
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Spacing="4">
+                  <TextBlock Text="PRODUCTS / OFFERS" Classes="statLabel" />
+                  <ItemsControl ItemsSource="{Binding Presentation.DataHealth.ProductSources}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="presentation:DashboardSourceStatusPresentation">
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,3"
+                              ToolTip.Tip="{Binding TimestampText}"
+                              AutomationProperties.Name="{Binding CategoryLabel}"
+                              AutomationProperties.HelpText="{Binding TimestampText}">
+                          <TextBlock Grid.Column="0" Text="{Binding CategoryLabel}" />
+                          <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontWeight="SemiBold" />
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Grid>
+
+            </StackPanel>
+          </Border>
+
+          <!-- Operational notes preview + Passdown/History integration surface, side by side (spec
+               Phase 10C Part B/P: the most recent finalized passdown's metadata only — never the
+               frozen snapshot or PDF). -->
           <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
 
             <Border Grid.Column="0" Classes="panel">
-              <StackPanel Spacing="6">
-                <TextBlock Text="Data Verification" Classes="sectionTitle" Margin="0" />
-                <TextBlock Text="{Binding Presentation.SourceHealthText}" FontWeight="SemiBold" TextWrapping="Wrap" />
-              </StackPanel>
-            </Border>
-
-            <Border Grid.Column="1" Classes="panel">
               <StackPanel Spacing="6">
                 <TextBlock Text="Operational Notes" Classes="sectionTitle" Margin="0" />
                 <TextBlock Text="{Binding Presentation.NotesSummaryText}" FontWeight="SemiBold" />
@@ -214,30 +298,26 @@
               </StackPanel>
             </Border>
 
-          </Grid>
+            <Border Grid.Column="1" Classes="panel" AutomationProperties.Name="Latest finalized passdown">
+              <StackPanel Spacing="6">
+                <TextBlock Text="Latest Finalized" Classes="sectionTitle" Margin="0" />
 
-          <!-- Passdown/History integration surface (Phase 10C Part B/P): the most recent finalized
-               passdown's metadata only — never the frozen snapshot or PDF — plus the single "Open
-               History" action for the whole page, so a supervisor can see what was last finalized and
-               jump to the full read-only archive without a second History browser here. -->
-          <Border Classes="panel" AutomationProperties.Name="Latest finalized passdown">
-            <StackPanel Spacing="6">
-              <TextBlock Text="Latest Finalized" Classes="sectionTitle" Margin="0" />
+                <StackPanel Spacing="2" IsVisible="{Binding Presentation.LatestFinalized, Converter={x:Static ObjectConverters.IsNotNull}}">
+                  <TextBlock Text="{Binding Presentation.LatestFinalized.PassdownDateText}" FontWeight="SemiBold" FontSize="15" />
+                  <TextBlock Text="{Binding Presentation.LatestFinalized.FinalizedText}" Classes="muted" />
+                  <TextBlock Text="{Binding Presentation.LatestFinalized.OriginText}" Classes="muted" />
+                </StackPanel>
+                <TextBlock Text="No finalized passdowns yet." Classes="muted"
+                           IsVisible="{Binding Presentation.LatestFinalized, Converter={x:Static ObjectConverters.IsNull}}" />
 
-              <StackPanel Spacing="2" IsVisible="{Binding Presentation.LatestFinalized, Converter={x:Static ObjectConverters.IsNotNull}}">
-                <TextBlock Text="{Binding Presentation.LatestFinalized.PassdownDateText}" FontWeight="SemiBold" FontSize="15" />
-                <TextBlock Text="{Binding Presentation.LatestFinalized.FinalizedText}" Classes="muted" />
-                <TextBlock Text="{Binding Presentation.LatestFinalized.OriginText}" Classes="muted" />
+                <Button Content="Open History" Classes="secondaryAction" Margin="0,6,0,0" HorizontalAlignment="Left"
+                        Command="{Binding OpenHistoryCommand}"
+                        AutomationProperties.Name="Open History"
+                        AutomationProperties.HelpText="Opens the read-only Passdown History screen." />
               </StackPanel>
-              <TextBlock Text="No finalized passdowns yet." Classes="muted"
-                         IsVisible="{Binding Presentation.LatestFinalized, Converter={x:Static ObjectConverters.IsNull}}" />
+            </Border>
 
-              <Button Content="Open History" Classes="secondaryAction" Margin="0,6,0,0" HorizontalAlignment="Left"
-                      Command="{Binding OpenHistoryCommand}"
-                      AutomationProperties.Name="Open History"
-                      AutomationProperties.HelpText="Opens the read-only Passdown History screen." />
-            </StackPanel>
-          </Border>
+          </Grid>
 
         </StackPanel>
 

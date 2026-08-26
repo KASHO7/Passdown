@@ -824,3 +824,428 @@ or required.
 - Rebuilding the release ZIP — Phase 10F's scope.
 - Visual/desktop polish beyond what this integration required
   (Phase 10E).
+
+---
+
+# Phase 10D — Data Confidence and Source Status Surfaces
+
+Phase 10D answers a different question than 10A–10C: not "what happened
+today" but **"is what I'm looking at trustworthy right now?"** It replaces
+Phase 10A's simple 3-state `DashboardSourceHealthSummary` (`AllCurrent`/
+`SomeStale`/`SomeUnavailable`) with a richer read model built over the exact
+same per-category `AssociateVerificationState` values — no new freshness
+system, no persistent alerts, no notifications, and no automatic network
+call. This is explicitly **not** Phase 13's Alerts & Data Confidence system:
+there is no persisted alert state, no background polling, and nothing here
+survives past the current in-memory snapshot.
+
+## Part A — authoritative source/freshness semantics (audited, not reinvented)
+
+Everything below was read from the existing model, not invented:
+
+- **`AssociateVerificationState`** (`Application/Associate/AssociateVerificationInfo.cs`):
+  `NotCheckedYet, Verified, Closed, NotPublished, Unavailable, Error, Stale` —
+  a 1:1 relabeling of Domain's `RetrievalStatus` plus `NotCheckedYet` for
+  "never attempted."
+- **`Stale` is derived, never stored**: `LastKnownGood<TValue>.IsStale`
+  (`Domain/Retrieval/LastKnownGood.cs`) is `HasSuccess &&
+  LastAttemptEvidence != SuccessEvidence` — "the latest attempt is not the
+  same evidence as the last success." It is *not* a time-window comparison;
+  a value that has never been re-checked since it succeeded is not stale no
+  matter how old it is. Consequently, once any success has ever been
+  recorded, a later failed attempt (`RetrievalStatus.Error`, the only status
+  `IsSuccessfulCompletion()` calls a failure) always renders as `Stale`,
+  never as `Error` — `Error` as an *effective* status can only occur when
+  nothing has ever succeeded at all.
+- **`LastVerifiedAt` is always success-only**: `AssociateVerificationInfo.From`
+  sets it to `SuccessEvidence?.TimeChecked` unconditionally — even while
+  `Stale` — so it always names the last time real data was confirmed, never
+  a failed attempt's time.
+- **Last-known-good (LKG)**: `SuccessValue`/`SuccessEvidence` are kept
+  fully separate from `LastAttemptEvidence`; `RecordAttempt` never lets a
+  failure overwrite a prior success (spec §6.7). This is why a stale value
+  is still safely displayable — it is never discarded.
+- **Category-level timestamps differ by source shape**, and Phase 10D
+  respects the difference rather than flattening it:
+  - Park Hours (`AssociateParkHoursView.Verification`) carries a full
+    `AssociateVerificationInfo` with a genuine success-only `LastVerifiedAt`.
+  - The three status-tracked dated categories (Admission, Fast Lane,
+    Haunted — `AssociateWorkspace.CategoryStatuses`,
+    `AssociateProductCategoryStatus`) only carry `LastCheckedAt`, explicitly
+    documented as "most recent attempt of any outcome" — **not**
+    success-only.
+  - Catalog categories (Season Passes, Add-Ons, Promotions) have no
+    category-level status record at all; every persisted
+    `CatalogProductRecord` is always `Verified` with a genuine success-only
+    `LastVerifiedAt` (`AssociatePassdownService.VerificationFromCatalog` —
+    `IProductReconciliationService.ReconcileAsync` requires `Verified`
+    evidence to persist anything, so a stored catalog row can never be
+    anything else).
+- **Freshness windows** (`Application/Freshness/FreshnessOptions.cs`,
+  `FreshnessPolicyCatalog.cs`) drive the *scheduler's* "when is this source
+  due again" (`ISourceStateRepository`/`FreshnessPlanner`) — daily-cadence
+  for dated categories, 7-day rolling for Season Passes, 14-day rolling for
+  Add-Ons. Phase 10D does not read or re-derive any of this; it has no
+  dependency on `ISourceStateRepository` at all (see Part X).
+
+## Part B — what "Data Status" means here
+
+The Data Status card answers "are today's displayed values current enough
+to trust operationally?" — never absolute correctness. Vocabulary used:
+`Current`, `Stale`, `Not published`, `Unavailable`, `Verification issue`,
+`Not checked yet`. Never `Accurate`/`Safe`/`Guaranteed`.
+
+## Parts C/R — overall aggregation model
+
+`OperationsDashboardSnapshot.DataHealth` (`Application/Dashboard/OperationsDashboardSnapshot.cs`)
+replaces the old `SourceHealth` field:
+
+```csharp
+public enum DashboardSourceStatus { NotChecked, Current, Stale, NotPublished, Unavailable, VerificationIssue }
+
+public sealed record DashboardSourceStatusEntry(
+    SourceCategory Category, DashboardSourceStatus Status,
+    DateTimeOffset? LastVerifiedAt, DateTimeOffset? LastCheckedAt);
+
+public enum DashboardOverallDataStatus { Current, SomeStale, SomeUnavailable, VerificationIssue, NoPublishedData }
+
+public sealed record DashboardDataHealthSummary(
+    DashboardOverallDataStatus OverallStatus,
+    int CurrentCount, int StaleCount, int UnavailableCount, int VerificationIssueCount, int NotPublishedCount, int NotCheckedCount,
+    IReadOnlyList<DashboardSourceStatusEntry> Sources,
+    DateTimeOffset? LatestSuccessfulVerification);
+```
+
+`OperationsDashboardService.Classify` maps `AssociateVerificationState` to
+`DashboardSourceStatus` 1:1, except `Verified`/`Closed` both collapse to
+`Current` (Part D) and `Error` is renamed `VerificationIssue` for
+plain-language display (Part T) — no other reinterpretation.
+
+**Deterministic precedence** (`OperationsDashboardService.BuildDataHealth`),
+worst first:
+
+```
+VerificationIssueCount > 0   -> VerificationIssue
+StaleCount > 0                -> SomeStale
+UnavailableCount > 0           -> SomeUnavailable
+CurrentCount == 0              -> NoPublishedData
+otherwise                      -> Current
+```
+
+This was chosen over the spec's illustrative "Error > Stale > Unavailable >
+NotPublished > Current" precisely because the audit in Part A shows
+`NotPublished` and `NotChecked` are not failures — they never appear in the
+precedence chain directly; they only surface as `NoPublishedData` when
+*nothing* is currently confirmed either (`CurrentCount == 0`). One
+`NotPublished` source alongside three `Current` ones still reports
+`Current` overall (`OperationsDashboardServiceTests.LoadAsync_OneCategoryNotPublished_OverallStaysCurrentWhenAnotherIsCurrent`).
+`LoadAsync_NothingEverChecked_ReportsNoPublishedData` also fixes a real gap
+in the old 3-state model: it previously reported `AllCurrent` when nothing
+had ever been checked at all — fabricated confidence Part B/Q explicitly
+forbids. That is now `NoPublishedData`.
+
+## Part D — Closed is not a confidence issue
+
+`Classify(AssociateVerificationState.Closed) => DashboardSourceStatus.Current`
+— a genuinely, successfully verified "the park is closed today" counts
+toward `CurrentCount`, not any issue bucket
+(`OperationsDashboardServiceTests.LoadAsync_ParkHoursVerifiedClosed_CountsAsCurrentNotIssue`).
+This was already true of the old `SourceHealth.CurrentCount` computation
+(`state is Verified or Closed`) — Phase 10D carries the rule forward rather
+than reinventing it.
+
+## Part E — NotPublished is informational
+
+A `NotPublished` source never degrades `OverallStatus` on its own when at
+least one other source is `Current` — it only participates in
+`NoPublishedData` when nothing else is confirmed either (see Part C's
+precedence). This distinguishes "source successfully checked, nothing
+published yet" from "source could not be retrieved" exactly as the spec
+asks, using the existing `AssociateVerificationState.NotPublished` value —
+no new "checked vs not checked" flag was added.
+
+## Part F/J — Stale/LKG and timestamp semantics
+
+A source that succeeded once and then failed on a later attempt reports
+`Stale` while its `LastVerifiedAt` still names the **old** success
+timestamp, never the failed attempt's time
+(`OperationsDashboardServiceTests.LoadAsync_ParkHoursSucceededThenErrored_ReportsStaleWithOldVerifiedTimestamp`
+— the underlying operational value itself is also untouched, per Part A's
+LKG guarantee). `DashboardSourceStatusEntry` deliberately carries two
+mutually-exclusive optional timestamps rather than one ambiguous one:
+
+- `LastVerifiedAt` — populated only when the source's data can *prove* the
+  timestamp is success-only (Park Hours, the three catalog categories).
+  Presented as `"Last verified {time}"`.
+- `LastCheckedAt` — populated instead for the three dated-tracked
+  categories (Admission/Fast Lane/Haunted), whose only available timestamp
+  (`AssociateProductCategoryStatus.LastCheckedAt`) is attempt-based, not
+  success-only. Presented as `"Last checked {time}"` — **never** relabeled
+  "verified" (`OperationsDashboardServiceTests.LoadAsync_DatedTrackedCategory_NeverExposesLastVerifiedTimestamp`).
+
+`DashboardDataHealthSummary.LatestSuccessfulVerification` is the max of
+every source's own `LastVerifiedAt` only — it deliberately excludes the
+three dated categories' `LastCheckedAt`, so the Dashboard's one headline
+"Last verified" timestamp can never be a failed attempt's time. When no
+source has ever succeeded, it is `null` and the "Last verified" line is
+omitted entirely (never a fabricated timestamp).
+
+## Part G — Error vs. Unavailable, preserved
+
+`Unavailable` ("the date exists but that product/value is unavailable" —
+`RetrievalStatus.Unavailable`'s own doc comment) and `VerificationIssue`
+(`AssociateVerificationState.Error`, "the source could not be completed")
+remain distinct buckets with distinct counts
+(`UnavailableCount`/`VerificationIssueCount`) and distinct overall
+precedence — `VerificationIssue` outranks `SomeUnavailable`, since it means
+the source could not even be reached, versus `Unavailable` meaning the
+source *was* reached and gave a definitive negative answer. No collapsing
+was introduced; the existing Domain-level distinction is the only source of
+truth used.
+
+## Part H/I — source breakdown and grouping
+
+All 7 `SourceCategory` values are always shown, grouped exactly as spec
+Part I suggests (`DashboardDataHealthPresentation.Build`,
+`Desktop/Presentation/DashboardDataHealthPresentation.cs`):
+
+```
+Today's Operation          Products / Offers
+  Park Hours                  Season Passes
+  Daily Admission              Add-Ons
+  Fast Lane                    Promotions
+  SCarowinds (Haunted)
+```
+
+Each row shows only a plain-language category label
+(`SourceCategoryDisplay.FriendlyName`, reused from the existing Associate
+screen — no second name table) and status text — never a raw endpoint,
+URL, HTTP status, or exception message (Part T; the presentation type has
+no field capable of carrying one). The per-row timestamp
+(`"Last verified …"`/`"Last checked …"`) is available via
+`ToolTip.Tip`/`AutomationProperties.HelpText` rather than always-visible
+text, keeping the card compact per Part AB while staying accessible without
+a mouse (the help text is present regardless of hover).
+
+Catalog categories with zero currently-stored products report
+`NotChecked`, not a fabricated `NotPublished`/`Unavailable` — this service
+has no way to distinguish "never retrieved" from "retrieved and genuinely
+empty" without a new dependency on `ISourceStateRepository`, which stays
+out of scope for Phase 10D (Part X; documented here so it isn't
+rediscovered as a bug later).
+
+## Part K — Data Status card and layout placement
+
+`DashboardView.axaml` gained one full-width panel, **Data Status**,
+positioned after "Today at a Glance" and before the Operational
+Notes/Latest Finalized row — higher than a plain "half of a two-column row"
+placement, because Phase 10D gave it a compact count-chip row, a 7-source
+breakdown, and the Check Online action, making it the densest panel on the
+page after the hero row. The prior "Data Verification" half-panel is gone;
+Operational Notes now pairs with Latest Finalized instead (both compact,
+single-purpose panels), keeping the page's overall row count unchanged
+(still 4 stacked rows, no taller than Phase 10C's layout).
+
+```
+DATA STATUS                                    [ Check Online ]
+Some information is stale
+Some source(s) are showing older information.
+Last verified Aug 25 at 5:58 AM
+
+Current 5   Stale 1   Not published 1
+
+Today's Operation          Products / Offers
+  Park Hours    Current      Season Passes   Current
+  ...                        ...
+```
+
+## Parts L/M/N/O — Check Online integration
+
+**Direct reuse, not a navigation fallback.** `OperationsDashboardService`
+already depended on `IAssociatePassdownService` (for
+`LoadAssociateDateAsync`), and that interface already exposes
+`CheckAssociateDateOnlineAsync` — the exact method
+`AssociateViewModel.CheckOnlineCommand` calls. Phase 10D adds
+`IOperationsDashboardService.CheckOnlineAsync` (`OperationsDashboardCheckOnlineResult`)
+that simply calls it for today's own operating date and rebuilds the
+snapshot from the refresh's own recomposed workspace — **no new
+dependency, no second refresh implementation**, and
+`OperationsDashboardServiceTests.CheckOnlineAsync_CallsExistingManualRefreshForToday`
+proves it drives the same `IRefreshOrchestrator.RunManualDateRefreshAsync`
+call Associate's own Check Online does. This made Part M's navigation
+fallback ("Open Passdown to Check Online") unnecessary — direct reuse was
+architecturally clean.
+
+`OperationsDashboardViewModel.CheckOnlineCommand`:
+
+- `IsCheckingOnline` is a **separate** busy flag from `IsLoading` (the
+  local-only load/reload) — `CanExecute` on both `CheckOnlineCommand` and
+  `ReloadCommand` cross-references the other, so neither can run
+  concurrently with the other, and repeated clicks cannot start a second
+  concurrent check
+  (`OperationsDashboardViewModelTests.CheckOnlineCommand_CannotRunConcurrently`).
+- Progress/result text reuses `Desktop/Presentation/RefreshMessages.cs`
+  verbatim (`RefreshMessages.InProgressDefault`/`.Progress`/`.Summary`) —
+  the exact same wording Associate's own Check Online shows, not a second
+  copy.
+- A failed Check Online (the refresh call itself throwing, not an
+  individual source failing — each source already fails independently
+  inside the orchestrator) leaves the existing snapshot untouched and shows
+  a plain-language message, never the raw exception
+  (`OperationsDashboardViewModelTests.CheckOnlineCommand_Failure_PreservesExistingSnapshotAndSetsMessage`).
+- Partial/failed refreshes preserve LKG exactly as Associate's Check Online
+  already does — nothing new was built here, it is the same
+  `RunManualDateRefreshAsync` contract
+  (`OperationsDashboardServiceTests.CheckOnlineAsync_FailedRefresh_PreservesLastKnownGood`).
+
+## Part P — no network on normal load, reconfirmed
+
+`OperationsDashboardServiceTests.LoadAsync_NeverTriggersOnlineRefresh`
+asserts `FakeRefreshOrchestrator.ManualDateRefreshCalls` stays empty after
+both `GetTodayAsync()` and `LoadAsync()` — Check Online is a distinct
+method (`CheckOnlineAsync`) that nothing in the load path calls.
+`OperationsDashboardService`'s constructor is unchanged (still
+`IAssociatePassdownService, IFinalizedPassdownRepository, IClock`) and
+`OperationsDashboardViewModel`'s constructor is also unchanged (still
+`IOperationsDashboardService, ILogger?`) — the existing
+`Constructor_HasNoRefreshOrchestratorOrRetrievalDependency`/
+`Constructor_HasNoRefreshOrPdfDependency` reflection tests continue to pass
+unmodified, proving Check Online added zero new constructor-level coupling.
+
+## Part Q — Reload Summary vs. Check Online
+
+Unambiguous, distinct labels on the Data Status card and header:
+
+- **Refresh** (header button, unchanged from Phase 10A) — local database
+  reread only (`ReloadCommand` → `IOperationsDashboardService.GetTodayAsync()`).
+- **Check Online** (Data Status card, new) — explicit source retrieval
+  (`CheckOnlineCommand` → `IOperationsDashboardService.CheckOnlineAsync()`).
+
+Neither label is a bare "Refresh" duplicated across two buttons.
+
+## Part W/X — dated vs. catalog source state, respected
+
+Dated categories (Park Hours, Admission, Fast Lane, Haunted) are always
+classified from `operatingDate`'s own composed workspace — never another
+date's cached result, since `AssociateWorkspace` itself is already scoped
+per-date. Catalog categories (Season Passes, Add-Ons, Promotions) are
+global/catalog-scoped, not date-scoped — Phase 10D reuses whatever
+`AssociateProduct.Verification`/`CatalogProductRecord.LastVerifiedAt`
+already say rather than inventing a catalog freshness window of its own
+(Part A's freshness-window audit).
+
+## Part Y — finalized History isolation, unaffected
+
+`OperationsDashboardSnapshot.LatestFinalized` is untouched by Phase 10D —
+still built purely from `FinalizedPassdownSummary` metadata, with zero
+reference to `DataHealth`/live source state anywhere in
+`OperationsDashboardService.BuildPassdownAndHistoryAsync` or
+`OperationsDashboardPresentation`. A finalized passdown can never become
+"stale" because today's live source data changed — the two systems don't
+intersect. No dedicated regression test was added beyond the existing
+Phase 10C History-isolation coverage, since no code path connects them.
+
+## Part Z — diagnostics privacy, reconfirmed
+
+`Application/Diagnostics/DiagnosticReportBuilder.cs` and
+`Infrastructure/Diagnostics/DiagnosticExportService.cs` were not touched by
+Phase 10D — neither references `DashboardDataHealthSummary`/
+`DashboardSourceStatusEntry` at all. The full `Carowinds.Passdown.Ui.Tests`
+suite (including the existing diagnostics-export tests) passes unmodified,
+confirming the sanitization rules documented in Phase 9/earlier phases
+remain intact.
+
+## Part AA — accessibility
+
+- Data Status panel: `AutomationProperties.Name="Data status"`.
+- Check Online button: `AutomationProperties.Name="Check Online"` plus
+  help text.
+- Each source row carries `AutomationProperties.Name="{category label}"`
+  and `AutomationProperties.HelpText="{timestamp text}"` (empty when no
+  timestamp exists), so the row's meaning and freshness are both available
+  to a screen reader without requiring hover.
+- No status is color-only — every badge is a plain-language `TextBlock`
+  (`Current`/`Stale`/`Not published`/`Unavailable`/`Verification issue`/
+  `Not checked yet`), matching the existing `ui-polish` convention already
+  used by `ParkHoursPresentation`'s own badges.
+- `DashboardView_WithSnapshot_ExposesCriticalAutomationNames` extended to
+  assert `"Data status"` and `"Check Online"` alongside the five existing
+  names.
+
+## Part AB/AC — layout density
+
+At 1280×860 the Data Status card is one `Border.panel` with a header row
+(headline/detail + Check Online action), a horizontal count-chip row
+(`ItemsControl` over `UniformGrid`-free `StackPanel Orientation="Horizontal"`,
+only non-zero buckets shown), and a two-column `Grid` of compact source
+rows — no per-source card, no giant single-column stack. At 960×640 the
+existing page-level `ScrollViewer` fallback (unchanged since Phase 10A)
+applies; the Data Status card's own two-column source grid was reviewed
+(not pixel-verified — see Part AE) against the narrower width and does not
+introduce any new fixed pixel widths that would clip.
+
+## Part AD — tests added
+
+- `OperationsDashboardServiceTests`: +16 — overall aggregation for
+  all-current/one-stale/one-error/one-unavailable/one-not-published,
+  Closed-counts-as-Current, NotPublished-does-not-degrade-when-another-
+  is-Current, Stale-preserves-old-verified-timestamp, dated-tracked
+  categories never expose `LastVerifiedAt`, catalog category with/without
+  a stored product, nothing-ever-checked now reports `NoPublishedData`
+  (fixing the old model's fabricated-confidence gap), no-network-on-load,
+  Check Online calls the existing manual refresh for today, Check Online's
+  returned snapshot reflects newly retrieved data without a second load,
+  and a failed Check Online preserves LKG.
+- `DashboardDataHealthPresentationTests` (new file): +11 — overall headline
+  vocabulary for every state (never the raw enum name, `Current` excluded
+  as the one legitimate coincidence), count-chip suppression of zero
+  buckets, "Last verified"/"Last checked"/omitted timestamp fallback rules,
+  operational/product group split, and no raw technical detail in status
+  text.
+- `OperationsDashboardViewModelTests`: +3 — Check Online updates
+  Snapshot/Presentation and shows a result message, a Check Online failure
+  preserves the existing snapshot and never leaks the raw exception, and
+  Check Online cannot run concurrently with itself.
+- `DashboardViewTests`: +2 automation names (`"Data status"`,
+  `"Check Online"`) on the existing assertion, +1 `[Theory]` (5 cases) over
+  every `DashboardOverallDataStatus`, +1 Check Online busy-state
+  construction case.
+
+38 new tests total (942 Phase 10C baseline + 38 = 980).
+
+## Full validation
+
+`dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors.
+`dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` —
+**980/980**. No live internet was used or required.
+
+## Visual validation — PARTIAL
+
+Same constraint as every prior Phase 9/10 document: no pixel/bitmap
+screenshot renderer exists in this codebase. `DashboardView` was reviewed
+directly against the 1280×860 layout target (the new Data Status panel's
+header/chip-row/two-column-grid structure) and exercised through
+Avalonia's headless real-XAML-loader construction checks for every
+representative overall state (`Current`/`SomeStale`/`SomeUnavailable`/
+`VerificationIssue`/`NoPublishedData`) plus the Check Online busy state.
+Recorded honestly as **PARTIAL**, matching every prior phase's precedent —
+not claimed as a pixel-verified PASS.
+
+## What Phase 10D does *not* implement
+
+- A full Alerts system, persistent alert state, or notifications — nothing
+  here survives past the current in-memory `OperationsDashboardSnapshot`.
+- An Operations Calendar or a persistent Notes Manager.
+- The Manager workflow (still deferred per CLAUDE.md).
+- Any new freshness/staleness time-window logic — `Stale` is still
+  Domain's existing attempt-vs-success derivation (Part A); Phase 10D adds
+  no new "is this too old" comparison.
+- A new dependency on `ISourceStateRepository` — catalog categories with no
+  stored products are reported `NotChecked`, not a more specific claim this
+  service has no evidence for (Part H/X).
+- Automatic/background Check Online — it remains a single explicit user
+  action, exactly like Associate's own Check Online.
+- Rebuilding the release ZIP — Phase 10F's scope.
+- Redesigning Associate/History beyond what Phase 10C already changed.
+- Visual/desktop polish beyond what this phase's own panel required
+  (Phase 10E).

@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Persistence;
+using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Application.Dashboard;
 
@@ -41,20 +42,80 @@ public sealed record DashboardPassdownStatusSummary(
     DateTimeOffset? LastSavedAt,
     DateTimeOffset? FinalizedAt);
 
-/// <summary>A compact aggregate over every source category's existing verification state (Phase 10A Part I) — no new freshness system, just a projection of what <see cref="AssociateWorkspace.CategoryStatuses"/>/<see cref="AssociateParkHoursView.Verification"/> already say.</summary>
-public enum DashboardSourceHealth
+/// <summary>
+/// A per-source, supervisor-facing classification (Phase 10D Part A/T) — a 1:1 relabeling of
+/// <see cref="AssociateVerificationState"/> (never a new freshness system): <see cref="Verified"/>
+/// and <see cref="Closed"/> above both collapse to <see cref="Current"/> because a genuinely
+/// verified "the park is closed today" is an operationally valid result, not a confidence problem
+/// (Part D); <see cref="Error"/> is renamed <see cref="VerificationIssue"/> for plain-language
+/// display (Part T) without changing its meaning.
+/// </summary>
+public enum DashboardSourceStatus
 {
-    AllCurrent,
-    SomeStale,
-    SomeUnavailable,
+    NotChecked,
+    Current,
+    Stale,
+    NotPublished,
+    Unavailable,
+    VerificationIssue,
 }
 
-public sealed record DashboardSourceHealthSummary(
-    DashboardSourceHealth Health,
+/// <summary>
+/// One source category's compact status (Phase 10D Part H). Exactly one of
+/// <see cref="LastVerifiedAt"/>/<see cref="LastCheckedAt"/> is ever populated, never both, so a
+/// caller can never accidentally present an attempt-only timestamp as "Last verified" (Part J):
+/// <see cref="LastVerifiedAt"/> is set only when the underlying data can prove the timestamp
+/// belongs to a successful completion (<see cref="AssociateVerificationInfo.LastVerifiedAt"/> for
+/// Park Hours, <see cref="Persistence.CatalogProductRecord.LastVerifiedAt"/> for catalog
+/// categories — both success-only by construction); <see cref="LastCheckedAt"/> is used instead for
+/// the three dated product categories, whose only available timestamp
+/// (<see cref="AssociateProductCategoryStatus.LastCheckedAt"/>) is documented as "most recent
+/// attempt of any outcome" and so is never safe to relabel "verified".
+/// </summary>
+public sealed record DashboardSourceStatusEntry(
+    SourceCategory Category,
+    DashboardSourceStatus Status,
+    DateTimeOffset? LastVerifiedAt,
+    DateTimeOffset? LastCheckedAt);
+
+/// <summary>
+/// The Dashboard's compact overall data-confidence classification (Phase 10D Part C), aggregated
+/// over every <see cref="DashboardSourceStatusEntry"/>. Deterministic precedence, worst first:
+/// <see cref="VerificationIssue"/> &gt; <see cref="SomeStale"/> &gt; <see cref="SomeUnavailable"/> &gt;
+/// <see cref="NoPublishedData"/> (nothing is currently confirmed at all) &gt; <see cref="Current"/>.
+/// A <see cref="DashboardSourceStatus.NotPublished"/> source never degrades the overall state by
+/// itself when at least one other source is <see cref="DashboardSourceStatus.Current"/> (Part E:
+/// "not published yet" is informational, not a confidence failure) — it only surfaces as
+/// <see cref="NoPublishedData"/> when nothing else is confirmed either.
+/// </summary>
+public enum DashboardOverallDataStatus
+{
+    Current,
+    SomeStale,
+    SomeUnavailable,
+    VerificationIssue,
+    NoPublishedData,
+}
+
+/// <summary>
+/// The Dashboard's compact data-confidence read model (Phase 10D Part C/R) — a richer replacement
+/// for Phase 10A's original 3-state <c>DashboardSourceHealthSummary</c>, built over the exact same
+/// per-category <see cref="AssociateVerificationState"/> values (never a new freshness system).
+/// <see cref="LatestSuccessfulVerification"/> is the max of every source's own success-only
+/// timestamp (Part J) — deliberately excludes the three dated categories' attempt-only
+/// <see cref="DashboardSourceStatusEntry.LastCheckedAt"/>, so this can never be a failed attempt's
+/// time.
+/// </summary>
+public sealed record DashboardDataHealthSummary(
+    DashboardOverallDataStatus OverallStatus,
     int CurrentCount,
     int StaleCount,
     int UnavailableCount,
-    int NotCheckedCount);
+    int VerificationIssueCount,
+    int NotPublishedCount,
+    int NotCheckedCount,
+    IReadOnlyList<DashboardSourceStatusEntry> Sources,
+    DateTimeOffset? LatestSuccessfulVerification);
 
 /// <summary>A read-only preview of today's operational notes (Phase 10A Part H) — never a second notes persistence model; <see cref="PreviewLines"/> is a prefix of the same <see cref="AssociateDraftPayload.OperationalNotes"/> list the Associate Notes screen edits.</summary>
 public sealed record DashboardNotesSummary(bool HasNotes, IReadOnlyList<string> PreviewLines, int TotalLineCount)
@@ -89,6 +150,6 @@ public sealed record OperationsDashboardSnapshot(
     DailyFeatureType? DailyFeatureType,
     string? DailyFeatureText,
     DashboardNotesSummary Notes,
-    DashboardSourceHealthSummary SourceHealth,
+    DashboardDataHealthSummary DataHealth,
     FinalizedPassdownSummary? LatestFinalized,
     DateTimeOffset GeneratedAt);

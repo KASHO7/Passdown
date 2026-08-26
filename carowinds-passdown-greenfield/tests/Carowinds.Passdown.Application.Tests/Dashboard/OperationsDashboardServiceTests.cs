@@ -8,6 +8,7 @@ using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Tests.TestSupport;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Catalog;
 using Carowinds.Passdown.Domain.Retrieval;
 
 namespace Carowinds.Passdown.Application.Tests.Dashboard;
@@ -29,6 +30,8 @@ public class OperationsDashboardServiceTests
         OperationsDashboardService Service,
         InMemoryAssociateDraftRepository Drafts,
         InMemoryDatedResultRepository DatedResults,
+        InMemoryCatalogProductRepository CatalogProducts,
+        FakeRefreshOrchestrator RefreshOrchestrator,
         CountingFinalizedPassdownRepository FinalizedPassdowns,
         FakeClock Clock);
 
@@ -38,10 +41,11 @@ public class OperationsDashboardServiceTests
         var drafts = new InMemoryAssociateDraftRepository();
         var datedResults = new InMemoryDatedResultRepository();
         var catalogProducts = new InMemoryCatalogProductRepository();
-        var associateService = new AssociatePassdownService(drafts, datedResults, catalogProducts, new FakeRefreshOrchestrator(), clock);
+        var refreshOrchestrator = new FakeRefreshOrchestrator();
+        var associateService = new AssociatePassdownService(drafts, datedResults, catalogProducts, refreshOrchestrator, clock);
         var finalizedPassdowns = new CountingFinalizedPassdownRepository();
         var service = new OperationsDashboardService(associateService, finalizedPassdowns, clock);
-        return new TestEnvironment(service, drafts, datedResults, finalizedPassdowns, clock);
+        return new TestEnvironment(service, drafts, datedResults, catalogProducts, refreshOrchestrator, finalizedPassdowns, clock);
     }
 
     private static Task SaveDraftAsync(TestEnvironment env, AssociateDraftPayload draft) =>
@@ -249,18 +253,218 @@ public class OperationsDashboardServiceTests
 
         var snapshot = await env.Service.LoadAsync(Date);
 
-        Assert.Equal(DashboardSourceHealth.SomeUnavailable, snapshot.SourceHealth.Health);
-        Assert.True(snapshot.SourceHealth.UnavailableCount > 0);
+        Assert.Equal(DashboardOverallDataStatus.SomeUnavailable, snapshot.DataHealth.OverallStatus);
+        Assert.True(snapshot.DataHealth.UnavailableCount > 0);
     }
 
+    // Phase 10D Part B/Q: nothing has ever been checked -> the overall status must never fabricate
+    // "Current" (a real gap in Phase 10A/B's original 3-state model, fixed here) — it honestly reports
+    // that nothing is currently confirmed.
     [Fact]
-    public async Task LoadAsync_NothingEverChecked_ReportsAllCurrent()
+    public async Task LoadAsync_NothingEverChecked_ReportsNoPublishedData()
     {
         var env = CreateEnvironment();
 
         var snapshot = await env.Service.LoadAsync(Date);
 
-        Assert.Equal(DashboardSourceHealth.AllCurrent, snapshot.SourceHealth.Health);
+        Assert.Equal(DashboardOverallDataStatus.NoPublishedData, snapshot.DataHealth.OverallStatus);
+        Assert.Equal(0, snapshot.DataHealth.CurrentCount);
+        Assert.Equal(7, snapshot.DataHealth.NotCheckedCount);
+    }
+
+    // Phase 10D Part AD #1: every source current -> overall Current.
+    [Fact]
+    public async Task LoadAsync_AllSourcesCurrent_ReportsOverallCurrent()
+    {
+        var env = CreateEnvironment();
+        await env.DatedResults.RecordSuccessAsync(new DatedResultKey(SourceCategory.ParkHours, Date), Evidence(RetrievalStatus.Verified), payloadJson: null);
+        await env.DatedResults.RecordSuccessAsync(new DatedResultKey(SourceCategory.DatedAdmissionTickets, Date), Evidence(RetrievalStatus.Verified), JsonSerializer.Serialize(new DatedAdmissionPayload([])));
+        await env.DatedResults.RecordSuccessAsync(new DatedResultKey(SourceCategory.DatedFastLane, Date), Evidence(RetrievalStatus.Verified), JsonSerializer.Serialize(new DatedFastLanePayload([])));
+        await env.DatedResults.RecordSuccessAsync(new DatedResultKey(SourceCategory.HauntedAttractions, Date), Evidence(RetrievalStatus.Verified), JsonSerializer.Serialize(new DatedHauntedPayload([])));
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(DashboardOverallDataStatus.Current, snapshot.DataHealth.OverallStatus);
+        Assert.Equal(4, snapshot.DataHealth.CurrentCount);
+        Assert.Equal(0, snapshot.DataHealth.VerificationIssueCount);
+    }
+
+    // Phase 10D Part AD #3/G: a category that has never succeeded and whose latest attempt errored
+    // reports VerificationIssue overall — distinct from Unavailable/NotPublished/Stale.
+    [Fact]
+    public async Task LoadAsync_ParkHoursNeverSucceededAndErrored_ReportsVerificationIssue()
+    {
+        var env = CreateEnvironment();
+        await env.DatedResults.RecordFailedAttemptAsync(new DatedResultKey(SourceCategory.ParkHours, Date), Evidence(RetrievalStatus.Error));
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(DashboardOverallDataStatus.VerificationIssue, snapshot.DataHealth.OverallStatus);
+        Assert.Equal(1, snapshot.DataHealth.VerificationIssueCount);
+        var parkHoursEntry = Assert.Single(snapshot.DataHealth.Sources, s => s.Category == SourceCategory.ParkHours);
+        Assert.Equal(DashboardSourceStatus.VerificationIssue, parkHoursEntry.Status);
+        Assert.Null(parkHoursEntry.LastVerifiedAt);
+    }
+
+    // Phase 10D Part D: a genuinely, successfully verified "park is closed" must never read as a
+    // confidence problem — Closed is operationally valid, so it counts as Current.
+    [Fact]
+    public async Task LoadAsync_ParkHoursVerifiedClosed_CountsAsCurrentNotIssue()
+    {
+        var env = CreateEnvironment();
+        await env.DatedResults.RecordSuccessAsync(new DatedResultKey(SourceCategory.ParkHours, Date), Evidence(RetrievalStatus.Closed), payloadJson: null);
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        var parkHoursEntry = Assert.Single(snapshot.DataHealth.Sources, s => s.Category == SourceCategory.ParkHours);
+        Assert.Equal(DashboardSourceStatus.Current, parkHoursEntry.Status);
+        Assert.Equal(DashboardOverallDataStatus.Current, snapshot.DataHealth.OverallStatus);
+    }
+
+    // Phase 10D Part E: NotPublished must not degrade the overall state when another source is
+    // already Current — it is informational, not a confidence failure.
+    [Fact]
+    public async Task LoadAsync_OneCategoryNotPublished_OverallStaysCurrentWhenAnotherIsCurrent()
+    {
+        var env = CreateEnvironment();
+        await env.DatedResults.RecordSuccessAsync(new DatedResultKey(SourceCategory.ParkHours, Date), Evidence(RetrievalStatus.Verified), payloadJson: null);
+        await env.DatedResults.RecordFailedAttemptAsync(new DatedResultKey(SourceCategory.DatedFastLane, Date), Evidence(RetrievalStatus.NotPublished));
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(DashboardOverallDataStatus.Current, snapshot.DataHealth.OverallStatus);
+        var fastLaneEntry = Assert.Single(snapshot.DataHealth.Sources, s => s.Category == SourceCategory.DatedFastLane);
+        Assert.Equal(DashboardSourceStatus.NotPublished, fastLaneEntry.Status);
+    }
+
+    // Phase 10D Part F/J: a category that previously succeeded, then failed on a later attempt,
+    // reports Stale while still surfacing the OLD success timestamp as LastVerifiedAt — never the
+    // failed attempt's own time.
+    [Fact]
+    public async Task LoadAsync_ParkHoursSucceededThenErrored_ReportsStaleWithOldVerifiedTimestamp()
+    {
+        var env = CreateEnvironment();
+        var successAt = FixedNow.AddHours(-10);
+        await env.DatedResults.RecordSuccessAsync(new DatedResultKey(SourceCategory.ParkHours, Date), Evidence(RetrievalStatus.Verified, successAt), payloadJson: null);
+        await env.DatedResults.RecordFailedAttemptAsync(new DatedResultKey(SourceCategory.ParkHours, Date), Evidence(RetrievalStatus.Error, FixedNow));
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(DashboardOverallDataStatus.SomeStale, snapshot.DataHealth.OverallStatus);
+        var parkHoursEntry = Assert.Single(snapshot.DataHealth.Sources, s => s.Category == SourceCategory.ParkHours);
+        Assert.Equal(DashboardSourceStatus.Stale, parkHoursEntry.Status);
+        Assert.Equal(successAt, parkHoursEntry.LastVerifiedAt);
+        Assert.Equal(successAt, snapshot.DataHealth.LatestSuccessfulVerification);
+    }
+
+    // Phase 10D Part J: the three dated-tracked categories (Admission/Fast Lane/Haunted) only ever
+    // carry an attempt-based timestamp, never a success-only "verified" one — even when currently
+    // Current — so a caller can never mislabel it.
+    [Fact]
+    public async Task LoadAsync_DatedTrackedCategory_NeverExposesLastVerifiedTimestamp()
+    {
+        var env = CreateEnvironment();
+        await env.DatedResults.RecordSuccessAsync(new DatedResultKey(SourceCategory.DatedFastLane, Date), Evidence(RetrievalStatus.Verified), JsonSerializer.Serialize(new DatedFastLanePayload([])));
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        var fastLaneEntry = Assert.Single(snapshot.DataHealth.Sources, s => s.Category == SourceCategory.DatedFastLane);
+        Assert.Equal(DashboardSourceStatus.Current, fastLaneEntry.Status);
+        Assert.Null(fastLaneEntry.LastVerifiedAt);
+        Assert.NotNull(fastLaneEntry.LastCheckedAt);
+    }
+
+    // Phase 10D Part W/X: a catalog category (Promotions/Passes/Add-Ons) with at least one currently
+    // stored product is Current, using that product's own success-only LastVerifiedAt — no separate
+    // catalog freshness system invented here.
+    [Fact]
+    public async Task LoadAsync_CatalogCategoryWithProduct_ReportsCurrentWithVerifiedTimestamp()
+    {
+        var env = CreateEnvironment();
+        var verifiedAt = FixedNow.AddDays(-1);
+        await env.CatalogProducts.UpsertAsync(new CatalogProductUpsert(
+            CatalogProductKey.FromSourceAndName(SourceCategory.Promotions, "Fake Source", "Summer Splash Promo"), "Summer Splash Promo", ProductLifecycleState.Active,
+            FirstSeenAt: verifiedAt, LastSeenAt: verifiedAt, LastVerifiedAt: verifiedAt, ConsecutiveConfirmedAbsenceCount: 0,
+            ArchivedAt: null, ArchivedReason: null, CurrentPriceAmount: 10m, CurrentDisplayPrice: "$10", ComparisonPriceAmount: null,
+            PriceQualifier: null, DateSpecific: false, ApplicableDate: null, LastEvidence: Evidence(RetrievalStatus.Verified, verifiedAt)));
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        var promotionsEntry = Assert.Single(snapshot.DataHealth.Sources, s => s.Category == SourceCategory.Promotions);
+        Assert.Equal(DashboardSourceStatus.Current, promotionsEntry.Status);
+        Assert.Equal(verifiedAt, promotionsEntry.LastVerifiedAt);
+    }
+
+    // Phase 10D Part X: a catalog category with no stored products is honestly NotChecked, never a
+    // fabricated NotPublished/Unavailable claim this service has no evidence for.
+    [Fact]
+    public async Task LoadAsync_CatalogCategoryWithNoProducts_ReportsNotChecked()
+    {
+        var env = CreateEnvironment();
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        var passesEntry = Assert.Single(snapshot.DataHealth.Sources, s => s.Category == SourceCategory.SeasonPasses);
+        Assert.Equal(DashboardSourceStatus.NotChecked, passesEntry.Status);
+        Assert.Null(passesEntry.LastVerifiedAt);
+    }
+
+    // Phase 10D Part P: the local-only load path must never call the manual refresh workflow.
+    [Fact]
+    public async Task LoadAsync_NeverTriggersOnlineRefresh()
+    {
+        var env = CreateEnvironment();
+
+        await env.Service.GetTodayAsync();
+        await env.Service.LoadAsync(Date);
+
+        Assert.Empty(env.RefreshOrchestrator.ManualDateRefreshCalls);
+    }
+
+    // Phase 10D Part L/M: Check Online reuses the exact same manual-date refresh workflow
+    // IAssociatePassdownService.CheckAssociateDateOnlineAsync already exposes, scoped to today.
+    [Fact]
+    public async Task CheckOnlineAsync_CallsExistingManualRefreshForToday()
+    {
+        var lateUtcClock = new FakeClock(new DateTimeOffset(2026, 8, 22, 2, 30, 0, TimeSpan.Zero)); // 10:30 PM EDT on 2026-08-21
+        var env = CreateEnvironment(lateUtcClock);
+
+        await env.Service.CheckOnlineAsync();
+
+        Assert.Equal([new DateOnly(2026, 8, 21)], env.RefreshOrchestrator.ManualDateRefreshCalls);
+    }
+
+    // Phase 10D Part O: Check Online's returned snapshot reflects the refresh's own recomposed
+    // workspace directly — no second LoadAssociateDateAsync round trip is needed to see the result.
+    [Fact]
+    public async Task CheckOnlineAsync_ReturnedSnapshotReflectsNewlyRetrievedData()
+    {
+        var env = CreateEnvironment();
+        env.RefreshOrchestrator.OnManualDateRefresh = async (date, ct) =>
+            await env.DatedResults.RecordSuccessAsync(new DatedResultKey(SourceCategory.ParkHours, date), Evidence(RetrievalStatus.Verified), payloadJson: null);
+
+        var result = await env.Service.CheckOnlineAsync();
+
+        var parkHoursEntry = Assert.Single(result.Snapshot.DataHealth.Sources, s => s.Category == SourceCategory.ParkHours);
+        Assert.Equal(DashboardSourceStatus.Current, parkHoursEntry.Status);
+    }
+
+    // Phase 10D Part O/Q: a failed Check Online never destroys a prior success — last-known-good data
+    // stays visible (as Stale, once a later attempt failed after a prior success).
+    [Fact]
+    public async Task CheckOnlineAsync_FailedRefresh_PreservesLastKnownGood()
+    {
+        var env = CreateEnvironment();
+        var successAt = FixedNow.AddHours(-6);
+        await env.DatedResults.RecordSuccessAsync(new DatedResultKey(SourceCategory.ParkHours, Date), Evidence(RetrievalStatus.Verified, successAt), payloadJson: null);
+        env.RefreshOrchestrator.OnManualDateRefresh = async (date, ct) =>
+            await env.DatedResults.RecordFailedAttemptAsync(new DatedResultKey(SourceCategory.ParkHours, date), Evidence(RetrievalStatus.Error, FixedNow));
+
+        var result = await env.Service.CheckOnlineAsync();
+
+        var parkHoursEntry = Assert.Single(result.Snapshot.DataHealth.Sources, s => s.Category == SourceCategory.ParkHours);
+        Assert.Equal(DashboardSourceStatus.Stale, parkHoursEntry.Status);
+        Assert.Equal(successAt, parkHoursEntry.LastVerifiedAt);
     }
 
     // Phase 10C Part M: no finalized passdown has ever existed -> LatestFinalized is null, never a
@@ -410,8 +614,8 @@ public class OperationsDashboardServiceTests
         Assert.Equal(0, env.FinalizedPassdowns.GetByDateCallCount);
     }
 
-    private static SourceEvidence Evidence(RetrievalStatus status) =>
-        new("Fake Source", new Uri("https://example.test/fake-source"), FixedNow, status, $"{status}.", RetrievalStrategy.DirectApi, Date, status == RetrievalStatus.Verified ? Date : null);
+    private static SourceEvidence Evidence(RetrievalStatus status, DateTimeOffset? timeChecked = null) =>
+        new("Fake Source", new Uri("https://example.test/fake-source"), timeChecked ?? FixedNow, status, $"{status}.", RetrievalStrategy.DirectApi, Date, status == RetrievalStatus.Verified ? Date : null);
 
     /// <summary>Wraps the real in-memory repository, counting <see cref="GetByDateAsync"/> calls — the only method that can return a historical PDF blob — so a test can assert the dashboard never calls it (Phase 10A Part S).</summary>
     private sealed class CountingFinalizedPassdownRepository : IFinalizedPassdownRepository

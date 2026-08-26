@@ -1,5 +1,7 @@
+using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Persistence;
+using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
 
@@ -128,5 +130,68 @@ public class OperationsDashboardViewModelTests
         Assert.DoesNotContain(parameterTypes, name => name.Contains("Refresh", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(parameterTypes, name => name.Contains("Pdf", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(parameterTypes, name => name.Contains("Http", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // Phase 10D Part L/N: Check Online calls the service's own CheckOnlineAsync (the same manual
+    // refresh workflow Associate's own Check Online reuses) and repaints Snapshot/Presentation from
+    // its result — no second local load is needed.
+    [Fact]
+    public async Task CheckOnlineCommand_UpdatesSnapshotAndResultMessage()
+    {
+        var newSnapshot = FakeOperationsDashboardService.DefaultSnapshot(FakeOperationsDashboardService.DefaultDate);
+        var summary = new RefreshSummary(RefreshJobType.ManualSingleDate, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, OperationsAttempted: 1, Succeeded: 1, Failed: 0, Cancelled: 0, Results: []);
+        var service = new FakeOperationsDashboardService
+        {
+            CheckOnlineResultFactory = () => new OperationsDashboardCheckOnlineResult(newSnapshot, summary),
+        };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        await viewModel.CheckOnlineCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, service.CheckOnlineCallCount);
+        Assert.Same(newSnapshot, viewModel.Snapshot);
+        Assert.NotNull(viewModel.Presentation);
+        Assert.False(string.IsNullOrEmpty(viewModel.CheckOnlineResultMessage));
+        Assert.False(viewModel.CheckOnlineHadIssues);
+        Assert.False(viewModel.IsCheckingOnline);
+    }
+
+    // Phase 10D Part N: a Check Online failure must never crash the screen or wipe the existing
+    // snapshot — the prior locally-loaded values stay exactly as they were.
+    [Fact]
+    public async Task CheckOnlineCommand_Failure_PreservesExistingSnapshotAndSetsMessage()
+    {
+        var service = new FakeOperationsDashboardService { CheckOnlineException = new InvalidOperationException("boom") };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+        var originalSnapshot = viewModel.Snapshot;
+
+        await viewModel.CheckOnlineCommand.ExecuteAsync(null);
+
+        Assert.Same(originalSnapshot, viewModel.Snapshot);
+        Assert.True(viewModel.CheckOnlineHadIssues);
+        Assert.False(string.IsNullOrEmpty(viewModel.CheckOnlineResultMessage));
+        Assert.DoesNotContain("boom", viewModel.CheckOnlineResultMessage);
+        Assert.False(viewModel.IsCheckingOnline);
+    }
+
+    // Phase 10D Part N: while a check is running, the command cannot be re-entered (no concurrent
+    // duplicate refresh from repeated clicks).
+    [Fact]
+    public async Task CheckOnlineCommand_CannotRunConcurrently()
+    {
+        var service = new FakeOperationsDashboardService { CheckOnlineGate = new TaskCompletionSource<bool>() };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        var firstRun = viewModel.CheckOnlineCommand.ExecuteAsync(null);
+        Assert.True(viewModel.IsCheckingOnline);
+        Assert.False(viewModel.CheckOnlineCommand.CanExecute(null));
+
+        service.CheckOnlineGate!.SetResult(true);
+        await firstRun;
+
+        Assert.Equal(1, service.CheckOnlineCallCount);
     }
 }

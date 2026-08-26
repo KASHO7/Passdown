@@ -47,6 +47,53 @@ public class DashboardViewTests
         Assert.Contains("Open Notes", names);
         Assert.Contains("Refresh today's operations summary", names);
         Assert.Contains("Latest finalized passdown", names);
+        Assert.Contains("Data status", names);
+        Assert.Contains("Check Online", names);
+    }
+
+    // Phase 10D Part AD/AA: every overall Data Status classification constructs cleanly through the
+    // real XAML loader.
+    [Theory]
+    [InlineData(DashboardOverallDataStatus.Current)]
+    [InlineData(DashboardOverallDataStatus.SomeStale)]
+    [InlineData(DashboardOverallDataStatus.SomeUnavailable)]
+    [InlineData(DashboardOverallDataStatus.VerificationIssue)]
+    [InlineData(DashboardOverallDataStatus.NoPublishedData)]
+    public async Task DashboardView_EachDataStatus_ConstructsWithoutError(DashboardOverallDataStatus status)
+    {
+        var service = new FakeOperationsDashboardService
+        {
+            SnapshotFactory = date =>
+            {
+                var snapshot = FakeOperationsDashboardService.DefaultSnapshot(date);
+                return snapshot with { DataHealth = snapshot.DataHealth with { OverallStatus = status } };
+            },
+        };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        var view = new DashboardView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+        Assert.False(string.IsNullOrEmpty(viewModel.Presentation!.DataHealth.OverallHeadline));
+    }
+
+    // Phase 10D Part N: the Check Online busy state constructs cleanly and disables the action while running.
+    [Fact]
+    public async Task DashboardView_CheckOnlineBusy_ConstructsWithoutError()
+    {
+        var service = new FakeOperationsDashboardService { CheckOnlineGate = new TaskCompletionSource<bool>() };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        var view = new DashboardView { DataContext = viewModel };
+        var runTask = viewModel.CheckOnlineCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.IsCheckingOnline);
+        Assert.Same(viewModel, view.DataContext);
+
+        service.CheckOnlineGate!.SetResult(true);
+        await runTask;
     }
 
     // Phase 10C Part U/M: no finalized history yet — the empty state constructs and never fabricates a date.

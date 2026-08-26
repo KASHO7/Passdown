@@ -1,6 +1,8 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Persistence;
+using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Time;
+using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Hours;
 
 namespace Carowinds.Passdown.Application.Dashboard;
@@ -25,7 +27,26 @@ public sealed class OperationsDashboardService(
     public async Task<OperationsDashboardSnapshot> LoadAsync(DateOnly operatingDate, CancellationToken cancellationToken = default)
     {
         var workspace = await associatePassdownService.LoadAssociateDateAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+        return await BuildSnapshotAsync(operatingDate, workspace, cancellationToken).ConfigureAwait(false);
+    }
 
+    /// <summary>
+    /// Explicit Check Online (Phase 10D Part L): reuses the manual-date refresh already exposed by
+    /// <see cref="IAssociatePassdownService.CheckAssociateDateOnlineAsync"/> — the same dependency
+    /// this service already has, so no new coupling to <see cref="IRefreshOrchestrator"/> is needed.
+    /// The returned snapshot is built directly from the refresh's own recomposed workspace (Part O),
+    /// never a second <c>LoadAssociateDateAsync</c> round trip.
+    /// </summary>
+    public async Task<OperationsDashboardCheckOnlineResult> CheckOnlineAsync(IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)
+    {
+        var today = TodayEastern();
+        var result = await associatePassdownService.CheckAssociateDateOnlineAsync(today, progress, cancellationToken).ConfigureAwait(false);
+        var snapshot = await BuildSnapshotAsync(today, result.Workspace, cancellationToken).ConfigureAwait(false);
+        return new OperationsDashboardCheckOnlineResult(snapshot, result.Summary);
+    }
+
+    private async Task<OperationsDashboardSnapshot> BuildSnapshotAsync(DateOnly operatingDate, AssociateWorkspace workspace, CancellationToken cancellationToken)
+    {
         var parkStatus = BuildParkStatus(workspace.ParkHours);
         var (passdownStatus, latestFinalized) = await BuildPassdownAndHistoryAsync(operatingDate, workspace.SaveStatus, cancellationToken).ConfigureAwait(false);
 
@@ -36,7 +57,7 @@ public sealed class OperationsDashboardService(
             || workspace.Draft.EarlyRideTime.ParticipatingAttractions.Count > 0;
 
         var notes = BuildNotesSummary(workspace.Draft.OperationalNotes);
-        var sourceHealth = BuildSourceHealth(workspace);
+        var dataHealth = BuildDataHealth(workspace);
 
         return new OperationsDashboardSnapshot(
             operatingDate,
@@ -49,7 +70,7 @@ public sealed class OperationsDashboardService(
             workspace.Draft.DailyFeatureType,
             workspace.Draft.DailyFeatureText,
             notes,
-            sourceHealth,
+            dataHealth,
             latestFinalized,
             clock.UtcNow);
     }
@@ -120,24 +141,90 @@ public sealed class OperationsDashboardService(
         return new DashboardNotesSummary(HasNotes: true, operationalNotes.Take(3).ToList(), operationalNotes.Count);
     }
 
-    private static DashboardSourceHealthSummary BuildSourceHealth(AssociateWorkspace workspace)
+    /// <summary>Product/catalog categories surfaced in the Dashboard's compact source breakdown (Phase 10D Part H/I), grouped as "Products / Offers".</summary>
+    private static readonly SourceCategory[] ProductCatalogCategories =
+    [
+        SourceCategory.SeasonPasses,
+        SourceCategory.AddOns,
+        SourceCategory.Promotions,
+    ];
+
+    /// <summary>
+    /// Compact per-source breakdown plus a deterministic overall classification (Phase 10D Part C/H) —
+    /// built entirely from the same per-category <see cref="AssociateVerificationState"/> values the
+    /// Associate screen's own status banners already use, never a new freshness system.
+    /// </summary>
+    private static DashboardDataHealthSummary BuildDataHealth(AssociateWorkspace workspace)
     {
-        var states = workspace.CategoryStatuses
-            .Select(status => status.State)
-            .Append(workspace.ParkHours.Verification.State)
-            .ToList();
+        var entries = new List<DashboardSourceStatusEntry>
+        {
+            // Park Hours has a full AssociateVerificationInfo, whose LastVerifiedAt is always
+            // success-only (AssociateVerificationInfo.From), even while Stale — safe to surface directly.
+            new(SourceCategory.ParkHours, Classify(workspace.ParkHours.Verification.State), workspace.ParkHours.Verification.LastVerifiedAt, LastCheckedAt: null),
+        };
 
-        var currentCount = states.Count(state => state is AssociateVerificationState.Verified or AssociateVerificationState.Closed);
-        var staleCount = states.Count(state => state == AssociateVerificationState.Stale);
-        var unavailableCount = states.Count(state => state is AssociateVerificationState.Unavailable or AssociateVerificationState.Error or AssociateVerificationState.NotPublished);
-        var notCheckedCount = states.Count(state => state == AssociateVerificationState.NotCheckedYet);
+        // The three status-tracked dated categories only carry AssociateProductCategoryStatus.LastCheckedAt
+        // (most recent attempt of any outcome, per its own doc comment) — never presented as "verified".
+        entries.AddRange(workspace.CategoryStatuses.Select(status =>
+            new DashboardSourceStatusEntry(status.Category, Classify(status.State), LastVerifiedAt: null, status.LastCheckedAt)));
 
-        var health = unavailableCount > 0
-            ? DashboardSourceHealth.SomeUnavailable
+        // Catalog categories have no category-level status record at all (unlike dated categories) —
+        // every persisted CatalogProductRecord is always Verified with a real success-only
+        // LastVerifiedAt (AssociatePassdownService.VerificationFromCatalog), so a category with at
+        // least one current product is Current; a category with none is honestly NotChecked (this
+        // service has no way to distinguish "never retrieved" from "retrieved and genuinely empty"
+        // without a new dependency on ISourceStateRepository, which is out of scope here).
+        foreach (var category in ProductCatalogCategories)
+        {
+            var verifiedTimestamps = workspace.Products
+                .Where(p => p.Category == category)
+                .Select(p => p.Verification.LastVerifiedAt)
+                .Where(t => t.HasValue)
+                .Select(t => t!.Value)
+                .ToList();
+
+            entries.Add(verifiedTimestamps.Count == 0
+                ? new DashboardSourceStatusEntry(category, DashboardSourceStatus.NotChecked, null, null)
+                : new DashboardSourceStatusEntry(category, DashboardSourceStatus.Current, verifiedTimestamps.Max(), null));
+        }
+
+        var currentCount = entries.Count(e => e.Status == DashboardSourceStatus.Current);
+        var staleCount = entries.Count(e => e.Status == DashboardSourceStatus.Stale);
+        var unavailableCount = entries.Count(e => e.Status == DashboardSourceStatus.Unavailable);
+        var verificationIssueCount = entries.Count(e => e.Status == DashboardSourceStatus.VerificationIssue);
+        var notPublishedCount = entries.Count(e => e.Status == DashboardSourceStatus.NotPublished);
+        var notCheckedCount = entries.Count(e => e.Status == DashboardSourceStatus.NotChecked);
+
+        // Deterministic precedence (Phase 10D Part C), worst first. NotPublished/NotChecked never
+        // degrade the overall state on their own (Part E) — they only surface as NoPublishedData
+        // when nothing else is currently confirmed either.
+        var overallStatus = verificationIssueCount > 0
+            ? DashboardOverallDataStatus.VerificationIssue
             : staleCount > 0
-                ? DashboardSourceHealth.SomeStale
-                : DashboardSourceHealth.AllCurrent;
+                ? DashboardOverallDataStatus.SomeStale
+                : unavailableCount > 0
+                    ? DashboardOverallDataStatus.SomeUnavailable
+                    : currentCount == 0
+                        ? DashboardOverallDataStatus.NoPublishedData
+                        : DashboardOverallDataStatus.Current;
 
-        return new DashboardSourceHealthSummary(health, currentCount, staleCount, unavailableCount, notCheckedCount);
+        var successTimestamps = entries.Where(e => e.LastVerifiedAt.HasValue).Select(e => e.LastVerifiedAt!.Value).ToList();
+        DateTimeOffset? latestSuccessfulVerification = successTimestamps.Count > 0 ? successTimestamps.Max() : null;
+
+        return new DashboardDataHealthSummary(
+            overallStatus, currentCount, staleCount, unavailableCount, verificationIssueCount, notPublishedCount, notCheckedCount,
+            entries, latestSuccessfulVerification);
     }
+
+    private static DashboardSourceStatus Classify(AssociateVerificationState state) => state switch
+    {
+        AssociateVerificationState.NotCheckedYet => DashboardSourceStatus.NotChecked,
+        AssociateVerificationState.Verified => DashboardSourceStatus.Current,
+        AssociateVerificationState.Closed => DashboardSourceStatus.Current, // Part D: a verified "the park is closed" is operationally valid, not a confidence issue.
+        AssociateVerificationState.NotPublished => DashboardSourceStatus.NotPublished,
+        AssociateVerificationState.Unavailable => DashboardSourceStatus.Unavailable,
+        AssociateVerificationState.Error => DashboardSourceStatus.VerificationIssue,
+        AssociateVerificationState.Stale => DashboardSourceStatus.Stale,
+        _ => DashboardSourceStatus.NotChecked,
+    };
 }

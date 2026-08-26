@@ -30,7 +30,7 @@ public sealed record OperationsDashboardPresentation(
     string DailyFeatureText,
     string NotesSummaryText,
     IReadOnlyList<string> NotesPreviewLines,
-    string SourceHealthText,
+    DashboardDataHealthPresentation DataHealth,
     PassdownHistorySummaryPresentation? LatestFinalized,
     string GeneratedAtText)
 {
@@ -90,13 +90,7 @@ public sealed record OperationsDashboardPresentation(
             .Select(line => Truncate(line, MaxNotesPreviewLineLength))
             .ToList();
 
-        var sourceHealthText = snapshot.SourceHealth.Health switch
-        {
-            DashboardSourceHealth.AllCurrent => "All source data current",
-            DashboardSourceHealth.SomeStale => $"{snapshot.SourceHealth.StaleCount} source(s) showing older information",
-            DashboardSourceHealth.SomeUnavailable => $"{snapshot.SourceHealth.UnavailableCount} source(s) unavailable",
-            _ => "Source status unknown",
-        };
+        var dataHealth = DashboardDataHealthPresentation.Build(snapshot.DataHealth);
 
         var latestFinalized = snapshot.LatestFinalized is { } summary
             ? PassdownHistorySummaryPresentation.Build(summary)
@@ -116,12 +110,13 @@ public sealed record OperationsDashboardPresentation(
             dailyFeatureText,
             notesSummaryText,
             notesPreviewLines,
-            sourceHealthText,
+            dataHealth,
             latestFinalized,
             $"Updated {FormatTimestamp(snapshot.GeneratedAt)}");
     }
 
-    private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d 'at' h:mm tt", CultureInfo.InvariantCulture);
+    /// <summary>Shared timestamp formatting, also reused by <see cref="DashboardDataHealthPresentation"/> so "Last verified"/"Last checked" text matches this screen's other timestamps exactly.</summary>
+    internal static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d 'at' h:mm tt", CultureInfo.InvariantCulture);
 
     /// <summary>Bounds one display string to a maximum length with an ellipsis (Phase 10B Part K) — presentation-only; the underlying draft value is never modified.</summary>
     private static string Truncate(string value, int maxLength)

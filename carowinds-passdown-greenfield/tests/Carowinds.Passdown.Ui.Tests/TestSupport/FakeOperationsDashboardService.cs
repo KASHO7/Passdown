@@ -1,5 +1,7 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Dashboard;
+using Carowinds.Passdown.Application.Refresh;
+using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Hours;
 
 namespace Carowinds.Passdown.Ui.Tests.TestSupport;
@@ -7,15 +9,34 @@ namespace Carowinds.Passdown.Ui.Tests.TestSupport;
 /// <summary>Deterministic, fully scriptable <see cref="IOperationsDashboardService"/> for <see cref="Carowinds.Passdown.Desktop.ViewModels.OperationsDashboardViewModel"/> tests — never touches SQLite.</summary>
 internal sealed class FakeOperationsDashboardService : IOperationsDashboardService
 {
+    private static readonly SourceCategory[] AllCategories =
+    [
+        SourceCategory.ParkHours,
+        SourceCategory.DatedAdmissionTickets,
+        SourceCategory.DatedFastLane,
+        SourceCategory.HauntedAttractions,
+        SourceCategory.SeasonPasses,
+        SourceCategory.AddOns,
+        SourceCategory.Promotions,
+    ];
+
     public List<DateOnly> LoadCalls { get; } = [];
 
     public int GetTodayCallCount { get; private set; }
 
+    public int CheckOnlineCallCount { get; private set; }
+
     public Func<DateOnly, OperationsDashboardSnapshot>? SnapshotFactory { get; set; }
+
+    public Func<OperationsDashboardCheckOnlineResult>? CheckOnlineResultFactory { get; set; }
 
     public Exception? Exception { get; set; }
 
+    public Exception? CheckOnlineException { get; set; }
+
     public TaskCompletionSource<bool>? Gate { get; set; }
+
+    public TaskCompletionSource<bool>? CheckOnlineGate { get; set; }
 
     public static readonly DateOnly DefaultDate = new(2026, 8, 26);
 
@@ -42,6 +63,25 @@ internal sealed class FakeOperationsDashboardService : IOperationsDashboardServi
         return SnapshotFactory?.Invoke(operatingDate) ?? DefaultSnapshot(operatingDate);
     }
 
+    public async Task<OperationsDashboardCheckOnlineResult> CheckOnlineAsync(IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)
+    {
+        CheckOnlineCallCount++;
+
+        if (CheckOnlineGate is not null)
+        {
+            await CheckOnlineGate.Task;
+        }
+
+        if (CheckOnlineException is not null)
+        {
+            throw CheckOnlineException;
+        }
+
+        return CheckOnlineResultFactory?.Invoke() ?? new OperationsDashboardCheckOnlineResult(
+            DefaultSnapshot(DefaultDate),
+            new RefreshSummary(RefreshJobType.ManualSingleDate, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, OperationsAttempted: 0, Succeeded: 0, Failed: 0, Cancelled: 0, Results: []));
+    }
+
     public static OperationsDashboardSnapshot DefaultSnapshot(DateOnly date) => new(
         date,
         new DashboardParkStatusSummary(DashboardParkStatus.NotChecked, DefaultParkHours()),
@@ -53,9 +93,15 @@ internal sealed class FakeOperationsDashboardService : IOperationsDashboardServi
         DailyFeatureType: null,
         DailyFeatureText: null,
         Notes: DashboardNotesSummary.Empty,
-        SourceHealth: new DashboardSourceHealthSummary(DashboardSourceHealth.AllCurrent, 0, 0, 0, 0),
+        DataHealth: DefaultDataHealth(),
         LatestFinalized: null,
         GeneratedAt: DateTimeOffset.UtcNow);
+
+    private static DashboardDataHealthSummary DefaultDataHealth() => new(
+        DashboardOverallDataStatus.NoPublishedData,
+        CurrentCount: 0, StaleCount: 0, UnavailableCount: 0, VerificationIssueCount: 0, NotPublishedCount: 0, NotCheckedCount: AllCategories.Length,
+        Sources: AllCategories.Select(c => new DashboardSourceStatusEntry(c, DashboardSourceStatus.NotChecked, null, null)).ToList(),
+        LatestSuccessfulVerification: null);
 
     private static AssociateParkHoursView DefaultParkHours() => new(
         ParkHoursCalculator.Calculate(false, null, null, false, null, null, false, null, null),
