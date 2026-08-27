@@ -20,4 +20,13 @@ internal sealed class InMemoryAssociateDraftRepository : IAssociateDraftReposito
         IReadOnlyList<DateOnly> dates = _drafts.Keys.OrderBy(d => d).ToList();
         return Task.FromResult(dates);
     }
+
+    public Task<IReadOnlyList<AssociateDraft>> GetByDateRangeAsync(DateOnly startDate, DateOnly endDateInclusive, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<AssociateDraft> drafts = _drafts.Values
+            .Where(d => d.OperatingDate >= startDate && d.OperatingDate <= endDateInclusive)
+            .OrderBy(d => d.OperatingDate)
+            .ToList();
+        return Task.FromResult(drafts);
+    }
 }

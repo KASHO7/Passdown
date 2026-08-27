@@ -1,4 +1,6 @@
+using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Calendar;
+using Carowinds.Passdown.Domain.Hours;
 
 namespace Carowinds.Passdown.Ui.Tests.TestSupport;
 
@@ -47,7 +49,9 @@ internal sealed class FakeOperationsCalendarService : IOperationsCalendarService
                 IsToday: date == selectedDate,
                 HasFinalizedPassdown: false,
                 HasAssociateDraft: false,
-                RelevantOperationalNoteCount: 0));
+                RelevantOperationalNoteCount: 0,
+                OperatingState: OperationsCalendarOperatingState.NotChecked,
+                ParkHours: NotCheckedParkHours));
         }
 
         var selected = new OperationsCalendarSelectedDateSummary(
@@ -56,8 +60,17 @@ internal sealed class FakeOperationsCalendarService : IOperationsCalendarService
             OperationsCalendarPassdownStatus.NoDraft,
             LastSavedAt: null,
             FinalizedAt: null,
-            RelevantOperationalNoteCount: 0);
+            RelevantOperationalNoteCount: 0,
+            OperatingState: OperationsCalendarOperatingState.NotChecked,
+            ParkHours: NotCheckedParkHours);
 
         return new OperationsCalendarSnapshot(monthStart, selectedDate, selectedDate, days, selected, DateTimeOffset.UtcNow);
     }
+
+    public static AssociateParkHoursView NotCheckedParkHours => new(
+        ParkHoursCalculator.Calculate(false, null, null, false, null, null, false, null, null),
+        AssociateVerificationInfo.NotCheckedYet,
+        OfficialIsClosed: false,
+        OfficialOpening: null,
+        OfficialClosing: null);
 }

@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Calendar;
+using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
@@ -29,6 +30,7 @@ public class OperationsCalendarServiceTests
     private sealed record TestEnvironment(
         OperationsCalendarService Service,
         InMemoryAssociateDraftRepository Drafts,
+        InMemoryDatedResultRepository DatedResults,
         InMemoryFinalizedPassdownRepository FinalizedPassdowns,
         IOperationalNotesService OperationalNotes,
         FakeClock Clock);
@@ -43,8 +45,47 @@ public class OperationsCalendarServiceTests
         var operationalNotes = new OperationalNotesService(new InMemoryOperationalNoteRepository(), clock);
         var associateService = new AssociatePassdownService(drafts, datedResults, catalogProducts, refreshOrchestrator, operationalNotes, clock);
         var finalizedPassdowns = new InMemoryFinalizedPassdownRepository();
-        var service = new OperationsCalendarService(associateService, drafts, finalizedPassdowns, operationalNotes, clock);
-        return new TestEnvironment(service, drafts, finalizedPassdowns, operationalNotes, clock);
+        var service = new OperationsCalendarService(associateService, drafts, datedResults, finalizedPassdowns, operationalNotes, clock);
+        return new TestEnvironment(service, drafts, datedResults, finalizedPassdowns, operationalNotes, clock);
+    }
+
+    /// <summary>Seeds a verified (or officially closed) official park-hours dated result for <paramref name="date"/> (spec Phase 12B Part A/D) — the same shape <see cref="AssociatePassdownService"/> itself reads.</summary>
+    private static Task SeedOfficialParkHoursAsync(TestEnvironment env, DateOnly date, bool isClosed, TimeOnly? opening = null, TimeOnly? closing = null)
+    {
+        var status = isClosed ? RetrievalStatus.Closed : RetrievalStatus.Verified;
+        var payloadJson = isClosed ? null : JsonSerializer.Serialize(new ParkHoursPayload(opening!.Value, closing!.Value));
+        var evidence = new SourceEvidence(
+            sourceName: "test-park-hours", sourceUrl: new Uri("https://example.com/hours"),
+            timeChecked: env.Clock.UtcNow, status: status, detail: "Test.",
+            strategy: RetrievalStrategy.DirectApi, requestedDate: date, confirmedDate: date, technicalDetail: null);
+
+        return env.DatedResults.RecordSuccessAsync(new DatedResultKey(SourceCategory.ParkHours, date), evidence, payloadJson);
+    }
+
+    /// <summary>
+    /// Seeds a successful-but-negative completion (spec Part H — <see cref="RetrievalStatus.NotPublished"/>
+    /// is a "successful completion" per <see cref="RetrievalStatusExtensions.IsSuccessfulCompletion"/>, so
+    /// it is recorded via <c>RecordSuccessAsync</c>, never <c>RecordFailedAttemptAsync</c>) with no payload.
+    /// </summary>
+    private static Task SeedNotPublishedParkHoursAsync(TestEnvironment env, DateOnly date)
+    {
+        var evidence = new SourceEvidence(
+            sourceName: "test-park-hours", sourceUrl: new Uri("https://example.com/hours"),
+            timeChecked: env.Clock.UtcNow, status: RetrievalStatus.NotPublished, detail: "Test.",
+            strategy: RetrievalStrategy.DirectApi, requestedDate: date, confirmedDate: null, technicalDetail: null);
+
+        return env.DatedResults.RecordSuccessAsync(new DatedResultKey(SourceCategory.ParkHours, date), evidence, payloadJson: null);
+    }
+
+    /// <summary>Seeds a genuinely failed attempt (spec Part I — the source could not be reached at all), with no prior success, so <see cref="AssociateVerificationState"/> resolves to <c>Error</c>.</summary>
+    private static Task SeedErroredParkHoursAsync(TestEnvironment env, DateOnly date)
+    {
+        var evidence = new SourceEvidence(
+            sourceName: "test-park-hours", sourceUrl: new Uri("https://example.com/hours"),
+            timeChecked: env.Clock.UtcNow, status: RetrievalStatus.Error, detail: "Test.",
+            strategy: RetrievalStrategy.DirectApi, requestedDate: date, confirmedDate: null, technicalDetail: null);
+
+        return env.DatedResults.RecordFailedAttemptAsync(new DatedResultKey(SourceCategory.ParkHours, date), evidence);
     }
 
     private static Task SaveDraftAsync(TestEnvironment env, DateOnly date, AssociateDraftPayload draft) =>
@@ -271,7 +312,7 @@ public class OperationsCalendarServiceTests
         var catalogProducts = new InMemoryCatalogProductRepository();
         var refreshOrchestrator = new FakeRefreshOrchestrator();
         var associateService = new AssociatePassdownService(drafts, datedResults, catalogProducts, refreshOrchestrator, env.OperationalNotes, env.Clock);
-        var service = new OperationsCalendarService(associateService, drafts, countingRepository, env.OperationalNotes, env.Clock);
+        var service = new OperationsCalendarService(associateService, drafts, datedResults, countingRepository, env.OperationalNotes, env.Clock);
         await AddFinalizedAsync(env, SelectedDate, env.Clock.UtcNow);
 
         await service.LoadAsync(new DateOnly(2026, 8, 1), SelectedDate);
@@ -344,6 +385,250 @@ public class OperationsCalendarServiceTests
         Assert.False(snapshot.Days.Single(d => d.Date == new DateOnly(2026, 8, 11)).HasAssociateDraft);
     }
 
+    // ==================================================================================
+    // Phase 12B — Park Hours and Operating-State overlays
+    // ==================================================================================
+
+    // Part Z #1: a normal published-hours day classifies Open with the exact published times.
+    [Fact]
+    public async Task LoadAsync_NormalPublishedHours_ClassifiesOpenWithExactTimes()
+    {
+        var env = CreateEnvironment();
+        var date = new DateOnly(2026, 8, 10);
+        await SeedOfficialParkHoursAsync(env, date, isClosed: false, new TimeOnly(10, 0), new TimeOnly(22, 0));
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), date);
+
+        var day = snapshot.Days.Single(d => d.Date == date);
+        Assert.Equal(OperationsCalendarOperatingState.Open, day.OperatingState);
+        Assert.Equal(new TimeOnly(10, 0), day.ParkHours.Effective.Opening);
+        Assert.Equal(new TimeOnly(22, 0), day.ParkHours.Effective.Closing);
+    }
+
+    // Part Z #2: an officially closed day classifies Closed with no fabricated hours.
+    [Fact]
+    public async Task LoadAsync_OfficiallyClosedDay_ClassifiesClosedWithNoHours()
+    {
+        var env = CreateEnvironment();
+        var date = new DateOnly(2026, 8, 11);
+        await SeedOfficialParkHoursAsync(env, date, isClosed: true);
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), date);
+
+        var day = snapshot.Days.Single(d => d.Date == date);
+        Assert.Equal(OperationsCalendarOperatingState.Closed, day.OperatingState);
+        Assert.Null(day.ParkHours.Effective.Opening);
+        Assert.Null(day.ParkHours.Effective.Closing);
+    }
+
+    // Part Z #3/#8: a saved draft's manual-hours override wins over official hours — the exact
+    // same precedence ParkHoursCalculator already enforces, resolved from the local draft path.
+    [Fact]
+    public async Task LoadAsync_SavedDraftHasManualOverride_ClassifiesCustomHoursOverridingOfficial()
+    {
+        var env = CreateEnvironment();
+        var date = new DateOnly(2026, 8, 12);
+        await SeedOfficialParkHoursAsync(env, date, isClosed: false, new TimeOnly(10, 0), new TimeOnly(22, 0));
+        var draft = AssociateDraftPayload.CreateDefault() with
+        {
+            ManualHoursOverride = new ManualHoursOverride(true, new TimeOnly(9, 0), new TimeOnly(23, 0)),
+        };
+        await SaveDraftAsync(env, date, draft);
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), date);
+
+        var day = snapshot.Days.Single(d => d.Date == date);
+        Assert.Equal(OperationsCalendarOperatingState.CustomHours, day.OperatingState);
+        Assert.Equal(new TimeOnly(9, 0), day.ParkHours.Effective.Opening);
+        Assert.Equal(new TimeOnly(23, 0), day.ParkHours.Effective.Closing);
+        Assert.True(day.ParkHours.Effective.IsManualOverrideApplied);
+    }
+
+    // Part Z #4/#9: a saved draft's private-buyout override wins even over an officially closed day.
+    [Fact]
+    public async Task LoadAsync_SavedDraftHasPrivateBuyout_ClassifiesPrivateBuyoutEvenWhenOfficiallyClosed()
+    {
+        var env = CreateEnvironment();
+        var date = new DateOnly(2026, 8, 13);
+        await SeedOfficialParkHoursAsync(env, date, isClosed: true);
+        var draft = AssociateDraftPayload.CreateDefault() with
+        {
+            PrivateBuyout = new PrivateBuyoutOverride(true, new TimeOnly(18, 0), new TimeOnly(23, 0), "Corporate buyout"),
+        };
+        await SaveDraftAsync(env, date, draft);
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), date);
+
+        var day = snapshot.Days.Single(d => d.Date == date);
+        Assert.Equal(OperationsCalendarOperatingState.PrivateBuyout, day.OperatingState);
+        Assert.Equal(new TimeOnly(18, 0), day.ParkHours.Effective.Opening);
+        Assert.Equal(new TimeOnly(23, 0), day.ParkHours.Effective.Closing);
+        Assert.True(day.ParkHours.Effective.IsPrivateBuyoutApplied);
+    }
+
+    // Part Z #5: hours checked and confirmed not published yet — never treated as an error.
+    [Fact]
+    public async Task LoadAsync_NotPublishedDay_ClassifiesNotPublished()
+    {
+        var env = CreateEnvironment();
+        var date = new DateOnly(2026, 8, 14);
+        await SeedNotPublishedParkHoursAsync(env, date);
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), date);
+
+        Assert.Equal(OperationsCalendarOperatingState.NotPublished, snapshot.Days.Single(d => d.Date == date).OperatingState);
+    }
+
+    // Part Z #6: a source that could not be reached at all classifies Unavailable — never surfaced as raw error detail.
+    [Fact]
+    public async Task LoadAsync_SourceUnavailable_ClassifiesUnavailable()
+    {
+        var env = CreateEnvironment();
+        var date = new DateOnly(2026, 8, 15);
+        await SeedErroredParkHoursAsync(env, date);
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), date);
+
+        Assert.Equal(OperationsCalendarOperatingState.Unavailable, snapshot.Days.Single(d => d.Date == date).OperatingState);
+    }
+
+    // Part Z #7/R: a date with no saved draft still resolves official hours cleanly — a draft is never required to show park hours.
+    [Fact]
+    public async Task LoadAsync_NoDraftButOfficialHoursExist_ClassifiesOpenFromOfficialAlone()
+    {
+        var env = CreateEnvironment();
+        var date = new DateOnly(2026, 8, 16);
+        await SeedOfficialParkHoursAsync(env, date, isClosed: false, new TimeOnly(9, 0), new TimeOnly(21, 0));
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), date);
+
+        var day = snapshot.Days.Single(d => d.Date == date);
+        Assert.Equal(OperationsCalendarOperatingState.Open, day.OperatingState);
+        Assert.False(day.HasAssociateDraft);
+    }
+
+    // Part Z #7/R: no draft and no official data at all — NotChecked, never a fabricated state.
+    [Fact]
+    public async Task LoadAsync_NoDraftAndNoOfficialData_ClassifiesNotChecked()
+    {
+        var env = CreateEnvironment();
+        var date = new DateOnly(2026, 8, 17);
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), date);
+
+        Assert.Equal(OperationsCalendarOperatingState.NotChecked, snapshot.Days.Single(d => d.Date == date).OperatingState);
+    }
+
+    // Part Z #21: a future published date shows its hours — nothing here implies they're guaranteed final, but they are shown.
+    [Fact]
+    public async Task LoadAsync_FuturePublishedDate_ShowsHours()
+    {
+        var env = CreateEnvironment(new FakeClock(FixedNow));
+        var futureDate = new DateOnly(2026, 9, 20);
+        await SeedOfficialParkHoursAsync(env, futureDate, isClosed: false, new TimeOnly(10, 0), new TimeOnly(20, 0));
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 9, 1), futureDate);
+
+        var day = snapshot.Days.Single(d => d.Date == futureDate);
+        Assert.Equal(OperationsCalendarOperatingState.Open, day.OperatingState);
+    }
+
+    // Part Z #22: a future date that has been checked but has nothing published yet shows Not Published, never fabricated hours.
+    [Fact]
+    public async Task LoadAsync_FutureNotPublishedDate_ShowsNotPublished()
+    {
+        var env = CreateEnvironment(new FakeClock(FixedNow));
+        var futureDate = new DateOnly(2026, 9, 21);
+        await SeedNotPublishedParkHoursAsync(env, futureDate);
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 9, 1), futureDate);
+
+        var day = snapshot.Days.Single(d => d.Date == futureDate);
+        Assert.Equal(OperationsCalendarOperatingState.NotPublished, day.OperatingState);
+    }
+
+    // Part Z #23 / spec Part S: 12B deliberately shows LIVE/current composed hours for a finalized
+    // date too, never a frozen History snapshot — documented choice (see docs/phase12-operations-calendar.md
+    // "Finalized historical-date hours"). This proves that rule concretely: finalizing a date and then
+    // changing its official hours afterward changes what Calendar shows for that date.
+    [Fact]
+    public async Task LoadAsync_FinalizedDate_ShowsCurrentLiveHours_NotFrozenAtFinalizationTime()
+    {
+        var env = CreateEnvironment();
+        var date = new DateOnly(2026, 8, 18);
+        await SeedOfficialParkHoursAsync(env, date, isClosed: false, new TimeOnly(10, 0), new TimeOnly(22, 0));
+        await SaveDraftAsync(env, date, AssociateDraftPayload.CreateDefault());
+        await AddFinalizedAsync(env, date, env.Clock.UtcNow);
+
+        // Official hours change after finalization (e.g. a later refresh corrected them).
+        await SeedOfficialParkHoursAsync(env, date, isClosed: false, new TimeOnly(11, 0), new TimeOnly(23, 0));
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), date);
+
+        var day = snapshot.Days.Single(d => d.Date == date);
+        Assert.True(day.HasFinalizedPassdown);
+        Assert.Equal(new TimeOnly(11, 0), day.ParkHours.Effective.Opening); // reflects the post-finalization change, not the frozen value.
+        Assert.Equal(OperationsCalendarPassdownStatus.Finalized, snapshot.Selected.PassdownStatus);
+    }
+
+    // Part Z #10 / spec Part A: given the exact same underlying local state, Calendar's and
+    // Dashboard's park-hours classifications agree — both are built over the exact same
+    // AssociateParkHoursComposer.Compose output, never two independent hours engines.
+    [Theory]
+    [InlineData(false, 9, 0, 21, DashboardParkStatus.Open, OperationsCalendarOperatingState.Open)]
+    [InlineData(true, null, null, null, DashboardParkStatus.Closed, OperationsCalendarOperatingState.Closed)]
+    public async Task LoadAsync_AgreesWithDashboardParkStatus_ForIdenticalUnderlyingState(
+        bool officialClosed, int? officialOpenHour, int? officialOpenMinute, int? officialCloseHour,
+        DashboardParkStatus expectedDashboardStatus, OperationsCalendarOperatingState expectedCalendarState)
+    {
+        var env = CreateEnvironment();
+        var date = new DateOnly(2026, 8, 19);
+
+        if (officialClosed)
+        {
+            await SeedOfficialParkHoursAsync(env, date, isClosed: true);
+        }
+        else if (officialOpenHour is not null)
+        {
+            await SeedOfficialParkHoursAsync(env, date, isClosed: false, new TimeOnly(officialOpenHour.Value, officialOpenMinute ?? 0), new TimeOnly(officialCloseHour!.Value, 0));
+        }
+
+        var dashboardService = new OperationsDashboardService(
+            new AssociatePassdownService(env.Drafts, env.DatedResults, new InMemoryCatalogProductRepository(), new FakeRefreshOrchestrator(), env.OperationalNotes, env.Clock),
+            env.FinalizedPassdowns, env.OperationalNotes, env.Clock);
+
+        var dashboardSnapshot = await dashboardService.LoadAsync(date);
+        var calendarSnapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), date);
+
+        Assert.Equal(expectedDashboardStatus, dashboardSnapshot.ParkStatus.Status);
+        Assert.Equal(expectedCalendarState, calendarSnapshot.Selected.OperatingState);
+        Assert.Equal(dashboardSnapshot.ParkStatus.Hours.Effective.Opening, calendarSnapshot.Selected.ParkHours.Effective.Opening);
+        Assert.Equal(dashboardSnapshot.ParkStatus.Hours.Effective.Closing, calendarSnapshot.Selected.ParkHours.Effective.Closing);
+    }
+
+    // Part Z #20: exactly one query per collaborator per month load, regardless of grid size —
+    // never one repository round trip per day cell.
+    [Fact]
+    public async Task LoadAsync_QueriesDatedResultsAndDraftsExactlyOncePerMonthLoad()
+    {
+        var env = CreateEnvironment();
+        var countingDatedResults = new CountingDatedResultRepository(env.DatedResults);
+        var countingDrafts = new CountingAssociateDraftRepository(env.Drafts);
+        var datedResultsForAssociate = env.DatedResults;
+        var catalogProducts = new InMemoryCatalogProductRepository();
+        var refreshOrchestrator = new FakeRefreshOrchestrator();
+        var associateService = new AssociatePassdownService(countingDrafts, datedResultsForAssociate, catalogProducts, refreshOrchestrator, env.OperationalNotes, env.Clock);
+        var service = new OperationsCalendarService(associateService, countingDrafts, countingDatedResults, env.FinalizedPassdowns, env.OperationalNotes, env.Clock);
+
+        await service.LoadAsync(new DateOnly(2026, 8, 1), SelectedDate);
+
+        // One range query for the whole grid, plus one GetAsync from the selected-date workspace load
+        // (Associate's own single-date composition, unrelated to the grid's batch query) — never one
+        // range/batch call per day cell (42 cells in August 2026's grid).
+        Assert.Equal(1, countingDatedResults.RangeCallCount);
+        Assert.Equal(1, countingDrafts.RangeCallCount);
+    }
+
     /// <summary>Counts <c>GetByDateAsync</c> calls specifically, wrapping a real in-memory repository so every other behavior stays authentic.</summary>
     private sealed class CountingFinalizedPassdownRepository(IFinalizedPassdownRepository inner) : IFinalizedPassdownRepository
     {
@@ -363,5 +648,50 @@ public class OperationsCalendarServiceTests
 
         public Task<IReadOnlyList<FinalizedPassdownSummary>> ListAsync(CancellationToken cancellationToken = default) =>
             inner.ListAsync(cancellationToken);
+    }
+
+    /// <summary>Counts <c>GetByCategoryAndDateRangeAsync</c> calls specifically (spec Phase 12B Part N/Z#20), wrapping a real in-memory repository so every other behavior stays authentic.</summary>
+    private sealed class CountingDatedResultRepository(IDatedResultRepository inner) : IDatedResultRepository
+    {
+        public int RangeCallCount { get; private set; }
+
+        public Task<DatedResultRecord?> GetAsync(DatedResultKey key, CancellationToken cancellationToken = default) =>
+            inner.GetAsync(key, cancellationToken);
+
+        public Task<IReadOnlyList<DatedResultRecord>> GetByRequestedDateAsync(DateOnly requestedDate, CancellationToken cancellationToken = default) =>
+            inner.GetByRequestedDateAsync(requestedDate, cancellationToken);
+
+        public Task<IReadOnlyList<DatedResultRecord>> GetByCategoryAndDateRangeAsync(SourceCategory category, DateOnly startDate, DateOnly endDateInclusive, CancellationToken cancellationToken = default)
+        {
+            RangeCallCount++;
+            return inner.GetByCategoryAndDateRangeAsync(category, startDate, endDateInclusive, cancellationToken);
+        }
+
+        public Task RecordSuccessAsync(DatedResultKey key, SourceEvidence evidence, string? payloadJson, CancellationToken cancellationToken = default) =>
+            inner.RecordSuccessAsync(key, evidence, payloadJson, cancellationToken);
+
+        public Task RecordFailedAttemptAsync(DatedResultKey key, SourceEvidence evidence, CancellationToken cancellationToken = default) =>
+            inner.RecordFailedAttemptAsync(key, evidence, cancellationToken);
+    }
+
+    /// <summary>Counts <c>GetByDateRangeAsync</c> calls specifically (spec Phase 12B Part N/Z#20), wrapping a real in-memory repository so every other behavior stays authentic.</summary>
+    private sealed class CountingAssociateDraftRepository(IAssociateDraftRepository inner) : IAssociateDraftRepository
+    {
+        public int RangeCallCount { get; private set; }
+
+        public Task<AssociateDraft?> GetAsync(DateOnly operatingDate, CancellationToken cancellationToken = default) =>
+            inner.GetAsync(operatingDate, cancellationToken);
+
+        public Task SaveAsync(AssociateDraft draft, CancellationToken cancellationToken = default) =>
+            inner.SaveAsync(draft, cancellationToken);
+
+        public Task<IReadOnlyList<DateOnly>> ListSavedDraftDatesAsync(CancellationToken cancellationToken = default) =>
+            inner.ListSavedDraftDatesAsync(cancellationToken);
+
+        public Task<IReadOnlyList<AssociateDraft>> GetByDateRangeAsync(DateOnly startDate, DateOnly endDateInclusive, CancellationToken cancellationToken = default)
+        {
+            RangeCallCount++;
+            return inner.GetByDateRangeAsync(startDate, endDateInclusive, cancellationToken);
+        }
     }
 }

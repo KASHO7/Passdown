@@ -27,4 +27,13 @@ public interface IAssociateDraftRepository
     /// (which is true for every date, saved or not).
     /// </summary>
     Task<IReadOnlyList<DateOnly>> ListSavedDraftDatesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every saved draft row (payload included) with <see cref="AssociateDraft.OperatingDate"/> in
+    /// <paramref name="startDate"/>..<paramref name="endDateInclusive"/> (spec Phase 12B Part N/O/Q)
+    /// — one query for an entire Operations Calendar month grid's visible range, so resolving each
+    /// visible date's saved manual-hours/private-buyout override never costs one
+    /// <see cref="GetAsync"/> call per day.
+    /// </summary>
+    Task<IReadOnlyList<AssociateDraft>> GetByDateRangeAsync(DateOnly startDate, DateOnly endDateInclusive, CancellationToken cancellationToken = default);
 }

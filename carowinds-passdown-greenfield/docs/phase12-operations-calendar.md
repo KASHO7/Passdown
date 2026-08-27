@@ -1,11 +1,15 @@
-# Phase 12A — Operations Calendar foundation
+# Phase 12 — Operations Calendar
 
-Phase 12A (this document's current scope) builds the Operations Calendar's **foundation**: a
-top-level month-grid navigation surface, explicit Eastern-aware date semantics, a local-only
-Application-layer read model/service, and clean routing into the existing Associate Passdown/
-History/Operational Notes screens. It is not a full calendar experience — richer overlays, alerts,
-and any Manager-workflow integration remain out of scope (CLAUDE.md "Current scope decision";
-see "What Phase 12A does *not* implement" below).
+Phase 12A built the Operations Calendar's **foundation**: a top-level month-grid navigation
+surface, explicit Eastern-aware date semantics, a local-only Application-layer read model/service,
+and clean routing into the existing Associate Passdown/History/Operational Notes screens. Phase 12B
+(see its own section below) adds the **Park Hours and Operating-State overlay** layer on top of
+that foundation — every day cell and the selected-date panel now answer "is the park operating on
+this date, and what are the effective hours?" It is still not a full calendar experience — richer
+source-health overlays, alerts, and any Manager-workflow integration remain out of scope (CLAUDE.md
+"Current scope decision"; see each section's own "What this phase does *not* implement").
+
+## Phase 12A — foundation
 
 ## Purpose and boundary
 
@@ -266,13 +270,419 @@ projection over the same tables `AssociatePassdownService`/`IFinalizedPassdownRe
 MainViewModelNavigationTests additions), run twice to confirm no flakiness. No live internet was
 used or required.
 
-## Deferred to 12B+
+## What Phase 12A does *not* implement (superseded in part by 12B — see below)
 
-- Richer park-hours/source-health overlays across the month.
-- Any denser per-day note preview beyond a count.
+- Park-hours/operating-state overlays across the month — **now implemented, Phase 12B**.
+- Any denser per-day note preview beyond a count — still deferred.
 - A History date pre-selection seam, if a future phase decides the cross-view-model coupling is
-  worth it.
+  worth it — still deferred.
+- The renamed-app work, refresh-policy overhaul, manual-hours/buyout redesign, ERT simplification,
+  logo, Alerts, source-health overlays beyond park hours, and Manager workflow — all still deferred
+  per `CLAUDE.md`.
+
+---
+
+## Phase 12B — Park Hours and Operating-State overlays
+
+Phase 12B makes each calendar date operationally useful by showing compact park-hours/operating-
+state information directly in the month grid and the selected-date detail panel — the layer 12A
+deliberately deferred. It answers exactly one new question: **"is the park operating on this date,
+and what are the effective hours?"** No Passdown/Operational Notes overlay beyond what 12A already
+built, no Alerts, no Manager workflow, and no schema change.
+
+### Operating-state purpose and the reuse rule (Part A)
+
+The single hard rule this phase is built around: **no new hours engine.** Every effective-hours
+value the Calendar ever shows is produced by the exact same chain Associate Overview, the
+Dashboard, and PDF generation already use:
+
+```
+official/persisted hours
+    |
+    v
+manual-hours override (saved Associate draft)
+    |
+    v
+private-buyout override (saved Associate draft)
+    |
+    v
+Domain.Hours.ParkHoursCalculator.Calculate  (spec §8.2 — the one precedence implementation)
+    |
+    v
+Application.Associate.AssociateParkHoursView
+    |
+    v
+presentation (ParkHoursPresentation / OperationsCalendarOperatingStatePresentation)
+```
+
+`AssociatePassdownService`'s own park-hours composition (previously a private method,
+`ComposeParkHours`) and its draft-deserialization logic (previously private `DeserializeDraft` plus
+its legacy-migration helpers) were **extracted, not duplicated**, into two new public static
+Application-layer types so `OperationsCalendarService` could call the exact same code:
+
+- `Associate.AssociateParkHoursComposer.Compose(DatedResultRecord? record, AssociateDraftPayload draft, DateTimeOffset asOf) -> AssociateParkHoursView`
+- `Associate.AssociateDraftPayloadSerializer.Deserialize(string payloadJson) -> AssociateDraftPayload`
+
+`AssociatePassdownService.ComposeAsync` now calls `AssociateParkHoursComposer.Compose` directly
+(previously its own private method's body); `OperationsCalendarService` calls the identical method
+for every date in the visible grid. This is a structural guarantee, not a convention someone could
+drift from later — there is only one park-hours calculation in the codebase to call.
+
+`OperationsCalendarServiceTests.LoadAsync_AgreesWithDashboardParkStatus_ForIdenticalUnderlyingState`
+additionally proves parity end to end: seeding identical local state and loading it through both
+`OperationsDashboardService` and `OperationsCalendarService` produces the same effective
+opening/closing times and equivalent status classifications.
+
+### `OperationsCalendarOperatingState` (Part B)
+
+A new enum in `Application/Calendar/OperationsCalendarSnapshot.cs`, structurally identical to
+`Dashboard.DashboardParkStatus` (Phase 10A) — `NotChecked | Closed | Open | CustomHours |
+PrivateBuyout | NotPublished | Unavailable`:
+
+```csharp
+private static OperationsCalendarOperatingState ClassifyOperatingState(AssociateParkHoursView hours) =>
+    hours.Effective.Status switch
+    {
+        EffectiveHoursStatus.Open when hours.Effective.IsPrivateBuyoutApplied => PrivateBuyout,
+        EffectiveHoursStatus.Open when hours.Effective.IsManualOverrideApplied => CustomHours,
+        EffectiveHoursStatus.Open => Open,
+        EffectiveHoursStatus.Closed => Closed,
+        _ => hours.Verification.State switch
+        {
+            NotPublished => NotPublished,
+            Unavailable or Error => Unavailable,
+            _ => NotChecked,
+        },
+    };
+```
+
+Deliberately **not** the literal same type as `DashboardParkStatus` — Calendar and Dashboard are
+peer top-level features, and Phase 12A already established the precedent
+(`OperationsCalendarPassdownStatus`, kept independent of `DashboardPassdownStatus` for the same
+reason) of each screen owning its own presentation-adjacent vocabulary over the same shared domain
+values, the same way `Desktop.Presentation.ParkHoursBadgeKind` already does for Associate Overview.
+The classification *logic* is what's shared in spirit (it's the same seven-line switch as
+Dashboard's `BuildParkStatus`); the *type* is intentionally not, to avoid a Calendar→Dashboard
+namespace dependency between peer features.
+
+`OperationsCalendarDay` and `OperationsCalendarSelectedDateSummary` each gained two fields:
+`OperatingState` (the classification above) and `ParkHours` (the full `AssociateParkHoursView` —
+carried whole, not just its formatted text, specifically so the Desktop presentation layer can
+reuse `ParkHoursPresentation.Build` directly instead of a second formatter).
+
+### Day-cell presentation (Parts C/D/E/F/G/H/I/U)
+
+`Desktop.Presentation.OperationsCalendarOperatingStatePresentation.Build(state, parkHours)` is the
+one new presentation helper (spec Part U: it formats only — no `EffectiveHours` calculation, no
+service call, no freshness decision of its own). It produces, per state:
+
+| State | Compact label | Compact hours line | Example |
+|---|---|---|---|
+| Open | *(none — hours alone communicate it)* | `10 AM–10 PM` | `26 / 10 AM–10 PM` |
+| Closed | `CLOSED` | *(none)* | `27 / CLOSED` |
+| Custom Hours | `CUSTOM` | `9 AM–11 PM` | `28 / CUSTOM / 9 AM–11 PM` |
+| Private Buyout | `BUYOUT` | `6 PM–11 PM` | `29 / BUYOUT / 6 PM–11 PM` |
+| Not Published | `NOT PUBLISHED` | *(none)* | `30 / NOT PUBLISHED` |
+| Unavailable | `UNAVAILABLE` | *(none)* | — |
+| Not checked yet | *(none)* | *(none)* | — |
+
+Compact time formatting omits `:00` when a time falls on the hour (`10 AM`) and keeps minutes
+otherwise (`9:30 AM`) — deliberately terser than `ParkHoursPresentation`'s own full "10:00 AM –
+10:00 PM" headline, which is sized for a full-width panel, not a ~72px calendar cell.
+`OperationsCalendarDayViewModel` exposes `OperatingStateLabel`/`EffectiveHoursLine` as two separate
+bindable strings so the view renders at most two extra lines per cell, on top of the day number and
+12A's existing Finalized/Draft/note-count indicators — never a third formatter, never a giant badge,
+never source-status detail (Part I: `Unavailable` never surfaces the underlying exception, HTTP
+status, or endpoint).
+
+### Closed (Part E)
+
+Closed shows the text `CLOSED` and nothing else — never `12 AM–12 AM`, never a blank line, and
+never red/error styling. `ParkHoursCalculator.Calculate` already never produces an
+`Opening`/`Closing` time for `EffectiveHoursStatus.Closed` (both stay `null`), so there is nothing
+to accidentally format into fabricated hours in the first place.
+
+### Custom Hours (Part F)
+
+The `CUSTOM` label plus the overridden hours — sourced from `AssociateDraftPayload.ManualHoursOverride`
+via the shared composer, never recalculated in Calendar. Covered end to end by
+`OperationsCalendarServiceTests.LoadAsync_SavedDraftHasManualOverride_ClassifiesCustomHoursOverridingOfficial`
+(official hours present, draft override still wins) and the presentation-level
+`OperationsCalendarOperatingStatePresentationTests.Build_CustomHours_...`.
+
+### Private Buyout (Part G)
+
+The `BUYOUT` label plus the buyout hours — sourced from `AssociateDraftPayload.PrivateBuyout`.
+Never presented as Closed or an error, even when the official date is closed (buyout is spec
+§8.2's named exception to "closed," and `ParkHoursCalculator` already encodes that precedence
+first). Covered by
+`OperationsCalendarServiceTests.LoadAsync_SavedDraftHasPrivateBuyout_ClassifiesPrivateBuyoutEvenWhenOfficiallyClosed`.
+The clunky manual-hours/buyout time-entry UI itself is unchanged — still Phase 13's concern, not
+touched here.
+
+### Not Published / Unavailable (Parts H/I)
+
+Both are informational, never error states: `NotPublished` means the source was successfully
+checked and confirmed nothing is published yet (`RetrievalStatus.NotPublished`, a "successful
+completion" per the Domain's own `IsSuccessfulCompletion()`); `Unavailable` covers both
+`RetrievalStatus.Unavailable` (checked, explicitly unavailable) and `RetrievalStatus.Error`
+(couldn't be reached at all) — collapsed to one Calendar-facing label, matching Dashboard's own
+`DashboardParkStatus.Unavailable` precedent. Neither ever shows a raw exception message, HTTP
+status, or endpoint URL — the presentation type has no field capable of carrying one.
+
+### Stale/last-known-good (Part J) — shown, not hidden; no second freshness system
+
+Calendar does **not** hide old hours when a later recheck fails — the app-wide last-known-good
+guarantee (spec §6.7) already means `ParkHoursCalculator` still receives the last successful
+official opening/closing even after a later attempt errors, so the effective hours themselves are
+unaffected either way. What 12B *does* add is a compact **"Stale"** indicator: since
+`OperationsCalendarDay`/`OperationsCalendarSelectedDateSummary` already carry the full
+`AssociateParkHoursView` (including its `Verification.State`), `IsHoursStale` is computed by
+checking whether `ParkHoursPresentation.Build(parkHours).StaleNoteText` is non-null — the exact
+same staleness signal Associate Overview's own screen already surfaces, reused verbatim rather than
+a second freshness computation. This was cleanly supportable (not deferred) precisely because 12B's
+design already threads the full `AssociateParkHoursView` through to the day cell for the
+`ParkHoursPresentation`-reuse reason above — the information was already there.
+
+### Selected-date detail panel (Part K)
+
+`Desktop.Presentation.OperationsCalendarPresentation` gained four fields — `ParkStatusText`,
+`EffectiveHoursText`, `ParkHoursVerificationText`, `ParkHoursStaleNoteText` — built by calling
+`ParkHoursPresentation.Build(selected.ParkHours)` once and reusing its `HeadlineText`/
+`VerificationText`/`StaleNoteText` directly (never a second hours formatter). The panel now reads:
+
+```
+Selected Date
+Saturday, August 29, 2026
+
+Park Status
+Open
+Effective Hours
+10:00 AM – 10:00 PM
+
+Passdown Status
+...
+```
+
+`EffectiveHoursStatus` is `Open` for all three of Open/Custom/Buyout (they differ only by which
+override applied, per spec §8.2), so `ParkHoursPresentation`'s own headline is already correct for
+every one of them without a second branch. `EffectiveHoursText` is `null` (and the row hidden) for
+Closed/NotPublished/Unavailable/NotChecked. This stays compact and deliberately does not duplicate
+the Dashboard's own richer Data Status card (spec Part K's own instruction) — only Park
+Status/Effective Hours/verification/staleness, nothing else.
+
+### Off-month cells (Part L) — chosen: day number only, no hours overlay
+
+A leading/trailing day belonging to the adjacent month still carries a real, correctly-composed
+`OperatingState`/`ParkHours` in the snapshot (Calendar never fabricates a cell), but the *view*
+hides the operating-state/hours/stale block for any cell where `IsInDisplayedMonth` is false
+(`OperationsCalendarView.axaml`'s day-cell `DataTemplate` wraps that block in its own
+`IsVisible="{Binding IsInDisplayedMonth}"`), leaving only the (already-dimmed, via the existing
+`outOfMonth` opacity style) day number. This was the explicitly preferred option (spec Part L) —
+kept simple to avoid clutter/confusion at a month boundary, rather than a second, visually-subdued
+hours treatment.
+
+### Today/Selected coexistence (Part M)
+
+No color was added per operating state (see "Style/visual language" below), so there is nothing to
+collide with the existing `.today` (accent border) / `.selected` (band background) treatments —
+they remain the only two colored/bordered states a day cell can have. Both flags, plus the
+operating-state/hours text, coexist in the automation name unchanged
+(`OperationsCalendarDayViewModel_TodayAndSelectedTogether_...` proves this directly).
+
+### Month-load performance and query strategy (Parts N/O/P)
+
+Exactly two new repository methods were added, each scoped to the visible grid range only — never
+one call per day cell:
+
+- `IDatedResultRepository.GetByCategoryAndDateRangeAsync(SourceCategory, DateOnly start, DateOnly endInclusive)`
+  — one `SELECT ... WHERE category = ? AND requested_date BETWEEN ? AND ?` (SQLite; the existing
+  `ix_dated_results_requested_date` index covers it).
+- `IAssociateDraftRepository.GetByDateRangeAsync(DateOnly start, DateOnly endInclusive)` — one
+  `SELECT ... WHERE operating_date BETWEEN ? AND ?` (the table's own primary key already covers it).
+
+`OperationsCalendarService.ComposeParkHoursForRangeAsync` calls each exactly once per `LoadAsync`,
+covering the **exact grid range already computed for the month view** (spec Part O — "Aug 1–31 plus
+visible late-July/early-September cells," never a separately-chosen or larger range), then composes
+every day's `AssociateParkHoursView` in memory. Combined with 12A's existing three calls
+(finalized-metadata list, saved-draft-dates list, all-notes list) and the one per-load selected-date
+workspace composition, a full month load is a **fixed, small number of local SQLite round trips
+regardless of grid size (35 vs. 42 cells costs the same)** — proven directly by
+`OperationsCalendarServiceTests.LoadAsync_QueriesDatedResultsAndDraftsExactlyOncePerMonthLoad`
+(counting-wrapper repositories assert exactly one range call each for a 42-cell August grid).
+Nothing here calls HTTP, `IRefreshOrchestrator`, `CheckAssociateDateOnlineAsync`, or any Playwright/
+browser session — `Constructor_HasNoRefreshOrchestratorOrRetrievalDependency` (unchanged from 12A)
+still holds with the two new constructor dependencies added.
+
+### Saved-override resolution / no-draft behavior (Parts Q/R)
+
+A saved Associate draft's `ManualHoursOverride`/`PrivateBuyout` is resolved via the same
+`AssociateDraftPayloadSerializer.Deserialize` `AssociatePassdownService` itself uses — never a
+second, drifting deserialization path, and never a new persisted "calendar override" concept (spec
+Part Q: "do not create duplicate override storage"). A date with **no** saved draft at all still
+shows official hours cleanly (`AssociateDraftPayload.CreateDefault()`'s disabled overrides simply
+fall through `ParkHoursCalculator` to the official values) — a draft was never required to see park
+hours, matching Part R exactly.
+
+### Finalized historical-date hours — chosen: live/current, not frozen (Part S)
+
+**Decision: Calendar shows the live, current composed hours for every date, including an already-
+finalized one — never the frozen `FinalizedPassdownSnapshot` for that date.** This was a deliberate
+choice, not an oversight, for two reasons:
+
+1. **Architecture**: `FinalizedPassdownSnapshot`'s park-hours field
+   (`FinalizedParkHoursSnapshot`) is *pre-formatted display strings* (`HeadlineText`/`BadgeText`),
+   not the raw `TimeOnly` values `AssociateParkHoursView`/`ParkHoursCalculator` work with. Mixing
+   the two shapes in one `OperationsCalendarDay.ParkHours` field would mean either inventing a
+   parser to reconstruct `TimeOnly` values out of already-formatted text (fragile, and a second
+   hours-representation entirely) or branching the day cell's rendering into two genuinely
+   different code paths depending on `HasFinalizedPassdown`.
+2. **Query cost**: reading a finalized date's frozen hours would require an extra
+   `IFinalizedPassdownRepository.GetByDateAsync` (or a new metadata-light hours-only query) per
+   finalized date visible in the grid — a query 12A/12B both deliberately avoid everywhere else,
+   specifically to keep the Dashboard/Calendar summary surfaces from ever materializing a historical
+   snapshot/PDF blob.
+
+This is a known, honestly-documented limitation: if official hours are corrected *after* a date is
+finalized, Calendar's day cell for that date will show the corrected (live) hours, which can differ
+from what the frozen History record actually shows for that date. Proven concretely by
+`OperationsCalendarServiceTests.LoadAsync_FinalizedDate_ShowsCurrentLiveHours_NotFrozenAtFinalizationTime`
+(finalizes a date, then changes its official hours, then asserts the Calendar cell reflects the
+*new* hours). A future phase can revisit this — e.g. a dedicated lightweight
+"frozen-hours-summary-only" read model — but that is new architecture, not a 12B-scope fix.
+
+### Future dates (Part T)
+
+No different code path exists for a future date — the same `ComposeParkHoursForRangeAsync`/
+`AssociateParkHoursComposer.Compose` call handles it. A future published date shows its hours; a
+future date that's been checked but has nothing published yet shows `NotPublished`; nothing implies
+a shown future hours value is guaranteed final. No network call is possible from month navigation
+regardless of how far into the future the displayed month is.
+
+### Style / visual language (Part V)
+
+Deliberately **no color-per-operating-state** was added (explicit spec instruction: "avoid one
+color per operating state... red for Closed... calendar cells that look like web cards"). The
+compact text labels (`CLOSED`/`CUSTOM`/`BUYOUT`/`NOT PUBLISHED`/`UNAVAILABLE`) are the entire state
+signal — rendered in the same restrained muted/bold-small-caps treatment regardless of which state,
+matching the app's existing chip/status vocabulary. The one exception is the "Stale" indicator,
+which reuses the app's pre-existing amber `PassdownWarningBrush` (the same "warning, not error"
+convention `AssociateView`/`HistoryView` already use elsewhere) — never red. Today/Selected keep
+their unchanged 12A border/band treatment, so the two concerns never visually compete.
+
+### Accessibility (Part X)
+
+Every day cell's `AutomationName` now includes a full operating-state clause, e.g. `"August 21,
+2026. Open, 10 AM to 10 PM. Today. Selected. Finalized. Draft in progress. 2 operational notes."`
+— built from `OperationsCalendarOperatingStatePresentation.AccessibilityText` (`"Open, 10 AM to 10
+PM"` / `"Closed"` / `"Custom Hours, 9 AM to 11 PM"` / `"Private Buyout, 6 PM to 11 PM"` / `"Hours
+not published"` / `"Hours unavailable"`, with `". Stale — showing last known information."`
+appended when stale). The 12A clauses (Today/Selected/Finalized/Draft in progress/note count) are
+unchanged and still present as exact substrings, so every pre-existing 12A automation-name assertion
+keeps passing unmodified. The selected-date panel's new "Park Status" text carries its own
+composed automation name (`"Park status: {status}"`).
+
+### Keyboard behavior (Part Y)
+
+No custom key handling was added or needed. Previous/Next/Today/day cells/Open Passdown are all
+plain `Button`s (unchanged from 12A), so FluentTheme's default Tab-order and focus ring already
+make every one of them keyboard-reachable; day cells were already keyboard-selectable via their own
+`SelectCommand` bound to `Button.Command`, which Enter/Space already activate through Avalonia's
+standard `Button` key bindings — Phase 12B added no new interactive control shape.
+
+### Local-only guarantee (Part P) — unchanged, reinforced
+
+`OperationsCalendarService`'s constructor gained two new parameters
+(`IDatedResultRepository`/keeping `IAssociateDraftRepository`), neither of which is capable of any
+network access — both are pure local-SQLite abstractions, exactly like every other dependency this
+type already had. `Constructor_HasNoRefreshOrchestratorOrRetrievalDependency` (12A, unchanged)
+still passes with the new constructor shape.
+
+### Schema (Part AB)
+
+No migration was added. Database schema remains **10**; `AssociateDraftPayload` schema remains
+**3**; `FinalizedPassdownSnapshot` schema remains **1**. Every new field 12B added
+(`OperationsCalendarDay.OperatingState`/`ParkHours`,
+`OperationsCalendarSelectedDateSummary.OperatingState`/`ParkHours`) is computed fresh on every
+`LoadAsync` from existing tables — nothing new is persisted.
+
+### Visual validation (Part AA) — PARTIAL
+
+No pixel/bitmap screenshot renderer (`Avalonia.Headless.Skia` or equivalent) is referenced by this
+codebase's test projects, same constraint as every prior phase. What *was* added beyond 12A's own
+plain construction checks: a real `Measure`/`Arrange` layout pass at both `1280×860` and `960×640`
+(`OperationsCalendarView_LayoutAt1280x860_DoesNotThrow` /
+`..._LayoutAt960x640_DoesNotThrow`), which succeeded without exception at both sizes — genuine
+layout-level evidence, not just DataContext assignment — plus construction checks for a month with
+every operating state mixed across different days
+(`OperationsCalendarView_MixedOperatingStatesAcrossTheMonth_ConstructsWithoutError`). Recorded
+honestly as **PARTIAL** — no cell-legibility/clipping/contrast claim is made beyond what
+Measure/Arrange proves (no exception, non-zero final bounds); actual on-screen appearance should be
+spot-checked in a Windows 11 VM per `CLAUDE.md`'s platform guidance before this ships.
+
+### Real bug avoided by construction, not found
+
+Unlike 12A (which found and fixed a real double-load race), 12B's implementation surfaced no new
+defect — the extraction of `AssociateParkHoursComposer`/`AssociateDraftPayloadSerializer` was a pure
+refactor verified test-green both immediately after extraction (before any Calendar-specific code
+was added) and at the end, and the batch range-query design was correct on first test run (18/18
+pre-existing Calendar tests passed unchanged before any new 12B test was added).
+
+### Tests added (Phase 12B)
+
+- `OperationsCalendarServiceTests.cs` — **+14** (32 total): normal published hours, officially
+  closed, saved-draft manual override overriding official, saved-draft buyout overriding an
+  officially-closed date, Not Published, Unavailable (via a genuine failed attempt with no prior
+  success), no-draft-with-official-hours, no-draft-and-no-official-data (NotChecked), a future
+  published date, a future NotPublished date, a finalized date showing live (not frozen) hours after
+  a post-finalization official-hours change, exactly-one-range-query-per-collaborator-per-load, and
+  a 2-case theory proving Calendar/Dashboard classification parity for identical underlying state.
+- `OperationsCalendarViewModelTests.cs` — **+7**: accessibility text for Open/Closed/Custom
+  Hours/Private Buyout/Not Published/Unavailable, and Today+Selected coexisting with operating-state
+  content; the pre-existing automation-name test was extended (not replaced) to also assert the new
+  hours clause.
+- `OperationsCalendarOperatingStatePresentationTests.cs` (new, 7 tests) — the compact day-cell
+  vocabulary directly: Open/Closed/Custom/Buyout/NotPublished/Unavailable/NotChecked, plus
+  on-the-hour vs. non-hour compact time formatting.
+- `OperationsCalendarPresentationTests.cs` (new, 4 tests) — the selected-date panel's Park
+  Status/Effective Hours text for Open/Custom/Buyout/Closed, proving reuse of
+  `ParkHoursPresentation.Build`.
+- `OperationsCalendarViewTests.cs` — **+4**: a mixed-operating-state month, layout at 1280×860,
+  layout at 960×640, and the selected-date panel's Park Status/Effective Hours binding.
+
+**37 new tests total** (1286 Phase 12A baseline + 37 = 1323).
+
+### Full validation (Phase 12B)
+
+`dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors.
+`dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — **1323/1323**. Run five times
+total under normal (parallel) execution; two of those five runs hit the pre-existing, previously-
+documented (Phase 6D) Avalonia headless cross-assembly parallelism flake
+(`Avalonia.Controls.Panel.ChildrenChanged`/`AvaloniaList.NotifyAdd` during `XamlIlPopulate`) on
+*unrelated* Phase 4/11 views (`AssociateView`, `OperationalNotesView` — different tests each time,
+never the same one twice, and never a Phase 12 file). The other three runs — including the final
+one — passed all 1323 cleanly. No Operations Calendar test failed in any run. No live internet was
+used or required.
+
+### What Phase 12B does *not* implement
+
+- Source-health/data-confidence overlays beyond park hours (e.g. product/pricing source status) —
+  still out of scope, matching CLAUDE.md's explicit instruction for this phase.
+- Any Passdown/Operational Notes overlay beyond what 12A already built.
+- Alerts, the Manager workflow, the app rename, refresh-policy changes, manual-hours/buyout UI
+  redesign, or ERT behavior changes — all explicitly out of scope for 12B.
+- A frozen-hours read model for finalized historical dates (Part S) — documented and deferred, not
+  silently mixed with live data.
+- The release ZIP rebuild — Phase 12F's scope.
+
+## Deferred to 12C–12F
+
+- Richer source-health overlays beyond park hours.
+- Any denser per-day note preview beyond a count (still 12A's own deferred item).
+- A History date pre-selection seam.
+- A frozen-hours read model for finalized dates, if a future phase decides it's worth the added
+  query cost/architecture.
 - The renamed-app work, refresh-policy overhaul, manual-hours/buyout redesign, ERT simplification,
   logo, Alerts, and Manager workflow — all still deferred per `CLAUDE.md`.
 
-12B has not started.
+12C has not started.

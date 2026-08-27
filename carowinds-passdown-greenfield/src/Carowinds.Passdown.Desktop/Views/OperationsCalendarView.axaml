@@ -34,6 +34,11 @@
       <Setter Property="FontSize" Value="12.5" />
       <Setter Property="FontWeight" Value="Medium" />
     </Style>
+    <Style Selector="TextBlock.fieldWarning">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownWarningBrush}" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="FontWeight" Value="Medium" />
+    </Style>
     <Style Selector="TextBlock.weekdayHeader">
       <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
       <Setter Property="FontSize" Value="11" />
@@ -82,10 +87,14 @@
       <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
     </Style>
 
-    <!-- One day cell (spec Part E/I): plain Button so it is keyboard-reachable with FluentTheme's
-         default focus ring; today/selected/out-of-month are each a distinct visual treatment, and
-         every one of them also has a textual equivalent in OperationsCalendarDayViewModel.AutomationName
-         (status is never color-only). -->
+    <!-- One day cell (spec Part E/I; Phase 12B Part M/V): plain Button so it is keyboard-reachable
+         with FluentTheme's default focus ring; today/selected/out-of-month are each a distinct
+         border/background treatment (never the only signal — every one of them, plus operating
+         state/hours, also has a textual equivalent in
+         OperationsCalendarDayViewModel.AutomationName). Deliberately no per-operating-state color
+         (spec Part V "avoid one color per operating state ... red for Closed") — the compact text
+         labels below are the state signal; today/selected keep their existing border/band treatment
+         so the two concerns never visually collide. -->
     <Style Selector="Button.calendarDay">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="1" />
@@ -93,7 +102,7 @@
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="Margin" Value="2" />
       <Setter Property="Padding" Value="6,4" />
-      <Setter Property="MinHeight" Value="60" />
+      <Setter Property="MinHeight" Value="72" />
       <Setter Property="HorizontalContentAlignment" Value="Left" />
       <Setter Property="VerticalContentAlignment" Value="Top" />
     </Style>
@@ -110,6 +119,24 @@
     <Style Selector="TextBlock.dayIndicator">
       <Setter Property="FontSize" Value="10" />
       <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+    </Style>
+    <!-- Compact operating-state label ("CLOSED"/"CUSTOM"/"BUYOUT"/"NOT PUBLISHED"/"UNAVAILABLE",
+         spec Part C/D/E/F/G/H/I) — text only, no per-state color (Part V). -->
+    <Style Selector="TextBlock.dayStateLabel">
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="LetterSpacing" Value="0.3" />
+      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+    </Style>
+    <Style Selector="TextBlock.dayHoursLine">
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+    <!-- Reuses the app's existing amber "warning, not error" convention (spec Part J) — never red. -->
+    <Style Selector="TextBlock.dayStaleLabel">
+      <Setter Property="FontSize" Value="9.5" />
+      <Setter Property="FontStyle" Value="Italic" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownWarningBrush}" />
     </Style>
 
   </UserControl.Styles>
@@ -168,8 +195,18 @@
                   <Button Classes="calendarDay" Classes.today="{Binding IsToday}" Classes.selected="{Binding IsSelected}"
                           Classes.outOfMonth="{Binding !IsInDisplayedMonth}"
                           Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AutomationName}">
-                    <StackPanel Spacing="2">
+                    <StackPanel Spacing="1">
                       <TextBlock Text="{Binding DayNumber}" FontWeight="SemiBold" FontSize="13" />
+
+                      <!-- Operating-state/hours overlay (spec Phase 12B Part C/D/E/F/G/H/I): hidden
+                           for out-of-month cells to avoid clutter (Part L — "show day number only"
+                           preferred for 12B), even though those dates still carry real data. -->
+                      <StackPanel Spacing="1" IsVisible="{Binding IsInDisplayedMonth}">
+                        <TextBlock Text="{Binding OperatingStateLabel}" Classes="dayStateLabel" IsVisible="{Binding HasOperatingStateLabel}" />
+                        <TextBlock Text="{Binding EffectiveHoursLine}" Classes="dayHoursLine" IsVisible="{Binding HasEffectiveHoursLine}" />
+                        <TextBlock Text="Stale" Classes="dayStaleLabel" IsVisible="{Binding IsHoursStale}" />
+                      </StackPanel>
+
                       <TextBlock Text="Finalized" Classes="dayIndicator" IsVisible="{Binding HasFinalizedPassdown}" />
                       <TextBlock Text="Draft" Classes="dayIndicator" IsVisible="{Binding HasAssociateDraft}" />
                       <TextBlock Text="{Binding NoteCountText}" Classes="dayIndicator" IsVisible="{Binding HasOperationalNotes}" />
@@ -189,6 +226,22 @@
                 <TextBlock Text="Today" />
               </Border>
 
+              <!-- Park Status / Effective Hours (spec Phase 12B Part K) — reuses the same
+                   ParkHoursPresentation formatter Associate Overview/Dashboard already use; never a
+                   second hours computation. -->
+              <TextBlock Text="Park Status" Classes="sectionTitle" Margin="0,4,0,0" />
+              <TextBlock Text="{Binding Presentation.ParkStatusText}" FontWeight="SemiBold"
+                         AutomationProperties.Name="{Binding Presentation.ParkStatusText, StringFormat='Park status: {0}'}" />
+              <StackPanel Spacing="2" IsVisible="{Binding Presentation.EffectiveHoursText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                <TextBlock Text="Effective Hours" Classes="muted" Margin="0" />
+                <TextBlock Text="{Binding Presentation.EffectiveHoursText}" TextWrapping="Wrap" />
+              </StackPanel>
+              <TextBlock Text="{Binding Presentation.ParkHoursVerificationText}" Classes="muted" TextWrapping="Wrap"
+                         IsVisible="{Binding Presentation.ParkHoursVerificationText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <TextBlock Text="{Binding Presentation.ParkHoursStaleNoteText}" Classes="fieldWarning" TextWrapping="Wrap"
+                         IsVisible="{Binding Presentation.ParkHoursStaleNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+              <TextBlock Text="Passdown Status" Classes="sectionTitle" Margin="0,4,0,0" />
               <TextBlock Text="{Binding Presentation.PassdownStatusText}" FontWeight="SemiBold" />
               <TextBlock Text="{Binding Presentation.FinalizedText}" Classes="muted" TextWrapping="Wrap"
                          IsVisible="{Binding Presentation.FinalizedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

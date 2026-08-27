@@ -8,7 +8,6 @@ using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Catalog;
-using Carowinds.Passdown.Domain.Hours;
 using Carowinds.Passdown.Domain.Retrieval;
 
 namespace Carowinds.Passdown.Application.Associate;
@@ -177,13 +176,13 @@ public sealed class AssociatePassdownService(
     private async Task<AssociateDraftPayload> LoadDraftPayloadAsync(DateOnly operatingDate, CancellationToken cancellationToken)
     {
         var draftRecord = await draftRepository.GetAsync(operatingDate, cancellationToken).ConfigureAwait(false);
-        return draftRecord is null ? AssociateDraftPayload.CreateDefault() : DeserializeDraft(draftRecord.PayloadJson);
+        return draftRecord is null ? AssociateDraftPayload.CreateDefault() : AssociateDraftPayloadSerializer.Deserialize(draftRecord.PayloadJson);
     }
 
     private async Task<AssociateWorkspace> ComposeAsync(DateOnly operatingDate, CancellationToken cancellationToken)
     {
         var draftRecord = await draftRepository.GetAsync(operatingDate, cancellationToken).ConfigureAwait(false);
-        var draft = draftRecord is null ? AssociateDraftPayload.CreateDefault() : DeserializeDraft(draftRecord.PayloadJson);
+        var draft = draftRecord is null ? AssociateDraftPayload.CreateDefault() : AssociateDraftPayloadSerializer.Deserialize(draftRecord.PayloadJson);
         var saveStatus = draftRecord is null ? AssociateSaveStatus.NeverSaved : new AssociateSaveStatus(AssociateSaveState.Saved, draftRecord.UpdatedAt);
 
         var asOf = clock.UtcNow;
@@ -191,7 +190,7 @@ public sealed class AssociatePassdownService(
         var datedResults = await datedResultRepository.GetByRequestedDateAsync(operatingDate, cancellationToken).ConfigureAwait(false);
         var datedByCategory = datedResults.ToDictionary(r => r.Key.Category);
 
-        var parkHours = ComposeParkHours(datedByCategory.GetValueOrDefault(SourceCategory.ParkHours), draft, asOf);
+        var parkHours = AssociateParkHoursComposer.Compose(datedByCategory.GetValueOrDefault(SourceCategory.ParkHours), draft, asOf);
 
         var products = new List<AssociateProduct>();
         products.AddRange(ComposeDatedProducts(
@@ -245,98 +244,6 @@ public sealed class AssociatePassdownService(
 
         var allNotes = await operationalNotesService.ListAsync(cancellationToken).ConfigureAwait(false);
         return OperationalNoteSourceComparison.ComputeAll(selections, allNotes, operatingDate);
-    }
-
-    /// <summary>
-    /// Deserializes a persisted draft, migrating older payload shapes forward. Schema-v1 predates
-    /// both the Daily Fun -> Daily Feature rename and <see cref="PassdownSectionSelection"/>, so its
-    /// JSON has neither "DailyFeatureType"/"DailyFeatureText" (only the old "DailyFunType"/
-    /// "DailyFunText" names) nor a "SectionSelection" object at all — both come back null from the
-    /// plain deserialize below, which this fills in from the legacy property names (the enum's
-    /// underlying integer values are unchanged by the rename, so no value translation is needed,
-    /// just reading it under its old key) or the all-included default. Phase 8A's own persisted
-    /// "SectionSelection" object predates <see cref="PassdownSectionSelection.IncludeHauntedAttractions"/>
-    /// (added Phase 8B), so that one property comes back <see langword="false"/> — the JSON
-    /// deserializer's own missing-bool default, not an associate's real choice to hide it — from an
-    /// otherwise-present "SectionSelection" object; <see cref="HasIncludeHauntedAttractionsProperty"/>
-    /// distinguishes that case from an explicit "false" so it can be corrected to included, matching
-    /// how every other Phase 8A section already defaults to included when missing entirely. This is
-    /// presence-based rather than gated on the record's own <c>SchemaVersion</c> field, matching how
-    /// this method already ignored that field before Phase 8A — it only ever needs to backfill
-    /// whatever the plain deserialize left null/default, regardless of what schema_version says.
-    /// </summary>
-    private static AssociateDraftPayload DeserializeDraft(string payloadJson)
-    {
-        var payload = JsonSerializer.Deserialize<AssociateDraftPayload>(payloadJson) ?? AssociateDraftPayload.CreateDefault();
-
-        if (payload.DailyFeatureType is null && payload.DailyFeatureText is null)
-        {
-            var (legacyType, legacyText) = ReadLegacyDailyFun(payloadJson);
-            payload = payload with { DailyFeatureType = legacyType, DailyFeatureText = legacyText };
-        }
-
-        var sectionSelection = payload.SectionSelection ?? PassdownSectionSelection.AllIncluded;
-        if (!HasIncludeHauntedAttractionsProperty(payloadJson))
-        {
-            sectionSelection = sectionSelection with { IncludeHauntedAttractions = true };
-        }
-
-        // Phase 11D Part AO: a pre-11D payload has no "SelectedOperationalNotes" property at all, so
-        // the plain deserialize above leaves it null — a legacy draft must load with zero selections,
-        // never a fabricated one, matching every other optional-field migration in this method.
-        var selectedOperationalNotes = payload.SelectedOperationalNotes ?? [];
-
-        return payload with { SectionSelection = sectionSelection, SelectedOperationalNotes = selectedOperationalNotes };
-    }
-
-    private static bool HasIncludeHauntedAttractionsProperty(string payloadJson)
-    {
-        using var document = JsonDocument.Parse(payloadJson);
-        return document.RootElement.TryGetProperty("SectionSelection", out var section)
-            && section.ValueKind == JsonValueKind.Object
-            && section.TryGetProperty("IncludeHauntedAttractions", out _);
-    }
-
-    private static (DailyFeatureType? Type, string? Text) ReadLegacyDailyFun(string payloadJson)
-    {
-        using var document = JsonDocument.Parse(payloadJson);
-        var root = document.RootElement;
-
-        var type = root.TryGetProperty("DailyFunType", out var typeElement) && typeElement.ValueKind != JsonValueKind.Null
-            ? typeElement.Deserialize<DailyFeatureType?>()
-            : null;
-
-        var text = root.TryGetProperty("DailyFunText", out var textElement) && textElement.ValueKind != JsonValueKind.Null
-            ? textElement.GetString()
-            : null;
-
-        return (type, text);
-    }
-
-    private static AssociateParkHoursView ComposeParkHours(DatedResultRecord? record, AssociateDraftPayload draft, DateTimeOffset asOf)
-    {
-        var lastKnownGood = record?.ToLastKnownGood() ?? LastKnownGood<string>.Empty;
-        var verification = AssociateVerificationInfo.From(lastKnownGood, asOf);
-
-        // Uses the raw last-successful evidence's own status, not the (possibly Stale-relabeled)
-        // `verification.State` — a "Closed" result that later became stale (a subsequent check
-        // failed outright) must still compute as officially closed, just flagged Stale via
-        // `verification` for presentation, per spec §6.7.
-        var officialIsClosed = lastKnownGood.SuccessEvidence?.Status == RetrievalStatus.Closed;
-        var officialPayload = lastKnownGood.SuccessValue is { } json ? JsonSerializer.Deserialize<ParkHoursPayload>(json) : null;
-
-        var effective = ParkHoursCalculator.Calculate(
-            officialIsClosed,
-            officialPayload?.OpeningTime,
-            officialPayload?.ClosingTime,
-            draft.ManualHoursOverride.Enabled,
-            draft.ManualHoursOverride.OpeningTime,
-            draft.ManualHoursOverride.ClosingTime,
-            draft.PrivateBuyout.Enabled,
-            draft.PrivateBuyout.OpeningTime,
-            draft.PrivateBuyout.ClosingTime);
-
-        return new AssociateParkHoursView(effective, verification, officialIsClosed, officialPayload?.OpeningTime, officialPayload?.ClosingTime);
     }
 
     /// <summary>

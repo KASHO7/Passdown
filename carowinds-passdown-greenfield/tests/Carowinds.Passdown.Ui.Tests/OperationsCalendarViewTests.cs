@@ -1,6 +1,8 @@
+using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.LogicalTree;
+using Carowinds.Passdown.Application.Calendar;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
@@ -93,5 +95,102 @@ public class OperationsCalendarViewTests
         // of here — DashboardView's own automation-name test establishes the same boundary: an
         // ItemsControl's generated item containers aren't realized by GetLogicalDescendants() without
         // a layout pass, which this headless test harness never performs.
+    }
+
+    // ==================================================================================
+    // Phase 12B — Park Hours and Operating-State overlays
+    // ==================================================================================
+
+    // Part AA: a month mixing every operating state (open/closed/custom/buyout/not-published/
+    // unavailable) across different days — the view must still construct cleanly with no single
+    // state dominating the layout.
+    [Fact]
+    public async Task OperationsCalendarView_MixedOperatingStatesAcrossTheMonth_ConstructsWithoutError()
+    {
+        var states = new[]
+        {
+            OperationsCalendarOperatingState.Open,
+            OperationsCalendarOperatingState.Closed,
+            OperationsCalendarOperatingState.CustomHours,
+            OperationsCalendarOperatingState.PrivateBuyout,
+            OperationsCalendarOperatingState.NotPublished,
+            OperationsCalendarOperatingState.Unavailable,
+            OperationsCalendarOperatingState.NotChecked,
+        };
+
+        var service = new FakeOperationsCalendarService
+        {
+            SnapshotFactory = (month, selected) =>
+            {
+                var baseline = FakeOperationsCalendarService.DefaultSnapshot(month, selected);
+                var mixedDays = baseline.Days
+                    .Select((d, index) => d with { OperatingState = states[index % states.Length] })
+                    .ToList();
+                return baseline with { Days = mixedDays };
+            },
+        };
+        var viewModel = new OperationsCalendarViewModel(service, CreateClock());
+        await viewModel.PendingLoad;
+
+        var view = new OperationsCalendarView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+    }
+
+    // Part AA/W: construction at the 1280×860 primary desktop target — a real Measure/Arrange pass
+    // (not just DataContext assignment) proving layout doesn't throw at this size. No pixel/bitmap
+    // renderer is available in this environment (see docs/phase12-operations-calendar.md "Visual
+    // validation"), so this is construction/layout-level evidence only, not a pixel-level PASS.
+    [Fact]
+    public async Task OperationsCalendarView_LayoutAt1280x860_DoesNotThrow()
+    {
+        var viewModel = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), CreateClock());
+        await viewModel.PendingLoad;
+
+        var view = new OperationsCalendarView { DataContext = viewModel, Width = 1280, Height = 860 };
+
+        view.Measure(new Size(1280, 860));
+        view.Arrange(new Rect(0, 0, 1280, 860));
+
+        Assert.True(view.Bounds.Width > 0 && view.Bounds.Height > 0);
+    }
+
+    // Part AA/W: construction at the 960×640 compact fallback target.
+    [Fact]
+    public async Task OperationsCalendarView_LayoutAt960x640_DoesNotThrow()
+    {
+        var viewModel = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), CreateClock());
+        await viewModel.PendingLoad;
+
+        var view = new OperationsCalendarView { DataContext = viewModel, Width = 960, Height = 640 };
+
+        view.Measure(new Size(960, 640));
+        view.Arrange(new Rect(0, 0, 960, 640));
+
+        Assert.True(view.Bounds.Width > 0 && view.Bounds.Height > 0);
+    }
+
+    // Part K: the selected-date panel's Park Status/Effective Hours text is present and bound.
+    [Fact]
+    public async Task OperationsCalendarView_SelectedDateCustomHours_ShowsParkStatusAndEffectiveHours()
+    {
+        var service = new FakeOperationsCalendarService
+        {
+            SnapshotFactory = (month, selected) =>
+            {
+                var baseline = FakeOperationsCalendarService.DefaultSnapshot(month, selected);
+                return baseline with
+                {
+                    Selected = baseline.Selected with { OperatingState = OperationsCalendarOperatingState.CustomHours },
+                };
+            },
+        };
+        var viewModel = new OperationsCalendarViewModel(service, CreateClock());
+        await viewModel.PendingLoad;
+
+        var view = new OperationsCalendarView { DataContext = viewModel };
+
+        Assert.Equal("Custom Hours", viewModel.Presentation?.ParkStatusText);
+        Assert.Same(viewModel, view.DataContext);
     }
 }

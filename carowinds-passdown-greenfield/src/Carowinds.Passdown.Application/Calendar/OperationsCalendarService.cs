@@ -2,6 +2,8 @@ using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Time;
+using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Hours;
 
 namespace Carowinds.Passdown.Application.Calendar;
 
@@ -10,15 +12,18 @@ namespace Carowinds.Passdown.Application.Calendar;
 /// (Phase 12A Part D), mirroring how <see cref="Dashboard.OperationsDashboardService"/> projects over
 /// the same kind of state for "today" — never a second finalization/relevance/draft-composition rule.
 /// Depends only on <see cref="IAssociatePassdownService"/> (the composed workspace for the selected
-/// date), <see cref="IAssociateDraftRepository"/> (which dates have a saved draft at all — the same
-/// signal <see cref="Finalization.ScheduledPassdownFinalizer"/> already uses), <see cref="IFinalizedPassdownRepository"/>
-/// (metadata only — never <c>GetByDateAsync</c>, so a calendar load can never materialize a historical
-/// PDF blob), <see cref="IOperationalNotesService"/>, and <see cref="IClock"/>. No HTTP/Playwright/Task
-/// Scheduler dependency exists on this type by construction.
+/// date), <see cref="IAssociateDraftRepository"/> (which dates have a saved draft at all, plus — Phase
+/// 12B Part Q — every visible date's own draft payload, for resolving manual-hours/private-buyout
+/// overrides), <see cref="IDatedResultRepository"/> (Phase 12B Part A/N — official park hours for
+/// every visible date, batch-loaded), <see cref="IFinalizedPassdownRepository"/> (metadata only —
+/// never <c>GetByDateAsync</c>, so a calendar load can never materialize a historical PDF blob),
+/// <see cref="IOperationalNotesService"/>, and <see cref="IClock"/>. No HTTP/Playwright/Task Scheduler
+/// dependency exists on this type by construction.
 /// </summary>
 public sealed class OperationsCalendarService(
     IAssociatePassdownService associatePassdownService,
     IAssociateDraftRepository associateDraftRepository,
+    IDatedResultRepository datedResultRepository,
     IFinalizedPassdownRepository finalizedPassdownRepository,
     IOperationalNotesService operationalNotesService,
     IClock clock) : IOperationsCalendarService
@@ -27,12 +32,16 @@ public sealed class OperationsCalendarService(
     {
         var monthStart = new DateOnly(displayedMonth.Year, displayedMonth.Month, 1);
         var today = TodayEastern();
+        var asOf = clock.UtcNow;
         var gridDates = BuildGridDates(monthStart);
+        var gridStart = gridDates[0];
+        var gridEnd = gridDates[^1];
 
-        // Three calls total regardless of grid size (never one query per day cell): finalization
-        // metadata, saved-draft dates, and every persistent note — the same relevance rule
-        // (OperationalNoteRelevance.IsRelevantForDate) is then applied in memory per day, exactly as
-        // IOperationalNotesService.ListRelevantForDateAsync already does for one date at a time.
+        // Fixed number of calls regardless of grid size (never one query per day cell — spec Phase
+        // 12B Part N/O): finalization metadata, saved-draft dates, every persistent note, one
+        // category/date-range query for official park hours across the whole visible grid (Part A),
+        // and one date-range query for every visible date's own saved draft (Part Q — the only local
+        // path a manual-hours/private-buyout override can be resolved from).
         var finalizedSummaries = await finalizedPassdownRepository.ListAsync(cancellationToken).ConfigureAwait(false);
         var finalizedByDate = finalizedSummaries.ToDictionary(summary => summary.PassdownDate);
 
@@ -41,25 +50,38 @@ public sealed class OperationsCalendarService(
 
         var allNotes = await operationalNotesService.ListAsync(cancellationToken).ConfigureAwait(false);
 
+        var parkHoursByDate = await ComposeParkHoursForRangeAsync(gridStart, gridEnd, asOf, cancellationToken).ConfigureAwait(false);
+
         var days = gridDates
-            .Select(date => new OperationsCalendarDay(
-                date,
-                IsInDisplayedMonth: date.Month == monthStart.Month && date.Year == monthStart.Year,
-                IsToday: date == today,
-                HasFinalizedPassdown: finalizedByDate.ContainsKey(date),
-                HasAssociateDraft: draftDateSet.Contains(date),
-                RelevantOperationalNoteCount: allNotes.Count(note => OperationalNoteRelevance.IsRelevantForDate(note, date))))
+            .Select(date =>
+            {
+                var parkHours = parkHoursByDate[date];
+                return new OperationsCalendarDay(
+                    date,
+                    IsInDisplayedMonth: date.Month == monthStart.Month && date.Year == monthStart.Year,
+                    IsToday: date == today,
+                    HasFinalizedPassdown: finalizedByDate.ContainsKey(date),
+                    HasAssociateDraft: draftDateSet.Contains(date),
+                    RelevantOperationalNoteCount: allNotes.Count(note => OperationalNoteRelevance.IsRelevantForDate(note, date)),
+                    OperatingState: ClassifyOperatingState(parkHours),
+                    ParkHours: parkHours);
+            })
             .ToList();
 
         var selected = await BuildSelectedSummaryAsync(selectedDate, today, finalizedByDate, allNotes, cancellationToken).ConfigureAwait(false);
 
-        return new OperationsCalendarSnapshot(monthStart, today, selectedDate, days, selected, clock.UtcNow);
+        return new OperationsCalendarSnapshot(monthStart, today, selectedDate, days, selected, asOf);
     }
 
     /// <summary>
     /// The selected date's own composed workspace is loaded once here — the same local-only call
     /// <see cref="Dashboard.OperationsDashboardService"/> makes for "today" — rather than for every
     /// day in the grid, since only the selected date's summary needs draft-save-status detail.
+    /// <see cref="AssociateWorkspace.ParkHours"/> is reused directly for the selected date's operating
+    /// state/hours (Phase 12B Part K) — it comes from the exact same
+    /// <see cref="AssociateParkHoursComposer.Compose"/> call the day-cell grid data uses, and is
+    /// authoritative for this date whether or not it happens to fall inside the currently displayed
+    /// grid range.
     /// </summary>
     private async Task<OperationsCalendarSelectedDateSummary> BuildSelectedSummaryAsync(
         DateOnly selectedDate,
@@ -85,7 +107,64 @@ public sealed class OperationsCalendarService(
             status,
             workspace.SaveStatus.LastSavedAt,
             finalized?.FinalizedAtUtc,
-            noteCount);
+            noteCount,
+            ClassifyOperatingState(workspace.ParkHours),
+            workspace.ParkHours);
+    }
+
+    /// <summary>
+    /// Composes an <see cref="AssociateParkHoursView"/> for every date in
+    /// <paramref name="rangeStart"/>..<paramref name="rangeEnd"/> (spec Phase 12B Part A/N/O/Q) using
+    /// the exact same <see cref="AssociateParkHoursComposer.Compose"/> call
+    /// <see cref="AssociatePassdownService"/> itself uses — never a second hours engine. Two queries
+    /// total for the whole range (official park-hours results, saved draft payloads), then one
+    /// in-memory composition per date — never one repository round trip per day cell.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<DateOnly, AssociateParkHoursView>> ComposeParkHoursForRangeAsync(
+        DateOnly rangeStart, DateOnly rangeEnd, DateTimeOffset asOf, CancellationToken cancellationToken)
+    {
+        var datedResults = await datedResultRepository.GetByCategoryAndDateRangeAsync(SourceCategory.ParkHours, rangeStart, rangeEnd, cancellationToken).ConfigureAwait(false);
+        var datedByDate = datedResults.ToDictionary(record => record.Key.Date);
+
+        var drafts = await associateDraftRepository.GetByDateRangeAsync(rangeStart, rangeEnd, cancellationToken).ConfigureAwait(false);
+        var draftPayloadByDate = drafts.ToDictionary(draft => draft.OperatingDate, draft => AssociateDraftPayloadSerializer.Deserialize(draft.PayloadJson));
+
+        var result = new Dictionary<DateOnly, AssociateParkHoursView>();
+        for (var date = rangeStart; date <= rangeEnd; date = date.AddDays(1))
+        {
+            var record = datedByDate.GetValueOrDefault(date);
+            var draft = draftPayloadByDate.GetValueOrDefault(date, AssociateDraftPayload.CreateDefault());
+            result[date] = AssociateParkHoursComposer.Compose(record, draft, asOf);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Structurally identical to <see cref="Dashboard.OperationsDashboardService"/>'s own
+    /// <c>BuildParkStatus</c> classification (Phase 10A) — a pure label mapping over the shared
+    /// <see cref="EffectiveHours"/>/<see cref="AssociateVerificationState"/> values (spec Phase 12B
+    /// Part A/B). Kept independent per <see cref="OperationsCalendarOperatingState"/>'s own doc
+    /// comment, not because the classification differs.
+    /// </summary>
+    private static OperationsCalendarOperatingState ClassifyOperatingState(AssociateParkHoursView hours)
+    {
+        var effective = hours.Effective;
+
+        return effective.Status switch
+        {
+            EffectiveHoursStatus.Open when effective.IsPrivateBuyoutApplied => OperationsCalendarOperatingState.PrivateBuyout,
+            EffectiveHoursStatus.Open when effective.IsManualOverrideApplied => OperationsCalendarOperatingState.CustomHours,
+            EffectiveHoursStatus.Open => OperationsCalendarOperatingState.Open,
+            EffectiveHoursStatus.Closed => OperationsCalendarOperatingState.Closed,
+            _ => hours.Verification.State switch
+            {
+                AssociateVerificationState.NotPublished => OperationsCalendarOperatingState.NotPublished,
+                AssociateVerificationState.Unavailable => OperationsCalendarOperatingState.Unavailable,
+                AssociateVerificationState.Error => OperationsCalendarOperatingState.Unavailable,
+                _ => OperationsCalendarOperatingState.NotChecked,
+            },
+        };
     }
 
     private DateOnly TodayEastern() => DateOnly.FromDateTime(EasternTimeZone.ConvertFromUtc(clock.UtcNow).DateTime);

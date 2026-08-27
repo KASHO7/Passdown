@@ -1,12 +1,42 @@
+using Carowinds.Passdown.Application.Associate;
+
 namespace Carowinds.Passdown.Application.Calendar;
 
 /// <summary>
-/// One day cell in the Operations Calendar's month grid (Phase 12A Part D/E) — intentionally modest:
-/// enough for a day cell to show a number plus a small set of indicators, never a second projection
-/// of Associate/finalization/notes business logic. <see cref="HasAssociateDraft"/> reflects only
-/// whether a draft row was ever saved for the date (the same signal
-/// <see cref="Finalization.ScheduledPassdownFinalizer"/> already uses to decide finalization
-/// eligibility) — not whether it currently has any particular content.
+/// A date's park-hours operating state for the Operations Calendar (Phase 12B Part B) — its own
+/// vocabulary for Calendar's compact overlays, structurally identical to
+/// <c>Dashboard.DashboardParkStatus</c> (Phase 10A) and computed the same way (a pure classification
+/// over an already-composed <see cref="AssociateParkHoursView"/>'s <c>Effective.Status</c>/
+/// <c>IsManualOverrideApplied</c>/<c>IsPrivateBuyoutApplied</c>/<c>Verification.State</c>), but defined
+/// independently rather than reused directly — Calendar and Dashboard are peer top-level features
+/// (spec Phase 12A precedent: <c>OperationsCalendarPassdownStatus</c> was kept independent of
+/// <c>DashboardPassdownStatus</c> for the same reason). Every value here reuses the exact same
+/// <see cref="Domain.Hours.EffectiveHours"/>/<see cref="Domain.Hours.ParkHoursCalculator"/> output —
+/// never a second hours engine (spec Phase 12B Part A).
+/// </summary>
+public enum OperationsCalendarOperatingState
+{
+    NotChecked,
+    Closed,
+    Open,
+    CustomHours,
+    PrivateBuyout,
+    NotPublished,
+    Unavailable,
+}
+
+/// <summary>
+/// One day cell in the Operations Calendar's month grid (Phase 12A Part D/E; extended Phase 12B Part
+/// B) — intentionally modest: enough for a day cell to show a number, a compact operating-state/hours
+/// line, and a small set of indicators, never a second projection of Associate/finalization/notes
+/// business logic. <see cref="HasAssociateDraft"/> reflects only whether a draft row was ever saved
+/// for the date (the same signal <see cref="Finalization.ScheduledPassdownFinalizer"/> already uses to
+/// decide finalization eligibility) — not whether it currently has any particular content.
+/// <see cref="ParkHours"/> is the exact <see cref="AssociateParkHoursView"/>
+/// <see cref="AssociateParkHoursComposer.Compose"/> produced for this date (spec Phase 12B Part A) —
+/// carried alongside <see cref="OperatingState"/> so the Desktop presentation layer can reuse
+/// <c>Desktop.Presentation.ParkHoursPresentation.Build</c> directly (the same formatter Associate
+/// Overview and Dashboard already use) instead of a second hours-text formatter.
 /// </summary>
 public sealed record OperationsCalendarDay(
     DateOnly Date,
@@ -14,7 +44,9 @@ public sealed record OperationsCalendarDay(
     bool IsToday,
     bool HasFinalizedPassdown,
     bool HasAssociateDraft,
-    int RelevantOperationalNoteCount);
+    int RelevantOperationalNoteCount,
+    OperationsCalendarOperatingState OperatingState,
+    AssociateParkHoursView ParkHours);
 
 /// <summary>
 /// A date's passdown status for the Operations Calendar's selected-date summary (Phase 12A Part D) —
@@ -28,14 +60,22 @@ public enum OperationsCalendarPassdownStatus
     Finalized,
 }
 
-/// <summary>The concise detail panel content for whichever date is currently selected (Phase 12A Part E).</summary>
+/// <summary>
+/// The concise detail panel content for whichever date is currently selected (Phase 12A Part E;
+/// extended Phase 12B Part K). <see cref="ParkHours"/>/<see cref="OperatingState"/> mirror
+/// <see cref="OperationsCalendarDay"/>'s own fields, computed by the exact same
+/// <see cref="AssociateParkHoursComposer.Compose"/> call the composed <c>AssociateWorkspace</c> for
+/// this date already used (Phase 12B Part A) — never a second composition.
+/// </summary>
 public sealed record OperationsCalendarSelectedDateSummary(
     DateOnly Date,
     bool IsToday,
     OperationsCalendarPassdownStatus PassdownStatus,
     DateTimeOffset? LastSavedAt,
     DateTimeOffset? FinalizedAt,
-    int RelevantOperationalNoteCount);
+    int RelevantOperationalNoteCount,
+    OperationsCalendarOperatingState OperatingState,
+    AssociateParkHoursView ParkHours);
 
 /// <summary>
 /// The Application-layer read model an Operations Calendar screen is built from (Phase 12A Part D) —

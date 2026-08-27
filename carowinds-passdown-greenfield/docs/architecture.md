@@ -734,3 +734,51 @@ projected over existing state, never a second business-rule implementation.
 No schema change — database schema stays 10, snapshot schema stays 1. Deferred to 12B+: richer
 per-day overlays, denser note previews, a History date-preselection seam, Alerts, and the Manager
 workflow (still out of scope per CLAUDE.md).
+
+## Phase 12B — Park Hours and Operating-State overlays
+
+Full design rationale (including the finalized-date and stale-indicator decisions) lives in
+`docs/phase12-operations-calendar.md`'s own Phase 12B section; this entry only records what changed
+and where.
+
+Phase 12B adds a park-hours/operating-state layer on top of 12A's Calendar foundation — every day
+cell and the selected-date panel now show a compact effective-hours summary (`Open`/`Closed`/
+`Custom Hours`/`Private Buyout`/`Not Published`/`Unavailable`), reusing the existing hours engine
+rather than building a second one:
+
+- **Application** (`Carowinds.Passdown.Associate`): `AssociatePassdownService`'s previously-private
+  `ComposeParkHours` and `DeserializeDraft` (plus its legacy-migration helpers) were extracted,
+  unchanged, into two new public static types — `AssociateParkHoursComposer.Compose` and
+  `AssociateDraftPayloadSerializer.Deserialize` — so `AssociatePassdownService` and the new
+  `OperationsCalendarService` logic call the exact same code, never two hours/deserialization
+  implementations. `IDatedResultRepository`/`IAssociateDraftRepository` each gained one new
+  date-range query method (`GetByCategoryAndDateRangeAsync`/`GetByDateRangeAsync`, both SQLite- and
+  in-memory-implemented) so a month's worth of park hours can be composed from exactly two extra
+  local queries regardless of grid size, never one query per day cell.
+- **`Application.Calendar`**: `OperationsCalendarOperatingState` (a new enum, structurally identical
+  to `Dashboard.DashboardParkStatus` but deliberately independent, matching the same
+  peer-feature-vocabulary precedent Phase 12A already set for `OperationsCalendarPassdownStatus`).
+  `OperationsCalendarDay`/`OperationsCalendarSelectedDateSummary` each gained `OperatingState` and
+  the full `AssociateParkHoursView` (`ParkHours`) — carried whole so the Desktop layer can reuse
+  `Desktop.Presentation.ParkHoursPresentation.Build` directly rather than a second formatter.
+- **Desktop**: `OperationsCalendarOperatingStatePresentation` (new) formats the compact day-cell
+  vocabulary (never recomputes hours or a freshness rule); `OperationsCalendarPresentation` gained
+  Park Status/Effective Hours/verification/staleness fields for the selected-date panel, built by
+  calling `ParkHoursPresentation.Build` once. No color-per-operating-state was added (explicit
+  instruction) — the compact text labels are the entire state signal; a pre-existing amber
+  "warning, not error" brush is reused only for the new Stale indicator.
+- **Tests**: 37 new — `OperationsCalendarServiceTests` +14 (every operating state, draft-override
+  precedence, Dashboard/Calendar classification parity, finalized-date live-vs-frozen-hours
+  behavior, exactly-one-range-query-per-load), `OperationsCalendarViewModelTests` +7 (accessibility
+  text per state, Today+Selected coexistence), two new presentation-test files (11 tests), and
+  `OperationsCalendarViewTests` +4 (mixed-state month, 1280×860/960×640 layout passes, selected-date
+  panel binding). 1323/1323 total (1286 Phase 12A baseline + 37 new), 0 warnings/errors.
+
+**Decision, documented not silently made**: a finalized historical date's Calendar cell shows live/
+current composed hours, never the frozen `FinalizedPassdownSnapshot` for that date (mixing raw
+`TimeOnly`-based live composition with the snapshot's pre-formatted display strings would need a
+second hours representation, and reading it would cost one more per-finalized-date query — both
+deliberately avoided). No schema change — database schema stays 10, `AssociateDraftPayload` schema
+stays 3, snapshot schema stays 1. Deferred to 12C+: source-health overlays beyond park hours, denser
+note previews, a History date-preselection seam, a frozen-hours read model for finalized dates,
+Alerts, and the Manager workflow (still out of scope per CLAUDE.md).

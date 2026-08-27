@@ -49,6 +49,28 @@ public sealed class SqliteAssociateDraftRepository(SqliteConnectionFactory conne
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<AssociateDraft>> GetByDateRangeAsync(DateOnly startDate, DateOnly endDateInclusive, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT operating_date, schema_version, payload_json, updated_at_utc FROM associate_drafts WHERE operating_date BETWEEN $startDate AND $endDate ORDER BY operating_date;";
+        command.Parameters.AddWithValue("$startDate", SqliteConvert.ToText(startDate));
+        command.Parameters.AddWithValue("$endDate", SqliteConvert.ToText(endDateInclusive));
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        var drafts = new List<AssociateDraft>();
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            drafts.Add(new AssociateDraft(
+                OperatingDate: SqliteConvert.ReadDateOnly(reader, 0),
+                SchemaVersion: reader.GetInt32(1),
+                PayloadJson: reader.GetString(2),
+                UpdatedAt: SqliteConvert.ReadDateTimeOffset(reader, 3)));
+        }
+
+        return drafts;
+    }
+
     public async Task<IReadOnlyList<DateOnly>> ListSavedDraftDatesAsync(CancellationToken cancellationToken = default)
     {
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);

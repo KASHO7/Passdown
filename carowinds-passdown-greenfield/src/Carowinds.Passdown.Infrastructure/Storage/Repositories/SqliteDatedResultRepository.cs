@@ -58,6 +58,25 @@ public sealed class SqliteDatedResultRepository(SqliteConnectionFactory connecti
         return results;
     }
 
+    public async Task<IReadOnlyList<DatedResultRecord>> GetByCategoryAndDateRangeAsync(SourceCategory category, DateOnly startDate, DateOnly endDateInclusive, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT {SelectColumns} FROM dated_results WHERE category = $category AND requested_date BETWEEN $startDate AND $endDate ORDER BY requested_date;";
+        command.Parameters.AddWithValue("$category", category.ToString());
+        command.Parameters.AddWithValue("$startDate", SqliteConvert.ToText(startDate));
+        command.Parameters.AddWithValue("$endDate", SqliteConvert.ToText(endDateInclusive));
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        var results = new List<DatedResultRecord>();
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            results.Add(Map(reader));
+        }
+
+        return results;
+    }
+
     public async Task RecordSuccessAsync(DatedResultKey key, SourceEvidence evidence, string? payloadJson, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(evidence);

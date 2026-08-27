@@ -79,6 +79,11 @@ public class RefreshOrchestratorLiveSmokeTests(ITestOutputHelper output)
         public Task<IReadOnlyList<DatedResultRecord>> GetByRequestedDateAsync(DateOnly requestedDate, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<DatedResultRecord>>(_records.Values.Where(r => r.Key.Date == requestedDate).ToList());
 
+        public Task<IReadOnlyList<DatedResultRecord>> GetByCategoryAndDateRangeAsync(SourceCategory category, DateOnly startDate, DateOnly endDateInclusive, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<DatedResultRecord>>(_records.Values
+                .Where(r => r.Key.Category == category && r.Key.Date >= startDate && r.Key.Date <= endDateInclusive)
+                .ToList());
+
         public Task RecordSuccessAsync(DatedResultKey key, SourceEvidence evidence, string? payloadJson, CancellationToken cancellationToken = default)
         {
             _records[key] = new DatedResultRecord(key, evidence, payloadJson, evidence);
