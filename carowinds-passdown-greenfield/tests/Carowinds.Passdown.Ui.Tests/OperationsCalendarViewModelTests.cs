@@ -424,6 +424,39 @@ public class OperationsCalendarViewModelTests
         Assert.Equal(new DateOnly(2026, 8, 5), raisedDate);
     }
 
+    // Phase 12E Part S: the disabled "Open History" action's help text explains *why* it's disabled
+    // (never relies on visual dimming alone), and updates as the selected date's own status changes.
+    [Fact]
+    public async Task OpenHistoryHelpText_ReflectsWhetherSelectedDateIsFinalized()
+    {
+        var service = new FakeOperationsCalendarService
+        {
+            SnapshotFactory = (month, selected) => FakeOperationsCalendarService.DefaultSnapshot(month, selected) with
+            {
+                Selected = new OperationsCalendarSelectedDateSummary(
+                    selected, false, OperationsCalendarPassdownStatus.NoDraft, null, null, 0,
+                    OperationsCalendarOperatingState.NotChecked, FakeOperationsCalendarService.NotCheckedParkHours),
+            },
+        };
+        var vm = new OperationsCalendarViewModel(service, CreateClock());
+        await vm.PendingLoad;
+
+        Assert.False(vm.OpenHistoryCommand.CanExecute(null));
+        Assert.Contains("No finalized passdown", vm.OpenHistoryHelpText);
+
+        service.SnapshotFactory = (month, selected) => FakeOperationsCalendarService.DefaultSnapshot(month, selected) with
+        {
+            Selected = new OperationsCalendarSelectedDateSummary(
+                selected, false, OperationsCalendarPassdownStatus.Finalized, null, DateTimeOffset.UtcNow, 0,
+                OperationsCalendarOperatingState.NotChecked, FakeOperationsCalendarService.NotCheckedParkHours),
+        };
+        vm.SelectDateCommand.Execute(new DateOnly(2026, 8, 5));
+        await vm.PendingLoad;
+
+        Assert.True(vm.OpenHistoryCommand.CanExecute(null));
+        Assert.DoesNotContain("No finalized passdown", vm.OpenHistoryHelpText);
+    }
+
     // #10: "Open Operational Notes" always raises its event — generic navigation, no date gating.
     [Fact]
     public async Task OpenOperationalNotesCommand_AlwaysRaisesEvent()
@@ -536,6 +569,39 @@ public class OperationsCalendarViewModelTests
 
         Assert.Equal("2 Notes · 1 Important", dayViewModel.NotesSummaryText);
         Assert.True(dayViewModel.HasOperationalNotes);
+    }
+
+    // ==================================================================================
+    // Phase 12E — Calendar polish, density, and accessibility
+    // ==================================================================================
+
+    // Part H: drives the day cell's restrained "Important" accent treatment (never a red/alarm badge).
+    [Fact]
+    public void DayViewModel_ImportantNotesPresent_HasImportantOperationalNotesIsTrue()
+    {
+        var day = new OperationsCalendarDay(
+            new DateOnly(2026, 8, 22), IsInDisplayedMonth: true, IsToday: false,
+            HasFinalizedPassdown: false, HasAssociateDraft: false, RelevantOperationalNoteCount: 2,
+            OperationsCalendarOperatingState.Open, OpenParkHours(new TimeOnly(10, 0), new TimeOnly(22, 0)),
+            ImportantOperationalNoteCount: 1);
+
+        var dayViewModel = new OperationsCalendarDayViewModel(day, isSelected: false, _ => { });
+
+        Assert.True(dayViewModel.HasImportantOperationalNotes);
+    }
+
+    [Fact]
+    public void DayViewModel_RelevantNotesButNoneImportant_HasImportantOperationalNotesIsFalse()
+    {
+        var day = new OperationsCalendarDay(
+            new DateOnly(2026, 8, 22), IsInDisplayedMonth: true, IsToday: false,
+            HasFinalizedPassdown: false, HasAssociateDraft: false, RelevantOperationalNoteCount: 2,
+            OperationsCalendarOperatingState.Open, OpenParkHours(new TimeOnly(10, 0), new TimeOnly(22, 0)),
+            ImportantOperationalNoteCount: 0);
+
+        var dayViewModel = new OperationsCalendarDayViewModel(day, isSelected: false, _ => { });
+
+        Assert.False(dayViewModel.HasImportantOperationalNotes);
     }
 
     // #12: no HTTP/PDF/refresh-shaped constructor dependency exists on this type.

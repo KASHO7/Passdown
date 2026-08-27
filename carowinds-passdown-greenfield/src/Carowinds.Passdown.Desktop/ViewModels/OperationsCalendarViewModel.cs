@@ -49,6 +49,7 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSnapshot))]
     [NotifyPropertyChangedFor(nameof(ShowEmptyOrErrorState))]
+    [NotifyPropertyChangedFor(nameof(OpenHistoryHelpText))]
     [NotifyCanExecuteChangedFor(nameof(OpenHistoryCommand))]
     public partial OperationsCalendarSnapshot? Snapshot { get; set; }
 
@@ -201,6 +202,17 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     private void OpenHistory() => OpenHistoryRequested?.Invoke(this, SelectedDate);
 
     private bool CanOpenHistory() => Snapshot?.Selected.PassdownStatus == OperationsCalendarPassdownStatus.Finalized;
+
+    /// <summary>
+    /// Phase 12E Part S: "Open History" is disabled (not hidden) until the selected date is
+    /// Finalized (spec Phase 12A/12D "disable, don't hide"). Visual dimming alone is never the sole
+    /// signal — this composed help text explains *why* the control is disabled, mirroring the plain-
+    /// prose "Opens X. Enabled once &lt;condition&gt;." convention every other conditionally-enabled
+    /// action in the app already uses (e.g. Dashboard's own action help text).
+    /// </summary>
+    public string OpenHistoryHelpText => CanOpenHistory()
+        ? "Opens Passdown History for the selected date's finalized record."
+        : "Opens Passdown History. No finalized passdown for this date yet.";
 
     [RelayCommand]
     private void OpenOperationalNotes() => OpenOperationalNotesRequested?.Invoke(this, EventArgs.Empty);

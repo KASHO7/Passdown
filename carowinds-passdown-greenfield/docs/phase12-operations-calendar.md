@@ -1302,4 +1302,249 @@ merits in any run. No live internet was used or required.
 - The renamed-app work, refresh-policy overhaul, manual-hours/buyout redesign, ERT simplification,
   logo, Alerts, and Manager workflow — all still deferred per `CLAUDE.md`.
 
-12E has not started.
+## Phase 12E — Calendar polish, density, accessibility, and regression cleanup
+
+Phase 12E is a **visual/layout/accessibility polish pass**, not a feature phase: no new Calendar
+capability, Alerts, Manager workflow, business-logic change, or schema migration was added. It audits
+the screen 12A–12D built and tightens hierarchy, density, and consistency with the rest of the app
+before final Phase 12 release work.
+
+### Visual hierarchy audit (Part A) — mostly already correct; one addition
+
+Re-reading the screen against the intended hierarchy (title → month nav → grid → selected-date summary
+→ actions) confirmed the header/nav/grid were already appropriately sized (no oversized title area, no
+web-dashboard card sprawl) — 12A–12D's own density choices already matched Dashboard's established
+recipe. The one real gap: the selected-date panel had no visual anchor marking it as the screen's
+secondary hierarchy tier (below the grid, above nothing). `Border.heroPanel` — the exact same "3px
+accent top rule" recipe `DashboardView`/`AssociateView` already use for their own most-prominent
+panel(s) — was added to `OperationsCalendarView.axaml`'s own `UserControl.Styles` (each `UserControl`'s
+styles are scoped to its own visual tree in Avalonia, so this could not simply be inherited) and applied
+to the Selected Date panel. This is reuse, not invention, and adds zero extra vertical space.
+
+### Month header / weekday header (Parts B/C) — audited, no change needed
+
+Previous/Today/Next are already compact `secondaryAction` buttons with accessible names ("Previous
+month"/"Go to today"/"Next month" — never arrow-only ambiguity), and Previous/Next Day already live in
+the selected-date panel, not competing with month navigation (Phase 12D's own placement). The weekday
+header's `Grid ColumnDefinitions="*,*,*,*,*,*,*"` already matches the day grid's own `UniformGrid
+Columns="7"` column count exactly, so headings stay aligned with their columns at every window size.
+
+### Day-cell layout and density (Part D)
+
+The content stack (day number → operating-state/hours → passdown status → notes summary) already
+matched the spec's own priority order; the only change is a small breathing-room increase (outer
+`StackPanel Spacing` from `1` to `2`) so the day number reads as visually separate from the metadata
+block beneath it, without growing `MinHeight` (still `72`, unchanged — no clipping-risk regression).
+
+### Today / Selected / off-month styling (Part E) — a real gap, fixed
+
+**Before**: `.selected` only changed `Background` (no border change), so a selected-but-not-today cell
+was one shade of background fill away from an ordinary cell — a weak signal on its own. **After**:
+- `.today` (unchanged): accent-colored outline only (`BorderThickness="2"`), background transparent.
+- `.selected`: filled + outlined (`Background=PassdownBandBrush` **and** the same accent
+  `BorderBrush`/`BorderThickness="2"`) — unmistakable even when the date isn't Today.
+- `.today.selected` (new, explicit compound selector): a deeper tint (`PassdownChipAccentBrush`,
+  already used elsewhere in the app for "elevated" chip content) and a slightly thicker border
+  (`2.5`), so the combined state reads as its own deliberate, most-emphasized treatment rather than
+  silently collapsing into whichever single-state rule happened to win. Off-month cells are unchanged
+  (`Opacity="0.4"`, day-number-only content preserved from 12A–12C). None of this relies on color
+  alone — `IsToday`/`IsSelected` are both still always present in the cell's own `AutomationName`
+  (unchanged from 12B/12C).
+
+### Operating-state / passdown / notes presentation consistency (Parts F/G/H/Q)
+
+Auditing Dashboard's own equivalent surfaces (`DashboardView.axaml`'s Park Status/Passdown Status
+panels) found **zero color-coding for operating state or passdown status anywhere in the app** — both
+use a plain `chip` badge and a plain bold `hoursHeadline`/status text, regardless of Open/Closed/
+Custom/Buyout or No Draft/Draft/Finalized. Given Part Q's own instruction ("visual consistency with the
+rest of the app") outranks Part F/G's *optional* "recommended" emphasis suggestions, **Calendar's
+operating-state and passdown-status text were deliberately left unchanged** — adding new color
+semantics here that don't exist on the peer Dashboard screen would itself be the inconsistency, not a
+fix. This was an audit-and-confirm, not a no-op oversight.
+
+Operational Notes' "Important" indicator was a genuine, if minor, inconsistency: Calendar used a plain
+`Classes="muted"` treatment while every other screen (`DashboardView`, `AssociateView`,
+`OperationalNotesView`) uses one established convention — `TextBlock.priorityText` / `.important`
+(bold + `PassdownChipAccentForegroundBrush`, never a red/alarm color; explicitly documented in those
+views as "the word itself communicates priority, this is reinforcement only"). Both style rules were
+added to `OperationsCalendarView.axaml`'s own styles (verbatim copies) and applied:
+- **Selected-date panel**: `OperationalNotesImportantText` now uses `Classes="priorityText important"`
+  (full-size, matching Dashboard/Associate/Notes exactly).
+- **Day cell**: the notes-summary line now carries `Classes="dayIndicator priorityText"
+  Classes.important="{Binding HasImportantOperationalNotes}"` — a new bool on
+  `OperationsCalendarDayViewModel` (`ImportantOperationalNoteCount > 0`). The two-class
+  `priorityText.important` selector's higher specificity overrides `dayIndicator`'s muted foreground
+  when Important, while `dayIndicator`'s own `FontSize="10"` still wins the (equal-specificity,
+  order-based) contest against `priorityText`'s `12.5` — so the cell keeps its compact 10px sizing and
+  only gains the bold/accent color, never growing text size to signal importance (Part N: no tiny text
+  to force density, but also no oversized text to force emphasis).
+
+### Selected-date panel and action grouping (Parts I/J/P)
+
+The panel's section content (Park/Passdown/Active Operational Notes/actions) was already close to the
+spec's own target structure from 12B–12D; two thin `Border Height="1"
+Background="{DynamicResource PassdownDividerBrush}"` hairlines were added — one after the Previous/Next
+Day buttons (separating day-identity/day-stepping from the informational sections) and one before the
+workflow-action buttons (separating information from routing actions) — a "subtle divider," never a
+heavy boxed card, matching Part P's own instruction. This makes the three groups (date-navigation
+controls, information, workflow-routing controls) visually distinct without adding a group label or
+growing the panel. The three repeated `Margin="0,4,0,0"` inline overrides on the Park Status/Passdown
+Status/Active Operational Notes section-title `TextBlock`s were consolidated into one shared
+`TextBlock.sectionTitle.detail` modifier style (Part AC cleanup).
+
+### Disabled "Open History" accessibility (Part S)
+
+`AutomationProperties.HelpText` on "Open History" was previously a static string regardless of enabled
+state. It is now bound to a new `OperationsCalendarViewModel.OpenHistoryHelpText` computed property —
+`"Opens Passdown History for the selected date's finalized record."` when enabled, `"Opens Passdown
+History. No finalized passdown for this date yet."` when disabled — so a screen reader's explanation of
+*why* the control is currently unavailable stays accurate rather than only ever stating the general
+rule. Wired via `[NotifyPropertyChangedFor(nameof(OpenHistoryHelpText))]` on the same `Snapshot`
+property that already drives `CanOpenHistory`'s own `NotifyCanExecuteChangedFor` — no new load, no new
+service call, just an additional computed-property notification alongside the existing one.
+
+### 1280×860 / 960×640 (Parts K/L) — unchanged pass, plus a stronger combined regression test
+
+The existing `OperationsCalendarView_LayoutAt1280x860_DoesNotThrow`/`..._LayoutAt960x640_DoesNotThrow`
+tests (12B, unchanged) still pass with every 12E visual change applied. A new
+`OperationsCalendarView_DenseMixedStates_LayoutAt960x640_DoesNotThrow` test combines the *densest*
+realistic content (every operating state rotated across the grid, mixed passdown lifecycle, Important
+notes) with the *tightest* supported viewport in one test — a stronger regression signal than the
+previously separate single-concern dense/960×640 tests, since real density problems tend to appear only
+when both pressures apply together.
+
+### Windows 100/125/150% scaling preparation (Part M) — audited, no brittle widths found
+
+No new fixed pixel widths were introduced. The month-grid/selected-panel split remains `ColumnDefinitions="*,320"`
+(unchanged from 12A) — a deliberate, previously-justified fixed width for the detail panel, not a new
+brittle addition; the grid column itself is still `*` (star-sized). All new elements (dividers, the
+`heroPanel` border-thickness change, the two new style classes) use relative/auto sizing only.
+
+### Typography / spacing (Parts N/O) — audited, one minor addition
+
+No new font families or font sizes were introduced. The one spacing change (day-cell outer
+`StackPanel.Spacing` `1`→`2`) is a small, deliberate density adjustment, not a broad repadding pass —
+broader header/content padding was audited and left unchanged, since it already exactly matches
+Dashboard's own established recipe (`Border Padding="24,16"`, `ScrollViewer Padding="24,20,24,24"`) and
+further tightening would have created a Calendar-only deviation (Part Q).
+
+### Top-level nav consistency (Part Q) — audited, already correct
+
+`MainWindow.axaml`'s `Button.appSectionItem`/`.active` styling is already identical for all five
+sections including Calendar (same padding, font size, bottom-border-accent selected treatment, hover
+fill, and `"<Section> section"` automation-name convention) — no change was needed or made.
+
+### Accessibility text audit (Part R) — re-confirmed, no regression
+
+Day-cell `AutomationName` composition (`OperationsCalendarDayViewModel.BuildAutomationName`) is
+unchanged in Phase 12E — the Finalized-over-Draft precedence fix (12C) already eliminated the stale
+"Finalized. Draft in progress." duplication, and `DayViewModel_AutomationName_IncludesEveryTextualIndicator`
+(unchanged) still asserts it directly. No new visual state in 12E lacks a textual equivalent: Today/
+Selected/Today+Selected are still all three named booleans surfaced identically in `AutomationName`
+regardless of the new border/background treatment, and the "Important" notes accent has no automation-
+name impact (the existing `notesPresentation.AccessibilityText` clause — "2 active operational notes, 1
+Important" — already spells this out in words, unaffected by the new visual styling).
+
+### Keyboard / focus audit (Part T/U) — walked through, no gap found
+
+Every control on this screen (Previous/Next Month, Today, day cells, Previous/Next Day, Open Passdown/
+History/Operational Notes) is still a plain `Button` — 12E added no new interactive control shape (the
+two new dividers are non-interactive `Border`s). FluentTheme's default Tab order and focus ring make
+every one of them keyboard-reachable in visual order top-to-bottom/left-to-right; Enter/Space already
+activate a focused `Button` through Avalonia's standard bindings. Walking the realistic flow the spec
+describes (Calendar → month nav → Today → select a day → Previous/Next Day → Open Passdown → back →
+Open History if enabled → Open Operational Notes) surfaces no focus trap and no unreachable control; a
+disabled "Open History" is skipped by Tab like any other disabled `Button`, consistent with the rest of
+the app. No custom arrow-key grid navigation was added (deliberately deferred since 12D; still true).
+No manual focus-forcing was added after any state change (Previous/Next Month, Go to Today, Previous/
+Next Day, off-month selection) — consistent with every prior Phase 9–12 view, none of which force focus
+onto a specific control after a state change or section switch.
+
+### Loading / error state (Parts Y/Z) — audited, no change needed
+
+The `ProgressBar IsIndeterminate="True" Height="3"` occupies a fixed 3px row that doesn't resize the
+surrounding layout when toggled, and `ErrorMessage` renders through the same `fieldError` class every
+other screen uses, with the same concise, non-technical text ("Unable to load the operations calendar
+right now.") — no SQL/stack trace/HTTP detail is exposed anywhere in this path, unchanged from 12A.
+
+### No new business logic (Part AA) — confirmed
+
+No hours precedence, draft precedence, note-relevance, finalization, History, or month/day-semantics
+code was touched. The only non-style production changes are: one new bool
+(`OperationsCalendarDayViewModel.HasImportantOperationalNotes`, a pure derived read of an existing
+field) and one new computed string (`OperationsCalendarViewModel.OpenHistoryHelpText`, reusing the
+existing `CanOpenHistory()` check verbatim rather than a second condition).
+
+### Performance / load regression audit (Part AB) — confirmed unaffected
+
+No new service/repository call was added. `HasImportantOperationalNotes` and `OpenHistoryHelpText` are
+both computed from data the ViewModel already holds (`ImportantOperationalNoteCount`, `Snapshot`) —
+zero new `IOperationsCalendarService.LoadAsync` calls, and the existing one-load-per-navigation-action
+guarantee (12D) is untouched, since no navigation/command code was modified in this phase.
+
+### XAML cleanup (Part AC)
+
+- `TextBlock.sectionTitle.detail` consolidates three previously-duplicated inline `Margin="0,4,0,0"`
+  overrides into one shared modifier style.
+- `Border.heroPanel`/`TextBlock.priorityText`/`.important` were added as verbatim reuses of
+  established app-wide styles rather than new, Calendar-specific inventions.
+
+No broader style-framework refactor was attempted — changes stayed local to this one view, per the
+spec's own instruction not to build a giant style framework just for Calendar.
+
+### Schema (Part AH) — unchanged
+
+No migration was added. Database schema remains **10**; `AssociateDraftPayload` schema remains **3**;
+`FinalizedPassdownSnapshot` schema remains **1**.
+
+### Tests added (Phase 12E)
+
+- `OperationsCalendarViewModelTests.cs` — **+3**: `HasImportantOperationalNotes` true/false on the day
+  cell, and `OpenHistoryHelpText` reflecting (and updating alongside `CanOpenHistory`) whether the
+  selected date is Finalized.
+- `OperationsCalendarViewTests.cs` — **+3**: a sparse-month (Part V) construction check asserting no
+  day cell renders a notes line when there are no relevant notes, a Today+Selected-same-cell
+  construction check (Part E, the new compound style), and the combined dense-mixed-states-at-960×640
+  layout regression test (Parts K/L/AE).
+
+**6 new tests total** (1389 Phase 12D baseline + 6 = 1395). No existing 12A–12D test was modified —
+every one of them still passes unchanged, which is itself the regression evidence for Part AE's
+"existing 12A–12D tests remain green," "no Finalized+Draft duplicate regression," "no off-month overlay
+leakage regression," "one-load navigation behavior remains intact," and "local-only guarantee remains
+intact" items — all still enforced by the unmodified 12A–12D suite.
+
+### Full validation (Phase 12E)
+
+`dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors.
+`dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — **1395/1395**, run three times
+consecutively; all three runs passed cleanly with no flake observed (the previously-documented Phase 6D
+Avalonia headless cross-assembly parallelism flake did not reproduce in any of the three runs this
+time — its absence here is not evidence it's fixed, consistent with its own prior intermittent history
+across 12A–12D). No live internet was used or required.
+
+### Visual validation — PARTIAL (unchanged constraint)
+
+Same constraint as every prior Phase 9–12 document: no pixel/bitmap screenshot renderer is available in
+this codebase's test projects or this development environment. Evidence is construction- and layout-level
+only: real-XAML-loader construction across a sparse month, a dense/mixed-operating-state month, a
+Today+Selected-same-cell case, and a `Measure`/`Arrange` layout pass at both 1280×860 and the combined
+dense-content/960×640 worst case — all succeeding without exception. No pixel-level clipping/contrast/
+legibility claim is made beyond what these construction/layout checks prove. Actual on-screen appearance
+(the new Selected-cell fill+border treatment, the Today+Selected compound tint, the Important-notes
+accent color, the heroPanel accent rule, and 100/125/150% Windows scaling) should be spot-checked in a
+Windows 11 VM per `CLAUDE.md`'s platform guidance before this ships — recorded honestly as **NOT
+EXECUTED** for the Windows-scaling-specific check, since no Windows host was available this session.
+
+### What Phase 12E does *not* implement
+
+- Any new Calendar capability, Alerts, Manager workflow, or app rename — all explicitly out of scope.
+- Operating-state or passdown-status color-coding — audited and deliberately **not** added, to stay
+  consistent with Dashboard's own zero-color-coding treatment of the same concepts (Part Q outranking
+  Part F/G's optional emphasis suggestion).
+- Arrow-key grid navigation between day cells — still deliberately deferred (12D's own decision,
+  re-confirmed here as still unnecessary).
+- A frozen-hours read model for finalized dates, date-aware deep-linking into Operational Notes Manager,
+  the renamed-app work, refresh-policy overhaul, manual-hours/buyout redesign, ERT simplification, logo,
+  or the release ZIP rebuild — all still deferred per `CLAUDE.md` and Phase 12F's own scope.
+
+12F has not started.

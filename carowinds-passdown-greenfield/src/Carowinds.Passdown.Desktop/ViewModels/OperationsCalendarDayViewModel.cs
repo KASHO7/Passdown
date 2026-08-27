@@ -39,6 +39,14 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
     public bool HasOperationalNotes => RelevantOperationalNoteCount > 0;
 
     /// <summary>
+    /// Phase 12E Part H: drives the day-cell notes line's restrained accent treatment — the same
+    /// bold + <c>PassdownChipAccentForegroundBrush</c> "Important" convention already established by
+    /// <c>TextBlock.priorityText.important</c> on Dashboard/Associate/Operational Notes, never a
+    /// red/alarm color.
+    /// </summary>
+    public bool HasImportantOperationalNotes => ImportantOperationalNoteCount > 0;
+
+    /// <summary>
     /// "No Draft"/"Draft"/"Finalized" (spec Phase 12C Part A/B/C/D) — Finalized always wins over an
     /// existing saved draft; see <see cref="OperationsCalendarPassdownPresentation.DeriveStatus"/> for
     /// the one place that precedence is decided.

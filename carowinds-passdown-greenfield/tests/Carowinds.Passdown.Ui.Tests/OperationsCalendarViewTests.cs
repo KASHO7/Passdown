@@ -259,4 +259,81 @@ public class OperationsCalendarViewTests
         Assert.Equal("Custom Hours", viewModel.Presentation?.ParkStatusText);
         Assert.Same(viewModel, view.DataContext);
     }
+
+    // ==================================================================================
+    // Phase 12E — Calendar polish, density, and accessibility
+    // ==================================================================================
+
+    // Part V: a sparse month (every date Not Published / No Draft / 0 Notes, i.e. FakeOperationsCalendarService's
+    // own default) must not render noisy filler — already exercised by every other test's baseline
+    // DefaultSnapshot, asserted explicitly here as a named regression target for Part V.
+    [Fact]
+    public async Task OperationsCalendarView_SparseMonth_ConstructsWithoutError()
+    {
+        var viewModel = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), CreateClock());
+        await viewModel.PendingLoad;
+
+        var view = new OperationsCalendarView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+        Assert.All(viewModel.Days, day => Assert.Null(day.NotesSummaryText));
+    }
+
+    // Part E: Today and Selected on the same cell — the combined Button.calendarDay.today.selected
+    // style must construct cleanly, not just each state individually.
+    [Fact]
+    public async Task OperationsCalendarView_TodayAndSelectedSameDate_ConstructsWithoutError()
+    {
+        var viewModel = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), CreateClock());
+        await viewModel.PendingLoad;
+
+        var view = new OperationsCalendarView { DataContext = viewModel };
+
+        var todaySelectedDay = Assert.Single(viewModel.Days, d => d.IsToday && d.IsSelected);
+        Assert.Equal(FixedToday, todaySelectedDay.Date);
+        Assert.Same(viewModel, view.DataContext);
+    }
+
+    // Part K/L/AE: the tightest supported viewport (960×640) combined with the densest realistic
+    // content (every operating state, mixed passdown lifecycle, Important notes) — a stronger combined
+    // regression check than the existing single-concern 1280×860/960×640 and mixed-state tests.
+    [Fact]
+    public async Task OperationsCalendarView_DenseMixedStates_LayoutAt960x640_DoesNotThrow()
+    {
+        var states = new[]
+        {
+            OperationsCalendarOperatingState.Open,
+            OperationsCalendarOperatingState.Closed,
+            OperationsCalendarOperatingState.CustomHours,
+            OperationsCalendarOperatingState.PrivateBuyout,
+            OperationsCalendarOperatingState.NotPublished,
+            OperationsCalendarOperatingState.Unavailable,
+        };
+
+        var service = new FakeOperationsCalendarService
+        {
+            SnapshotFactory = (month, selected) =>
+            {
+                var baseline = FakeOperationsCalendarService.DefaultSnapshot(month, selected);
+                var denseDays = baseline.Days
+                    .Select((d, index) => (index % 3) switch
+                    {
+                        0 => d with { OperatingState = states[index % states.Length], HasFinalizedPassdown = true, HasAssociateDraft = true, RelevantOperationalNoteCount = 3, ImportantOperationalNoteCount = 1 },
+                        1 => d with { OperatingState = states[index % states.Length], HasAssociateDraft = true, RelevantOperationalNoteCount = 1 },
+                        _ => d with { OperatingState = states[index % states.Length] },
+                    })
+                    .ToList();
+                return baseline with { Days = denseDays };
+            },
+        };
+        var viewModel = new OperationsCalendarViewModel(service, CreateClock());
+        await viewModel.PendingLoad;
+
+        var view = new OperationsCalendarView { DataContext = viewModel, Width = 960, Height = 640 };
+
+        view.Measure(new Size(960, 640));
+        view.Arrange(new Rect(0, 0, 960, 640));
+
+        Assert.True(view.Bounds.Width > 0 && view.Bounds.Height > 0);
+    }
 }

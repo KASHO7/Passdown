@@ -46,6 +46,25 @@
       <Setter Property="LetterSpacing" Value="0.5" />
       <Setter Property="HorizontalAlignment" Value="Center" />
     </Style>
+    <!-- Phase 12E Part AC: bakes in the "detail section label under a headline" margin every
+         selected-date section (Park Status/Passdown Status/Active Operational Notes) previously
+         repeated as an inline Margin="0,4,0,0" override — one shared modifier instead of three
+         duplicated overrides. -->
+    <Style Selector="TextBlock.sectionTitle.detail">
+      <Setter Property="Margin" Value="0,4,0,0" />
+    </Style>
+    <!-- Phase 12E Part H: the app's one established "Important" convention (Dashboard/Associate/
+         Operational Notes' TextBlock.priorityText.important — bold + PassdownChipAccentForegroundBrush,
+         never a red/alarm color), reused verbatim here instead of the plain "muted" treatment Calendar
+         used before this phase (spec Part Q: visual consistency with the rest of the app). -->
+    <Style Selector="TextBlock.priorityText">
+      <Setter Property="FontSize" Value="12.5" />
+      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+    </Style>
+    <Style Selector="TextBlock.priorityText.important">
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownChipAccentForegroundBrush}" />
+    </Style>
 
     <Style Selector="Border.panel">
       <Setter Property="Padding" Value="18" />
@@ -53,6 +72,14 @@
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
       <Setter Property="Background" Value="{DynamicResource PassdownSurfaceTintBrush}" />
+    </Style>
+    <!-- Phase 12E Part A/Q: the same "one hero panel gets a 3px accent top rule" recipe
+         DashboardView/AssociateView already use for their own most-prominent panel(s) — reused
+         verbatim (each UserControl.Styles block is scoped to its own visual tree in Avalonia, so this
+         cannot simply be inherited from DashboardView). -->
+    <Style Selector="Border.heroPanel">
+      <Setter Property="BorderThickness" Value="1,3,1,1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
     </Style>
 
     <Style Selector="Border.chip">
@@ -109,12 +136,24 @@
     <Style Selector="Button.calendarDay.outOfMonth">
       <Setter Property="Opacity" Value="0.4" />
     </Style>
+    <!-- Phase 12E Part E: Today (not selected) stays outline-only — visible, but deliberately quieter
+         than Selected. Selected (not Today) is filled + outlined, so it reads as unmistakable even
+         on its own. Today+Selected together (below) gets its own, more deeply tinted combination
+         rather than silently collapsing into whichever rule happens to apply last — never relying on
+         color alone, since IsToday/IsSelected are both also always present in the cell's own
+         AutomationName. -->
     <Style Selector="Button.calendarDay.today">
       <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
       <Setter Property="BorderThickness" Value="2" />
     </Style>
     <Style Selector="Button.calendarDay.selected">
       <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
+    </Style>
+    <Style Selector="Button.calendarDay.today.selected">
+      <Setter Property="Background" Value="{DynamicResource PassdownChipAccentBrush}" />
+      <Setter Property="BorderThickness" Value="2.5" />
     </Style>
     <Style Selector="TextBlock.dayIndicator">
       <Setter Property="FontSize" Value="10" />
@@ -195,7 +234,7 @@
                   <Button Classes="calendarDay" Classes.today="{Binding IsToday}" Classes.selected="{Binding IsSelected}"
                           Classes.outOfMonth="{Binding !IsInDisplayedMonth}"
                           Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AutomationName}">
-                    <StackPanel Spacing="1">
+                    <StackPanel Spacing="2">
                       <TextBlock Text="{Binding DayNumber}" FontWeight="SemiBold" FontSize="13" />
 
                       <!-- Operating-state/hours/passdown-status/notes overlay (spec Phase 12B Part
@@ -209,7 +248,12 @@
                         <TextBlock Text="{Binding EffectiveHoursLine}" Classes="dayHoursLine" IsVisible="{Binding HasEffectiveHoursLine}" />
                         <TextBlock Text="Stale" Classes="dayStaleLabel" IsVisible="{Binding IsHoursStale}" />
                         <TextBlock Text="{Binding PassdownStatusLabel}" Classes="dayIndicator" />
-                        <TextBlock Text="{Binding NotesSummaryText}" Classes="dayIndicator" IsVisible="{Binding HasOperationalNotes}" />
+                        <!-- Phase 12E Part H: the "Important" clause reuses the app's one established
+                             restrained-accent convention (never a red/alarm badge) — see
+                             TextBlock.priorityText.important above. -->
+                        <TextBlock Text="{Binding NotesSummaryText}" Classes="dayIndicator priorityText"
+                                   Classes.important="{Binding HasImportantOperationalNotes}"
+                                   IsVisible="{Binding HasOperationalNotes}" />
                       </StackPanel>
                     </StackPanel>
                   </Button>
@@ -219,7 +263,10 @@
 
           </StackPanel>
 
-          <Border Grid.Column="1" Classes="panel" AutomationProperties.Name="Selected date summary">
+          <!-- Phase 12E Part A/Q: "heroPanel" (a 3px accent top rule, same recipe as Dashboard's own
+               Today's Operation/Passdown Status panels) marks this as the one panel that anchors the
+               screen's secondary hierarchy tier, below the grid itself — reused, not reinvented. -->
+          <Border Grid.Column="1" Classes="panel heroPanel" AutomationProperties.Name="Selected date summary">
             <StackPanel Spacing="10">
               <TextBlock Text="Selected Date" Classes="sectionTitle" />
               <TextBlock Text="{Binding Presentation.SelectedDateText}" FontSize="16" FontWeight="Bold" TextWrapping="Wrap" />
@@ -237,10 +284,15 @@
                         AutomationProperties.Name="Next day" />
               </StackPanel>
 
+              <!-- Phase 12E Part J/P: a subtle divider separates day-identity/day-stepping (above,
+                   date-navigation controls) from the informational sections (below) — grouping by a
+                   hairline rule rather than a heavier boxed card. -->
+              <Border Height="1" Background="{DynamicResource PassdownDividerBrush}" Margin="0,2,0,0" />
+
               <!-- Park Status / Effective Hours (spec Phase 12B Part K) — reuses the same
                    ParkHoursPresentation formatter Associate Overview/Dashboard already use; never a
                    second hours computation. -->
-              <TextBlock Text="Park Status" Classes="sectionTitle" Margin="0,4,0,0" />
+              <TextBlock Text="Park Status" Classes="sectionTitle detail" />
               <TextBlock Text="{Binding Presentation.ParkStatusText}" FontWeight="SemiBold"
                          AutomationProperties.Name="{Binding Presentation.ParkStatusText, StringFormat='Park status: {0}'}" />
               <StackPanel Spacing="2" IsVisible="{Binding Presentation.EffectiveHoursText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
@@ -255,7 +307,7 @@
               <!-- Passdown Status (spec Phase 12C Part J/Y): No Draft/Draft In Progress/Finalized,
                    reusing OperationsCalendarPassdownPresentation for both the label and its detail
                    note (last-saved/finalized timestamp, or an empty-state sentence). -->
-              <TextBlock Text="Passdown Status" Classes="sectionTitle" Margin="0,4,0,0" />
+              <TextBlock Text="Passdown Status" Classes="sectionTitle detail" />
               <TextBlock Text="{Binding Presentation.PassdownStatusText}" FontWeight="SemiBold"
                          AutomationProperties.Name="{Binding Presentation.PassdownStatusText, StringFormat='Passdown status: {0}'}" />
               <TextBlock Text="{Binding Presentation.PassdownDetailNoteText}" Classes="muted" TextWrapping="Wrap"
@@ -264,21 +316,32 @@
               <!-- Active Operational Notes (spec Phase 12C Part J/T): the persistent Operational
                    Notes concept, deliberately labeled to avoid confusion with the daily Associate
                    draft's own Notes entry — counts only, never note titles/bodies (Part S). -->
-              <TextBlock Text="Active Operational Notes" Classes="sectionTitle" Margin="0,4,0,0" />
+              <TextBlock Text="Active Operational Notes" Classes="sectionTitle detail" />
               <TextBlock Text="{Binding Presentation.OperationalNotesCountText}" FontWeight="SemiBold"
                          AutomationProperties.Name="{Binding Presentation.OperationalNotesCountText, StringFormat='Active operational notes: {0}'}" />
-              <TextBlock Text="{Binding Presentation.OperationalNotesImportantText}" Classes="muted" TextWrapping="Wrap"
+              <!-- Phase 12E Part H/Q: reuses the app's one "Important" convention verbatim
+                   (TextBlock.priorityText.important — bold + PassdownChipAccentForegroundBrush, never
+                   red/alarm) instead of Calendar's previous plain "muted" treatment. -->
+              <TextBlock Text="{Binding Presentation.OperationalNotesImportantText}" Classes="priorityText important" TextWrapping="Wrap"
                          IsVisible="{Binding Presentation.OperationalNotesImportantText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
-              <StackPanel Spacing="8" Margin="0,10,0,0">
+              <!-- Phase 12E Part J/P: a second divider separates the informational sections above
+                   from the workflow (routing) actions below — the two action *groups* this screen
+                   exposes (date-navigation vs. routing) never blur into one undifferentiated row. -->
+              <Border Height="1" Background="{DynamicResource PassdownDividerBrush}" Margin="0,2,0,0" />
+
+              <StackPanel Spacing="8">
                 <Button Content="Open Passdown" Classes="primaryAction" Command="{Binding OpenAssociateCommand}"
                         HorizontalAlignment="Stretch"
                         AutomationProperties.Name="Open Passdown"
                         AutomationProperties.HelpText="Opens Associate Passdown set to the selected date." />
+                <!-- Phase 12E Part S: disabled (not hidden) until Finalized — HelpText is now dynamic
+                     so a disabled control's explanation stays accurate ("no finalized passdown for
+                     this date yet.") rather than only a generic, always-the-same sentence. -->
                 <Button Content="Open History" Classes="secondaryAction" Command="{Binding OpenHistoryCommand}"
                         HorizontalAlignment="Stretch"
                         AutomationProperties.Name="Open History"
-                        AutomationProperties.HelpText="Opens Passdown History. Enabled once the selected date has been finalized." />
+                        AutomationProperties.HelpText="{Binding OpenHistoryHelpText}" />
                 <Button Content="Open Operational Notes" Classes="secondaryAction" Command="{Binding OpenOperationalNotesCommand}"
                         HorizontalAlignment="Stretch"
                         AutomationProperties.Name="Open Operational Notes"
