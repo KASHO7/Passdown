@@ -20,9 +20,9 @@ should open in a few seconds. Nothing else needs to be installed first.
 3. The Dashboard (default screen)
 -------------------------------------
 The app opens on the "Dashboard" — a one-screen summary of today's operation. At the
-top of the window you'll see four sections: "Dashboard", "Associate Passdown",
-"Operational Notes", and "History". Dashboard is selected by default. On it you
-should see:
+top of the window you'll see five sections: "Dashboard", "Operations Calendar",
+"Associate Passdown", "Operational Notes", and "History". Dashboard is selected by
+default. On it you should see:
 
 - Park Status — today's hours (or Closed/Not Published/Unavailable, whichever
   applies).
@@ -51,7 +51,36 @@ click "Open History" — it should take you to the History section. None of thes
 should lose anything you've typed on the Associate side, and none of them should
 change which date Associate Passdown has selected.
 
-5. Operational Notes Manager
+5. Operations Calendar
+------------------------
+Click the "Operations Calendar" section at the top of the window. This is a
+month-grid view for planning and jumping to a specific date — it doesn't let you
+edit anything itself.
+
+- You should see a full month grid with today's date visibly marked, plus a
+  "Selected Date" panel on the right showing park hours, passdown status (No
+  Draft/Draft/Finalized), and any relevant Operational Notes for the selected date.
+- Click "‹ Prev" / "Next ›" to move between months, and "Today" to jump back to the
+  current month. Click a date that belongs to the previous or next month (shown
+  dimmed at the edges of the grid) — the calendar should move to that date's own
+  month and select it.
+- Use "‹ Prev Day" / "Next Day ›" in the Selected Date panel to step one day at a
+  time, including across a month boundary (e.g. from the last day of a month to the
+  1st of the next).
+- Click a date with a Closed park day, a Custom Hours day, or a Private Buyout day,
+  if your sample data has one — the Selected Date panel and the day cell itself
+  should both reflect it (never just "Open").
+- Click "Open Passdown" — it should take you to Associate Passdown's Overview for
+  that exact date. Go back to Operations Calendar (your selected date and displayed
+  month should be exactly as you left them).
+- Click "Open History" — it is only clickable once the selected date has a
+  finalized passdown; try it on a date you know is finalized and confirm History
+  opens with that same date already selected. On a date with no finalized passdown,
+  the button should be visibly disabled (not hidden).
+- Click "Open Operational Notes" — it should take you to the Operational Notes
+  Manager.
+
+6. Operational Notes Manager
 --------------------------------
 Click the "Operational Notes" section at the top of the window. This is a separate,
 supervisor-facing list of notes that can span multiple days (unlike a daily
@@ -68,31 +97,31 @@ passdown's own notes).
   the Active tab but still be visible under "Resolved" (there is no delete button;
   resolved notes are kept, not removed).
 
-6. Pick a date
+7. Pick a date
 ---------------
 On the Associate Passdown screen, use the date picker (and the ◀ / ▶ arrows) near
 the top of the window to select a date. Changing the date should feel instant — it
 does not need the internet.
 
-7. Enter some sample information
+8. Enter some sample information
 ----------------------------------
 Type a few things into the fields on the page — for example, a projected attendance
 number, an operational note, or a Daily Fun note. Use made-up/sample values only;
 do not enter anything private or real.
 
-8. Let it save
+9. Let it save
 ---------------
 The app saves automatically a moment after you stop typing. Watch the small status
 chip near the top-right of the window — it should change to say your changes were
 saved.
 
-9. Close and reopen
+10. Close and reopen
 ---------------------
 Close the app completely, then double-click Carowinds.Passdown.Desktop.exe again to
-reopen it. Go back to the same date and confirm your sample information from step 7
+reopen it. Go back to the same date and confirm your sample information from step 8
 is still there.
 
-10. Try "Check Online"
+11. Try "Check Online"
 ------------------------
 Click the "Check Online" button (on Associate Passdown, or on the Dashboard's Data
 Status card). This checks the official Carowinds sources for the selected date. It
@@ -101,13 +130,13 @@ the app stays usable. When it finishes, a short status message appears. This ste
 needs an internet connection — if it fails and you have no internet, that's
 expected, not a bug.
 
-11. Include a persistent operational note in a passdown
+12. Include a persistent operational note in a passdown
 ------------------------------------------------------------
 This checks that Operational Notes are never added to a passdown automatically —
 only when a supervisor explicitly chooses to include one.
 
-- In Operational Notes (step 5), create a test note with an Effective From date
-  that covers the date you picked in step 6.
+- In Operational Notes (step 6), create a test note with an Effective From date
+  that covers the date you picked in step 7.
 - Go to Associate Passdown's Notes area for that same date. Your test note should
   appear under "available" suggestions — NOT already included.
 - Click "Add" on it. It should now appear under the included/selected notes for
@@ -122,38 +151,38 @@ only when a supervisor explicitly chooses to include one.
   and reappear as an available suggestion. Confirm in Operational Notes that the
   original note itself still exists and is unaffected.
 
-12. Create a PDF
+13. Create a PDF
 -----------------
 Click "Create PDF". A save dialog will appear — choose anywhere you like (e.g. your
 Desktop) and save it. Open the saved PDF afterward and confirm it looks readable,
-matches what you entered, and (if you added one in step 11) shows the included
+matches what you entered, and (if you added one in step 12) shows the included
 operational note's text.
 
-13. Turn on automatic daily refresh (optional)
+14. Turn on automatic daily refresh (optional)
 -----------------------------------------------
 In the extracted folder, double-click "Enable Automatic Refresh.cmd". A small window
 will briefly appear, tell you whether it worked, and wait for a key press before
 closing. No sign-in or admin prompt should appear.
 
-14. Double-check it's on (optional)
+15. Double-check it's on (optional)
 --------------------------------------
 If you're comfortable with it, open Windows' "Task Scheduler" app and look for a
-task named "Carowinds Passdown Daily Refresh". Seeing it there confirms step 13
+task named "Carowinds Passdown Daily Refresh". Seeing it there confirms step 14
 worked. This step is optional — most testers can skip it.
 
-15. Turn automatic refresh back off
+16. Turn automatic refresh back off
 --------------------------------------
 Double-click "Disable Automatic Refresh.cmd" in the same folder. Again, a small
 window reports what happened.
 
-16. If you move the app folder
+17. If you move the app folder
 ---------------------------------
 You can move or copy the extracted folder anywhere else at any time — your saved
 information is not stored inside that folder, so it isn't lost. If you had turned on
-automatic refresh (step 13), double-click "Enable Automatic Refresh.cmd" again from
+automatic refresh (step 14), double-click "Enable Automatic Refresh.cmd" again from
 the NEW location afterward so the schedule points at the right place.
 
-17. Export diagnostics
+18. Export diagnostics
 -------------------------
 If you want to help troubleshoot something, click "Export Diagnostics" (next to
 "Create PDF"). Choose where to save the file — it creates one ZIP file containing
@@ -161,11 +190,12 @@ version info, app health information, and recent activity logs. It does NOT incl
 anything you typed into the app (no drafts, no notes, no operational notes content)
 and does not include your saved database.
 
-18. Passdown History
+19. Passdown History
 -----------------------
 Near the top of the window, there's a "History" section (also reachable via
-"Open History" from the Dashboard). This is where finalized (past) passdowns live —
-a read-only record of exactly what associates saw for a given day.
+"Open History" from the Dashboard or Operations Calendar). This is where finalized
+(past) passdowns live — a read-only record of exactly what associates saw for a
+given day.
 
 - A passdown finalizes automatically the morning after it happens (after 6:00 AM
   the following day) — you don't need to do anything to make this happen, and there
@@ -179,13 +209,14 @@ a read-only record of exactly what associates saw for a given day.
   original stored PDF — the app never regenerates or recreates it.
 - Some very old records may not have a stored PDF available; if so, the PDF buttons
   won't appear for that record, and that's expected, not a bug.
-- Switching between "Dashboard", "Associate Passdown", "Operational Notes", and
-  "History" never loses your in-progress work on the Associate side.
+- Switching between "Dashboard", "Operations Calendar", "Associate Passdown",
+  "Operational Notes", and "History" never loses your in-progress work on the
+  Associate side, and never changes what Operations Calendar has selected.
 
-19. If something goes wrong
+20. If something goes wrong
 ------------------------------
 - Note exactly what you were doing and what you expected to happen instead.
-- Click "Export Diagnostics" (step 17) and save the resulting ZIP file.
+- Click "Export Diagnostics" (step 18) and save the resulting ZIP file.
 - Send both the diagnostics ZIP and your written notes to whoever asked you to test
   this app.
 - Do not delete anything under %LOCALAPPDATA%\Carowinds Passdown while

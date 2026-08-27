@@ -2529,3 +2529,145 @@ checks) — none of which are new risks beyond what Phase 7E/9F/10F already carr
 dev-host-only build process, and all of which are recorded above rather than glossed over. `0.1.0-dev`
 remains an explicit pre-release development version, not a production 1.0 release.
 
+## Phase 12F — Operations Calendar final audit and release closeout
+
+Phase 12F closed out Phase 12A–12E (the Operations Calendar) with a full requirements/architecture
+audit against the actual implementation (not only prior phase documentation), then rebuilt the Windows
+portable release. Full detail on the Calendar feature itself lives in
+`docs/phase12-operations-calendar.md`; this section records the audit method, results, and the release
+rebuild this phase performed.
+
+### Audit method
+
+Every Calendar source file was read directly — `OperationsCalendarService`/`OperationsCalendarSnapshot`
+(Application), `OperationsCalendarViewModel`/`OperationsCalendarDayViewModel`/the four presentation
+types/`OperationsCalendarView.axaml` (Desktop), `MainViewModel`'s navigation wiring, the two new SQLite
+range-query methods, and `PassdownHistoryViewModel.SelectByDateAsync` — cross-checked against every
+Phase 12A–12E documentation claim in `docs/phase12-operations-calendar.md`, not merely trusted from that
+document. No genuine defect was found; every audited behavior matched its documented design exactly,
+including:
+
+- **No network path**: `OperationsCalendarService`'s constructor depends only on
+  `IAssociatePassdownService`, `IAssociateDraftRepository`, `IDatedResultRepository`,
+  `IFinalizedPassdownRepository`, `IOperationalNotesService`, and `IClock` — no `IRefreshOrchestrator`,
+  `HttpClient`, or browser-session dependency reachable from any constructor parameter, confirmed by
+  reading the type directly (backing the existing
+  `Constructor_HasNoRefreshOrchestratorOrRetrievalDependency` /
+  `Constructor_HasNoRefreshOrPdfDependency` reflection tests).
+- **No mutation**: every `OperationsCalendarViewModel` command (`SelectDateCommand`,
+  `PreviousMonthCommand`/`NextMonthCommand`, `PreviousDayCommand`/`NextDayCommand`, `GoToTodayCommand`)
+  only ever calls `IOperationsCalendarService.LoadAsync` — a pure read composed from
+  `ListAsync`/`ListSavedDraftDatesAsync`/`GetByCategoryAndDateRangeAsync`/`GetByDateRangeAsync`, none of
+  which write. `IFinalizedPassdownRepository.ListAsync`'s SQL (`SqliteFinalizedPassdownRepository.cs`)
+  selects only `passdown_date, finalized_at_utc, origin, pdf_sha256, pdf_size_bytes` — never
+  `pdf_bytes` or snapshot JSON — confirming Calendar can never materialize a historical PDF blob.
+- **Bounded queries**: `GetByCategoryAndDateRangeAsync`/`GetByDateRangeAsync`
+  (`SqliteDatedResultRepository.cs`/`SqliteAssociateDraftRepository.cs`) are each one parameterized
+  `WHERE ... BETWEEN $start AND $end` SQL statement — never one query per day cell, for a 35- or
+  42-cell grid alike.
+- **Off-month leak**: `OperationsCalendarView.axaml`'s day-cell template wraps the operating-state/
+  hours/passdown-status/notes block in one `IsVisible="{Binding IsInDisplayedMonth}"` — confirmed the
+  12C fix is intact; an off-month cell still carries real underlying data in the snapshot (by design —
+  Calendar never fabricates a cell) but the View never renders it.
+- **Finalized-over-Draft precedence**: `OperationsCalendarPassdownPresentation.DeriveStatus` is the one
+  place the precedence is decided (`hasFinalizedPassdown ? Finalized : hasAssociateDraft ?
+  DraftInProgress : NoDraft`), called from `OperationsCalendarDayViewModel`'s constructor — confirmed no
+  second precedence implementation exists anywhere in the Desktop layer.
+- **Schema**: `Migration0010CreateOperationalNotesTable` remains the highest-numbered migration
+  registered in `App.axaml.cs` — no `Migration0011` exists. `AssociateDraftPayload.CurrentSchemaVersion`
+  = 3, `FinalizedPassdownSnapshot.CurrentSchemaVersion` = 1 — both confirmed directly in source, not
+  merely carried forward from documentation.
+- **No Manager/Alerts**: `AppSection` (`MainViewModel.cs`) still has exactly five values (`Dashboard`,
+  `OperationsCalendar`, `AssociatePassdown`, `OperationalNotes`, `History`) — no `Manager`, no `Alerts`.
+
+No fix was required this phase (unlike Phase 11F, which found and closed one test-coverage gap) — the
+audit is a clean **PASS** across every Part A–AJ item in the Phase 12F task brief.
+
+### Test suite stability
+
+`dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` was run five times this phase:
+four runs passed 1395/1395 cleanly; one run hit the pre-existing, previously-documented (Phase 6D)
+Avalonia headless cross-assembly parallelism flake —
+`DashboardViewTests.DashboardView_LatestFinalizedHasNoPdf_ConstructsWithoutError` failed with
+`System.InvalidOperationException: Stack empty.` inside
+`Avalonia.PropertyStore.AvaloniaPropertyDictionaryPool.Get()` during `XamlIlPopulate`, the exact
+documented signature. This is an **unrelated Phase 10 view** (`DashboardView`, not any Phase 12 file);
+no Operations Calendar test has ever failed in any run this phase. Not a Phase 12 regression — recorded
+honestly per the task brief's instruction not to call a known flake a regression without evidence.
+
+### Release rebuild
+
+No `pwsh` runtime is available on this dev host (same limitation as every prior rebuild) — the exact
+`Publish-Windows.ps1`/`Build-PortableRelease.ps1` staging/zip logic was mirrored manually via shell
+commands, identical to how Phases 7A–7F, 9F, 10F, and 11F each produced their own artifacts:
+
+1. `dotnet publish src/Carowinds.Passdown.Desktop/Carowinds.Passdown.Desktop.csproj -c Release -r win-x64 --self-contained true -o artifacts/publish/win-x64 -p:PlaywrightPlatform=win-x64` — clean publish, 271 files after `.pdb` removal (134 MB), matching the Phase 7B–11F baseline exactly.
+2. A `strings` byte-search of the freshly published `Carowinds.Passdown.Desktop.dll`/`.Application.dll` confirmed 10 distinct Phase 12A–12E symbols present (see `docs/release-manifest.md` for the full list) — proving this publish is not a stale reuse of the Phase 11F output.
+3. Staged into `artifacts/release-staging/Carowinds-Passdown-0.1.0-dev-win-x64/` — 277 files, matching the Phase 7C–11F layout exactly (publish output + `tools/` scripts + the two `.cmd` helpers + `README.txt` + `TESTER-GUIDE.txt`).
+4. Forbidden-pattern check (`.git`, `.db`/`-wal`/`-shm`, `CLAUDE.md`, `AGENT_BUILD_SPEC.md`, `.pdb`, Playwright, test assemblies, non-Windows native binaries, `.DS_Store`) — clean.
+5. `zip -r -X -9` into `artifacts/releases/Carowinds-Passdown-0.1.0-dev-win-x64.zip`.
+6. `shasum -a 256` the resulting ZIP.
+7. Extracted fresh to an isolated scratch directory; `diff -rq` against the staging folder confirmed byte-for-byte identical content (277 extracted files matching 277 staged files), and `Carowinds.Passdown.Desktop.dll`'s SHA-256 inside the extraction independently matched the staged copy.
+8. After steps 1–7 first completed, `TESTER-GUIDE.txt`/`README-portable-release.md` were updated with the Operations Calendar section (see below) — steps 3/5/6/7 were then re-run to re-stage the two changed files, re-zip, re-hash, and re-verify the extraction, so the shipped artifact reflects the final documentation, not the intermediate build. The final SHA-256 is `dcceafee15be7f30ba410d3bb68032bd3eba057833f4a4c910fe5ecbbc4d4946`, 61,409,645 compressed bytes / 139,980,429 extracted bytes.
+
+This supersedes the Phase 11F artifact (SHA-256
+`96e6c3b48be265cac444eb96c1aba6ea6c7214b0561a97a05dd039a474f0767b`) — full detail, including the
+functional delta and the complete chain of superseded prior artifacts, is in
+`docs/release-manifest.md`.
+
+### Windows validation — NOT EXECUTED
+
+No Windows host was available this session, same limitation carried forward from every prior phase.
+100%/125%/150% display-scaling validation, and the full manual click-through checklist (Part S of the
+Phase 12F task brief), were **not executed**. Operations Calendar's own confidence comes from the
+automated suite (construction-level real-XAML-loader checks for every representative state, plus
+`Measure`/`Arrange` layout passes at 1280×860 and 960×640, unchanged since Phase 12B/12E and still
+passing) — not from Windows execution. This is not a new risk class beyond what every Phase 7E/9F/10F/
+11F rebuild already carried; it is recorded here rather than glossed over.
+
+### Phase 12F verdict table
+
+| # | Item | Result |
+|---|---|---|
+| 1 | Phase 12A–12E requirements audit (Parts A–AG) | PASS |
+| 2 | No-network audit | PASS |
+| 3 | No-mutation audit | PASS |
+| 4 | Date semantics audit | PASS |
+| 5 | Park hours/operating-state audit | PASS |
+| 6 | Passdown lifecycle / Finalized-over-Draft precedence audit | PASS |
+| 7 | Off-month leak audit | PASS |
+| 8 | Operational Notes relevance/counts audit | PASS |
+| 9 | Query/N+1 audit | PASS |
+| 10 | Accessibility/keyboard audit | PASS |
+| 11 | Schema/version confirmation (10 / 3 / 1, in code) | PASS |
+| 12 | No Manager workflow / no Alerts | PASS |
+| 13 | Full automated validation | PASS, 1395/1395 on 4 of 5 runs; 1 run hit the known unrelated Phase 6D flake |
+| 14 | Build | PASS, 0 warnings, 0 errors |
+| 15 | Release rebuild (publish + package) | PASS |
+| 16 | Phase 12 symbol proof in freshly published assemblies | PASS |
+| 17 | Staging-vs-ZIP integrity | PASS, byte-for-byte identical |
+| 18 | New SHA-256 recorded, differs from Phase 11F artifact | PASS |
+| 19 | `docs/release-manifest.md` updated | PASS |
+| 20 | Tester guide / README updated for Operations Calendar | PASS |
+| 21 | Windows 100/125/150% scaling validation | **NOT EXECUTED** — no Windows host available |
+| 22 | Full manual Windows click-through checklist | **NOT EXECUTED** — no Windows host available |
+| 23 | Phase 13 scope check (no rename, no startup/refresh/pricing/ERT/logo/Alerts work) | PASS — none found |
+
+### Phase 12F release readiness decision
+
+**READY WITH ACCEPTED LIMITATIONS.**
+
+Every Phase 12A–12E requirement was re-audited directly against the current implementation and passes
+cleanly — no genuine defect was found, so nothing needed fixing this phase. The full non-live suite
+(1395/1395, four of five runs clean; the one flaky run reproduced the pre-existing, unrelated Phase 6D
+Avalonia headless flake on a Phase 10 view, never a Phase 12 file) and a clean build both pass. The
+release ZIP was rebuilt from the exact current commit, independently verified via a `strings` symbol
+check to contain the actual Phase 12A–12E Operations Calendar code (not a stale reuse of the Phase 11F
+artifact), and byte-for-byte re-inspected after a fresh extraction. The prior (Phase 11F) artifact is
+explicitly marked superseded. The only open gaps are Windows-host execution (100/125/150% display
+scaling and the full manual click-through checklist) — the same class of gap every Phase 7E/9F/10F/11F
+rebuild has carried on this dev-host-only build process, not a new risk introduced by Phase 12. Phase 13
+(app rename, refresh-policy overhaul, pricing/retrieval fixes, manual-hours/buyout redesign, ERT
+simplification, logo, Alerts) was confirmed **not started** — `0.1.0-dev` remains an explicit pre-release
+development version, not a production 1.0 release.
+

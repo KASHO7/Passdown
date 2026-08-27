@@ -30,6 +30,19 @@ Carowinds sources, the same as "Check Online" on the Associate Passdown screen.
 The Dashboard also shows an "Active Operational Notes" summary — see "Operational
 Notes" below.
 
+Operations Calendar
+---------------------
+Next to "Dashboard" at the top of the window is an "Operations Calendar" section —
+a month-grid view for planning and jumping to a specific date, built entirely from
+what's already saved on your computer (it never needs the internet on its own, and
+selecting a date or changing months never changes any saved data). Each day cell
+shows a compact summary: park hours (or Closed/Custom Hours/Private Buyout/Not
+Published/Unavailable), whether that date's passdown is a draft or finalized, and a
+count of relevant Operational Notes. Use Previous/Next Month, "Today", and
+Previous/Next Day to move around, then "Open Passdown", "Open History" (once that
+date is finalized), or "Open Operational Notes" to jump to the matching screen for
+the selected date.
+
 Operational Notes
 -------------------
 Next to "Associate Passdown" at the top of the window is an "Operational Notes"

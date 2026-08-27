@@ -1547,4 +1547,38 @@ EXECUTED** for the Windows-scaling-specific check, since no Windows host was ava
   the renamed-app work, refresh-policy overhaul, manual-hours/buyout redesign, ERT simplification, logo,
   or the release ZIP rebuild — all still deferred per `CLAUDE.md` and Phase 12F's own scope.
 
-12F has not started.
+## Phase 12F — final audit and release closeout
+
+Phase 12F treated Phase 12A–12E as one completed feature and audited it end to end against
+`AGENT_BUILD_SPEC.md` and every design decision documented above — reading the actual implementation
+(`OperationsCalendarService`, `OperationsCalendarSnapshot`, `OperationsCalendarViewModel`,
+`OperationsCalendarDayViewModel`, the four Desktop presentation types, `OperationsCalendarView.axaml`,
+`MainViewModel`'s navigation wiring, the two new SQLite range-query methods, and
+`PassdownHistoryViewModel.SelectByDateAsync`) directly, not merely trusting this document's own prior
+claims. Full audit method and results live in `docs/release-strategy.md`'s "Phase 12F — Operations
+Calendar final audit and release closeout" section; this entry records only the outcome.
+
+**No genuine defect was found.** Every audited behavior — local-only loading, non-mutating navigation,
+bounded range queries (never per-cell), off-month-cell overlay suppression, Finalized-over-Draft
+lifecycle precedence, Operational Notes relevance/Important counts, the History date-preselection seam,
+accessibility text composition, and schema stability (database 10 / `AssociateDraftPayload` 3 /
+`FinalizedPassdownSnapshot` 1, confirmed directly in code) — matched its documented design exactly.
+Unlike Phase 11F (which found and closed one test-coverage gap), Phase 12F required no code change and
+added no new test, since nothing was found to regression-test. The full non-live suite passed
+1395/1395 on four of five runs; the one flaky run reproduced the pre-existing, unrelated Phase 6D
+Avalonia headless parallelism flake on `DashboardView` (a Phase 10 file), never a Phase 12 file — not a
+regression.
+
+Phase 12F rebuilt the Windows portable release (`Carowinds-Passdown-0.1.0-dev-win-x64.zip`, SHA-256
+`dcceafee15be7f30ba410d3bb68032bd3eba057833f4a4c910fe5ecbbc4d4946`), verified via a `strings` symbol
+check that the freshly published assemblies actually contain Phase 12A–12E code, confirmed staging-vs-
+ZIP byte-for-byte integrity after a fresh extraction, and updated `docs/release-manifest.md`,
+`docs/release-strategy.md`, `packaging/windows/TESTER-GUIDE.txt`, and
+`packaging/windows/README-portable-release.md` to describe the Operations Calendar as a shipped
+feature. No Windows host was available this session, so 100%/125%/150% display-scaling validation and
+the full manual click-through checklist remain **NOT EXECUTED** — the same class of gap every prior
+release rebuild (7E/9F/10F/11F) has carried, not a new risk.
+
+**Phase 12 (Operations Calendar) is complete — READY WITH ACCEPTED LIMITATIONS.** Phase 13 (app rename,
+refresh-policy overhaul, pricing/retrieval fixes, manual-hours/buyout redesign, ERT simplification,
+logo, Alerts) was confirmed not started.
