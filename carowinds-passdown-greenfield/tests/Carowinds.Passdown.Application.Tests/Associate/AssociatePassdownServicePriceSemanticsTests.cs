@@ -20,19 +20,25 @@ namespace Carowinds.Passdown.Application.Tests.Associate;
 /// F's explicit instruction to test the Aug 29 Bring-A-Friend regression "via fixtures/parsers/
 /// composition," not a live adapter.
 ///
-/// Live reconfirmation (2026-08-27, docs/retrieval/special-ticket-sources.md) found that ordinary
-/// (non-Duo) Bring-A-Friend's passholder-exclusive dated price is only ever revealed after an
-/// authenticated passholder login inside the shared <c>SnapWizard</c> checkout — not reachable by
-/// any anonymous official request this app is allowed to make (CLAUDE.md prohibits entering
-/// credentials). No adapter for it exists for exactly that reason. This test therefore exercises
-/// the real <see cref="SourceCategory.DatedAdmissionTickets"/> composition path (already wired,
-/// already production code) with a representative payload shaped like the documented manual
-/// observation, to prove the precedence *mechanism* the spec requires — not to claim a live
-/// "Season Pass Bring-A-Friend" adapter exists.
+/// Live reconfirmation (2026-08-27) originally found that ordinary (non-Duo) Bring-A-Friend's dated
+/// price seemed reachable only after an authenticated passholder login inside the shared
+/// <c>SnapWizard</c> checkout. <b>Phase 15A supersedes that finding</b> (docs/phase13-hardening.md
+/// Phase 15A section): the anonymous Special Offers page's own "Select a date to begin!" calendar
+/// (no login at any point) calls a different, previously-untried keyword —
+/// <c>BAFWizardDailyTickets</c> — against the same <c>getkeywordcalendar</c> endpoint, and a real
+/// <see cref="SourceCategory.DatedBringAFriend"/> adapter (<c>DatedBringAFriendSource</c>) now exists
+/// for it. The <c>LoadAssociateDateAsync_Aug29_ExactDatedBafNeverConfusedWithGenericStartingFrom</c>
+/// test below still exercises the generic <see cref="SourceCategory.DatedAdmissionTickets"/>
+/// composition path with a representative "Season Pass Bring-A-Friend" payload to prove the
+/// precedence *mechanism* in the abstract; the
+/// <c>LoadAssociateDateAsync_OrdinaryBringAFriend_*</c> tests further down exercise the real,
+/// production <see cref="SourceCategory.DatedBringAFriend"/> merge path
+/// (<c>AssociatePassdownService.MergeExactDatedBringAFriend</c>) end to end.
 /// </summary>
 public class AssociatePassdownServicePriceSemanticsTests
 {
     private static readonly DateOnly Aug29 = new(2026, 8, 29);
+    private static readonly DateOnly Aug30 = new(2026, 8, 30);
     private static readonly DateTimeOffset FixedNow = new(2026, 8, 27, 14, 0, 0, TimeSpan.Zero);
     private static readonly Uri SourceUrl = new("https://example.test/fake-source");
 
@@ -252,5 +258,158 @@ public class AssociatePassdownServicePriceSemanticsTests
         var catalogRow = workspace.Products.Single(p => p.DisplayName == "Celebrate America! Bring-A-Friend Duo");
         Assert.Equal(SourceCategory.Promotions, catalogRow.Category);
         Assert.NotEqual(datedRow.ProductIdentity, catalogRow.ProductIdentity);
+    }
+
+    private static async Task SeedOrdinaryBringAFriendCatalogRowAsync(InMemoryCatalogProductRepository catalogProducts) =>
+        await catalogProducts.UpsertAsync(new CatalogProductUpsert(
+            CatalogProductKey.FromOfficialId(SourceCategory.Promotions, "449e6fe8-a6ad-4af5-b162-b7835798b8ae"),
+            "Bring-A-Friend Ticket", ProductLifecycleState.Active, FixedNow, FixedNow, FixedNow,
+            ConsecutiveConfirmedAbsenceCount: 0, ArchivedAt: null, ArchivedReason: null,
+            CurrentPriceAmount: 35.00m, CurrentDisplayPrice: "$35", ComparisonPriceAmount: 80.00m, PriceQualifier: "Starting From",
+            DateSpecific: false, ApplicableDate: null, LastEvidence: Evidence()));
+
+    private static async Task SeedExactDatedBringAFriendAsync(InMemoryDatedResultRepository datedResults, DateOnly date, string packageId, decimal price) =>
+        await datedResults.RecordSuccessAsync(
+            new DatedResultKey(SourceCategory.DatedBringAFriend, date),
+            Evidence(date),
+            JsonSerializer.Serialize(new DatedBringAFriendPayload(
+            [
+                new DatedBringAFriendProduct(packageId, "Bring-A-Friend Ticket", price, date),
+            ])));
+
+    /// <summary>
+    /// Phase 15A §17 items 1/3/5/8: the real <see cref="SourceCategory.DatedBringAFriend"/> merge path
+    /// end to end — Aug 29's live-confirmed exact price ($39.00) wins over the generic catalog's
+    /// "Starting From $35.00", the row prints as a single, unified "Bring-A-Friend Ticket" (never two
+    /// rows), the official "$80 Gate Price" comparison is retained (never fabricated, never dropped),
+    /// and "Starting From" is dropped once an exact value applies.
+    /// </summary>
+    [Fact]
+    public async Task LoadAssociateDateAsync_OrdinaryBringAFriend_Aug29_MergesExactDatedPriceIntoCatalogRow()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var catalogProducts = new InMemoryCatalogProductRepository();
+        await SeedOrdinaryBringAFriendCatalogRowAsync(catalogProducts);
+        await SeedExactDatedBringAFriendAsync(datedResults, Aug29, "10094895", 39.00m);
+
+        var service = CreateService(datedResults, catalogProducts);
+        var workspace = await service.LoadAssociateDateAsync(Aug29);
+
+        var baf = Assert.Single(workspace.Products, p => p.DisplayName == "Bring-A-Friend Ticket");
+        Assert.Equal(39.00m, baf.OfficialPriceAmount);
+        Assert.Equal(80.00m, baf.ComparisonPriceAmount); // preserved from the catalog row, never fabricated
+        Assert.Null(baf.PriceQualifier); // "Starting From" dropped for an Exact Dated price
+        Assert.True(baf.DateSpecific);
+        Assert.Equal(Aug29, baf.ApplicableDate);
+        Assert.Equal(PriceKind.ExactDated, baf.PriceKind);
+        Assert.Equal(SourceCategory.Promotions, baf.Category); // identity/category stay the catalog row's own
+    }
+
+    /// <summary>Phase 15A §17 item 2: Aug 30's live-confirmed exact price ($35.00) merges the same way.</summary>
+    [Fact]
+    public async Task LoadAssociateDateAsync_OrdinaryBringAFriend_Aug30_MergesExactDatedPrice()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var catalogProducts = new InMemoryCatalogProductRepository();
+        await SeedOrdinaryBringAFriendCatalogRowAsync(catalogProducts);
+        await SeedExactDatedBringAFriendAsync(datedResults, Aug30, "10094893", 35.00m);
+
+        var service = CreateService(datedResults, catalogProducts);
+        var workspace = await service.LoadAssociateDateAsync(Aug30);
+
+        var baf = Assert.Single(workspace.Products, p => p.DisplayName == "Bring-A-Friend Ticket");
+        Assert.Equal(35.00m, baf.OfficialPriceAmount);
+        Assert.Equal(80.00m, baf.ComparisonPriceAmount);
+        Assert.Equal(PriceKind.ExactDated, baf.PriceKind);
+    }
+
+    /// <summary>Phase 15A §17 item 4: Aug 29's exact value never leaks onto Aug 30 — each date's own dated-result row is looked up independently.</summary>
+    [Fact]
+    public async Task LoadAssociateDateAsync_OrdinaryBringAFriend_DatesRemainIsolated()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var catalogProducts = new InMemoryCatalogProductRepository();
+        await SeedOrdinaryBringAFriendCatalogRowAsync(catalogProducts);
+        await SeedExactDatedBringAFriendAsync(datedResults, Aug29, "10094895", 39.00m);
+        await SeedExactDatedBringAFriendAsync(datedResults, Aug30, "10094893", 35.00m);
+
+        var service = CreateService(datedResults, catalogProducts);
+
+        var workspaceFor29th = await service.LoadAssociateDateAsync(Aug29);
+        Assert.Equal(39.00m, workspaceFor29th.Products.Single(p => p.DisplayName == "Bring-A-Friend Ticket").OfficialPriceAmount);
+
+        var workspaceFor30th = await service.LoadAssociateDateAsync(Aug30);
+        Assert.Equal(35.00m, workspaceFor30th.Products.Single(p => p.DisplayName == "Bring-A-Friend Ticket").OfficialPriceAmount);
+
+        // A third, never-recorded date must never inherit either neighbor's exact value.
+        var workspaceForUnrecordedDate = await service.LoadAssociateDateAsync(new DateOnly(2026, 9, 15));
+        var untouched = workspaceForUnrecordedDate.Products.Single(p => p.DisplayName == "Bring-A-Friend Ticket");
+        Assert.Equal(35.00m, untouched.OfficialPriceAmount); // the generic catalog floor, not $39 or $35-as-exact
+        Assert.Equal(PriceKind.StartingFrom, untouched.PriceKind);
+    }
+
+    /// <summary>Phase 15A §17 item 6: with no exact dated value available for the selected date, the generic "Starting From" catalog row is left completely untouched — never converted into a fabricated Exact Dated row.</summary>
+    [Fact]
+    public async Task LoadAssociateDateAsync_OrdinaryBringAFriend_NoExactDatedValue_FallsBackToStartingFrom()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var catalogProducts = new InMemoryCatalogProductRepository();
+        await SeedOrdinaryBringAFriendCatalogRowAsync(catalogProducts);
+        // No DatedBringAFriend result recorded at all for this date.
+
+        var service = CreateService(datedResults, catalogProducts);
+        var workspace = await service.LoadAssociateDateAsync(Aug29);
+
+        var baf = Assert.Single(workspace.Products, p => p.DisplayName == "Bring-A-Friend Ticket");
+        Assert.Equal(35.00m, baf.OfficialPriceAmount);
+        Assert.Equal("Starting From", baf.PriceQualifier);
+        Assert.Equal(PriceKind.StartingFrom, baf.PriceKind);
+        Assert.False(baf.DateSpecific);
+    }
+
+    /// <summary>Phase 15A §17 item 6 (continued): a failed/errored dated check for the selected date also falls back to the untouched catalog row — never a fabricated exact value from a failed attempt.</summary>
+    [Fact]
+    public async Task LoadAssociateDateAsync_OrdinaryBringAFriend_FailedDatedCheck_FallsBackToStartingFrom()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var catalogProducts = new InMemoryCatalogProductRepository();
+        await SeedOrdinaryBringAFriendCatalogRowAsync(catalogProducts);
+        await datedResults.RecordFailedAttemptAsync(
+            new DatedResultKey(SourceCategory.DatedBringAFriend, Aug29),
+            new SourceEvidence("Fake Source", SourceUrl, FixedNow, RetrievalStatus.Error, "Unavailable.", RetrievalStrategy.DirectApi, Aug29, confirmedDate: null));
+
+        var service = CreateService(datedResults, catalogProducts);
+        var workspace = await service.LoadAssociateDateAsync(Aug29);
+
+        var baf = Assert.Single(workspace.Products, p => p.DisplayName == "Bring-A-Friend Ticket");
+        Assert.Equal(35.00m, baf.OfficialPriceAmount);
+        Assert.Equal(PriceKind.StartingFrom, baf.PriceKind);
+    }
+
+    /// <summary>Phase 15A §17 item 10: ordinary Bring-A-Friend's new merge logic never regresses Bring-A-Friend Duo — both remain fully independent (distinct categories, distinct identities, distinct display names).</summary>
+    [Fact]
+    public async Task LoadAssociateDateAsync_OrdinaryBringAFriendMerge_DoesNotAffectBringAFriendDuo()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var catalogProducts = new InMemoryCatalogProductRepository();
+        await SeedOrdinaryBringAFriendCatalogRowAsync(catalogProducts);
+        await SeedExactDatedBringAFriendAsync(datedResults, Aug29, "10094895", 39.00m);
+        await catalogProducts.UpsertAsync(new CatalogProductUpsert(
+            CatalogProductKey.FromOfficialId(SourceCategory.Promotions, "o1gUjW0O273eyMG69L54eV"),
+            "Celebrate America! Bring-A-Friend Duo", ProductLifecycleState.Active, FixedNow, FixedNow, FixedNow,
+            ConsecutiveConfirmedAbsenceCount: 0, ArchivedAt: null, ArchivedReason: null,
+            CurrentPriceAmount: 50.00m, CurrentDisplayPrice: "$50", ComparisonPriceAmount: null, PriceQualifier: "Two Friends Just",
+            DateSpecific: false, ApplicableDate: null, LastEvidence: Evidence()));
+
+        var service = CreateService(datedResults, catalogProducts);
+        var workspace = await service.LoadAssociateDateAsync(Aug29);
+
+        var baf = Assert.Single(workspace.Products, p => p.DisplayName == "Bring-A-Friend Ticket");
+        Assert.Equal(39.00m, baf.OfficialPriceAmount);
+
+        var duo = Assert.Single(workspace.Products, p => p.DisplayName == "Celebrate America! Bring-A-Friend Duo");
+        Assert.Equal(50.00m, duo.OfficialPriceAmount);
+        Assert.Equal(2, duo.BundleQuantity);
+        Assert.Equal(25.00m, duo.PerPersonPriceAmount);
     }
 }

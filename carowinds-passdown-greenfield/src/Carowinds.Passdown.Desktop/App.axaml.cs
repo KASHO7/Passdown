@@ -279,6 +279,9 @@ public partial class App : global::Avalonia.Application
         // (catalog, "Starting From").
         services.AddSingleton<DatedBringAFriendDuoSource>();
         services.AddSingleton<MilitaryFirstResponderCatalogSource>();
+        // Phase 15A: ordinary Bring-A-Friend's exact per-date price (anonymous, keyword
+        // BAFWizardDailyTickets) — supersedes Phase 13C's passholder-login-only finding.
+        services.AddSingleton<DatedBringAFriendSource>();
 
         // Refresh-orchestrator source registrations (Part A) — every adapter above, paired with
         // how its successful payload is persisted (dated) or reconciled (catalog). None of the
@@ -301,6 +304,7 @@ public partial class App : global::Avalonia.Application
                 new CatalogSourceRegistration(provider.GetRequiredService<GeneralAddOnsCatalogSource>(), reconciliationService),
                 new DatedSourceRegistration<DatedBringAFriendDuoPayload>(provider.GetRequiredService<DatedBringAFriendDuoSource>(), datedResultRepository),
                 new CatalogSourceRegistration(provider.GetRequiredService<MilitaryFirstResponderCatalogSource>(), reconciliationService),
+                new DatedSourceRegistration<DatedBringAFriendPayload>(provider.GetRequiredService<DatedBringAFriendSource>(), datedResultRepository),
             };
         });
 

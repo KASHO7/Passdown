@@ -469,8 +469,11 @@ lacked the single-object/array normalization `DATES.D` already had — real `SUB
 always had ≥2 packages. Fixed with the same `SingleOrArrayConverter<T>` applied to `P` — benefits
 every dated source, not just the new one. Full detail in `docs/retrieval/special-ticket-sources.md`.
 
-### Ordinary (non-Duo) Bring-A-Friend — no adapter added, by design
+### Ordinary (non-Duo) Bring-A-Friend
 
-Confirmed, documented limitation: its passholder-exclusive dated price is gated behind an
-authenticated passholder login inside the shared `SnapWizard` checkout, not reachable anonymously.
-No adapter was built. Full investigation trail in `docs/retrieval/special-ticket-sources.md`.
+**Superseded by Phase 15A.** Phase 13C concluded its passholder-exclusive dated price was gated
+behind an authenticated passholder login inside the shared `SnapWizard` checkout and built no
+adapter. That conclusion was wrong: Phase 15A found a genuinely anonymous keyword
+(`BAFWizardDailyTickets`) against the same `getkeywordcalendar` endpoint and added
+`DatedBringAFriendSource`/`SourceCategory.DatedBringAFriend`. Full investigation trail in
+`docs/retrieval/special-ticket-sources.md` and `docs/phase13-hardening.md`'s Phase 15A section.

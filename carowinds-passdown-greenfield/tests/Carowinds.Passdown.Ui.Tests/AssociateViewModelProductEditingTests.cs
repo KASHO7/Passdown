@@ -77,6 +77,34 @@ public class AssociateViewModelProductEditingTests
         Assert.Equal("Totally Unexpected Brand New Attraction Pass", row.DisplayName);
     }
 
+    // Phase 15A §16: the Associate Products screen groups by the same ProductDisplaySectionResolver
+    // the PDF uses — Military/First Responder folds into Daily Admission rather than getting its own
+    // section.
+    [Fact]
+    public async Task MilitaryFirstResponderProduct_RendersUnderDailyAdmission_NotItsOwnSection()
+    {
+        var product = SampleProduct(name: "Military & First Responder Tickets", category: SourceCategory.MilitaryFirstResponder);
+        var (viewModel, _, _) = CreateViewModel(date => FakeAssociatePassdownService.DefaultWorkspace(date) with { Products = [product] });
+        await viewModel.PendingLoad;
+
+        var section = Assert.Single(viewModel.ProductSections);
+        Assert.Equal("Daily Admission", section.CategoryDisplayName);
+        Assert.Contains(section.Products, r => r.DisplayName == "Military & First Responder Tickets");
+    }
+
+    // Phase 15A §16: Bring-A-Friend Duo's own dated category never gets a section (product row or
+    // status banner) on the Associate Products screen — its real-world offer is represented by its
+    // Promotions catalog counterpart instead.
+    [Fact]
+    public async Task BringAFriendDuoDatedProduct_NeverRendersItsOwnSection()
+    {
+        var product = SampleProduct(name: "Celebrate America! Bring-A-Friend Duo Offer", category: SourceCategory.BringAFriendDuo);
+        var (viewModel, _, _) = CreateViewModel(date => FakeAssociatePassdownService.DefaultWorkspace(date) with { Products = [product] });
+        await viewModel.PendingLoad;
+
+        Assert.Empty(viewModel.ProductSections);
+    }
+
     // 26. An empty category (no rows, no status entry) is not built as a section at all.
     [Fact]
     public async Task EmptyCategory_WithNoStatus_DoesNotAppearAsASection()

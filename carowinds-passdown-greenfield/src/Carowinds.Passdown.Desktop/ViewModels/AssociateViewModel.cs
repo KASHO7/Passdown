@@ -1131,30 +1131,42 @@ public partial class AssociateViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Groups the composed workspace's official products by category (spec Phase 4D Part B), pairing
-    /// each category with its status banner (Phase 4B Part E) when it currently has zero rows, and
-    /// rebuilds the custom-product rows from the draft's own <see cref="AssociateDraftPayload.CustomProducts"/>
-    /// (never from <see cref="AssociateProduct"/> projections — that is how <see cref="CustomProductEntry.Notes"/>
-    /// stays editable, spec Part G, without forcing a meaningless Notes field onto official products).
-    /// A category with neither product rows nor a status entry is not built at all — no fabricated
-    /// empty section (spec Part B/H).
+    /// Groups the composed workspace's official products by display section (spec Phase 4D Part B,
+    /// revised Phase 15A to resolve through <see cref="ProductDisplaySectionResolver"/> rather than
+    /// grouping by raw <see cref="SourceCategory"/> — this is what stops the same real-world product
+    /// from showing under two differently-named headings on the Products screen, matching the PDF's
+    /// own fix). Pairs each section with its status banner (Phase 4B Part E) when it currently has
+    /// zero rows, and rebuilds the custom-product rows from the draft's own
+    /// <see cref="AssociateDraftPayload.CustomProducts"/> (never from <see cref="AssociateProduct"/>
+    /// projections — that is how <see cref="CustomProductEntry.Notes"/> stays editable, spec Part G,
+    /// without forcing a meaningless Notes field onto official products). A category whose resolved
+    /// section is <see langword="null"/> (Bring-A-Friend Duo's own dated category, the dated ordinary
+    /// Bring-A-Friend category) never contributes a section or a status banner here — both are already
+    /// represented by their Promotions catalog counterpart. A section with neither product rows nor a
+    /// status entry is not built at all — no fabricated empty section (spec Part B/H).
     /// </summary>
     private void BuildProductSections(AssociateWorkspace workspace)
     {
-        var statusByCategory = workspace.CategoryStatuses.ToDictionary(status => status.Category);
-        var officialByCategory = workspace.Products
-            .Where(product => !product.IsCustom && product.Category is not null)
-            .GroupBy(product => product.Category!.Value)
+        var statusBySection = workspace.CategoryStatuses
+            .Select(status => (Status: status, Section: ProductDisplaySectionResolver.Resolve(status.Category)))
+            .Where(entry => entry.Section is not null)
+            .ToDictionary(entry => entry.Section!.Value, entry => entry.Status);
+
+        var officialBySection = workspace.Products
+            .Where(product => !product.IsCustom)
+            .Select(product => (Product: product, Section: ProductDisplaySectionResolver.Resolve(product)))
+            .Where(entry => entry.Section is not null)
+            .GroupBy(entry => entry.Section!.Value, entry => entry.Product)
             .ToDictionary(group => group.Key, group => (IReadOnlyList<AssociateProduct>)group.ToList());
 
-        var categories = officialByCategory.Keys.Concat(statusByCategory.Keys).Distinct().OrderBy(category => (int)category);
+        var sections = officialBySection.Keys.Concat(statusBySection.Keys).Distinct().OrderBy(section => (int)section);
 
-        var sections = new List<ProductCategorySectionViewModel>();
-        foreach (var category in categories)
+        var result = new List<ProductCategorySectionViewModel>();
+        foreach (var section in sections)
         {
-            var products = officialByCategory.GetValueOrDefault(category, []);
-            var status = statusByCategory.TryGetValue(category, out var categoryStatus)
-                ? CategoryStatusPresentation.Build(categoryStatus, products.Count)
+            var products = officialBySection.GetValueOrDefault(section, []);
+            var status = statusBySection.TryGetValue(section, out var sectionStatus)
+                ? CategoryStatusPresentation.Build(sectionStatus, products.Count)
                 : null;
 
             if (products.Count == 0 && status is null)
@@ -1163,10 +1175,10 @@ public partial class AssociateViewModel : ViewModelBase
             }
 
             var rows = products.Select(product => new ProductRowViewModel(product, ScheduleAutosave)).ToList();
-            sections.Add(new ProductCategorySectionViewModel(SourceCategoryDisplay.FriendlyName(category), status, rows));
+            result.Add(new ProductCategorySectionViewModel(ProductDisplaySectionDisplay.FriendlyName(section), status, rows));
         }
 
-        ProductSections = sections;
+        ProductSections = result;
 
         CustomProducts = new ObservableCollection<CustomProductRowViewModel>(
             workspace.Draft.CustomProducts.Select(custom => new CustomProductRowViewModel(custom, ScheduleAutosave, RemoveCustomProduct)));

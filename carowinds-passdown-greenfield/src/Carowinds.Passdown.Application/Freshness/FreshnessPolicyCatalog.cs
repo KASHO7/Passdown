@@ -39,6 +39,7 @@ public static class FreshnessPolicyCatalog
             [SourceCategory.AddOns] = new(SourceCategory.AddOns, daily),
             [SourceCategory.BringAFriendDuo] = new(SourceCategory.BringAFriendDuo, daily),
             [SourceCategory.MilitaryFirstResponder] = new(SourceCategory.MilitaryFirstResponder, daily),
+            [SourceCategory.DatedBringAFriend] = new(SourceCategory.DatedBringAFriend, daily),
         };
     }
 }

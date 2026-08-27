@@ -2383,3 +2383,279 @@ performed during the release rebuild.
 Both confirmed not started — no Alerts/Data Confidence/notifications/monitoring code exists anywhere
 in the codebase, and `AppSection` has no Manager value.
 (0/0). One local commit follows; 13H (final packaging/release rebuild) is explicitly not started.
+
+---
+
+## Phase 15A — Product-section grouping fix and anonymous ordinary Bring-A-Friend dated pricing
+
+Fixes two Associate Passdown/PDF correctness issues left over from Phase 13C: (1) a product could
+print under two differently-named sections for the same real-world offer, and (2) ordinary
+Bring-A-Friend's exact per-date price was believed unreachable without passholder authentication —
+new live evidence shows it is not.
+
+### 1–5. Root cause: display grouping keyed directly by retrieval `SourceCategory`
+
+Every prior phase composed the Associate/PDF product list by grouping `AssociateProduct` rows
+directly on their raw retrieval `SourceCategory` (`AssociatePassdownDocumentModelBuilder.BuildProductCategories`,
+`AssociateViewModel.BuildProductSections`) — a category that identifies *where a product was
+retrieved from*, not *where it should be displayed*. Three concrete consequences, each confirmed by
+direct inspection before any fix was written:
+
+- **Bring-A-Friend Duo duplication**: `PromotionsCatalogSource` generically discovers "Celebrate
+  America! Bring-A-Friend Duo" as a catalog card (category `Promotions`, Sanity id
+  `o1gUjW0O273eyMG69L54eV`, bundle $50/2 friends), while `DatedBringAFriendDuoSource` (Phase 13C)
+  independently retrieves "Celebrate America! Bring-A-Friend Duo Offer " (category
+  `BringAFriendDuo`, accesso id `10097207`, per-person $25) for the selected date. Same real-world
+  offer, two different retrieval identities (different id, different name, different category, by
+  design — see Phase 13A's category-scoped identity precedence), so both rows printed, each under its
+  own section heading.
+- **Military/First Responder** (`SourceCategory.MilitaryFirstResponder`) got its own dedicated PDF
+  section purely because it has its own retrieval category — there is no product reason it needs to
+  be visually separated from ordinary Daily Admission.
+- **SCarowinds Bundles**: `PromotionsCatalogSource` also generically discovers "SCarowinds Bundles"
+  (accesso keyword `fallwizard`, an admission+maze-access bundle) on the same `daily-tickets` page as
+  every other Promotions card, landing it under the `Promotions` category/section even though its
+  content is SCarowinds-specific and belongs alongside the dated SCarowinds/Haunt products instead
+  (`docs/retrieval/dated-haunted-source.md` already documented `fallwizard` as *not* the haunted-pass
+  checkout keyword `HAPWizard` uses, so no structural cross-category duplicate exists today — but its
+  *section* was still wrong).
+
+**Fix — one authoritative resolver, not independent boolean filters** (spec §5): a new
+`ProductDisplaySection` enum (`DailyAdmission`, `FastLane`, `SCarowinds`, `SeasonPasses`, `AddOns`,
+`Promotions`) and `ProductDisplaySectionResolver` (`Application/Associate/ProductDisplaySection.cs`)
+provide the *only* place display-section membership is decided:
+
+| `SourceCategory` | Resolved section |
+|---|---|
+| `DatedAdmissionTickets` | `DailyAdmission` |
+| `MilitaryFirstResponder` | `DailyAdmission` |
+| `DatedFastLane` | `FastLane` |
+| `HauntedAttractions` | `SCarowinds` |
+| `SeasonPasses` | `SeasonPasses` |
+| `AddOns` | `AddOns` |
+| `Promotions` | `Promotions`, unless the product's own display name contains "SCarowinds" (a generic, content-based rule — not a one-off match on a single product's exact string — then `SCarowinds` |
+| `BringAFriendDuo` | *(none)* — its real-world offer is already shown once via its Promotions catalog counterpart |
+| `DatedBringAFriend` (new, §7 below) | *(none)* — merged into the existing Promotions "Bring-A-Friend Ticket" row rather than shown independently |
+
+`AssociatePassdownDocumentModelBuilder.BuildProductCategories` (PDF) and
+`AssociateViewModel.BuildProductSections` (Associate Products screen) both now group by
+`ProductDisplaySectionResolver.Resolve(product)` instead of raw `Category`, and both skip a `null`
+resolution entirely (no section, no row). `PassdownSectionSelection`'s include/exclude toggles
+(`IncludeDailyAdmission`, `IncludeHauntedAttractions`, ...) are now looked up by the *resolved
+section* too (`IsSectionIncluded`/PDF, existing toggles/UI) — so Military rows are governed by the
+Daily Admission toggle and an SCarowinds-reclassified Promotions card by the SCarowinds toggle, since
+that is where they now visually live. The persisted `SourceCategory`/`CatalogProductKey`/
+`AssociateProduct.Category` identity is completely unchanged — this is presentation-only, per
+CLAUDE.md's "do not change persisted catalog category/identity merely to achieve display grouping."
+
+PDF section names are looked up via a `PdfCategoryDisplayNames` now keyed on `ProductDisplaySection`
+(`Documents/Associate/PdfCategoryDisplayNames.cs`); the Desktop Products screen gets a parallel
+`ProductDisplaySectionDisplay` (`Desktop/Presentation/ProductDisplaySectionDisplay.cs`) — both
+deliberately duplicated two-line lookup tables, matching the pre-existing
+`SourceCategoryDisplay`/old `PdfCategoryDisplayNames` convention (Documents must not depend on
+Desktop). `SourceCategoryDisplay.FriendlyName` itself (used by Dashboard health rows, refresh-progress
+toasts, and category-status banner text — all *retrieval*-identity display, unrelated to product
+grouping) was left untouched, plus one added case for the new `DatedBringAFriend` category.
+
+`TierFor` (PDF Key Selling / Promotional / Reference visual tiers) is now keyed on
+`ProductDisplaySection` too: Military rows render in the same Key Selling tile style as the rest of
+Daily Admission, which already supports a real "$80 Gate Price" comparison identically to the old
+Promotional tier — no pricing information is lost by the retiering.
+
+### 6. Bring-A-Friend Duo — removed the dedicated section, kept the retrieval untouched
+
+`DatedBringAFriendDuoSource`/`SourceCategory.BringAFriendDuo` still refresh on the same daily cadence,
+participate in Check Online/Deep Refresh/UserForced identically, and still feed the Dashboard's data
+health row (unchanged: `StatusTrackedDatedCategories` still includes it, and
+`OperationsDashboardService`'s health breakdown is orthogonal to product-section display). Only its
+*display* composition changed: `ProductDisplaySectionResolver.Resolve(SourceCategory.BringAFriendDuo)`
+returns `null`, so it is never given its own PDF section or Associate Products-screen section (neither
+a product row nor a zero-row status banner) — its real-world offer is represented for display purposes
+solely by the Promotions catalog card ("Celebrate America! Bring-A-Friend Duo"), which already carries
+the correct bundle-total/per-person breakdown (`PriceSemanticsClassifier.TryParseBundle`, unchanged).
+No name-based special case was added for this — the fix is the category-level `null` resolution, which
+applies to the category as a whole, not a string match on the offer's name (spec §2's "do not
+special-case only the visible string if a generic category/grouping fix is possible").
+
+### 7–13. Anonymous ordinary Bring-A-Friend exact dated pricing — Phase 13C's limitation revisited
+
+**Source audit.** Live investigation (2026-08-27, via the Browser tool against the real
+`sixflags.com`/`cf-ca.buy.sixflags.com`/`ecomm.api.cf.accessoticketing.com` surfaces) traced exactly
+how the anonymous Special Offers page produces a date-varying Bring-A-Friend price:
+
+1. `sixflags.com/carowinds/special-offers`'s Bring-A-Friend "Buy Now" button embeds
+   `https://cf-ca.buy.sixflags.com/packageList/keyword/SnapWizard?` — the same generic admission
+   storefront Phase 13C already found (no Bring-A-Friend card there; confirms 13C's `SnapWizard`
+   finding was correct as far as it went).
+2. Separately, the storefront's left-nav "Daily Tickets → Bring-A-Friend Ticket" link (not
+   previously followed) opens `https://cf-ca.buy.sixflags.com/wizardCalendar/BAFWizard/BAFWizardDailyTickets`
+   — a dedicated "Select a date to begin!" calendar page, reachable with **no login prompt at any
+   point**, that lists both "Celebrate America! Bring-A-Friend Duo Offer" ($25.00, every date) and
+   "Bring-A-Friend Ticket" with a price that visibly changes per selected calendar date (was $80.00
+   → $39.00 on Aug 29, 2026; → $35.00 on Aug 30, 2026 — both live-observed, matching the locked
+   regression values exactly).
+3. Intercepting this page's own network calls (`performance.getEntriesByType('resource')`) confirmed
+   it is powered by the **same existing accesso `getkeywordcalendar` endpoint** every other dated
+   source already calls (`https://ecomm.api.cf.accessoticketing.com/api/request/getkeywordcalendar`),
+   with a keyword never previously tried: **`BAFWizardDailyTickets`**. Phase 13C's guessed-keyword
+   list tried bare `BAFWizard` (which returns `"No dates found that meet requirements"`) but never the
+   "Wizard + DailyTickets" suffix pattern every other admission-family keyword already follows
+   (`SnapWizardDailyTickets`).
+4. Replaying the exact request shape `AccessoKeywordCalendarRequest` already uses (same headers, same
+   body fields, keyword swapped to `BAFWizardDailyTickets`) directly against the live endpoint,
+   independent of the storefront page, confirmed it anonymously — no cookies, no session id beyond the
+   endpoint's own ephemeral `session_id`, no passholder credential of any kind:
+   - 2026-08-29: `{"id":"10094895","name":"Bring-A-Friend Ticket","CT":{"retail_amount":"39.00"}}`
+   - 2026-08-30: `{"id":"10094893","name":"Bring-A-Friend Ticket","CT":{"retail_amount":"35.00"}}`
+   - A 5-date horizon window (Aug 29 – Sep 7) confirmed the pattern holds across multiple dates
+     (weekday $39.00, Saturday $35.00, Labor Day $29.00), each date carrying its own package id.
+   - Every response for this keyword also always carries "Celebrate America! Bring-A-Friend Duo
+     Offer" alongside it (identical package id/price to `SUBAF50`'s own response) — a shared-keyword
+     coincidence the new adapter deliberately filters out by package name (§9).
+   - **No response for this keyword, at any date, ever included a comparison/"was" price field** — the
+     official "$80 Gate Price" figure lives only on the static Promotions catalog card, already
+     retrieved by `PromotionsCatalogSource`.
+
+**Conclusion**: Phase 13C's "passholder-login-gated" finding was an incomplete investigation, not a
+platform limitation — the dated price was reachable anonymously all along, via a keyword nobody had
+tried. `docs/retrieval/special-ticket-sources.md` and `docs/retrieval/catalog-source-inventory.md`
+have both been corrected in place (old conclusion struck through/marked superseded, not deleted, per
+CLAUDE.md's "never invent data" and this task's "clearly record that Phase 15A supersedes that
+specific finding").
+
+### 8–9. New source and schema
+
+`DatedBringAFriendSource` (`Infrastructure/Retrieval/Sources/DatedBringAFriendSource.cs`) — structurally
+identical to `DatedBringAFriendDuoSource` (primary single-day request, horizon-window fallback,
+`DirectApi` strategy) — under a new `SourceCategory.DatedBringAFriend`. Its `BuildProduct` selects only
+the package named exactly `"Bring-A-Friend Ticket"` from whatever the keyword returns, ignoring the
+co-returned Duo package by name (never both, never the wrong one). `DatedBringAFriendPayload`/
+`DatedBringAFriendProduct` (`Application/Retrieval/DatedBringAFriendPayload.cs`) carry no comparison
+field at all — never fabricated, matching live evidence.
+
+**No schema change**: `SourceCategory` is persisted as its enum name (a string) in
+`SqliteDatedResultRepository`/`SqliteSourceStateRepository`, so a new enum value needs no migration.
+Database schema stays 11, `AssociateDraftPayload` stays 3, `FinalizedPassdownSnapshot` stays 1.
+
+### 10–13. Composition — merge, not a third row
+
+`AssociatePassdownService.MergeExactDatedBringAFriend` (called once per `ComposeAsync`, after the
+catalog-categories loop) implements the precedence rule directly on the already-composed product list:
+if a verified `DatedBringAFriend` result exists for the *selected* date, it locates the existing
+Promotions-category row whose display name is exactly `"Bring-A-Friend Ticket"` (the literal official
+string shared by both surfaces — the catalog card's own title and the dated package's own name; not a
+guess) and replaces it **in place** — same `ProductIdentity`, same list position — with the exact
+price, `PriceKind.ExactDated`, `DateSpecific = true`, `PriceQualifier = null` (dropping "Starting
+From"), and its own verification info, while leaving `ComparisonPriceAmount` (the catalog row's
+already-sourced "$80 Gate Price") completely untouched. If no exact value exists for the selected date
+(no data, a different date, or a failed attempt), the catalog row is never touched at all — the
+generic "Starting From $35" value remains exactly as before. Reusing the catalog row's own identity
+(rather than composing a new dated identity) means a manager's existing per-product draft
+override/include-on-PDF toggle survives regardless of whether today's date has an exact price.
+`PdfProductRow`/PDF rendering needed no change: `PriceKind.ExactDated` + `PriceQualifier = null` already
+suppresses "Starting From" text while `ComparisonPriceText` still renders struck through (Phase 13C's
+existing rendering, unchanged).
+
+Deliberately **not** attempted: matching by any structural id (the catalog card's Sanity id and the
+dated package's accesso id are unrelated, exactly as with BAF Duo) — the shared official display name
+is the only trustworthy link, and it is a real, observed, official string on both surfaces, not an
+invented one.
+
+### 14. Bring-A-Friend Duo regression
+
+Untouched and re-verified: `LoadAssociateDateAsync_OrdinaryBringAFriendMerge_DoesNotAffectBringAFriendDuo`
+proves the new ordinary-BAF merge and the existing Duo catalog/dated composition coexist in the same
+`ComposeAsync` call without cross-contamination — the merge only ever touches a row whose display name
+is exactly `"Bring-A-Friend Ticket"`, never `"Celebrate America! Bring-A-Friend Duo"`.
+
+### 15. Check Online / Deep Refresh integration
+
+No refresh-architecture change: `DatedBringAFriendSource` registers as an ordinary
+`DatedSourceRegistration` in the composition root (`App.axaml.cs`), so `RunUserForcedRefreshAsync`
+(Check Online) and `RunDeepRefreshAsync` (Deep Refresh) both already force-refresh it end to end,
+identically to every other dated source, with no per-source allowlist to maintain. Because
+`ComposeAsync` always re-reads whatever `DatedResultRepository` holds for the *currently selected*
+date, a Check Online on the selected date immediately updates the merged Bring-A-Friend row on
+recompose — no separate wiring was needed. `FreshnessPolicyCatalog` gives it the same daily 6 AM
+cadence as every sibling dated category.
+
+### 16. Tests added
+
+- `ProductDisplaySectionResolverTests` (12) — pure resolver unit tests: Military → DailyAdmission, no
+  dedicated Military section, both Bring-A-Friend dated categories → no section, SCarowinds-named
+  Promotions card → SCarowinds not Promotions, Fast Lane/SeasonPasses/AddOns pass through unchanged,
+  ordinary BAF stays Promotions, a brand-new generic promotion still falls into Promotions, a custom
+  product resolves to `null`, every defined `SourceCategory` resolves to a valid section or `null`.
+- `AssociatePassdownDocumentModelBuilderGroupingTests` (5, new file) — PDF integration: SCarowinds
+  card never duplicated under Promotions, Fast Lane unaffected, ordinary BAF stays Promotions, a
+  generic new promotion falls into Promotions, every rendered product across one 8-category
+  composition appears in exactly one section.
+- `AssociatePassdownDocumentModelBuilderPriceSemanticsTests` (+4): Military renders under Daily
+  Admission not its own section; Bring-A-Friend Duo's dated category never renders its own section
+  (and, with a catalog counterpart present, the offer renders exactly once, under Promotions); an
+  Exact Dated Bring-A-Friend row never prints "Starting From" while still showing the "$80 was"
+  comparison; a Starting-From-only row still prints "Starting From" (fallback unchanged).
+- `AssociateViewModelProductEditingTests` (+2): Military renders under the Daily Admission Products
+  screen section, not its own; a Bring-A-Friend Duo dated product with no catalog counterpart renders
+  no section at all (no phantom empty-status banner either).
+- `AssociatePassdownServicePriceSemanticsTests` (+6, composition-layer, real production
+  `ComposeAsync`/`MergeExactDatedBringAFriend`, not hand-constructed domain objects only): Aug 29
+  merges to $39.00 Exact Dated with the $80.00 comparison preserved and "Starting From" dropped; Aug
+  30 merges to $35.00; two recorded dates plus a third, never-recorded date prove no cross-date
+  leakage (the unrecorded date falls back to the generic $35 Starting-From floor, never treated as
+  exact); a genuinely missing dated result falls back to Starting From; a *failed* dated attempt
+  (`RecordFailedAttemptAsync`) also falls back rather than fabricating a value from an error; the new
+  merge coexists with Bring-A-Friend Duo without cross-contamination.
+- `DatedBringAFriendSourceTests` (17, new file, mirrors `DatedBringAFriendDuoSourceTests`) — contract
+  tests against real, sanitized `fixtures/dated-bring-a-friend/` captures (`published-2026-08-29.json`,
+  `published-2026-08-30.json` — genuine unmodified live captures; `horizon-window.json` — genuine
+  5-date live capture) plus synthetic transport-edge-case fixtures (malformed/missing-service/
+  no-dates-found/empty-entries, reused from the Duo family's own convention) and one new synthetic
+  edge case (`published-missing-target-package.json`) proving the adapter errors defensively rather
+  than fabricating a product when its target package name is absent. Explicitly proves the co-returned
+  Duo package is never picked up, date-confirmation/isolation, past-date short-circuiting, horizon
+  fallback, and — structurally, by construction — no credential/cookie/session field is ever sent
+  (the request body/headers are built from the same `AccessoKeywordCalendarRequest` helper every other
+  anonymous dated source already uses).
+- `CompositionRootTests` (updated): registration count 10 → 11 (renamed
+  `BuildServiceProvider_RegistersElevenSourceRegistrations`), expected dated-category set gained
+  `DatedBringAFriend`.
+- `AssociatePassdownServiceTests`/`OperationsDashboardServiceTests` (updated, not net-new): the
+  status-tracked-category list and the Dashboard's "nothing ever checked" not-checked count both grew
+  by one for the new category.
+
+### 17. Final validation
+
+`dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors. `dotnet test CarowindsPassdown.slnx
+--filter "Category!=LiveSmoke"` — **1645/1645 passing** (baseline 1600 + 45 net new/changed), confirmed
+clean on 3 of 4 consecutive full runs; the fourth hit the same pre-existing, previously-documented
+(Phase 6D/13H) Avalonia headless cross-assembly parallelism flake (`Stack empty.` in
+`AvaloniaPropertyDictionaryPool.Get()` during `XamlIlPopulate`), on `AssociateView`/
+`OperationalNotesView` construction tests — neither file touched by this phase, not a regression.
+Database schema 11, `AssociateDraftPayload` schema 3, `FinalizedPassdownSnapshot` schema 1 — all
+unchanged, confirmed by inspection (no new migration file; §9 above).
+
+### 18. Documentation updated
+
+This section; `docs/retrieval/special-ticket-sources.md` (ordinary Bring-A-Friend section corrected
+in place — old conclusion marked superseded, not deleted); `docs/retrieval/pricing-semantics.md`
+(worked examples 1 and 2 both revised: example 1's "not retrievable anonymously" conclusion corrected,
+example 2's "two separate sections" behavior corrected to reflect the removed dedicated section);
+`docs/retrieval/catalog-source-inventory.md` ("no adapter added, by design" section corrected).
+
+### 19. Deferred to 15B+
+
+Everything not explicitly asked for in Phase 15A's scope: the pre-existing, accepted "2027 Gold Pass"
+dual-listing under both `Promotions` and `SeasonPasses` (a different, already-documented and
+explicitly out-of-scope multi-category duplication, unrelated to the three cases this phase fixes);
+any change to the Dashboard's own compact category-breakdown lists (`DashboardDataHealthPresentation`/
+`OperationsDashboardService.ProductCatalogCategories` already omit `BringAFriendDuo`/
+`MilitaryFirstResponder` from their fixed two-group display today, pre-existing and unrelated to
+product-section grouping — `DatedBringAFriend` was deliberately left out of those same fixed lists
+too, for consistency, rather than expanding Dashboard UI scope); any Manager workflow (per CLAUDE.md,
+still deferred); rebuilding the release ZIP (explicitly deferred by this phase's own instructions).
+
+## Git checkpoint (Phase 15A)
+
+Pending — see final report for the commit hash once tests/build are confirmed green and this
+documentation is current.

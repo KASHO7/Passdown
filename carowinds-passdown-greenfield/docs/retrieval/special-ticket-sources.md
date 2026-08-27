@@ -118,10 +118,16 @@ Eligibility is instead preserved structurally: this product is tracked under its
 be confused with ordinary Daily Admission, and its own display name ("Military & First Responder
 Tickets") already signals the restriction to whoever reads it.
 
-## Ordinary (non-Duo) Bring-A-Friend — confirmed limitation, not an oversight
+## Ordinary (non-Duo) Bring-A-Friend
+
+> **Superseded by Phase 15A** (see `docs/phase13-hardening.md`'s Phase 15A section for the full
+> write-up). This section is kept for historical accuracy — it records exactly what Phase 13C tried
+> and why it concluded (incorrectly, as it turned out) that the exact dated price was unreachable
+> anonymously — but its **Conclusion** below no longer reflects production behavior. A real adapter
+> (`DatedBringAFriendSource`, `SourceCategory.DatedBringAFriend`) exists as of Phase 15A.
 
 The regression scenario `docs/phase13-hardening.md` locked in (Aug 29 2026: exact dated $39.00,
-comparison $80.00) describes **ordinary** Bring-A-Friend, not the Duo offer above. Live
+comparison $80.00) describes **ordinary** Bring-A-Friend, not the Duo offer above. Phase 13C's live
 investigation found:
 
 - The ordinary BAF catalog card's own "Buy Now" button (`special-offers` page) carries accesso
@@ -134,23 +140,22 @@ investigation found:
   `BAFWizard`, `SnapWizardBAF`, `SnapWizardBringAFriend`, `SnapWizardPassholder`,
   `PassholderBringAFriend`, `PassholderBAF`) were tried directly against the same endpoint — every
   one either returned the identical Park Ticket data (the shared keyword) or `"Invalid keyword
-  value"`/`"No dates found"`.
+  value"`/`"No dates found"`. **Missing from this list**: `BAFWizardDailyTickets` — the "Wizard +
+  DailyTickets" suffix pattern every other admission-family keyword already follows
+  (`SnapWizardDailyTickets`), never tried for BAF specifically.
 - The catalog card's own subtitle ("An exclusive for passholders and members") and fine print ("Must
-  be accompanied by a valid Season Passholder") indicate the discounted rate is applied **after** an
-  authenticated passholder login inside the shared `SnapWizard` checkout flow — a rate tier this app
-  cannot reach anonymously, and per CLAUDE.md must never attempt to reach by entering credentials.
+  be accompanied by a valid Season Passholder") were read as meaning the discounted rate is applied
+  only after an authenticated passholder login inside the shared `SnapWizard` checkout flow. **This
+  reading was wrong** — see Phase 15A below.
 
-**Conclusion**: ordinary Bring-A-Friend's exact dated price is not retrievable from any anonymous
-official surface found during this investigation. No adapter was built for it, and none should be —
-building one would require either guessing at an unproven keyword or authenticating as a
-passholder, both prohibited. The generic catalog "Starting From $35" value (from
-`PromotionsCatalogSource`, `SourceCategory.Promotions`) remains the only value this app can honestly
-show for ordinary BAF. `AssociatePassdownServicePriceSemanticsTests` proves the precedence
-*mechanism* (an exact dated value, when one exists, is never confused with or replaced by a generic
-catalog value) using representative composition-layer data shaped like the documented manual
-observation — not a claim that a live ordinary-BAF adapter exists. If a genuine anonymous surface for
-this value is ever found, wire it in following exactly the same `SourceCategory`/composition pattern
-`DatedBringAFriendDuoSource` already establishes.
+**Phase 13C's conclusion (superseded)**: ~~ordinary Bring-A-Friend's exact dated price is not
+retrievable from any anonymous official surface~~. **Phase 15A finding**: the anonymous Special
+Offers page's own "Select a date to begin!" calendar (reached via the site's "Bring-A-Friend Ticket"
+nav link — no login prompt at any point) calls `getkeywordcalendar` with keyword
+`BAFWizardDailyTickets`, which anonymously returns real, date-scoped "Bring-A-Friend Ticket" pricing
+(confirmed live for 2026-08-29 = $39.00 and 2026-08-30 = $35.00, matching the locked regression
+values exactly). No credentials, cookies, or passholder session were ever sent or required. Full
+detail: `docs/phase13-hardening.md` Phase 15A section.
 
 ## Product identity collision check (Part L)
 

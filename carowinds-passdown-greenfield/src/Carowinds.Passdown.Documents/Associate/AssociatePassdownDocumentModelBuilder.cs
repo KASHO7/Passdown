@@ -152,29 +152,46 @@ public static class AssociatePassdownDocumentModelBuilder
         return new PdfDailyFeature(label, string.IsNullOrWhiteSpace(draft.DailyFeatureText) ? null : draft.DailyFeatureText.Trim());
     }
 
-    /// <summary>Spec Phase 8A/8B: every product-bearing <see cref="SourceCategory"/> maps to its own <see cref="PassdownSectionSelection"/> flag; Phase 8B added <see cref="SourceCategory.HauntedAttractions"/> (SCarowinds/Haunt), correcting a Phase 8A omission that left it always included. <see cref="SourceCategory.ParkHours"/> never reaches here — it produces no <see cref="Application.Associate.AssociateProduct"/> rows — so the fallback below is unreachable in practice, kept only so a future category fails open rather than throwing.</summary>
-    private static bool IsOptionalCategoryIncluded(SourceCategory category, PassdownSectionSelection selection) => category switch
+    /// <summary>
+    /// Spec Phase 8A/8B, revised Phase 15A: every product-bearing <see cref="ProductDisplaySection"/>
+    /// maps to its own <see cref="PassdownSectionSelection"/> flag — keyed by the resolved display
+    /// section rather than the raw <see cref="SourceCategory"/>, so a product folded into a
+    /// more-specific section (e.g. Military/First Responder into Daily Admission) is governed by that
+    /// section's own toggle, not a separate one it no longer visibly belongs to.
+    /// </summary>
+    private static bool IsSectionIncluded(ProductDisplaySection section, PassdownSectionSelection selection) => section switch
     {
-        SourceCategory.DatedAdmissionTickets => selection.IncludeDailyAdmission,
-        SourceCategory.DatedFastLane => selection.IncludeFastLane,
-        SourceCategory.Promotions => selection.IncludePromotions,
-        SourceCategory.SeasonPasses => selection.IncludeSeasonPasses,
-        SourceCategory.AddOns => selection.IncludeAddOns,
-        SourceCategory.HauntedAttractions => selection.IncludeHauntedAttractions,
+        ProductDisplaySection.DailyAdmission => selection.IncludeDailyAdmission,
+        ProductDisplaySection.FastLane => selection.IncludeFastLane,
+        ProductDisplaySection.Promotions => selection.IncludePromotions,
+        ProductDisplaySection.SeasonPasses => selection.IncludeSeasonPasses,
+        ProductDisplaySection.AddOns => selection.IncludeAddOns,
+        ProductDisplaySection.SCarowinds => selection.IncludeHauntedAttractions,
         _ => true,
     };
 
+    /// <summary>
+    /// Spec Phase 15A §5: every included product resolves through the one authoritative
+    /// <see cref="ProductDisplaySectionResolver"/> rather than being grouped by its raw retrieval
+    /// <see cref="SourceCategory"/> — this is what stops the same real-world product (Bring-A-Friend
+    /// Duo, Military/First Responder, an SCarowinds-specific promotion) from printing under two
+    /// differently-named headings. A product whose category has no dedicated section (Bring-A-Friend
+    /// Duo's own dated category, the new dated ordinary-Bring-A-Friend category) resolves to
+    /// <see langword="null"/> and is skipped here — it is already represented by its Promotions
+    /// catalog counterpart.
+    /// </summary>
     private static IReadOnlyList<PdfProductCategory> BuildProductCategories(AssociateWorkspace workspace)
     {
         var categories = new List<PdfProductCategory>();
 
-        var officialByCategory = workspace.Products
-            .Where(product => !product.IsCustom && product.Category is not null && product.IncludeOnPdf
-                && IsOptionalCategoryIncluded(product.Category!.Value, workspace.Draft.SectionSelection))
-            .GroupBy(product => product.Category!.Value)
+        var officialBySection = workspace.Products
+            .Where(product => !product.IsCustom && product.IncludeOnPdf)
+            .Select(product => (Product: product, Section: ProductDisplaySectionResolver.Resolve(product)))
+            .Where(entry => entry.Section is not null && IsSectionIncluded(entry.Section!.Value, workspace.Draft.SectionSelection))
+            .GroupBy(entry => entry.Section!.Value, entry => entry.Product)
             .OrderBy(group => (int)group.Key);
 
-        foreach (var group in officialByCategory)
+        foreach (var group in officialBySection)
         {
             var rows = group.Select(BuildOfficialRow).ToList();
             if (rows.Count > 0)
@@ -196,18 +213,20 @@ public static class AssociatePassdownDocumentModelBuilder
         return categories;
     }
 
-    /// <summary>Spec Parts 3/4/5's tier assignment — Daily Admission/Fast Lane are what an associate needs to remember quickly (Key Selling), Promotions get their own callout treatment, and everything else (Season Passes, Add-Ons, SCarowinds/Haunt) is reference-oriented and rendered compactly.</summary>
-    private static PdfProductSectionTier TierFor(SourceCategory category) => category switch
+    /// <summary>
+    /// Spec Parts 3/4/5's tier assignment, revised Phase 15A for <see cref="ProductDisplaySection"/>:
+    /// Daily Admission/Fast Lane are what an associate needs to remember quickly (Key Selling) — this
+    /// now includes Military/First Responder rows, which carry a real comparison ("$80 Gate Price")
+    /// that Key Selling's tile rendering already supports identically to the old Promotional tier, so
+    /// folding them into Daily Admission loses nothing (docs/phase13-hardening.md Phase 15A section).
+    /// Promotions gets its own callout treatment; everything else (Season Passes, Add-Ons, SCarowinds)
+    /// is reference-oriented and rendered compactly.
+    /// </summary>
+    private static PdfProductSectionTier TierFor(ProductDisplaySection section) => section switch
     {
-        SourceCategory.DatedAdmissionTickets => PdfProductSectionTier.KeySelling,
-        SourceCategory.DatedFastLane => PdfProductSectionTier.KeySelling,
-        SourceCategory.Promotions => PdfProductSectionTier.Promotional,
-        // Phase 13C: both carry a qualifier (and, for Military/First Responder, a real comparison
-        // "Gate Price") that the compact Reference tier never renders (it shows a qualifier but no
-        // comparison price at all) — Promotional tier renders both, matching Part X's "preserve
-        // comparison/was strikethrough" requirement.
-        SourceCategory.BringAFriendDuo => PdfProductSectionTier.Promotional,
-        SourceCategory.MilitaryFirstResponder => PdfProductSectionTier.Promotional,
+        ProductDisplaySection.DailyAdmission => PdfProductSectionTier.KeySelling,
+        ProductDisplaySection.FastLane => PdfProductSectionTier.KeySelling,
+        ProductDisplaySection.Promotions => PdfProductSectionTier.Promotional,
         _ => PdfProductSectionTier.Reference,
     };
 

@@ -19,6 +19,7 @@ public static class SourceCategoryDisplay
         SourceCategory.Promotions => "Promotions",
         SourceCategory.BringAFriendDuo => "Bring-A-Friend Duo",
         SourceCategory.MilitaryFirstResponder => "Military & First Responder",
+        SourceCategory.DatedBringAFriend => "Bring-A-Friend",
         _ => category.ToString(),
     };
 }

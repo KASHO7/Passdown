@@ -217,23 +217,34 @@ Populated only when `PriceSemanticsClassifier.TryParseBundle` recognizes the qua
 away-from-zero) and documented as such everywhere it's read (PDF `Notes`, Products UI) — never
 silently substituted for the bundle total in `OfficialPriceAmount`/`EffectivePriceText` (Part I).
 
-**Worked example 1 resolved (Aug 29 2026 Bring-A-Friend)**: live investigation found the *ordinary*
-BAF's exact dated price is not retrievable anonymously (passholder-login-gated — see
-`docs/retrieval/special-ticket-sources.md`), so no adapter produces the literal $39/$80 pair in
-production. The precedence rule itself is proven correct using the existing generic dated/catalog
-composition machinery fed representative data
-(`AssociatePassdownServicePriceSemanticsTests.LoadAssociateDateAsync_Aug29_ExactDatedBafNeverConfusedWithGenericStartingFrom`)
-— an exact dated value and a generic catalog value for what a human would call "the same" product
-remain two independent, correctly-`PriceKind`-tagged rows, exactly as this document's original
-precedence section already predicted mechanically. `CatalogProductKey`'s category-scoped identity
-(unchanged this phase) is still what keeps them from ever colliding.
+**Worked example 1 resolved (Aug 29 2026 Bring-A-Friend) — superseded by Phase 15A.** Phase 13C's
+live investigation concluded the *ordinary* BAF's exact dated price was not retrievable anonymously
+(passholder-login-gated). **This was wrong.** Phase 15A found the anonymous Special Offers page's own
+date-calendar widget calls `getkeywordcalendar` with keyword `BAFWizardDailyTickets` — no
+authentication of any kind — and confirmed it live for both regression dates: 2026-08-29 = $39.00,
+2026-08-30 = $35.00 (comparison $80.00 both dates). `DatedBringAFriendSource`
+(`SourceCategory.DatedBringAFriend`) now produces this pair in production.
+`AssociatePassdownService.MergeExactDatedBringAFriend` folds its exact price into the existing
+Promotions-category "Bring-A-Friend Ticket" catalog row **in place** (same `AssociateProduct`
+identity, same display row) rather than adding it as an independent row — this is a deliberate
+refinement from the phase's original prediction that they would "remain two independent,
+correctly-`PriceKind`-tagged rows": that prediction was correct for the *mechanism* (an exact dated
+value never being confused with or replaced by a generic one) but Phase 15A additionally requires the
+same real-world product to *print* as one unified row (docs/phase13-hardening.md Phase 15A section,
+"PDF price output"), which a real shared official display name (`"Bring-A-Friend Ticket"`, identical
+on both surfaces) makes possible without inventing any new identity scheme.
+`AssociatePassdownServicePriceSemanticsTests.LoadAssociateDateAsync_Aug29_ExactDatedBafNeverConfusedWithGenericStartingFrom`
+still separately proves the underlying precedence *mechanism* in the abstract (a different,
+representative product name, `DatedAdmissionTickets` category) — kept as-is, not superseded.
 
-**Worked example 2 resolved (BAF Duo)**: unlike ordinary BAF, the Duo offer's per-person price *is*
-genuinely retrievable — accesso keyword `SUBAF50`, discovered live, returns a real per-date
+**Worked example 2 resolved (BAF Duo) — grouping revised by Phase 15A.** The Duo offer's per-person
+price *is* genuinely retrievable — accesso keyword `SUBAF50`, discovered live, returns a real per-date
 `retail_amount` of $25.00 matching the catalog card's "$25 per friend" framing exactly. This became
-`DatedBringAFriendDuoSource` under a new `SourceCategory.BringAFriendDuo`. Its catalog card
-(bundle total $50, qualifier "Two Friends Just") and its dated exact price ($25/friend for a
-selected date) compose as two separate `AssociateProduct` rows under two different category
-sections — "Bring-A-Friend Duo" (dated, exact) and "Promotions" (catalog, bundle) — per this
-document's own precedence section 3's "keep both concepts where architecture supports it," rather
-than a forced merge.
+`DatedBringAFriendDuoSource` under `SourceCategory.BringAFriendDuo`. Phase 13C originally composed its
+catalog card (bundle total $50, qualifier "Two Friends Just") and its dated exact price as two
+separate `AssociateProduct` rows under two different, separately-headed sections ("Bring-A-Friend
+Duo" and "Promotions") — this duplicated the same real-world offer on the printed Passdown. Phase 15A
+removed the dedicated section: `ProductDisplaySectionResolver` now maps `SourceCategory.BringAFriendDuo`
+to no display section at all, so only the Promotions catalog card (already carrying the correct
+bundle/per-person breakdown) is shown. The dated `SUBAF50` retrieval itself, its freshness cadence,
+and its Dashboard health visibility are all untouched — only its *display* composition changed.

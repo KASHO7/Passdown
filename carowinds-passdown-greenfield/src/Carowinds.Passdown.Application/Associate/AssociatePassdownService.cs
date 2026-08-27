@@ -52,7 +52,16 @@ public sealed class AssociatePassdownService(
         SourceCategory.DatedFastLane,
         SourceCategory.HauntedAttractions,
         SourceCategory.BringAFriendDuo,
+        SourceCategory.DatedBringAFriend,
     ];
+
+    /// <summary>
+    /// The official display name shared by both ordinary Bring-A-Friend surfaces — the Promotions
+    /// catalog card's own title and the <c>BAFWizardDailyTickets</c> dated package's own name
+    /// (Phase 15A) — used to identify the one catalog row <see cref="MergeExactDatedBringAFriend"/>
+    /// refines, never a fabricated or guessed string.
+    /// </summary>
+    private const string OrdinaryBringAFriendDisplayName = "Bring-A-Friend Ticket";
 
     public Task<AssociateWorkspace> LoadAssociateDateAsync(DateOnly operatingDate, CancellationToken cancellationToken = default) =>
         ComposeAsync(operatingDate, cancellationToken);
@@ -280,6 +289,8 @@ public sealed class AssociatePassdownService(
             products.AddRange(ComposeCatalogProducts(category, records, draft));
         }
 
+        MergeExactDatedBringAFriend(products, datedByCategory.GetValueOrDefault(SourceCategory.DatedBringAFriend), operatingDate, asOf);
+
         products.AddRange(ComposeCustomProducts(draft));
 
         var categoryStatuses = StatusTrackedDatedCategories
@@ -413,6 +424,61 @@ public sealed class AssociatePassdownService(
                 BundleQuantity: bundle?.Quantity,
                 PerPersonPriceAmount: bundle?.PerPersonPriceAmount);
         }
+    }
+
+    /// <summary>
+    /// Phase 15A: folds ordinary Bring-A-Friend's exact per-date price (<see cref="SourceCategory.DatedBringAFriend"/>,
+    /// keyword <c>BAFWizardDailyTickets</c>) into the existing Promotions-category "Bring-A-Friend
+    /// Ticket" catalog row, in place, rather than adding it as its own product/section — the same
+    /// real-world offer must appear exactly once (docs/phase13-hardening.md Phase 15A section).
+    /// Precedence: when a verified exact value exists for <paramref name="operatingDate"/>, it wins —
+    /// the row's price/qualifier/<see cref="PriceKind"/> switch to <see cref="PriceKind.ExactDated"/>
+    /// and "Starting From" is dropped, while <see cref="AssociateProduct.ComparisonPriceAmount"/> (the
+    /// official "$80 Gate Price", already sourced from the static catalog card) is preserved
+    /// unchanged — never fabricated here, never dropped. <see cref="AssociateProduct.ProductIdentity"/>
+    /// stays the catalog row's own identity so a manager's existing per-product draft override
+    /// survives regardless of whether today's date has an exact price. When no exact value exists (no
+    /// data, a different date, or a failed check), the catalog row is left completely untouched — the
+    /// existing generic "Starting From" value remains, exactly as Phase 13C behaved (spec Part 10).
+    /// </summary>
+    private static void MergeExactDatedBringAFriend(
+        List<AssociateProduct> products,
+        DatedResultRecord? record,
+        DateOnly operatingDate,
+        DateTimeOffset asOf)
+    {
+        var lastKnownGood = record?.ToLastKnownGood() ?? LastKnownGood<string>.Empty;
+        if (lastKnownGood.SuccessValue is not { } json)
+        {
+            return;
+        }
+
+        var payload = JsonSerializer.Deserialize<DatedBringAFriendPayload>(json);
+        var exactProduct = payload?.Products.FirstOrDefault(p => p.ApplicableDate == operatingDate);
+        if (exactProduct is null)
+        {
+            return;
+        }
+
+        var catalogIndex = products.FindIndex(p =>
+            !p.IsCustom && p.Category == SourceCategory.Promotions &&
+            string.Equals(p.DisplayName.Trim(), OrdinaryBringAFriendDisplayName, StringComparison.Ordinal));
+        if (catalogIndex < 0)
+        {
+            return;
+        }
+
+        var verification = AssociateVerificationInfo.From(lastKnownGood, asOf);
+        products[catalogIndex] = products[catalogIndex] with
+        {
+            OfficialPriceAmount = exactProduct.Price,
+            OfficialDisplayPrice = null,
+            PriceQualifier = null,
+            DateSpecific = true,
+            ApplicableDate = operatingDate,
+            Verification = verification,
+            PriceKind = PriceKind.ExactDated,
+        };
     }
 
     /// <summary>

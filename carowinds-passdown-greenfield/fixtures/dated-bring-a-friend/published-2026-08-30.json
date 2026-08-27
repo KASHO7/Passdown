@@ -1,0 +1,26 @@
+{
+  "SERVICE": {
+    "keyword_image": "",
+    "request_type": "GetKeywordCalendar",
+    "session_id": "stcg.190651.118",
+    "status": "OK",
+    "DATES": {
+      "D": {
+        "bookings_sold_out": "null",
+        "date": "2026-08-30",
+        "lowest_price": "0.00",
+        "lowest_price_customer_type": "",
+        "lowest_price_package": "",
+        "lowest_price_savings": "",
+        "PS": {
+          "P": [
+            { "available": "6", "capacity": "6", "event_id": "10048997", "id": "10097207", "name": "Celebrate America! Bring-A-Friend Duo Offer ", "CT": { "fee_amount": "0", "id": "244", "retail_amount": "25.00", "tax_amount": "1.66" } },
+            { "available": "6", "capacity": "6", "event_id": "10048997", "id": "10094893", "name": "Bring-A-Friend Ticket", "CT": { "fee_amount": "0", "id": "390", "retail_amount": "35.00", "tax_amount": "2.32" } }
+          ]
+        }
+      }
+    },
+    "request_token": "ABCDEF0123456789ABCDEF0123456789",
+    "_client_ip": "159.26.102.172"
+  }
+}
