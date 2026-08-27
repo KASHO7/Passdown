@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Builds the versioned portable Windows release ZIP for Carowinds Passdown.
+    Builds the versioned portable Windows release ZIP for Carowinds Operations.
 
 .DESCRIPTION
     Phase 7B release packaging (AGENT_BUILD_SPEC.md Phase 7, docs/release-strategy.md). This is
@@ -62,7 +62,7 @@ if ([string]::IsNullOrWhiteSpace($version)) {
 }
 $version = $version.Trim()
 
-$releaseName = "Carowinds-Passdown-$version-win-x64"
+$releaseName = "Carowinds-Operations-$version-win-x64"
 Write-Host "Building portable release: $releaseName"
 
 if (-not $SkipPublish) {

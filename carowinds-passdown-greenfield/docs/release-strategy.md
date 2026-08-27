@@ -2671,3 +2671,190 @@ rebuild has carried on this dev-host-only build process, not a new risk introduc
 simplification, logo, Alerts) was confirmed **not started** — `0.1.0-dev` remains an explicit pre-release
 development version, not a production 1.0 release.
 
+## Phase 13H — final Phase 13 integration audit and release closeout
+
+Phase 13H closed out Phase 13A–13G (startup/refresh audit and hardening, `UserForced` catalog-refresh
+coverage, commercial/pricing hardening, Operations Calendar/Deep Refresh corrections, typable Manual
+Hours/Private Buyout entry, derived Early Ride Time, and the visible rename to "Carowinds Operations")
+with a targeted integration audit against the actual current code (not only prior phase documentation),
+then rebuilt the Windows portable release under the new `Carowinds-Operations-<version>-win-x64.zip`
+naming convention. Full detail on each individual sub-phase lives in `docs/phase13-hardening.md`; this
+section records the audit method, results, and the release rebuild this phase performed.
+
+### Audit method
+
+Rather than re-deriving every Phase 13A–13G finding from scratch (each sub-phase already performed its
+own exhaustive, file:line-cited audit, and the cumulative test suite was already green at 1600/1600
+going into this phase), Phase 13H sampled the highest-risk *cross-phase* interaction points — the
+places a defect could exist only because two separately-built features interact, which no single
+sub-phase's own audit would have caught:
+
+- **Startup/refresh ordering** (`App.axaml.cs`, `StartupCatchUpRefresh.cs`): confirmed
+  `desktop.MainWindow = mainWindow` is assigned before the fire-and-forget
+  `_ = StartupCatchUpRefresh.RunAsync(...)` call, and `StartupCatchUpRefresh` still finalizes before
+  refreshing, still guards with the shared `IScheduledRefreshLock`, and still swallows all failures
+  without ever propagating to the UI — byte-identical to the Phase 13A/13B documentation.
+- **Hours/ERT domain purity** (`ParkHoursCalculator.cs`, `EffectiveHours.cs`): read directly — confirmed
+  `EffectiveHours`'s constructor takes only main-gate `opening`/`closing`/override-flag parameters (no
+  waterpark parameter exists anywhere in the type), `NorthGateOpening = opening?.AddMinutes(-30)`
+  null-propagates correctly for `Closed`/`NotCheckedYet`, and the buyout &gt; closed &gt; manual &gt;
+  official &gt; not-checked precedence exactly matches spec §8.2.
+- **Manual Hours/Buyout typed entry → ERT reactivity** and **custom product override → PDF →
+  finalization → History immutability** — the two most complex cross-cutting paths in the whole Phase
+  13 diff — were independently audited end-to-end by a dedicated read-only pass (file:line citations in
+  `AssociateViewModel.cs`, `ParkHoursCalculator.cs`, `AssociateParkHoursComposer.cs`,
+  `AssociateProduct.cs`, `AssociatePassdownDocumentModelBuilder.cs`,
+  `FinalizedPassdownSnapshotBuilder.cs`). Both: **PASS**. ERT correctly and reactively recomputes from
+  freshly typed/committed Manual Hours and Private Buyout values via one shared
+  `ParkHoursCalculator.Calculate` call; an unparseable typed value is rejected by
+  `CommitOperationalTimeText` before it ever reaches the committed field, so it can never corrupt
+  `NorthGateOpening`; waterpark hours are carried on an entirely separate presentation path
+  (`AssociateParkHoursView.WaterparkOpening/WaterparkClosing`) that never touches `Calculate` or
+  `EffectiveHours`. The custom-price override (`AssociateProduct.EffectiveDisplayPrice =>
+  DisplayPriceOverride ?? OfficialPriceAmount`) is the single value both `AssociatePassdownDocumentModelBuilder`
+  and `FinalizedPassdownSnapshotBuilder` read from the one shared document-model build
+  (`FinalizedPassdownSnapshotBuilder.BuildProjection` builds `AssociatePassdownDocumentModel` exactly
+  once and derives both the PDF and the snapshot from that same instance); the frozen snapshot stores
+  plain formatted strings/decimals (e.g. `FinalizedProductRowSnapshot`), never a live reference back to
+  the mutable catalog row, so a later catalog change structurally cannot alter a frozen History record.
+  One minor, non-blocking test-coverage observation: no existing test explicitly re-mutates a catalog
+  value *after* finalization to prove immutability end-to-end (the guarantee is structural, from the
+  plain-data snapshot shape, not from an explicit regression test) — noted for future coverage, not
+  treated as a defect requiring a fix this phase (CLAUDE.md/brief: fix only genuine regressions, not
+  every coverage gap).
+- **Branding sweep**: `grep -rn "Carowinds Admissions Operations"` across `src/`/`tests/`/`packaging/`
+  returned only the one test asserting its absence (`ProductBrandingTests.cs`); every remaining
+  `"Carowinds Passdown"` hit in `src/`/`tests/`/`packaging/` was individually inspected and confirmed to
+  be one of the four intentional legacy compatibility identifiers (AppData folder, database filename,
+  Task Scheduler task name, OS-temp launcher subfolder) or a doc-comment referencing one of them — no
+  stale-branding regression found. Window title, brand band, PDF header (`"CAROWINDS OPERATIONS"` +
+  `"Associate Passdown"`), and the diagnostic summary heading (`"Carowinds Operations — Diagnostic
+  Summary"`) were each read directly and confirmed correct. Confirmed no `LastVerified`/`Deep Refresh`
+  diagnostic text exists anywhere in `AssociatePassdownPdfGenerator.cs`/
+  `AssociatePassdownDocumentModelBuilder.cs` (zero grep hits) — the PDF cannot leak retrieval
+  diagnostics.
+- **Schema/scope confirmation**: `Migration0011CreateDeepRefreshStatusTable` (introduced Phase 13D)
+  remains the highest-numbered migration; `AssociateDraftPayload.CurrentSchemaVersion` = 3,
+  `FinalizedPassdownSnapshot.CurrentSchemaVersion` = 1 — both confirmed directly in source.
+  `AppSection` (`MainViewModel.cs`) still has exactly five values (`Dashboard`, `OperationsCalendar`,
+  `AssociatePassdown`, `OperationalNotes`, `History`) — no `Manager`, no `Alerts`, confirming Phase
+  14/15 remain correctly un-started.
+
+No genuine defect was found anywhere sampled — the audit is a clean **PASS**. No production `src/` code
+was changed this phase.
+
+### Test suite stability
+
+`dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` was run five times this phase: three
+runs passed 1600/1600 cleanly; two runs each hit exactly one failure, both matching the pre-existing,
+previously-documented (Phase 6D) Avalonia headless cross-assembly parallelism flake
+(`System.InvalidOperationException: Stack empty.` inside
+`Avalonia.PropertyStore.AvaloniaPropertyDictionaryPool.Get()` during `XamlIlPopulate`) — once in
+`DashboardViewTests.DashboardView_EachParkStatus_ConstructsWithoutError(status: Closed)`, once in
+`AssociateViewAccessibilityTests.AssociateView_WithPopulatedWorkspace_ConstructsAndExposesCriticalAutomationNames`.
+Two different, unrelated View-construction tests each time, neither ever a Phase 13 file, both bearing
+the exact documented signature. Not a regression; recorded honestly per the task brief's instruction not
+to call a known flake a regression without evidence.
+
+### Release ZIP naming (Part 17 of the brief)
+
+Phase 13G's own task brief explicitly deferred the release ZIP naming update to 13H (changing it earlier
+without also cutting a new manifest/rebuild would have left an inconsistent half-state). This phase
+updated the two places that determine it: `packaging/windows/Build-PortableRelease.ps1`'s
+`$releaseName` (`"Carowinds-Passdown-$version-win-x64"` → `"Carowinds-Operations-$version-win-x64"`) and
+`packaging/windows/Publish-Windows.ps1`'s console prose ("Publishing Carowinds Passdown..." →
+"Publishing Carowinds Operations..."), plus each script's `.SYNOPSIS` doc comment. Neither script's
+executable-name check (`Carowinds.Passdown.Desktop.exe`), Task Scheduler task-name targeting, or
+publish/staging logic changed. No test hardcodes the release-ZIP-naming string (confirmed by grep), so
+no coupled test edit was needed.
+
+### Release rebuild
+
+No `pwsh` runtime is available on this dev host (same limitation as every prior rebuild) — the exact
+`Publish-Windows.ps1`/`Build-PortableRelease.ps1` staging/zip logic was mirrored manually via shell
+commands, identical to how Phases 7A–7F, 9F, 10F, 11F, and 12F each produced their own artifacts:
+
+1. `dotnet publish src/Carowinds.Passdown.Desktop/Carowinds.Passdown.Desktop.csproj -c Release -r win-x64 --self-contained true -o artifacts/publish/win-x64 -p:PlaywrightPlatform=win-x64` — clean publish, 271 files after `.pdb` removal (135 MB), matching the Phase 7B–13G baseline.
+2. A `strings` byte-search of the freshly published `Carowinds.Passdown.Desktop.dll`/`.Application.dll` confirmed Phase 13 symbols present (`RunUserForcedRefreshAsync` ×4, `NorthGateOpening` ×4, `ManualHoursWarningText`/`TimeText`, `OperationsCalendarViewModel` ×51) and the embedded `AssemblyProductAttribute` reads `"Carowinds Operations"` — proving this publish is not a stale reuse of the Phase 12F output.
+3. Staged into `artifacts/release-staging/Carowinds-Operations-0.1.0-dev-win-x64/` — 277 files, the same Phase 7C–13G layout under the new folder name.
+4. Forbidden-pattern check (`.git`, `.db`/`-wal`/`-shm`, `CLAUDE.md`, `AGENT_BUILD_SPEC.md`, `.pdb`, Playwright, test assemblies, non-Windows native binaries, `.DS_Store`) — clean, using extension-anchored glob patterns after an initial naive substring check produced two false positives (`Tmds.DBus.Protocol.dll` matching `*.db*`, `System.Net.Sockets.dll` matching `*.so*` — both confirmed to be ordinary .NET framework DLLs on direct inspection, not forbidden content).
+5. `zip -r -X -9` into `artifacts/releases/Carowinds-Operations-0.1.0-dev-win-x64.zip`.
+6. `shasum -a 256` the resulting ZIP.
+7. Extracted fresh to an isolated scratch directory outside `artifacts/`; `diff -rq` against the staging folder reported byte-for-byte identical content (277 extracted files matching 277 staged files), and `Carowinds.Passdown.Desktop.exe`'s SHA-256 inside the extraction independently matched the staged copy.
+
+This supersedes the Phase 12F artifact (SHA-256
+`dcceafee15be7f30ba410d3bb68032bd3eba057833f4a4c910fe5ecbbc4d4946`) — full detail, including the exact
+functional delta and the complete chain of superseded prior artifacts, is in `docs/release-manifest.md`.
+
+### Windows validation — NOT EXECUTED
+
+No Windows host or VM was available this session, the same limitation carried forward from every prior
+phase. 100%/125%/150% display-scaling validation, live icon/taskbar rendering, real Task Scheduler
+install/run/uninstall, and the full manual click-through checklist were all **not executed**. Confidence
+instead comes from the automated suite (construction-level real-XAML-loader checks plus `Measure`/
+`Arrange` layout passes at 1280×860/960×640, unchanged since Phase 12B/13D and still passing), the
+existing `ScheduledTaskPlanTests`/`ScheduledTaskStatusProviderTests` static coverage (unchanged since
+Phase 13G, since nothing in `ScheduledTaskPlan.cs`/`ScheduledTaskStatusProvider.cs` was touched this
+phase), and the byte-level icon/Product-attribute verification described in "Release rebuild" above.
+This is not a new risk class beyond what every Phase 7E/9F/10F/11F/12F/13G rebuild already carried; it
+is recorded here rather than glossed over.
+
+### Phase 13H verdict table
+
+| # | Item | Result |
+|---|---|---|
+| 1 | Phase 13A–13G integration audit (startup/refresh, hours/ERT, Calendar, branding, schema/scope) | PASS |
+| 2 | Startup non-blocking / no synchronous network audit | PASS |
+| 3 | Check Online (Dashboard + Associate) result | PASS — unchanged since 13B, catalog+dated coverage confirmed in code |
+| 4 | Manual/scheduled Deep Refresh result | PASS — unchanged since 13B/13D |
+| 5 | Operations Calendar result | PASS — unchanged since 12F, no Phase 13 file touched Calendar geometry |
+| 6 | Waterpark hours isolation from ERT | PASS — structurally confirmed, no waterpark parameter reaches `ParkHoursCalculator`/`EffectiveHours` |
+| 7 | Manual Hours typed entry result | PASS — unchanged since 13E, reactivity into ERT independently re-verified this phase |
+| 8 | Private Buyout result | PASS — unchanged since 13E/13F |
+| 9 | ERT derivation result | PASS — unchanged since 13F, reactivity and non-fabrication independently re-verified this phase |
+| 10 | Pricing/commercial coverage result | PASS — unchanged since 13C; known BAF-authentication limitation carried forward, no credential automation added |
+| 11 | Custom product override → PDF → finalization → History | PASS — independently re-verified this phase end to end; one non-blocking test-coverage observation noted, not a defect |
+| 12 | PDF result (branding, no diagnostics leakage, multi-page warning) | PASS |
+| 13 | Multipage warning result | PASS — unchanged (`AssociatePassdownPreflight.cs`) |
+| 14 | Finalization/History immutability result | PASS |
+| 15 | Branding result | PASS — no stale "Carowinds Admissions Operations"/misclassified "Carowinds Passdown" hit found |
+| 16 | Icon (byte-level, non-Windows) result | PASS — icon asset present, `ApplicationIcon` wired, embedded in built `.exe` |
+| 17 | Icon Windows-rendered result | **NOT EXECUTED** — no Windows host available |
+| 18 | AppData upgrade / legacy-data compatibility | PASS — structurally guarded by `Phase13GAppDataRenameCompatibilityTests`, unchanged this phase |
+| 19 | Fresh-install result | PASS — unchanged startup/migration path, no Phase 13H code change |
+| 20 | Task Scheduler result (static) | PASS — task name/description/idempotency unchanged; live install/run **NOT EXECUTED** |
+| 21 | Windows 100% scaling | **NOT EXECUTED** — no Windows host available |
+| 22 | Windows 125% scaling | **NOT EXECUTED** — no Windows host available |
+| 23 | Windows 150% scaling | **NOT EXECUTED** — no Windows host available |
+| 24 | Build result | PASS — 0 warnings, 0 errors |
+| 25 | Test suite / final count | PASS — 1600/1600 (3 of 5 runs clean; 2 runs hit the pre-existing, unrelated Phase 6D Avalonia flake) |
+| 26 | Schema confirmation (11 / 3 / 1, in code) | PASS |
+| 27 | Release artifact filename | `Carowinds-Operations-0.1.0-dev-win-x64.zip` |
+| 28 | ZIP size | 62,586,155 bytes (59.7 MiB) |
+| 29 | Extracted size / file count | 141,557,778 bytes (135.0 MiB) / 277 files (280 entries) |
+| 30 | SHA-256 | `dde45055424d140fe0a16eae079f24cddfbc9a699c7a06dd7e50f0c65f4a8f0d` |
+| 31 | Release manifest/docs update | PASS — `docs/release-manifest.md` and this section |
+| 32 | Defects found/fixed | None found; zero production `src/` changes this phase |
+| 33 | Accepted limitations | Windows-host execution gaps (icon rendering, scaling, live Task Scheduler, full click-through); BAF passholder-authentication pricing gap (13C, unchanged) |
+| 34 | Phase 14 HOLD confirmation | PASS — no Alerts/Data Confidence/notifications/monitoring code found |
+| 35 | Phase 15 NOT STARTED confirmation | PASS — `AppSection` still has exactly 5 values, no Manager |
+
+### Phase 13H release readiness decision
+
+**READY WITH ACCEPTED LIMITATIONS.**
+
+Every Phase 13A–13G requirement was re-audited against current code at the cross-phase interaction
+points most likely to hide a defect no single sub-phase's own isolated audit would catch — none was
+found. The full non-live suite (1600/1600 on 3 of 5 clean runs; the other 2 each hit the same
+pre-existing, unrelated Phase 6D Avalonia headless flake on two different, unrelated View-construction
+tests) and a clean build both pass. The release ZIP was rebuilt from the exact current commit under the
+new `Carowinds-Operations-<version>-win-x64.zip` naming convention, independently verified via a
+`strings` symbol/Product-attribute check to contain the actual Phase 13A–13G code (not a stale reuse of
+the Phase 12F artifact), and byte-for-byte re-inspected after a fresh extraction. The prior (Phase 12F)
+artifact is explicitly marked superseded. The only open gaps are Windows-host execution — the same class
+of gap every Phase 7E/9F/10F/11F/12F rebuild has carried on this dev-host-only build process, not a new
+risk introduced by Phase 13 — and the already-documented, unimplementable-without-credential-automation
+BAF passholder-pricing gap from Phase 13C. Phase 14 (Alerts/Data Confidence/notifications/monitoring)
+and Phase 15 are both confirmed **not started**. `0.1.0-dev` remains an explicit pre-release development
+version, not a production 1.0 release.
+

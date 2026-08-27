@@ -2312,4 +2312,74 @@ is now covered by an explicit new regression test proving drafts/History/Deep-Re
 correctly from a legacy-named data directory under the renamed app, with no second "Carowinds
 Operations" directory ever created. Zero schema/migration changes (DB 11, draft 3, snapshot 1), zero
 persistence/retrieval/business-rule changes, 15 new tests, full suite green (1600/1600), build clean
+
+## Phase 13H — final Phase 13 integration audit and release closeout
+
+Phase 13H is the final Phase 13 sub-phase: a release-validation pass over 13A–13G as one integrated
+product, followed by the actual final win-x64 portable release rebuild (deferred by every sub-phase
+through 13G). No new feature was added; zero production `src/` code changed.
+
+### Audit findings
+
+A targeted audit sampled the cross-phase interaction points most likely to hide a defect no single
+sub-phase's own isolated audit would catch, rather than re-deriving every 13A–13G finding from scratch:
+
+- Startup ordering (`App.axaml.cs`/`StartupCatchUpRefresh.cs`) — unchanged, window assigned before the
+  fire-and-forget catch-up call, finalize-before-refresh and shared-lock guarding intact.
+- Hours/ERT domain purity (`ParkHoursCalculator.cs`/`EffectiveHours.cs`) — confirmed no waterpark
+  parameter exists anywhere in the type; `NorthGateOpening` null-propagates correctly for
+  Closed/NotCheckedYet; override precedence matches spec §8.2 exactly.
+- Manual Hours/Buyout typed entry → ERT reactivity, and custom product override → PDF → finalization →
+  History immutability — the two most complex cross-cutting Phase 13 paths — were independently
+  audited end-to-end (file:line evidence in `AssociateViewModel.cs`, `AssociateParkHoursComposer.cs`,
+  `AssociateProduct.cs`, `AssociatePassdownDocumentModelBuilder.cs`,
+  `FinalizedPassdownSnapshotBuilder.cs`). Both **PASS**: ERT reactively recomputes from freshly
+  committed typed values via one shared `ParkHoursCalculator.Calculate` call; an unparseable typed
+  value never reaches the committed field; waterpark hours are carried on a fully separate
+  presentation path that never touches `EffectiveHours`. The custom-price override
+  (`AssociateProduct.EffectiveDisplayPrice`) is the one value both PDF generation and finalization read
+  from a single shared document-model build; the frozen snapshot stores plain formatted
+  strings/decimals, never a live catalog reference. One non-blocking test-coverage observation (no
+  existing test re-mutates a catalog value *after* finalization to prove immutability end-to-end,
+  though the guarantee is structural) — not treated as a defect.
+- Branding sweep — no stale "Carowinds Admissions Operations" hit and every remaining "Carowinds
+  Passdown" hit in `src/`/`tests/`/`packaging/` confirmed to be one of the four intentional legacy
+  compatibility identifiers. No `LastVerified`/Deep Refresh diagnostic text found anywhere in the PDF
+  generation path.
+- Schema/scope confirmation — `Migration0011CreateDeepRefreshStatusTable` (Phase 13D) remains the
+  newest migration; `AssociateDraftPayload` schema 3, `FinalizedPassdownSnapshot` schema 1;
+  `AppSection` still has exactly 5 values (no Manager, no Alerts).
+
+No genuine defect was found. Full detail, verdict table, and the release rebuild itself are in
+`docs/release-strategy.md` "Phase 13H — final Phase 13 integration audit and release closeout"; the
+shipped artifact's exact identity is in `docs/release-manifest.md`.
+
+### Test suite stability
+
+Five full non-live suite runs, zero source changes between them: three clean at 1600/1600, two each
+hit one failure — both the pre-existing, previously-documented (Phase 6D) Avalonia headless
+cross-assembly parallelism flake (`Stack empty.` in `AvaloniaPropertyDictionaryPool.Get()` during
+`XamlIlPopulate`), on two different, unrelated View-construction tests neither belonging to any Phase
+13 file. Not a regression.
+
+### Release rebuild
+
+`packaging/windows/Build-PortableRelease.ps1`'s `$releaseName` and `packaging/windows/Publish-Windows.ps1`'s
+console prose were updated to `Carowinds-Operations` (deferred from 13G). The final win-x64 portable
+ZIP was rebuilt manually (no `pwsh` on this dev host, same as every prior rebuild), byte-verified
+against a fresh extraction, and hashed — see `docs/release-manifest.md` for the exact artifact
+filename, size, and SHA-256.
+
+### Windows validation
+
+**NOT EXECUTED** — no Windows host or VM was available this session, the same limitation every prior
+Phase 7E/9F/10F/11F/12F/13G rebuild has carried. 100/125/150% scaling, live icon/taskbar rendering, and
+real Task Scheduler install/run were not executed; confidence comes from the automated suite's
+real-XAML-loader construction/layout checks and the byte-level icon/Product-attribute verification
+performed during the release rebuild.
+
+### Phase 14 / Phase 15
+
+Both confirmed not started — no Alerts/Data Confidence/notifications/monitoring code exists anywhere
+in the codebase, and `AppSection` has no Manager value.
 (0/0). One local commit follows; 13H (final packaging/release rebuild) is explicitly not started.
