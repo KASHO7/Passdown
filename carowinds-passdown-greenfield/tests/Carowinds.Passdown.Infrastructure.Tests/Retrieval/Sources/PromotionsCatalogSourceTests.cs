@@ -41,9 +41,64 @@ public class PromotionsCatalogSourceTests
 
         Assert.Equal(RetrievalStatus.Verified, result.Evidence.Status);
         Assert.Equal(RetrievalStrategy.Html, result.Evidence.Strategy);
-        Assert.Equal(new Uri("https://www.sixflags.com/carowinds/special-offers"), httpClient.LastRequestedUri);
+        // FakeRetrievalHttpClient answers every GetAsync call with the same fixture body and only
+        // remembers the most recent URI — Phase 13C's dual-page fetch (special-offers, then
+        // daily-tickets) means this is now the second URL; RetrieveAsync_FetchesBothPagesInOrder
+        // below is what actually proves both pages were requested.
+        Assert.Equal(new Uri("https://www.sixflags.com/carowinds/daily-tickets"), httpClient.LastRequestedUri);
         Assert.NotNull(result.Payload);
         Assert.Equal(2, result.Payload!.Products.Count);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_FetchesBothPagesInOrder_AndDiscoversBringAFriendDuoGenerically()
+    {
+        var httpClient = new StubHttpClient(
+        [
+            HtmlResponse("promotions/published-page.html"),
+            HtmlResponse("promotions/daily-tickets-page.html"),
+        ]);
+        var source = new PromotionsCatalogSource(httpClient, new FakeClock(SampleUtcNow));
+
+        var result = await source.RetrieveAsync(Request(), CancellationToken.None);
+
+        Assert.Equal(2, httpClient.Requests.Count);
+        Assert.Equal(new Uri("https://www.sixflags.com/carowinds/special-offers"), httpClient.Requests[0].Uri);
+        Assert.Equal(new Uri("https://www.sixflags.com/carowinds/daily-tickets"), httpClient.Requests[1].Uri);
+
+        Assert.Equal(RetrievalStatus.Verified, result.Evidence.Status);
+        var names = result.Payload!.Products.Select(p => p.DisplayName).ToList();
+        // "Celebrate America! Bring-A-Friend Duo" is discovered without PromotionsCatalogSource (or
+        // ProductCardHtmlParser) ever hardcoding its name — it is just another productv2-card on a
+        // now-supported surface (Phase 13C Part O).
+        Assert.Contains("Celebrate America! Bring-A-Friend Duo", names);
+        Assert.Contains("Park Ticket", names);
+        Assert.Contains("SCarowinds Bundles", names);
+        // "2027 Gold Pass" carries the identical id on both pages, so it dedupes to one row rather
+        // than appearing twice.
+        Assert.Equal(1, names.Count(n => n == "2027 Gold Pass"));
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_BringAFriendDuo_HasBundleQualifierNoComparisonPrice_AndDistinctIdFromOrdinaryBaf()
+    {
+        var httpClient = new StubHttpClient(
+        [
+            HtmlResponse("promotions/published-page.html"),
+            HtmlResponse("promotions/daily-tickets-page.html"),
+        ]);
+        var source = new PromotionsCatalogSource(httpClient, new FakeClock(SampleUtcNow));
+
+        var result = await source.RetrieveAsync(Request(), CancellationToken.None);
+
+        var duo = result.Payload!.Products.Single(p => p.DisplayName == "Celebrate America! Bring-A-Friend Duo");
+        Assert.Equal("Promotions:id:o1gujw0o273eymg69l54ev", duo.Key.ToString());
+        Assert.Equal(50.00m, duo.CurrentPriceAmount);
+        Assert.Equal("Two Friends Just", duo.PriceQualifier);
+        Assert.Null(duo.ComparisonPriceAmount);
+
+        var ordinaryBaf = result.Payload.Products.Single(p => p.DisplayName == "Bring-A-Friend Ticket");
+        Assert.NotEqual(duo.Key.ToString(), ordinaryBaf.Key.ToString());
     }
 
     [Fact]

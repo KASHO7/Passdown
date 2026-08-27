@@ -32,12 +32,13 @@ public static class FreshnessPolicyCatalog
             [SourceCategory.DatedFastLane] = new(SourceCategory.DatedFastLane, daily),
             [SourceCategory.HauntedAttractions] = new(SourceCategory.HauntedAttractions, daily),
             [SourceCategory.Promotions] = new(SourceCategory.Promotions, daily),
-            [SourceCategory.SeasonPasses] = new(
-                SourceCategory.SeasonPasses,
-                new FreshnessCadence.RollingInterval(TimeSpan.FromDays(options.SeasonPassRefreshIntervalDays))),
-            [SourceCategory.AddOns] = new(
-                SourceCategory.AddOns,
-                new FreshnessCadence.RollingInterval(TimeSpan.FromDays(options.AddOnRefreshIntervalDays))),
+            // Phase 13C Part R: SeasonPasses/AddOns moved from a rolling interval to the same daily
+            // cadence as every other category — Part AL measured each catalog page at well under
+            // 1.2s, so daily unattended refresh is reasonably cheap (docs/phase13-hardening.md).
+            [SourceCategory.SeasonPasses] = new(SourceCategory.SeasonPasses, daily),
+            [SourceCategory.AddOns] = new(SourceCategory.AddOns, daily),
+            [SourceCategory.BringAFriendDuo] = new(SourceCategory.BringAFriendDuo, daily),
+            [SourceCategory.MilitaryFirstResponder] = new(SourceCategory.MilitaryFirstResponder, daily),
         };
     }
 }

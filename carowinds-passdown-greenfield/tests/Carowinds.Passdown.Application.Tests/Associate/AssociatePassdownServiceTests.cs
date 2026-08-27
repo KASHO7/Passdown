@@ -809,14 +809,15 @@ public class AssociatePassdownServiceTests
     // ===================== Category-level status (Phase 4B Part E) =====================
 
     [Fact]
-    public async Task CategoryStatuses_CoverTheThreeNonParkHoursDatedCategories()
+    public async Task CategoryStatuses_CoverEveryNonParkHoursDatedCategory()
     {
         var env = CreateEnvironment();
 
         var workspace = await env.Service.LoadAssociateDateAsync(Date);
 
+        // Phase 13C added SourceCategory.BringAFriendDuo as a fourth status-tracked dated category.
         Assert.Equal(
-            new[] { SourceCategory.DatedAdmissionTickets, SourceCategory.DatedFastLane, SourceCategory.HauntedAttractions },
+            new[] { SourceCategory.DatedAdmissionTickets, SourceCategory.DatedFastLane, SourceCategory.HauntedAttractions, SourceCategory.BringAFriendDuo },
             workspace.CategoryStatuses.Select(s => s.Category));
         Assert.DoesNotContain(workspace.CategoryStatuses, s => s.Category == SourceCategory.ParkHours);
     }

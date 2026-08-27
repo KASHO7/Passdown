@@ -19,6 +19,8 @@ internal static class PdfCategoryDisplayNames
         SourceCategory.SeasonPasses => "Season Passes",
         SourceCategory.AddOns => "Add-Ons",
         SourceCategory.Promotions => "Promotions",
+        SourceCategory.BringAFriendDuo => "Bring-A-Friend Duo",
+        SourceCategory.MilitaryFirstResponder => "Military & First Responder",
         _ => category.ToString(),
     };
 }

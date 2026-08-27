@@ -116,9 +116,10 @@ public class RefreshOrchestratorTests
         Assert.Equal(expectedWindow.ToHashSet(), summary.Results.Select(r => r.RequestedDate!.Value).ToHashSet());
     }
 
-    // 4. Season passes are not refreshed before 7 days.
+    // 4. Phase 13C Part R: season passes moved to the same daily cadence as every other commercial
+    // category — not due again if they already succeeded earlier today (after today's 6 AM).
     [Fact]
-    public async Task RunScheduledRefreshAsync_SeasonPasses_NotDueBeforeSevenDays()
+    public async Task RunScheduledRefreshAsync_SeasonPasses_NotDueAgainTheSameDay()
     {
         var catalogProducts = new InMemoryCatalogProductRepository();
         var reconciliation = CreateReconciliationService(catalogProducts);
@@ -126,16 +127,16 @@ public class RefreshOrchestratorTests
             (_, _) => Task.FromResult(SourceResult<CatalogPayload>.Success("season-passes", FakeEvidence.Verified(FixedNow), new CatalogPayload([]))));
 
         var env = CreateEnvironment([registration]);
-        await env.SourceStates.SaveAsync(new SourceStateRecord("season-passes", SourceCategory.SeasonPasses, FixedNow.AddDays(-6), FixedNow.AddDays(-6), null, null, 0));
+        await env.SourceStates.SaveAsync(new SourceStateRecord("season-passes", SourceCategory.SeasonPasses, FixedNow.AddHours(-2), FixedNow.AddHours(-2), null, null, 0));
 
         var summary = await env.Orchestrator.RunScheduledRefreshAsync();
 
         Assert.Equal(0, summary.OperationsAttempted);
     }
 
-    // 5. Add-ons are not refreshed before 14 days.
+    // 5. Same guarantee for add-ons, also moved to daily cadence.
     [Fact]
-    public async Task RunScheduledRefreshAsync_AddOns_NotDueBeforeFourteenDays()
+    public async Task RunScheduledRefreshAsync_AddOns_NotDueAgainTheSameDay()
     {
         var catalogProducts = new InMemoryCatalogProductRepository();
         var reconciliation = CreateReconciliationService(catalogProducts);
@@ -143,7 +144,7 @@ public class RefreshOrchestratorTests
             (_, _) => Task.FromResult(SourceResult<CatalogPayload>.Success("add-ons", FakeEvidence.Verified(FixedNow), new CatalogPayload([]))));
 
         var env = CreateEnvironment([registration]);
-        await env.SourceStates.SaveAsync(new SourceStateRecord("add-ons", SourceCategory.AddOns, FixedNow.AddDays(-13), FixedNow.AddDays(-13), null, null, 0));
+        await env.SourceStates.SaveAsync(new SourceStateRecord("add-ons", SourceCategory.AddOns, FixedNow.AddHours(-2), FixedNow.AddHours(-2), null, null, 0));
 
         var summary = await env.Orchestrator.RunScheduledRefreshAsync();
 

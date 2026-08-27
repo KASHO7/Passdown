@@ -402,3 +402,75 @@ adapters' source code, any fixture under `fixtures/catalog-source/`, `fixtures/p
 contents, not inferred from their absence at the Application layer. Their absence is flagged here as a
 traced fact for 13C's discovery work; the reason they were never onboarded is out of this audit's
 scope.
+
+## Phase 13C — commercial coverage expansion, pricing semantics, daily cadence
+
+Live-reconfirmed 2026-08-27 (not carried over from the 2026-08-20 notes above without independent
+re-verification, per CLAUDE.md). Full live-discovery narrative for the two new product families is
+in `docs/retrieval/special-ticket-sources.md`; this section updates the authoritative source map.
+
+### 10 currently-implemented commercial surfaces (was 8)
+
+| # | Source | Adapter (file) | `SourceCategory` | Scope | Date-sensitive? | Eligibility-restricted? | Promotion/bundle? | Cadence |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Park hours | `ParkHoursSource.cs` | `ParkHours` | Dated | Yes | No | No | Daily |
+| 2 | Dated admission | `DatedAdmissionSource.cs` | `DatedAdmissionTickets` | Dated | Yes | No | No | Daily |
+| 3 | Dated Fast Lane | `DatedFastLaneSource.cs` | `DatedFastLane` | Dated | Yes | No | No | Daily |
+| 4 | Dated haunted | `DatedHauntedSource.cs` | `HauntedAttractions` | Dated | Yes | No | No | Daily |
+| 5 | Promotions | `PromotionsCatalogSource.cs` | `Promotions` | Catalog | No | No | Yes | Daily |
+| 6 | Season passes | `SeasonPassCatalogSource.cs` | `SeasonPasses` | Catalog | No | No | No | **Daily (was 7-day rolling)** |
+| 7 | Season-pass add-ons | `SeasonPassAddOnsCatalogSource.cs` | `AddOns` (shared) | Catalog | No | No | No | **Daily (was 14-day rolling)** |
+| 8 | General add-ons | `GeneralAddOnsCatalogSource.cs` | `AddOns` (shared) | Catalog | No | No | No | **Daily (was 14-day rolling)** |
+| 9 | **Dated Bring-A-Friend Duo** (new) | `DatedBringAFriendDuoSource.cs` | `BringAFriendDuo` | Dated | Yes (real, `SUBAF50`) | Yes (passholder/member only) | Yes (bundle, per-person) | Daily |
+| 10 | **Military/First Responder** (new) | `MilitaryFirstResponderCatalogSource.cs` | `MilitaryFirstResponder` | Catalog | No | Yes | No | Daily |
+
+`PromotionsCatalogSource` (source 5) now fetches **two** pages per run —
+`sixflags.com/carowinds/special-offers` (unchanged) and, new this phase,
+`sixflags.com/carowinds/daily-tickets` — both parsed by the same unmodified, name-agnostic
+`ProductCardHtmlParser`/`CatalogCardMapper`, concatenated before mapping. This is how "Celebrate
+America! Bring-A-Friend Duo" (which live investigation found only on `daily-tickets`, not
+`special-offers`) is discovered without hardcoding its name (Part O) — see
+"Accepted duplication" below for the consequence.
+
+### Price semantics support (Part C/AF)
+
+New `Domain.Catalog.PriceKind` enum (`Unknown, ExactDated, StartingFrom, StandardCatalog, Sale,
+ComparisonWas, PerPerson, Bundle`) — computed at Associate-composition time
+(`Application.Catalog.PriceSemanticsClassifier`), never persisted, from fields already stored
+(`PriceQualifier`, comparison price, `DateSpecific`). No schema migration was needed (see
+`docs/retrieval/pricing-semantics.md`'s Phase 13C addendum and Part AM/AN below).
+
+### Accepted duplication (Promotions dual-page fetch)
+
+Fetching both `special-offers` and `daily-tickets` under one `Promotions`-category source means
+"Park Ticket" and "SCarowinds Bundles" — real cards on `daily-tickets` that aren't otherwise tracked
+under `Promotions` — now also appear as `Promotions`-category catalog rows, in addition to their
+existing homes ("Park Ticket" is separately tracked exactly via `DatedAdmissionTickets`;
+"SCarowinds Bundles"/`fallwizard` was previously unimplemented anywhere). This mirrors the
+already-accepted "2027 Gold Pass" precedent (tracked under both `Promotions` and `SeasonPasses` with
+different Sanity ids) — a deliberate, documented consequence of fully generic (zero-name-hardcoded)
+discovery on a broader supported surface, not a bug. "2027 Gold Pass" itself carries the *same*
+`data-ab-product` id on both `special-offers` and `daily-tickets` (re-confirmed live), so
+`CatalogCardMapper`'s existing dedup collapses it to one row within this source, unlike the
+cross-source Gold Pass duplication.
+
+### Product identity collision check for the two new families (Part L)
+
+See `docs/retrieval/special-ticket-sources.md`'s own table — every new id/keyword
+(`SUBAF50`, `o1gUjW0O273eyMG69L54eV`, `MilitaryWizard`) was checked against every id already in use
+by any existing adapter before onboarding. No collision found in either the id tier or the name
+tier.
+
+### Shared-plumbing fix discovered by this phase
+
+`AccessoKeywordCalendarPackageList.P` (`Infrastructure/Retrieval/Sources/AccessoKeywordCalendar.cs`)
+lacked the single-object/array normalization `DATES.D` already had — real `SUBAF50` responses
+(exactly one package per date) surfaced this, since every previously-onboarded keyword's fixtures
+always had ≥2 packages. Fixed with the same `SingleOrArrayConverter<T>` applied to `P` — benefits
+every dated source, not just the new one. Full detail in `docs/retrieval/special-ticket-sources.md`.
+
+### Ordinary (non-Duo) Bring-A-Friend — no adapter added, by design
+
+Confirmed, documented limitation: its passholder-exclusive dated price is gated behind an
+authenticated passholder login inside the shared `SnapWizard` checkout, not reachable anonymously.
+No adapter was built. Full investigation trail in `docs/retrieval/special-ticket-sources.md`.

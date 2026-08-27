@@ -23,6 +23,10 @@ public class FreshnessPolicyCatalogTests
     [InlineData(SourceCategory.DatedFastLane)]
     [InlineData(SourceCategory.HauntedAttractions)]
     [InlineData(SourceCategory.Promotions)]
+    [InlineData(SourceCategory.SeasonPasses)]
+    [InlineData(SourceCategory.AddOns)]
+    [InlineData(SourceCategory.BringAFriendDuo)]
+    [InlineData(SourceCategory.MilitaryFirstResponder)]
     public void Build_DailyCategories_UseDailyAtCadenceWithConfiguredTime(SourceCategory category)
     {
         var options = new FreshnessOptions { DailyRefreshTimeEastern = new TimeOnly(6, 0) };
@@ -31,28 +35,6 @@ public class FreshnessPolicyCatalogTests
 
         var cadence = Assert.IsType<FreshnessCadence.DailyAt>(policy.Cadence);
         Assert.Equal(new TimeOnly(6, 0), cadence.TimeOfDay);
-    }
-
-    [Fact]
-    public void Build_SeasonPasses_UsesRollingIntervalFromOptions()
-    {
-        var options = new FreshnessOptions { SeasonPassRefreshIntervalDays = 7 };
-
-        var policy = FreshnessPolicyCatalog.Build(options)[SourceCategory.SeasonPasses];
-
-        var cadence = Assert.IsType<FreshnessCadence.RollingInterval>(policy.Cadence);
-        Assert.Equal(TimeSpan.FromDays(7), cadence.Interval);
-    }
-
-    [Fact]
-    public void Build_AddOns_UsesRollingIntervalFromOptions()
-    {
-        var options = new FreshnessOptions { AddOnRefreshIntervalDays = 14 };
-
-        var policy = FreshnessPolicyCatalog.Build(options)[SourceCategory.AddOns];
-
-        var cadence = Assert.IsType<FreshnessCadence.RollingInterval>(policy.Cadence);
-        Assert.Equal(TimeSpan.FromDays(14), cadence.Interval);
     }
 
     [Fact]

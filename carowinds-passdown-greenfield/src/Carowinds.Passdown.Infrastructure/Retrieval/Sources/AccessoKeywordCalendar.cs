@@ -112,6 +112,14 @@ internal sealed class AccessoKeywordCalendarDateEntry
 
 internal sealed class AccessoKeywordCalendarPackageList
 {
+    /// <summary>
+    /// Phase 13C: the live endpoint applies the exact same single-object/array duality to `PS.P` as
+    /// it does to `DATES.D` — directly observed for the <c>SUBAF50</c> keyword, whose date entries
+    /// carry exactly one package (`"PS":{"P":{...}}`, a bare object), unlike every previously
+    /// onboarded keyword's fixtures, which always had ≥2 packages per date and so never exercised
+    /// this shape. The same <see cref="SingleOrArrayConverter{T}"/> normalizes both.
+    /// </summary>
+    [JsonConverter(typeof(SingleOrArrayConverter<AccessoKeywordCalendarPackage>))]
     public List<AccessoKeywordCalendarPackage>? P { get; set; }
 }
 

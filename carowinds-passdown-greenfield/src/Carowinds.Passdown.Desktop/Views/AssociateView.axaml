@@ -630,6 +630,9 @@
                                   <TextBlock Text="{Binding PriceQualifier}"
                                              IsVisible="{Binding HasPriceQualifier}"
                                              Classes="muted" FontStyle="Italic" />
+                                  <TextBlock Text="{Binding BundleNoteText}"
+                                             IsVisible="{Binding HasBundleNote}"
+                                             Classes="muted" FontStyle="Italic" />
                                   <TextBlock Text="{Binding VerificationNoteText}"
                                              IsVisible="{Binding VerificationNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                              Classes="fieldWarning" />

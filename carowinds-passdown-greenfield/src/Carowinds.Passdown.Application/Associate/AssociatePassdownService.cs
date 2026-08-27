@@ -41,6 +41,7 @@ public sealed class AssociatePassdownService(
         SourceCategory.SeasonPasses,
         SourceCategory.AddOns,
         SourceCategory.Promotions,
+        SourceCategory.MilitaryFirstResponder,
     ];
 
     /// <summary>Dated categories a Phase 4B screen needs a category-level status for (spec Part E) — every dated category except <see cref="SourceCategory.ParkHours"/>, which already has its own dedicated <see cref="AssociateParkHoursView"/>.</summary>
@@ -49,6 +50,7 @@ public sealed class AssociatePassdownService(
         SourceCategory.DatedAdmissionTickets,
         SourceCategory.DatedFastLane,
         SourceCategory.HauntedAttractions,
+        SourceCategory.BringAFriendDuo,
     ];
 
     public Task<AssociateWorkspace> LoadAssociateDateAsync(DateOnly operatingDate, CancellationToken cancellationToken = default) =>
@@ -247,6 +249,12 @@ public sealed class AssociatePassdownService(
             draft, asOf,
             (DatedHauntedPayload payload) => payload.Products.Select(p =>
                 new DatedProductFields(p.PackageId, p.DisplayName, p.ExactDatePrice, p.ComparisonPrice, p.PriceQualifier, p.ApplicableDate)).ToList()));
+        products.AddRange(ComposeDatedProducts(
+            SourceCategory.BringAFriendDuo,
+            datedByCategory.GetValueOrDefault(SourceCategory.BringAFriendDuo),
+            draft, asOf,
+            (DatedBringAFriendDuoPayload payload) => payload.Products.Select(p =>
+                new DatedProductFields(p.PackageId, p.DisplayName, p.PerPersonPrice, p.ComparisonPrice, p.PriceQualifier, p.ApplicableDate)).ToList()));
 
         foreach (var category in CatalogCategories)
         {
@@ -342,7 +350,12 @@ public sealed class AssociatePassdownService(
                 field.ApplicableDate,
                 verification,
                 draftOverride.IncludeOnPdf,
-                draftOverride.DisplayPriceOverride);
+                draftOverride.DisplayPriceOverride,
+                // Phase 13C: every dated product is an exact price for its confirmed applicable
+                // date by construction — DateSpecific is already the authoritative "is this exact"
+                // signal (docs/retrieval/pricing-semantics.md), so PriceKind mirrors that here
+                // rather than re-deriving it from qualifier text (dated sources never populate one).
+                PriceKind.ExactDated);
         }
     }
 
@@ -358,6 +371,11 @@ public sealed class AssociatePassdownService(
             var identity = AssociateProductIdentity.ForCatalogProduct(record.ProductKey);
             var draftOverride = draft.ProductOverrides.GetValueOrDefault(identity, ProductDraftOverride.Default);
 
+            var priceKind = PriceSemanticsClassifier.ClassifyCatalog(record.PriceQualifier, record.ComparisonPriceAmount);
+            var bundle = priceKind == PriceKind.Bundle
+                ? PriceSemanticsClassifier.TryParseBundle(record.PriceQualifier, record.CurrentPriceAmount)
+                : null;
+
             yield return new AssociateProduct(
                 identity,
                 record.DisplayName,
@@ -371,7 +389,11 @@ public sealed class AssociatePassdownService(
                 record.ApplicableDate,
                 VerificationFromCatalog(record),
                 draftOverride.IncludeOnPdf,
-                draftOverride.DisplayPriceOverride);
+                draftOverride.DisplayPriceOverride,
+                priceKind,
+                BundleTotalPriceAmount: bundle is not null ? record.CurrentPriceAmount : null,
+                BundleQuantity: bundle?.Quantity,
+                PerPersonPriceAmount: bundle?.PerPersonPriceAmount);
         }
     }
 

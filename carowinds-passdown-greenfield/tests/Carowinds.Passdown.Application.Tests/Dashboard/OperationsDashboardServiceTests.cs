@@ -272,7 +272,9 @@ public class OperationsDashboardServiceTests
 
         Assert.Equal(DashboardOverallDataStatus.NoPublishedData, snapshot.DataHealth.OverallStatus);
         Assert.Equal(0, snapshot.DataHealth.CurrentCount);
-        Assert.Equal(7, snapshot.DataHealth.NotCheckedCount);
+        // Phase 13C added 2 categories: BringAFriendDuo (dated status) and MilitaryFirstResponder
+        // (catalog breakdown) — 7 -> 9.
+        Assert.Equal(9, snapshot.DataHealth.NotCheckedCount);
     }
 
     // Phase 10D Part AD #1: every source current -> overall Current.

@@ -871,3 +871,210 @@ exactly as 13A scoped them.
 - Final full-system audit and release rebuild — 13G.
 
 No major Phase 13 behavior was implemented in 13A. Build and tests remain green.
+
+## Phase 13C — commercial coverage, pricing semantics, daily cadence
+
+Executes against 13A/13B's findings: closes the two flagged product-coverage gaps (BAF Duo,
+Military/First Responder), adds a structured price-semantics classification, and moves
+Season Passes/Add-Ons to daily cadence after measuring the cost. Full narrative:
+`docs/retrieval/special-ticket-sources.md` (new), `docs/retrieval/pricing-semantics.md` and
+`docs/retrieval/catalog-source-inventory.md` (both appended).
+
+### 1–3. Coverage, official surfaces, pricing model
+
+10 commercial sources now implemented (was 8) — see the updated table in
+`docs/retrieval/catalog-source-inventory.md`. Live-reconfirmed 2026-08-27:
+`special-offers`, `daily-tickets`, `season-passes`, `season-pass-add-ons`, `add-ons`,
+`military-discounts` (new page, found via the site's own nav tab), and the accesso
+`getkeywordcalendar` endpoint for `SUBAF50` (new keyword). New `Domain.Catalog.PriceKind` enum
+(`Unknown, ExactDated, StartingFrom, StandardCatalog, Sale, ComparisonWas, PerPerson, Bundle`),
+computed at composition time from already-persisted fields — no schema migration.
+
+### 4–5. Starting From / Exact Dated behavior; 6. source precedence
+
+`PriceKind.StartingFrom`/`ExactDated` are now explicit, structured signals alongside the qualifier
+text itself (which was already, and remains, preserved verbatim end to end). Precedence (exact
+dated always wins for the selected date; a catalog value is never silently substituted for it) is
+unchanged from 13A's design and was already true mechanically (`CatalogProductKey`'s
+category-scoped identity means a dated and a catalog row for "the same" product were always two
+independent rows) — this phase makes that precedence *observable* via `PriceKind` rather than
+changing the underlying mechanism.
+
+### 7. Aug 29 BAF regression result: **PARTIAL — mechanism PASS, literal production adapter DEFERRED BY DESIGN**
+
+Live investigation found ordinary Bring-A-Friend's exact dated price is gated behind an
+authenticated passholder login inside the shared `SnapWizard` checkout — not reachable by any
+anonymous official request, and CLAUDE.md prohibits entering credentials. No production adapter
+produces the literal $39.00/$80.00 pair. The precedence *mechanism* the regression exists to prove
+is fully implemented and tested (`AssociatePassdownServicePriceSemanticsTests`, 3 tests) using the
+existing generic dated/catalog composition path fed representative data shaped like the documented
+manual observation — an exact dated value and a generic "Starting From" value for the same
+real-world product remain two distinct, correctly-classified rows, never merged, never
+cross-date-substituted. Full honest accounting in `docs/retrieval/special-ticket-sources.md`.
+
+### 8. comparison/was price: PASS (unchanged, re-verified)
+
+`ComparisonPriceAmount` semantics, strikethrough PDF rendering, and the existing test coverage
+(`ComparisonPrice_AppearsOnlyWhenSourceBacked` etc.) were not touched. New coverage added for the
+Military/First Responder "$80 Gate Price" case.
+
+### 9. BAF Duo discovery: PASS — genuinely live, genuinely dated
+
+"Celebrate America! Bring-A-Friend Duo" discovered live on `daily-tickets` (catalog: $50 total,
+qualifier "Two Friends Just", accesso keyword `SUBAF50`) *and* independently confirmed as a real,
+date-scoped `getkeywordcalendar` keyword returning $25.00/friend across 5 tested dates. Both are now
+implemented: `PromotionsCatalogSource` discovers the catalog card generically (no name hardcoded —
+Part O), `DatedBringAFriendDuoSource` (new) retrieves the exact per-date price under a new
+`SourceCategory.BringAFriendDuo`. Distinct product identity from ordinary BAF confirmed (different
+Sanity id, different accesso keyword, different category).
+
+### 10. bundle/per-person semantics: PASS
+
+New `AssociateProduct` fields (`BundleTotalPriceAmount`, `BundleQuantity`, `PerPersonPriceAmount`),
+transient/composition-time only. `PriceSemanticsClassifier.TryParseBundle` recognizes the
+structural, name-agnostic shape `"<number word> <noun> Just"` and derives quantity/per-person price
+explicitly — never collapsing the bundle total. 13 dedicated unit tests
+(`PriceSemanticsClassifierTests`) plus composition/PDF coverage.
+
+### 11. Military/First Responder discovery: PASS
+
+Live-discovered on `sixflags.com/carowinds/military-discounts` (site's own nav tab). New,
+dedicated `MilitaryFirstResponderHtmlParser` (shape evidenced on exactly one page, so not merged
+into either existing shared parser per the established "2+ pages" rule) and
+`MilitaryFirstResponderCatalogSource`, tracked under a new `SourceCategory.MilitaryFirstResponder` —
+never overwrites or is confused with `DatedAdmissionTickets`.
+
+### 12. eligibility semantics: PASS (structural, not fabricated)
+
+Both new eligibility-restricted families are tracked under their own dedicated
+`SourceCategory` (never a shared/generic one) and keep their own display name
+("Military & First Responder Tickets") as the eligibility signal. Page-level eligibility prose
+(ID.me verification, "must be accompanied by a valid passholder") is deliberately **not** attached
+to the per-product record — no per-card field for it exists in the live evidence, and inventing one
+would violate the never-fabricate rule (spec §5.2).
+
+### 13–14. product identity decision; collision-risk resolution: PASS
+
+No new identity strategy was needed — 13A's existing precedence (official id > URL >
+source+category+name, scoped by `SourceCategory`) already handles every new product correctly.
+Every new id/keyword (`SUBAF50`, the Duo's Sanity id, `MilitaryWizard`) was checked against every
+existing id in use before onboarding (table in `docs/retrieval/special-ticket-sources.md`) — no
+collision found in either tier.
+
+### 15. reconciliation/removal behavior: PASS (unchanged)
+
+Two-strike confirmed-absence, `Error`-never-absence, and reactivation are untouched — the new
+sources reuse `IProductReconciliationService`/`CatalogProductLifecycle` exactly as every existing
+catalog source does.
+
+### 16. new-deal discovery: PASS
+
+`PromotionsCatalogSource` now fetches `daily-tickets` in addition to `special-offers`, both parsed
+by the same unmodified, name-agnostic `ProductCardHtmlParser` — any future new card on either page
+is discovered automatically on the next successful refresh, with no code change required. Proven by
+`RetrieveAsync_FetchesBothPagesInOrder_AndDiscoversBringAFriendDuoGenerically`, which asserts the
+Duo is found via the generic mechanism, not a name lookup.
+
+### 17–18. fixture strategy; parser robustness: PASS
+
+New fixture families: `fixtures/promotions/daily-tickets-page.html` (real capture),
+`fixtures/dated-bring-a-friend-duo/` (8 files, every "published"/"horizon" fixture a real, unmodified
+capture of the live `SUBAF50` response), `fixtures/military-first-responder/` (4 files, real capture
+plus synthetic malformed/empty-page defensive fixtures matching existing project convention). A real
+shared-plumbing gap was found and fixed: `AccessoKeywordCalendarPackageList.P` lacked the same
+single-object/array normalization `DATES.D` already had — real `SUBAF50` single-package responses
+surfaced it; fixed with the same `SingleOrArrayConverter<T>`, benefiting every dated source.
+
+### 19–21. daily refresh measurements; final cadence; scheduled 6 AM behavior: PASS
+
+Measured (`curl`, this dev host, 2026-08-27): every catalog page/endpoint (season-passes,
+season-pass-add-ons, add-ons, special-offers, daily-tickets, military-discounts, the SUBAF50
+calendar call) returned in **0.5–1.15s** each — 7 fetches, ~6.6s sequential-equivalent, well under
+bounded 3-way concurrency's actual wall time. Judged reasonably cheap for daily unattended refresh
+(Part AL). Season Passes and both Add-Ons sources moved from a 7-/14-day rolling interval to the
+same `DailyAt` 6 AM Eastern cadence as every other category (`FreshnessPolicyCatalog`); the
+now-unused `SeasonPassRefreshIntervalDays`/`AddOnRefreshIntervalDays` config properties were removed
+(no remaining reader; `RollingInterval` cadence logic itself remains independently tested in
+`Domain.Tests/Retrieval/FreshnessPolicyTests.cs`, so no coverage was lost). Finalization-before-refresh
+ordering, the shared overlap lock, and `RunScheduledRefreshAsync`'s existing due-based selection were
+not touched.
+
+### 22. UserForced behavior: PASS
+
+Both new sources register as ordinary `SourceRegistration`s in the composition root;
+`RunUserForcedRefreshAsync` iterates the full registration list unconditionally (13B, unchanged), so
+both automatically participate in Check Online with no per-source allowlist to maintain.
+`CompositionRootTests.BuildServiceProvider_SourceRegistrations_CoverEveryExpectedFamily` (updated)
+and `BuildServiceProvider_RegistersTenSourceRegistrations` (renamed from "Eight") are the
+omission-resistant guards Part T asks for.
+
+### 23. startup performance/non-blocking: PASS (unchanged)
+
+No change to `App.axaml.cs`'s synchronous startup path, `StartupCatchUpRefresh`, or any
+`MainViewModel`/child-ViewModel construction — the two new sources are only ever reached through the
+same background/explicit-refresh paths every existing catalog source already uses.
+
+### 24–25. UI/PDF price presentation: PASS
+
+`ProductRowViewModel` gained `BundleNoteText`/`HasBundleNote` (Products screen, compact italic line,
+e.g. "2 for $50.00 — $25.00 per person"). `AssociatePassdownDocumentModelBuilder.BuildOfficialRow`
+gained the same derived note in `PdfProductRow.Notes` — **no `PdfProductRow` schema change**. Both
+new categories route to `PdfProductSectionTier.Promotional` (qualifier + comparison both render,
+unlike the compact Reference tier) so Military/First Responder's real "$80 Gate Price" comparison
+isn't silently dropped.
+
+### 26. finalization/History behavior: PASS (unchanged, verified compatible)
+
+`FinalizedPassdownSnapshot`/`FinalizedProductRowSnapshot` were not touched — the new bundle note
+flows through the existing free-text `Notes` field exactly like any other product note, so History
+freezes it correctly with zero schema change.
+
+### 27. stale/LKG price behavior: PASS (unchanged)
+
+Not touched this phase; existing `AssociateVerificationState`/`RetrievalStatus` machinery applies
+identically to the two new sources.
+
+### 28–29. schema/version decision; backward compatibility: PASS — no migration
+
+**Database schema stays 10, `AssociateDraftPayload` stays 3, `FinalizedPassdownSnapshot` stays 1.**
+Every new field (`PriceKind`, `BundleTotalPriceAmount`, `BundleQuantity`, `PerPersonPriceAmount`) is
+computed at composition time from already-persisted columns and is never itself persisted — existing
+cached catalog rows load and classify correctly with no backfill, satisfying Part AN by construction
+rather than by a `LegacyCatalog` fallback value.
+
+### 30–32. tests added; final count; build result
+
+**55 net tests added** (1415 → **1470**, all passing, `Category!=LiveSmoke`, re-run twice):
+`PriceSemanticsClassifierTests` (13), `AssociatePassdownServicePriceSemanticsTests` (7),
+`AssociatePassdownDocumentModelBuilderPriceSemanticsTests` (4), `DatedBringAFriendDuoSourceTests`
+(15), `MilitaryFirstResponderCatalogSourceTests` (11), `PromotionsCatalogSourceTests` (+2), plus
+targeted rewrites (not net-new) of `FreshnessPlannerTests`/`ScheduledRefreshLateInvocationTests`/
+`RefreshOrchestratorTests`/`CompositionRootTests`/`AssociatePassdownServiceTests`/
+`OperationsDashboardServiceTests` for the daily-cadence and new-category changes. Build:
+`dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors. No Avalonia flake observed this run.
+
+### 33. documentation changed
+
+`docs/retrieval/special-ticket-sources.md` (new), `docs/retrieval/pricing-semantics.md` (appended),
+`docs/retrieval/catalog-source-inventory.md` (appended), this file (this section).
+
+### 34. live-source validation status: EXECUTED
+
+Performed throughout this phase (2026-08-27), not deferred: `special-offers`, `daily-tickets`,
+`military-discounts`, `season-passes` (unchanged, spot-checked), and the `getkeywordcalendar`
+endpoint for both `SnapWizardDailyTickets` (control) and `SUBAF50` (new) — all via plain anonymous
+HTTP, no authentication. Full trail in `docs/retrieval/special-ticket-sources.md`.
+
+### 35. work deferred to 13D–13G
+
+Unchanged from 13A/13B's own deferral list (§38): Manual Hours/Buyout redesign (13D), ERT semantics
+(13E), rename/branding (13F), final audit/release rebuild (13G). Additionally deferred within 13C's
+own scope, explicitly: an ordinary-BAF dated-price adapter (no anonymous surface found — see §7
+above), and a `biggest-sale-of-the-year` adapter (still unadopted, unchanged from 13A's finding).
+
+## Git checkpoint
+
+Retrieval coverage complete, pricing semantics complete, fixtures/tests complete, daily-cadence
+decision measured, full suite green (1470/1470, `Category!=LiveSmoke`), build clean (0/0), docs
+updated — Phase 13C is complete per this document's own success criteria. One local commit follows;
+13D is explicitly not started.

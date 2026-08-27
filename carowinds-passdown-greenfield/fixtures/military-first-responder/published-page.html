@@ -1,0 +1,69 @@
+<!--
+  Sanitized/trimmed excerpt of the real server-rendered response from
+  https://www.sixflags.com/carowinds/military-discounts, fetched live 2026-08-27 during Phase 13C's
+  live reconfirmation. This page does not use the productv2-card shape at all — its one real product
+  card shares its title/price element classes with the general add-ons page's simpler shape
+  (h3.font-medium.text-blue-dark.type-20-600 / span.type-20-600), but additionally carries a
+  qualifier ("Starting From") and a "Gate Price" comparison sub-block that page never has. The real
+  page renders this exact card twice (a responsive-breakpoint duplicate, the same pattern already
+  observed on the general add-ons page) — both copies are kept here so
+  MilitaryFirstResponderCatalogSourceTests can assert the existing CatalogCardMapper dedup collapses
+  them to one row. Bulk image srcset markup and unrelated page chrome (nav/footer/FAQ/ID.me
+  eligibility prose) were removed for fixture size; every data-accesso-keyword attribute and text
+  value below is copied verbatim from the real response.
+-->
+<div class="w-full min-h-0" role="tabpanel">
+  <div class="flex flex-wrap items-stretch justify-center gap-6">
+    <div class="flex w-[380px] flex-col min-h-0">
+      <div class="rounded-2xl shadow-card relative">
+        <div class="mt-2 flex flex-col justify-between gap-4 px-6 pt-6 text-left text-black">
+          <div class="flex h-full flex-col md:flex-row items-start gap-2">
+            <div class="flex-1">
+              <h3 class="font-medium text-blue-dark type-20-600 break-words">Military &amp; First Responder Tickets</h3>
+            </div>
+            <div class="w-full md:w-auto md:text-right md:min-w-[120px]">
+              <div class="text-gray type-14-400">Starting From</div>
+              <div class="break-words"><span class="type-20-600">$37</span></div>
+              <div class="flex flex-col gap-0">
+                <div class="text-gray type-14-400">Gate Price</div>
+                <span class="type-20-600 line-through text-black">$80</span>
+              </div>
+            </div>
+          </div>
+          <div>
+            <ul class="mb-4 ml-8 list-outside list-disc text-navy type-16-500">
+              <li>Exclusive discounts for Military (active &amp; retired) &amp; First Responders.</li>
+              <li>Purchase up to 6 tickets for family &amp; friends.</li>
+              <li>Valid on the date selected.</li>
+            </ul>
+          </div>
+          <div class="absolute bottom-4 flex justify-between gap-4">
+            <button class="ui-button" data-accesso-keyword="MilitaryWizard" accessostore="">Buy Now</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="flex w-[380px] flex-col min-h-0 lg:hidden">
+      <div class="rounded-2xl shadow-card relative">
+        <div class="mt-2 flex flex-col justify-between gap-4 px-6 pt-6 text-left text-black">
+          <div class="flex h-full flex-col md:flex-row items-start gap-2">
+            <div class="flex-1">
+              <h3 class="font-medium text-blue-dark type-20-600 break-words">Military &amp; First Responder Tickets</h3>
+            </div>
+            <div class="w-full md:w-auto md:text-right md:min-w-[120px]">
+              <div class="text-gray type-14-400">Starting From</div>
+              <div class="break-words"><span class="type-20-600">$37</span></div>
+              <div class="flex flex-col gap-0">
+                <div class="text-gray type-14-400">Gate Price</div>
+                <span class="type-20-600 line-through text-black">$80</span>
+              </div>
+            </div>
+          </div>
+          <div class="absolute bottom-4 flex justify-between gap-4">
+            <button class="ui-button" data-accesso-keyword="MilitaryWizard" accessostore="">Buy Now</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -10,15 +10,13 @@ namespace Carowinds.Passdown.Application.Freshness;
 public sealed class FreshnessOptions
 {
     /// <summary>
-    /// Time of day (Eastern) at which the daily-cadence categories become due:
-    /// park hours, dated admission, dated Fast Lane, dated haunted/SCarowinds
-    /// products, and short-term promotions/bundles.
+    /// Time of day (Eastern) at which every commercial category becomes due — park hours, dated
+    /// admission, dated Fast Lane, dated haunted/SCarowinds products, dated Bring-A-Friend Duo,
+    /// promotions/bundles, Military/First Responder, season passes, and add-ons. Phase 13C Part
+    /// AL measured every commercial catalog page/endpoint at well under 1.2s each; bounded
+    /// concurrency keeps the whole daily check's wall time low, so the season pass/add-on rolling
+    /// interval this option previously configured was replaced with the same daily cadence as every
+    /// other category (Part R) — see <c>docs/phase13-hardening.md</c>'s Phase 13C section.
     /// </summary>
     public TimeOnly DailyRefreshTimeEastern { get; set; } = new(6, 0);
-
-    /// <summary>Season passes: catalog, refreshed every N days.</summary>
-    public int SeasonPassRefreshIntervalDays { get; set; } = 7;
-
-    /// <summary>General and season-pass add-ons: catalog, refreshed every N days.</summary>
-    public int AddOnRefreshIntervalDays { get; set; } = 14;
 }

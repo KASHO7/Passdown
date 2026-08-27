@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Catalog;
 
 namespace Carowinds.Passdown.Application.Associate;
 
@@ -28,7 +29,11 @@ public sealed record AssociateProduct(
     DateOnly? ApplicableDate,
     AssociateVerificationInfo Verification,
     bool IncludeOnPdf,
-    decimal? DisplayPriceOverride)
+    decimal? DisplayPriceOverride,
+    PriceKind PriceKind = PriceKind.Unknown,
+    decimal? BundleTotalPriceAmount = null,
+    int? BundleQuantity = null,
+    decimal? PerPersonPriceAmount = null)
 {
     /// <summary>The price to actually show: the draft's override when present, the official price otherwise (or a custom product's own manually entered price).</summary>
     public decimal? EffectiveDisplayPrice => DisplayPriceOverride ?? OfficialPriceAmount;

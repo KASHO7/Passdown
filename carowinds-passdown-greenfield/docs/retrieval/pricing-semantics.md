@@ -186,3 +186,54 @@ comparison price were dropped entirely to make room. Whatever concrete field(s) 
 for this, they must be named and typed distinctly from `ComparisonPriceAmount` (e.g. a genuine
 per-person amount alongside the bundle total, both alongside their own optional comparison price) so
 that "total for N people" and "was $X" are never conflated.
+
+## Phase 13C addendum — implementation
+
+This vocabulary is now backed by a real structured type: `Domain.Catalog.PriceKind`
+(`Unknown, ExactDated, StartingFrom, StandardCatalog, Sale, ComparisonWas, PerPerson, Bundle`).
+`ComparisonWas`/`PerPerson` are reserved members for symmetry with this vocabulary document —
+no product's *primary* `PriceKind` is ever assigned either value, since a comparison amount's
+meaning is already unambiguous via `ComparisonPriceAmount`'s own presence, and a pure per-person
+figure is represented via the new `PerPersonPriceAmount` field (below) rather than becoming a
+product's primary price.
+
+**Deliberately computed, never persisted** (`Application.Catalog.PriceSemanticsClassifier`,
+called from `AssociatePassdownService`'s composition methods): `ClassifyCatalog(priceQualifier,
+comparisonPriceAmount)` maps `"Starting From"` → `StartingFrom`, `"Sale Price"` → `Sale`, no
+qualifier + a comparison price → `Sale`, no qualifier + no comparison price → `StandardCatalog`, and
+falls back to `StandardCatalog` (never fabricating a more specific classification) for any other
+qualifier text — **except** one narrow, structural, name-agnostic shape: a qualifier matching
+`"<number word> <noun> Just"` (e.g. "Two Friends Just") with no comparison price classifies as
+`Bundle`. This shape was discovered live on "Celebrate America! Bring-A-Friend Duo" (see
+`docs/retrieval/special-ticket-sources.md`) — it is recognized by structure, not by the product's
+name, matching Part O's "discover generically" requirement. Every dated product is unconditionally
+`ExactDated` (dated sources' `DateSpecific = true` was already this document's own authoritative
+"is this exact" signal — this addendum makes it explicit as a `PriceKind` value too, not a new rule).
+
+**New bundle/per-person fields** on `AssociateProduct` (transient, composition-time only — never
+persisted, so no schema migration): `BundleTotalPriceAmount`, `BundleQuantity`, `PerPersonPriceAmount`.
+Populated only when `PriceSemanticsClassifier.TryParseBundle` recognizes the qualifier shape above;
+`PerPersonPriceAmount` is explicitly derived (`total / quantity`, rounded to 2 decimals,
+away-from-zero) and documented as such everywhere it's read (PDF `Notes`, Products UI) — never
+silently substituted for the bundle total in `OfficialPriceAmount`/`EffectivePriceText` (Part I).
+
+**Worked example 1 resolved (Aug 29 2026 Bring-A-Friend)**: live investigation found the *ordinary*
+BAF's exact dated price is not retrievable anonymously (passholder-login-gated — see
+`docs/retrieval/special-ticket-sources.md`), so no adapter produces the literal $39/$80 pair in
+production. The precedence rule itself is proven correct using the existing generic dated/catalog
+composition machinery fed representative data
+(`AssociatePassdownServicePriceSemanticsTests.LoadAssociateDateAsync_Aug29_ExactDatedBafNeverConfusedWithGenericStartingFrom`)
+— an exact dated value and a generic catalog value for what a human would call "the same" product
+remain two independent, correctly-`PriceKind`-tagged rows, exactly as this document's original
+precedence section already predicted mechanically. `CatalogProductKey`'s category-scoped identity
+(unchanged this phase) is still what keeps them from ever colliding.
+
+**Worked example 2 resolved (BAF Duo)**: unlike ordinary BAF, the Duo offer's per-person price *is*
+genuinely retrievable — accesso keyword `SUBAF50`, discovered live, returns a real per-date
+`retail_amount` of $25.00 matching the catalog card's "$25 per friend" framing exactly. This became
+`DatedBringAFriendDuoSource` under a new `SourceCategory.BringAFriendDuo`. Its catalog card
+(bundle total $50, qualifier "Two Friends Just") and its dated exact price ($25/friend for a
+selected date) compose as two separate `AssociateProduct` rows under two different category
+sections — "Bring-A-Friend Duo" (dated, exact) and "Promotions" (catalog, bundle) — per this
+document's own precedence section 3's "keep both concepts where architecture supports it," rather
+than a forced merge.

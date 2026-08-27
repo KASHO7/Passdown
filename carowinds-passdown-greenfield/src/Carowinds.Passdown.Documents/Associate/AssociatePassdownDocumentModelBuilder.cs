@@ -211,6 +211,12 @@ public static class AssociatePassdownDocumentModelBuilder
         SourceCategory.DatedAdmissionTickets => PdfProductSectionTier.KeySelling,
         SourceCategory.DatedFastLane => PdfProductSectionTier.KeySelling,
         SourceCategory.Promotions => PdfProductSectionTier.Promotional,
+        // Phase 13C: both carry a qualifier (and, for Military/First Responder, a real comparison
+        // "Gate Price") that the compact Reference tier never renders (it shows a qualifier but no
+        // comparison price at all) — Promotional tier renders both, matching Part X's "preserve
+        // comparison/was strikethrough" requirement.
+        SourceCategory.BringAFriendDuo => PdfProductSectionTier.Promotional,
+        SourceCategory.MilitaryFirstResponder => PdfProductSectionTier.Promotional,
         _ => PdfProductSectionTier.Reference,
     };
 
@@ -219,7 +225,20 @@ public static class AssociatePassdownDocumentModelBuilder
         FormatMoney(product.EffectiveDisplayPrice),
         FormatMoney(product.ComparisonPriceAmount),
         string.IsNullOrWhiteSpace(product.PriceQualifier) ? null : product.PriceQualifier.Trim(),
-        Notes: null);
+        Notes: BundleNote(product));
+
+    /// <summary>
+    /// Phase 13C Part I/W: a source-described bundle (e.g. "Two Friends Just $50") carries its
+    /// per-person breakdown here — a derived value, explicitly labeled as such — rather than
+    /// silently replacing <see cref="PdfProductRow.EffectivePriceText"/> (the bundle total) or
+    /// <see cref="PdfProductRow.ComparisonPriceText"/> (a "was" price, a different concept). No
+    /// <see cref="PdfProductRow"/>/<see cref="Application.Finalization.FinalizedPassdownSnapshot"/>
+    /// schema change was needed: this reuses the existing free-text <c>Notes</c> field.
+    /// </summary>
+    private static string? BundleNote(AssociateProduct product) =>
+        product is { BundleQuantity: { } quantity, PerPersonPriceAmount: { } perPerson }
+            ? $"{quantity} for {FormatMoney(product.BundleTotalPriceAmount)} — {FormatMoney(perPerson)} per person"
+            : null;
 
     private static PdfProductRow BuildCustomRow(CustomProductEntry custom) => new(
         custom.DisplayName,

@@ -267,6 +267,10 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<SeasonPassCatalogSource>();
         services.AddSingleton<SeasonPassAddOnsCatalogSource>();
         services.AddSingleton<GeneralAddOnsCatalogSource>();
+        // Phase 13C: Bring-A-Friend Duo (dated, exact per-person price) and Military/First Responder
+        // (catalog, "Starting From").
+        services.AddSingleton<DatedBringAFriendDuoSource>();
+        services.AddSingleton<MilitaryFirstResponderCatalogSource>();
 
         // Refresh-orchestrator source registrations (Part A) — every adapter above, paired with
         // how its successful payload is persisted (dated) or reconciled (catalog). None of the
@@ -287,6 +291,8 @@ public partial class App : global::Avalonia.Application
                 new CatalogSourceRegistration(provider.GetRequiredService<SeasonPassCatalogSource>(), reconciliationService),
                 new CatalogSourceRegistration(provider.GetRequiredService<SeasonPassAddOnsCatalogSource>(), reconciliationService),
                 new CatalogSourceRegistration(provider.GetRequiredService<GeneralAddOnsCatalogSource>(), reconciliationService),
+                new DatedSourceRegistration<DatedBringAFriendDuoPayload>(provider.GetRequiredService<DatedBringAFriendDuoSource>(), datedResultRepository),
+                new CatalogSourceRegistration(provider.GetRequiredService<MilitaryFirstResponderCatalogSource>(), reconciliationService),
             };
         });
 

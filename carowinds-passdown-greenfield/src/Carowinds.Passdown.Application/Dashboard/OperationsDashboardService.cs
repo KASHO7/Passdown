@@ -187,6 +187,7 @@ public sealed class OperationsDashboardService(
         SourceCategory.SeasonPasses,
         SourceCategory.AddOns,
         SourceCategory.Promotions,
+        SourceCategory.MilitaryFirstResponder,
     ];
 
     /// <summary>

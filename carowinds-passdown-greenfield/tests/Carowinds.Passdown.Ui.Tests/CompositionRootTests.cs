@@ -34,14 +34,15 @@ public class CompositionRootTests
     }
 
     [Fact]
-    public void BuildServiceProvider_RegistersEightSourceRegistrations()
+    public void BuildServiceProvider_RegistersTenSourceRegistrations()
     {
         var provider = App.BuildServiceProvider();
 
         var registrations = provider.GetRequiredService<IReadOnlyList<SourceRegistration>>();
 
-        Assert.Equal(8, registrations.Count);
-        Assert.Equal(8, registrations.Select(r => r.SourceId).Distinct().Count());
+        // Phase 13C added 2: dated-bring-a-friend-duo.official and military-first-responder.official.
+        Assert.Equal(10, registrations.Count);
+        Assert.Equal(10, registrations.Select(r => r.SourceId).Distinct().Count());
     }
 
     /// <summary>
@@ -66,13 +67,18 @@ public class CompositionRootTests
                 SourceCategory.DatedAdmissionTickets,
                 SourceCategory.DatedFastLane,
                 SourceCategory.HauntedAttractions,
+                SourceCategory.BringAFriendDuo,
             },
             datedCategories);
 
         // AddOns appears twice — season-pass add-ons and general add-ons are independent source ids
         // sharing one category/freshness policy (spec §6.2) — both registrations must still exist.
         Assert.Equal(
-            new[] { SourceCategory.Promotions, SourceCategory.SeasonPasses, SourceCategory.AddOns, SourceCategory.AddOns }.OrderBy(c => c),
+            new[]
+            {
+                SourceCategory.Promotions, SourceCategory.SeasonPasses, SourceCategory.AddOns, SourceCategory.AddOns,
+                SourceCategory.MilitaryFirstResponder,
+            }.OrderBy(c => c),
             catalogCategories.OrderBy(c => c));
     }
 
