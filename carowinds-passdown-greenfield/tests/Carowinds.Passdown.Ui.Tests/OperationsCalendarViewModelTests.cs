@@ -204,17 +204,20 @@ public class OperationsCalendarViewModelTests
         Assert.True(vm.ShowEmptyOrErrorState);
     }
 
-    // #13 (spec Part I): every visual indicator on a day cell has a textual equivalent in its
-    // automation name — never color-only. Asserted directly here since an ItemsControl's generated
-    // item containers aren't realized by the headless View tests' GetLogicalDescendants() without a
-    // layout pass (see OperationsCalendarViewTests).
+    // #13 (spec Part I; updated Phase 12C Part B/AB): every visual indicator on a day cell has a
+    // textual equivalent in its automation name — never color-only. Asserted directly here since an
+    // ItemsControl's generated item containers aren't realized by the headless View tests'
+    // GetLogicalDescendants() without a layout pass (see OperationsCalendarViewTests). A date with
+    // both a finalized record and an existing saved draft asserts "Finalized" only — Phase 12C Part B's
+    // precedence means "Draft in progress" is never also shown once a date is finalized.
     [Fact]
     public void DayViewModel_AutomationName_IncludesEveryTextualIndicator()
     {
         var day = new OperationsCalendarDay(
             new DateOnly(2026, 8, 21), IsInDisplayedMonth: true, IsToday: true,
             HasFinalizedPassdown: true, HasAssociateDraft: true, RelevantOperationalNoteCount: 2,
-            OperationsCalendarOperatingState.Open, OpenParkHours(new TimeOnly(10, 0), new TimeOnly(22, 0)));
+            OperationsCalendarOperatingState.Open, OpenParkHours(new TimeOnly(10, 0), new TimeOnly(22, 0)),
+            ImportantOperationalNoteCount: 1);
 
         var dayViewModel = new OperationsCalendarDayViewModel(day, isSelected: true, _ => { });
 
@@ -223,8 +226,68 @@ public class OperationsCalendarViewModelTests
         Assert.Contains("Today", dayViewModel.AutomationName);
         Assert.Contains("Selected", dayViewModel.AutomationName);
         Assert.Contains("Finalized", dayViewModel.AutomationName);
-        Assert.Contains("Draft in progress", dayViewModel.AutomationName);
-        Assert.Contains("2 operational notes", dayViewModel.AutomationName);
+        Assert.DoesNotContain("Draft in progress", dayViewModel.AutomationName);
+        Assert.Contains("2 active operational notes, 1 Important", dayViewModel.AutomationName);
+    }
+
+    // ==================================================================================
+    // Phase 12C — Passdown Status + Persistent Operational Notes overlays
+    // ==================================================================================
+
+    // Part AK #17: normal cell presentation — No Draft, no notes.
+    [Fact]
+    public void DayViewModel_NoDraftNoNotes_PassdownLabelIsNoDraftAndNotesSummaryIsHidden()
+    {
+        var day = MakeDay(OperationsCalendarOperatingState.Open, OpenParkHours(new TimeOnly(10, 0), new TimeOnly(22, 0)));
+
+        var dayViewModel = new OperationsCalendarDayViewModel(day, isSelected: false, _ => { });
+
+        Assert.Equal("No Draft", dayViewModel.PassdownStatusLabel);
+        Assert.Null(dayViewModel.NotesSummaryText);
+        Assert.False(dayViewModel.HasOperationalNotes);
+    }
+
+    [Fact]
+    public void DayViewModel_DraftOnly_PassdownLabelIsDraft()
+    {
+        var day = new OperationsCalendarDay(
+            new DateOnly(2026, 8, 22), IsInDisplayedMonth: true, IsToday: false,
+            HasFinalizedPassdown: false, HasAssociateDraft: true, RelevantOperationalNoteCount: 0,
+            OperationsCalendarOperatingState.Open, OpenParkHours(new TimeOnly(10, 0), new TimeOnly(22, 0)));
+
+        var dayViewModel = new OperationsCalendarDayViewModel(day, isSelected: false, _ => { });
+
+        Assert.Equal("Draft", dayViewModel.PassdownStatusLabel);
+    }
+
+    // Part AK #18: Finalized wins over an existing draft at the cell-presentation level too.
+    [Fact]
+    public void DayViewModel_FinalizedAndDraftBothTrue_PassdownLabelIsFinalizedOnly()
+    {
+        var day = new OperationsCalendarDay(
+            new DateOnly(2026, 8, 22), IsInDisplayedMonth: true, IsToday: false,
+            HasFinalizedPassdown: true, HasAssociateDraft: true, RelevantOperationalNoteCount: 0,
+            OperationsCalendarOperatingState.Open, OpenParkHours(new TimeOnly(10, 0), new TimeOnly(22, 0)));
+
+        var dayViewModel = new OperationsCalendarDayViewModel(day, isSelected: false, _ => { });
+
+        Assert.Equal("Finalized", dayViewModel.PassdownStatusLabel);
+    }
+
+    // Part AK #19: Important-note count presentation on a day cell.
+    [Fact]
+    public void DayViewModel_RelevantAndImportantNotes_NotesSummaryIncludesImportantCount()
+    {
+        var day = new OperationsCalendarDay(
+            new DateOnly(2026, 8, 22), IsInDisplayedMonth: true, IsToday: false,
+            HasFinalizedPassdown: false, HasAssociateDraft: false, RelevantOperationalNoteCount: 2,
+            OperationsCalendarOperatingState.Open, OpenParkHours(new TimeOnly(10, 0), new TimeOnly(22, 0)),
+            ImportantOperationalNoteCount: 1);
+
+        var dayViewModel = new OperationsCalendarDayViewModel(day, isSelected: false, _ => { });
+
+        Assert.Equal("2 Notes · 1 Important", dayViewModel.NotesSummaryText);
+        Assert.True(dayViewModel.HasOperationalNotes);
     }
 
     // #12: no HTTP/PDF/refresh-shaped constructor dependency exists on this type.

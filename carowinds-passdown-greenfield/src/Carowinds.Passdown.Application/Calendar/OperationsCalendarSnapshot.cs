@@ -37,6 +37,10 @@ public enum OperationsCalendarOperatingState
 /// carried alongside <see cref="OperatingState"/> so the Desktop presentation layer can reuse
 /// <c>Desktop.Presentation.ParkHoursPresentation.Build</c> directly (the same formatter Associate
 /// Overview and Dashboard already use) instead of a second hours-text formatter.
+/// <see cref="ImportantOperationalNoteCount"/> (Phase 12C Part E/F) is a subset of
+/// <see cref="RelevantOperationalNoteCount"/> — the same relevant notes, further filtered to
+/// <c>OperationalNotePriority.Important</c> — computed from the exact same in-memory note list, never
+/// a second query. Appended with a default so every pre-12C call site keeps compiling unchanged.
 /// </summary>
 public sealed record OperationsCalendarDay(
     DateOnly Date,
@@ -46,7 +50,8 @@ public sealed record OperationsCalendarDay(
     bool HasAssociateDraft,
     int RelevantOperationalNoteCount,
     OperationsCalendarOperatingState OperatingState,
-    AssociateParkHoursView ParkHours);
+    AssociateParkHoursView ParkHours,
+    int ImportantOperationalNoteCount = 0);
 
 /// <summary>
 /// A date's passdown status for the Operations Calendar's selected-date summary (Phase 12A Part D) —
@@ -75,7 +80,8 @@ public sealed record OperationsCalendarSelectedDateSummary(
     DateTimeOffset? FinalizedAt,
     int RelevantOperationalNoteCount,
     OperationsCalendarOperatingState OperatingState,
-    AssociateParkHoursView ParkHours);
+    AssociateParkHoursView ParkHours,
+    int ImportantOperationalNoteCount = 0);
 
 /// <summary>
 /// The Application-layer read model an Operations Calendar screen is built from (Phase 12A Part D) —

@@ -68,12 +68,75 @@ public class OperationsCalendarPresentationTests
         Assert.Null(presentation.EffectiveHoursText);
     }
 
-    private static OperationsCalendarSnapshot BuildSnapshot(OperationsCalendarOperatingState state, AssociateParkHoursView parkHours)
+    // Part J/T: selected-date No Draft — the empty-state note and the "Active Operational Notes" wording.
+    [Fact]
+    public void Build_SelectedDateNoDraft_ShowsNoDraftLabelAndEmptyStateNotesSentence()
+    {
+        var snapshot = BuildSnapshot(
+            OperationsCalendarOperatingState.NotChecked,
+            ParkHours(false, null, null, false, buyoutEnabled: false),
+            status: OperationsCalendarPassdownStatus.NoDraft, relevantNotes: 0, importantNotes: 0);
+
+        var presentation = OperationsCalendarPresentation.Build(snapshot);
+
+        Assert.Equal("No Draft", presentation.PassdownStatusText);
+        Assert.Equal("No passdown started.", presentation.PassdownDetailNoteText);
+        Assert.Equal("No active operational notes for this date.", presentation.OperationalNotesCountText);
+        Assert.Null(presentation.OperationalNotesImportantText);
+    }
+
+    // Part J: selected-date Draft In Progress.
+    [Fact]
+    public void Build_SelectedDateDraftInProgress_ShowsDraftInProgressLabel()
+    {
+        var snapshot = BuildSnapshot(
+            OperationsCalendarOperatingState.NotChecked,
+            ParkHours(false, null, null, false, buyoutEnabled: false),
+            status: OperationsCalendarPassdownStatus.DraftInProgress, relevantNotes: 0, importantNotes: 0);
+
+        var presentation = OperationsCalendarPresentation.Build(snapshot);
+
+        Assert.Equal("Draft In Progress", presentation.PassdownStatusText);
+    }
+
+    // Part J: selected-date Finalized.
+    [Fact]
+    public void Build_SelectedDateFinalized_ShowsFinalizedLabel()
+    {
+        var snapshot = BuildSnapshot(
+            OperationsCalendarOperatingState.NotChecked,
+            ParkHours(false, null, null, false, buyoutEnabled: false),
+            status: OperationsCalendarPassdownStatus.Finalized, relevantNotes: 0, importantNotes: 0);
+
+        var presentation = OperationsCalendarPresentation.Build(snapshot);
+
+        Assert.Equal("Finalized", presentation.PassdownStatusText);
+    }
+
+    // Part J/F: selected-date notes count with an Important sub-line.
+    [Fact]
+    public void Build_SelectedDateHasRelevantAndImportantNotes_ShowsBothCountLines()
+    {
+        var snapshot = BuildSnapshot(
+            OperationsCalendarOperatingState.NotChecked,
+            ParkHours(false, null, null, false, buyoutEnabled: false),
+            status: OperationsCalendarPassdownStatus.NoDraft, relevantNotes: 3, importantNotes: 1);
+
+        var presentation = OperationsCalendarPresentation.Build(snapshot);
+
+        Assert.Equal("3 active", presentation.OperationalNotesCountText);
+        Assert.Equal("1 Important", presentation.OperationalNotesImportantText);
+    }
+
+    private static OperationsCalendarSnapshot BuildSnapshot(
+        OperationsCalendarOperatingState state, AssociateParkHoursView parkHours,
+        OperationsCalendarPassdownStatus status = OperationsCalendarPassdownStatus.NoDraft,
+        int relevantNotes = 0, int importantNotes = 0)
     {
         var selected = new OperationsCalendarSelectedDateSummary(
-            SelectedDate, IsToday: false, OperationsCalendarPassdownStatus.NoDraft,
-            LastSavedAt: null, FinalizedAt: null, RelevantOperationalNoteCount: 0,
-            state, parkHours);
+            SelectedDate, IsToday: false, status,
+            LastSavedAt: null, FinalizedAt: null, RelevantOperationalNoteCount: relevantNotes,
+            state, parkHours, ImportantOperationalNoteCount: importantNotes);
 
         return new OperationsCalendarSnapshot(DisplayedMonth, new DateOnly(2026, 8, 21), SelectedDate, [], selected, DateTimeOffset.UtcNow);
     }

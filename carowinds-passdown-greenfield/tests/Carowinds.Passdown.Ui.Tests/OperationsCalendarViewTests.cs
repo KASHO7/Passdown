@@ -170,6 +170,70 @@ public class OperationsCalendarViewTests
         Assert.True(view.Bounds.Width > 0 && view.Bounds.Height > 0);
     }
 
+    // ==================================================================================
+    // Phase 12C — Passdown Status + Persistent Operational Notes overlays
+    // ==================================================================================
+
+    // Part AL #4/5: a month mixing passdown lifecycle states (No Draft/Draft/Finalized) and
+    // Important-note dates — construction must not throw, and no state dominates the layout.
+    [Fact]
+    public async Task OperationsCalendarView_MixedPassdownAndImportantNoteStatesAcrossTheMonth_ConstructsWithoutError()
+    {
+        var service = new FakeOperationsCalendarService
+        {
+            SnapshotFactory = (month, selected) =>
+            {
+                var baseline = FakeOperationsCalendarService.DefaultSnapshot(month, selected);
+                var mixedDays = baseline.Days
+                    .Select((d, index) => (index % 3) switch
+                    {
+                        0 => d with { HasFinalizedPassdown = true, HasAssociateDraft = true, RelevantOperationalNoteCount = 3, ImportantOperationalNoteCount = 1 },
+                        1 => d with { HasAssociateDraft = true, RelevantOperationalNoteCount = 1 },
+                        _ => d,
+                    })
+                    .ToList();
+                return baseline with { Days = mixedDays };
+            },
+        };
+        var viewModel = new OperationsCalendarViewModel(service, CreateClock());
+        await viewModel.PendingLoad;
+
+        var view = new OperationsCalendarView { DataContext = viewModel };
+
+        Assert.Same(viewModel, view.DataContext);
+    }
+
+    // Part J/T: the selected-date panel's Passdown Status/Active Operational Notes text is present and bound.
+    [Fact]
+    public async Task OperationsCalendarView_SelectedDateDraftWithImportantNote_ShowsPassdownAndNotesText()
+    {
+        var service = new FakeOperationsCalendarService
+        {
+            SnapshotFactory = (month, selected) =>
+            {
+                var baseline = FakeOperationsCalendarService.DefaultSnapshot(month, selected);
+                return baseline with
+                {
+                    Selected = baseline.Selected with
+                    {
+                        PassdownStatus = OperationsCalendarPassdownStatus.DraftInProgress,
+                        RelevantOperationalNoteCount = 2,
+                        ImportantOperationalNoteCount = 1,
+                    },
+                };
+            },
+        };
+        var viewModel = new OperationsCalendarViewModel(service, CreateClock());
+        await viewModel.PendingLoad;
+
+        var view = new OperationsCalendarView { DataContext = viewModel };
+
+        Assert.Equal("Draft In Progress", viewModel.Presentation?.PassdownStatusText);
+        Assert.Equal("2 active", viewModel.Presentation?.OperationalNotesCountText);
+        Assert.Equal("1 Important", viewModel.Presentation?.OperationalNotesImportantText);
+        Assert.Same(viewModel, view.DataContext);
+    }
+
     // Part K: the selected-date panel's Park Status/Effective Hours text is present and bound.
     [Fact]
     public async Task OperationsCalendarView_SelectedDateCustomHours_ShowsParkStatusAndEffectiveHours()

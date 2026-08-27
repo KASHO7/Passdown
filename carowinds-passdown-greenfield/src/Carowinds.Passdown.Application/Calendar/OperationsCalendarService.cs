@@ -64,7 +64,8 @@ public sealed class OperationsCalendarService(
                     HasAssociateDraft: draftDateSet.Contains(date),
                     RelevantOperationalNoteCount: allNotes.Count(note => OperationalNoteRelevance.IsRelevantForDate(note, date)),
                     OperatingState: ClassifyOperatingState(parkHours),
-                    ParkHours: parkHours);
+                    ParkHours: parkHours,
+                    ImportantOperationalNoteCount: CountImportant(allNotes, date));
             })
             .ToList();
 
@@ -109,8 +110,19 @@ public sealed class OperationsCalendarService(
             finalized?.FinalizedAtUtc,
             noteCount,
             ClassifyOperatingState(workspace.ParkHours),
-            workspace.ParkHours);
+            workspace.ParkHours,
+            ImportantOperationalNoteCount: CountImportant(allNotes, selectedDate));
     }
+
+    /// <summary>
+    /// Important-priority relevant notes for one date (Phase 12C Part E/F) — a further in-memory
+    /// filter over the same <paramref name="allNotes"/> list already loaded once per <c>LoadAsync</c>
+    /// (spec Part O: never a second/dedicated Important-count query), reusing the exact same
+    /// <see cref="OperationalNoteRelevance.IsRelevantForDate"/> rule as every other relevance count in
+    /// this type.
+    /// </summary>
+    private static int CountImportant(IReadOnlyList<OperationalNote> allNotes, DateOnly date) =>
+        allNotes.Count(note => note.Priority == OperationalNotePriority.Important && OperationalNoteRelevance.IsRelevantForDate(note, date));
 
     /// <summary>
     /// Composes an <see cref="AssociateParkHoursView"/> for every date in

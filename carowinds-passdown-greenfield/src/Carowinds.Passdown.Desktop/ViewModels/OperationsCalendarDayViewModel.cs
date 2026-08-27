@@ -34,9 +34,19 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
 
     public int RelevantOperationalNoteCount { get; }
 
+    public int ImportantOperationalNoteCount { get; }
+
     public bool HasOperationalNotes => RelevantOperationalNoteCount > 0;
 
-    public string NoteCountText => RelevantOperationalNoteCount == 1 ? "1 note" : $"{RelevantOperationalNoteCount} notes";
+    /// <summary>
+    /// "No Draft"/"Draft"/"Finalized" (spec Phase 12C Part A/B/C/D) — Finalized always wins over an
+    /// existing saved draft; see <see cref="OperationsCalendarPassdownPresentation.DeriveStatus"/> for
+    /// the one place that precedence is decided.
+    /// </summary>
+    public string PassdownStatusLabel { get; }
+
+    /// <summary>"2 Notes" / "2 Notes · 1 Important" (spec Part E/F/Z), or <see langword="null"/> when no relevant notes exist for this date — a day cell shows no line at all rather than a meaningless "0 Notes".</summary>
+    public string? NotesSummaryText { get; }
 
     /// <summary>
     /// "CLOSED"/"CUSTOM"/"BUYOUT"/"NOT PUBLISHED"/"UNAVAILABLE", or <see langword="null"/> for a
@@ -70,20 +80,39 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
         HasFinalizedPassdown = day.HasFinalizedPassdown;
         HasAssociateDraft = day.HasAssociateDraft;
         RelevantOperationalNoteCount = day.RelevantOperationalNoteCount;
+        ImportantOperationalNoteCount = day.ImportantOperationalNoteCount;
 
         var operatingStatePresentation = OperationsCalendarOperatingStatePresentation.Build(day.OperatingState, day.ParkHours);
         OperatingStateLabel = operatingStatePresentation.CompactStateLabel;
         EffectiveHoursLine = operatingStatePresentation.CompactHoursLine;
         IsHoursStale = operatingStatePresentation.IsStale;
 
-        AutomationName = BuildAutomationName(day, isSelected, operatingStatePresentation);
+        var passdownStatus = OperationsCalendarPassdownPresentation.DeriveStatus(day.HasFinalizedPassdown, day.HasAssociateDraft);
+        var passdownPresentation = OperationsCalendarPassdownPresentation.Build(passdownStatus);
+        PassdownStatusLabel = passdownPresentation.CellLabel;
+
+        var notesPresentation = OperationsCalendarNotesPresentation.Build(day.RelevantOperationalNoteCount, day.ImportantOperationalNoteCount);
+        NotesSummaryText = notesPresentation.CellText;
+
+        AutomationName = BuildAutomationName(day, isSelected, operatingStatePresentation, passdownPresentation, notesPresentation);
     }
 
     [RelayCommand]
     private void Select() => _onSelect(Date);
 
-    /// <summary>Every visual indicator (operating state/hours/today/selected/finalized/draft/notes) has a textual equivalent here (spec Phase 12B Part X) — status is never color-only.</summary>
-    private static string BuildAutomationName(OperationsCalendarDay day, bool isSelected, OperationsCalendarOperatingStatePresentation operatingState)
+    /// <summary>
+    /// Every visual indicator (operating state/hours/today/selected/passdown status/notes) has a
+    /// textual equivalent here (spec Phase 12B Part X; Phase 12C Part AB) — status is never
+    /// color-only. Phase 12C Part B: the passdown clause reflects the same Finalized-over-Draft
+    /// precedence the visible cell label uses — a finalized date's automation name says only
+    /// "Finalized," never also "Draft in progress."
+    /// </summary>
+    private static string BuildAutomationName(
+        OperationsCalendarDay day,
+        bool isSelected,
+        OperationsCalendarOperatingStatePresentation operatingState,
+        OperationsCalendarPassdownPresentation passdownPresentation,
+        OperationsCalendarNotesPresentation notesPresentation)
     {
         var parts = new List<string>
         {
@@ -101,20 +130,8 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
             parts.Add("Selected");
         }
 
-        if (day.HasFinalizedPassdown)
-        {
-            parts.Add("Finalized");
-        }
-
-        if (day.HasAssociateDraft)
-        {
-            parts.Add("Draft in progress");
-        }
-
-        if (day.RelevantOperationalNoteCount > 0)
-        {
-            parts.Add(day.RelevantOperationalNoteCount == 1 ? "1 operational note" : $"{day.RelevantOperationalNoteCount} operational notes");
-        }
+        parts.Add(passdownPresentation.AccessibilityText);
+        parts.Add(notesPresentation.AccessibilityText);
 
         return string.Join(". ", parts);
     }

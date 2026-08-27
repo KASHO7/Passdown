@@ -198,18 +198,19 @@
                     <StackPanel Spacing="1">
                       <TextBlock Text="{Binding DayNumber}" FontWeight="SemiBold" FontSize="13" />
 
-                      <!-- Operating-state/hours overlay (spec Phase 12B Part C/D/E/F/G/H/I): hidden
-                           for out-of-month cells to avoid clutter (Part L — "show day number only"
-                           preferred for 12B), even though those dates still carry real data. -->
+                      <!-- Operating-state/hours/passdown-status/notes overlay (spec Phase 12B Part
+                           C/D/E/F/G/H/I; Phase 12C Part G/H/I): hidden as one unit for out-of-month
+                           cells to avoid clutter (Part I — "day number only" preserved from 12A/12B),
+                           even though those dates still carry real data. Content-budget priority
+                           (Part H) top to bottom: day number (outside this block), operating
+                           state/hours, passdown status, operational-notes summary. -->
                       <StackPanel Spacing="1" IsVisible="{Binding IsInDisplayedMonth}">
                         <TextBlock Text="{Binding OperatingStateLabel}" Classes="dayStateLabel" IsVisible="{Binding HasOperatingStateLabel}" />
                         <TextBlock Text="{Binding EffectiveHoursLine}" Classes="dayHoursLine" IsVisible="{Binding HasEffectiveHoursLine}" />
                         <TextBlock Text="Stale" Classes="dayStaleLabel" IsVisible="{Binding IsHoursStale}" />
+                        <TextBlock Text="{Binding PassdownStatusLabel}" Classes="dayIndicator" />
+                        <TextBlock Text="{Binding NotesSummaryText}" Classes="dayIndicator" IsVisible="{Binding HasOperationalNotes}" />
                       </StackPanel>
-
-                      <TextBlock Text="Finalized" Classes="dayIndicator" IsVisible="{Binding HasFinalizedPassdown}" />
-                      <TextBlock Text="Draft" Classes="dayIndicator" IsVisible="{Binding HasAssociateDraft}" />
-                      <TextBlock Text="{Binding NoteCountText}" Classes="dayIndicator" IsVisible="{Binding HasOperationalNotes}" />
                     </StackPanel>
                   </Button>
                 </DataTemplate>
@@ -241,11 +242,23 @@
               <TextBlock Text="{Binding Presentation.ParkHoursStaleNoteText}" Classes="fieldWarning" TextWrapping="Wrap"
                          IsVisible="{Binding Presentation.ParkHoursStaleNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
+              <!-- Passdown Status (spec Phase 12C Part J/Y): No Draft/Draft In Progress/Finalized,
+                   reusing OperationsCalendarPassdownPresentation for both the label and its detail
+                   note (last-saved/finalized timestamp, or an empty-state sentence). -->
               <TextBlock Text="Passdown Status" Classes="sectionTitle" Margin="0,4,0,0" />
-              <TextBlock Text="{Binding Presentation.PassdownStatusText}" FontWeight="SemiBold" />
-              <TextBlock Text="{Binding Presentation.FinalizedText}" Classes="muted" TextWrapping="Wrap"
-                         IsVisible="{Binding Presentation.FinalizedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-              <TextBlock Text="{Binding Presentation.OperationalNotesCountText}" Classes="muted" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding Presentation.PassdownStatusText}" FontWeight="SemiBold"
+                         AutomationProperties.Name="{Binding Presentation.PassdownStatusText, StringFormat='Passdown status: {0}'}" />
+              <TextBlock Text="{Binding Presentation.PassdownDetailNoteText}" Classes="muted" TextWrapping="Wrap"
+                         IsVisible="{Binding Presentation.PassdownDetailNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+              <!-- Active Operational Notes (spec Phase 12C Part J/T): the persistent Operational
+                   Notes concept, deliberately labeled to avoid confusion with the daily Associate
+                   draft's own Notes entry — counts only, never note titles/bodies (Part S). -->
+              <TextBlock Text="Active Operational Notes" Classes="sectionTitle" Margin="0,4,0,0" />
+              <TextBlock Text="{Binding Presentation.OperationalNotesCountText}" FontWeight="SemiBold"
+                         AutomationProperties.Name="{Binding Presentation.OperationalNotesCountText, StringFormat='Active operational notes: {0}'}" />
+              <TextBlock Text="{Binding Presentation.OperationalNotesImportantText}" Classes="muted" TextWrapping="Wrap"
+                         IsVisible="{Binding Presentation.OperationalNotesImportantText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
               <StackPanel Spacing="8" Margin="0,10,0,0">
                 <Button Content="Open Passdown" Classes="primaryAction" Command="{Binding OpenAssociateCommand}"

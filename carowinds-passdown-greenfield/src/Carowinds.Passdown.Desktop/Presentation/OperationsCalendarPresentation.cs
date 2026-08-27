@@ -1,23 +1,25 @@
 using Carowinds.Passdown.Application.Calendar;
-using Carowinds.Passdown.Application.Time;
 
 namespace Carowinds.Passdown.Desktop.Presentation;
 
 /// <summary>
 /// Display-only text for the Operations Calendar's header and selected-date summary panel (Phase 12A
-/// Part G/H; extended Phase 12B Part K) — built once from <see cref="OperationsCalendarSnapshot"/>,
-/// never recomputing any business rule (finalization/relevance/draft/hours status all come straight
-/// from the snapshot). Park-hours text reuses <see cref="ParkHoursPresentation.Build"/> directly — the
-/// exact same formatter Associate Overview and the Dashboard already use — rather than a second hours
-/// formatter (spec Part K/U).
+/// Part G/H; extended Phase 12B Part K; extended Phase 12C Part J/T/Y/Z) — built once from
+/// <see cref="OperationsCalendarSnapshot"/>, never recomputing any business rule (finalization/
+/// relevance/draft/hours status all come straight from the snapshot). Park-hours text reuses
+/// <see cref="ParkHoursPresentation.Build"/> directly, passdown-status text reuses
+/// <see cref="OperationsCalendarPassdownPresentation.Build"/>, and notes-count text reuses
+/// <see cref="OperationsCalendarNotesPresentation.Build"/> — never a second formatter for any of the
+/// three.
 /// </summary>
 public sealed record OperationsCalendarPresentation(
     string DisplayedMonthText,
     string SelectedDateText,
     bool SelectedDateIsToday,
     string PassdownStatusText,
-    string? FinalizedText,
+    string? PassdownDetailNoteText,
     string OperationalNotesCountText,
+    string? OperationalNotesImportantText,
     string ParkStatusText,
     string? EffectiveHoursText,
     string? ParkHoursVerificationText,
@@ -28,24 +30,13 @@ public sealed record OperationsCalendarPresentation(
         ArgumentNullException.ThrowIfNull(snapshot);
         var selected = snapshot.Selected;
 
-        var passdownStatusText = selected.PassdownStatus switch
-        {
-            OperationsCalendarPassdownStatus.NoDraft => "No draft",
-            OperationsCalendarPassdownStatus.DraftInProgress => "Draft in progress",
-            OperationsCalendarPassdownStatus.Finalized => "Finalized",
-            _ => "Unknown",
-        };
+        // Phase 12C Part Y: the sole source of the "No Draft"/"Draft In Progress"/"Finalized" detail
+        // label and its accompanying note (last-saved/finalized timestamp, or an empty-state sentence).
+        var passdownPresentation = OperationsCalendarPassdownPresentation.Build(selected.PassdownStatus, selected.LastSavedAt, selected.FinalizedAt);
 
-        var finalizedText = selected.FinalizedAt is { } finalizedAt
-            ? $"Finalized {EasternTimeZone.ConvertFromUtc(finalizedAt):MMM d, yyyy 'at' h:mm tt}"
-            : null;
-
-        var notesCountText = selected.RelevantOperationalNoteCount switch
-        {
-            0 => "No operational notes for this date.",
-            1 => "1 operational note for this date.",
-            _ => $"{selected.RelevantOperationalNoteCount} operational notes for this date.",
-        };
+        // Phase 12C Part T: labeled "Active Operational Notes" throughout this panel — the persistent
+        // Operational Notes concept, never the daily Associate draft's own Notes entry.
+        var notesPresentation = OperationsCalendarNotesPresentation.Build(selected.RelevantOperationalNoteCount, selected.ImportantOperationalNoteCount);
 
         var parkStatusText = selected.OperatingState switch
         {
@@ -70,9 +61,10 @@ public sealed record OperationsCalendarPresentation(
             snapshot.DisplayedMonth.ToString("MMMM yyyy"),
             selected.Date.ToString("dddd, MMMM d, yyyy"),
             selected.IsToday,
-            passdownStatusText,
-            finalizedText,
-            notesCountText,
+            passdownPresentation.DetailLabel,
+            passdownPresentation.DetailNoteText,
+            notesPresentation.DetailCountText,
+            notesPresentation.DetailImportantText,
             parkStatusText,
             showsHours ? parkHoursPresentation.HeadlineText : null,
             parkHoursPresentation.VerificationText,

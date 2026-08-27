@@ -675,14 +675,283 @@ used or required.
   silently mixed with live data.
 - The release ZIP rebuild — Phase 12F's scope.
 
-## Deferred to 12C–12F
+## Deferred to 12D–12F (superseded in part by 12C — see below)
 
 - Richer source-health overlays beyond park hours.
-- Any denser per-day note preview beyond a count (still 12A's own deferred item).
-- A History date pre-selection seam.
+- Any denser per-day note preview beyond a count — **still deferred, now explicit** (12C Part U):
+  Calendar shows counts only, never note titles/bodies.
+- A History date pre-selection seam — **re-evaluated in 12C, still deferred** (see below).
 - A frozen-hours read model for finalized dates, if a future phase decides it's worth the added
   query cost/architecture.
 - The renamed-app work, refresh-policy overhaul, manual-hours/buyout redesign, ERT simplification,
   logo, Alerts, and Manager workflow — all still deferred per `CLAUDE.md`.
 
-12C has not started.
+---
+
+## Phase 12C — Passdown Status + Persistent Operational Notes overlays
+
+Phase 12C makes the Calendar useful for passdown *planning*, not just park-hours awareness: every day
+cell and the selected-date panel now also answer **"does this date have a passdown, and are there
+operational notes I should know about?"** No Alerts, no Manager workflow, no schema change, and the
+Calendar remains a summary/routing surface — day cells gained two more short lines, not a second
+Dashboard.
+
+### Passdown status model and Finalized-over-Draft precedence (Parts A/B/C/D)
+
+12A already computed a `PassdownStatus` (`NoDraft | DraftInProgress | Finalized`) for the
+*selected-date* summary, with Finalized already taking precedence there (`OperationsCalendarService`'s
+`BuildSelectedSummaryAsync` checks `finalized is not null` before falling back to the workspace's save
+state). What 12A/12B never did is apply that same precedence to the **day-cell grid**, which instead
+exposed two independent booleans (`HasFinalizedPassdown`, `HasAssociateDraft`) straight to the View —
+and the View rendered *both* "Finalized" and "Draft" text simultaneously whenever a date had both a
+finalized record and a still-existing saved draft row (a real, if latent, spec violation this phase
+fixes, not a new feature).
+
+The fix is one new presentation type, `Desktop.Presentation.OperationsCalendarPassdownPresentation`,
+which owns the precedence rule directly:
+
+```csharp
+public static OperationsCalendarPassdownStatus DeriveStatus(bool hasFinalizedPassdown, bool hasAssociateDraft) =>
+    hasFinalizedPassdown ? Finalized
+    : hasAssociateDraft ? DraftInProgress
+    : NoDraft;
+```
+
+`OperationsCalendarDayViewModel` calls `DeriveStatus` from the day's own two flags (spec Part A: "use
+existing persisted state," never a second draft-lifecycle system) and then `Build(status)` for display
+text; the selected-date summary passes its already-computed `OperationsCalendarPassdownStatus`
+straight to the same `Build` overload — one formatter, two callers, never two precedence
+implementations. The underlying `AssociateDraft` row is never deleted or otherwise touched by this
+precedence decision (Part B: "the underlying editable draft may still exist... Calendar status should
+represent operational lifecycle") —
+`OperationsCalendarServiceTests.LoadAsync_DateHasBothSavedDraftAndFinalizedRecord_DayCellPassdownFlagsFavorFinalized`
+proves the raw `HasAssociateDraft` flag stays `true` even though the *presented* status is Finalized.
+
+Day-cell label (shortest form, Part D): **"No Draft"** / **"Draft"** / **"Finalized"**. Selected-date
+detail label (fuller form, matching `Desktop.Presentation.OperationsDashboardPresentation`'s own
+"No Draft"/"Draft In Progress"/"Finalized" wording — spec Part D "use consistent wording with existing
+Dashboard where possible"): **"No Draft"** / **"Draft In Progress"** / **"Finalized"**, each with an
+optional detail note (`DetailNoteText`) — `"No passdown started."` for No Draft (Part AD), `"Last saved
+{timestamp}"` for Draft In Progress when a save timestamp exists, and `"Finalized {timestamp}"` for
+Finalized (falling back to the Part AD empty-state sentence `"Finalized passdown available in
+History."` on the rare case no timestamp is available). No Draft is deliberately neutral — no
+error/warning style, since a future date with no draft yet is normal (Part C/W).
+
+### Persistent Operational Notes counts and the Important sub-count (Parts E/F/O)
+
+`OperationsCalendarDay`/`OperationsCalendarSelectedDateSummary` each gained one new field,
+`ImportantOperationalNoteCount` (appended with a `= 0` default so every pre-12C construction call site
+keeps compiling unchanged — no test or production call site needed updating just for the new field's
+existence). It is computed in `OperationsCalendarService` as a further in-memory filter over the exact
+same `allNotes` list `RelevantOperationalNoteCount` already filters — `note.Priority ==
+OperationalNotePriority.Important && OperationalNoteRelevance.IsRelevantForDate(note, date)` — reusing
+11A's one authoritative relevance rule, never a second/duplicated relevance condition, and adding
+**zero** new `IOperationalNotesService` queries (Part O): the same single `ListAsync()` call 12A/12B
+already made once per `LoadAsync` now backs both counts.
+`OperationsCalendarServiceTests.LoadAsync_ComputingImportantCounts_DoesNotAddAnOperationalNotesQuery`
+and `..._HundredPlusOperationalNotes_LoadsCorrectlyAndBounded` prove this directly with a
+call-counting wrapper and a 120-note data set respectively.
+
+`Desktop.Presentation.OperationsCalendarNotesPresentation` is the one new formatter for both counts:
+
+| Relevant | Important | Cell text | Detail count | Detail Important |
+|---|---|---|---|---|
+| 0 | 0 | *(hidden)* | "No active operational notes for this date." | *(hidden)* |
+| 1 | 0 | "1 Note" | "1 active" | *(hidden)* |
+| 3 | 0 | "3 Notes" | "3 active" | *(hidden)* |
+| 3 | 1 | "3 Notes · 1 Important" | "3 active" | "1 Important" |
+
+A zero Important count never shows a meaningless "0 Important" line (Part F); Important is
+communicated as plain text only, never a red/alarm-style badge (Part F/AA) — the same "text emphasis,
+never color-as-severity" convention 11B/11C already established for persistent-note priority
+elsewhere in the app.
+
+### Day-cell content and priority (Parts G/H/I)
+
+Each in-month day cell now renders, top to bottom: day number, operating-state/hours (12B, unchanged
+priority), passdown status label, notes summary line (hidden when there are no relevant notes) — the
+exact density the spec's own target concept describes (`29 / 10 AM–10 PM / Draft / 2 Notes · 1
+Important`), never note titles, full passdown detail, or a second badge per state. The passdown-status
+line is *always* shown (including "No Draft," per Part C/W: "future dates may show: No Draft... this is
+useful planning information") — it is the one line 12C makes unconditional, unlike 12A/12B's
+conditionally-hidden Finalized/Draft indicators.
+
+All four overlay lines (operating-state label, hours, stale flag, passdown status, notes summary) now
+live inside **one** `IsVisible="{Binding IsInDisplayedMonth}"` wrapper in `OperationsCalendarView.axaml`
+— previously (12A/12B) the Finalized/Draft/note-count `TextBlock`s sat *outside* that wrapper, so an
+off-month cell with real underlying draft/finalized/note data would have visibly leaked it (Part I: "do
+not add passdown status or note counts... to off-month cells" — a real, if minor, pre-12C inconsistency
+this phase also fixes). The Application-layer snapshot itself still never fabricates or suppresses an
+off-month cell's real data (`LoadAsync_OffMonthCell_StillCarriesRealPassdownAndNoteData` proves the
+snapshot still carries it); only the View now correctly hides it for off-month cells, matching the
+same "day number only" decision 12A/12B already made for the operating-state overlay.
+
+### Selected-date summary (Parts J/K/T/AD)
+
+The panel gained a new **"Active Operational Notes"** section (Part T: labeled explicitly to avoid any
+reader confusion with the daily Associate draft's own Notes entry, which remains a completely separate
+concept and table), and the existing "Passdown Status" section now shows a detail note line beneath the
+status label:
+
+```
+PARK
+Open
+10 AM – 10 PM
+
+PASSDOWN STATUS
+Draft In Progress
+Last saved Aug 21, 2026 at 2:00 PM
+
+ACTIVE OPERATIONAL NOTES
+3 active
+1 Important
+
+[ Open Passdown ]  [ Open History ]  [ Open Operational Notes ]
+```
+
+`OperationsCalendarPresentation`'s fields were renamed/reshaped to carry this: `FinalizedText` became
+the more general `PassdownDetailNoteText` (now populated for all three statuses, not only Finalized),
+`OperationalNotesCountText` changed from a full sentence ("3 operational notes for this date.") to the
+compact "N active"/empty-state form, and a new `OperationalNotesImportantText` field carries the
+optional Important line. Both `PassdownStatusText`/`OperationalNotesCountText` bindings gained their
+own composed `AutomationProperties.Name` ("Passdown status: {0}" / "Active operational notes: {0}") per
+spec Part AB.
+
+### Actions stay unchanged (Parts K/L/M/N) — already correct from 12A/12B
+
+Re-reading 12A/12B's own implementation against 12C's spec confirmed every action-routing requirement
+was already met, so **no code changed here**:
+
+- **Open Passdown** already routes to Associate → Overview with the Calendar's selected date
+  (`MainViewModel`'s `Calendar.OpenAssociateRequested` handler) — Part L's exact preferred behavior.
+- **Open History** is already gated (`CanOpenHistory`) on `Selected.PassdownStatus == Finalized` and
+  stays deliberately generic navigation (Part M) — re-evaluated for 12C and still correct: no clean
+  seam exists to preselect a date inside `PassdownHistoryViewModel` (`SelectedItem` is typed as a
+  `PassdownHistorySummaryPresentation`, not a `DateOnly`; the same architectural gap 12A/10C already
+  documented). Forcing it from `MainViewModel` would mean reaching into `PassdownHistoryViewModel`'s own
+  loaded-item list and racing its own load — exactly the "brittle coupling" Part M says to avoid. Still
+  deferred to a future phase, unchanged from 12A/12B's own conclusion.
+- **Open Operational Notes** remains generic navigation (Part N) — no filter/date state is forced.
+- No "Include note in passdown" action exists anywhere on this screen (Part K) — persistent-note
+  inclusion remains exclusively Associate → Notes, unchanged since 11D.
+
+### Query strategy — zero new queries (Parts O/P/Q)
+
+12C adds no new repository or service call. `ImportantOperationalNoteCount` is computed entirely from
+the `allNotes` list 12A/12B already load once per `LoadAsync` (see above); the Finalized/Draft
+precedence is computed entirely from the two flags 12A/12B already compute per day cell. The existing
+bounded-query guarantees (`LoadAsync_QueriesDatedResultsAndDraftsExactlyOncePerMonthLoad`, the
+finalized-metadata-only `ListAsync` — never `GetByDateAsync`) are unchanged and still hold; 12C's own
+`LoadAsync_ComputingImportantCounts_DoesNotAddAnOperationalNotesQuery` extends that guarantee to cover
+the new count. No PDF bytes, snapshot JSON, or History detail are read anywhere in this phase (Part R) —
+Finalized status is still metadata-only, exactly as 12A established.
+
+### Local-only guarantee and reflection behavior (Parts AE/AF/AG/AH) — unchanged
+
+Nothing in 12C introduces HTTP, Playwright, Task Scheduler, or any mutation on Calendar load — the two
+new presentation types (`OperationsCalendarPassdownPresentation`/`OperationsCalendarNotesPresentation`)
+are pure formatters with no service/repository dependency of any kind, and `OperationsCalendarService`
+gained no new constructor parameter. Draft creation, note resolution, and finalization are all still
+picked up on the next Calendar load/reload exactly as 12A/12B already proved, since every one of
+12C's new fields is derived fresh from the same already-reloaded local state.
+
+### Finalized-date note semantics (Part V) — unchanged decision, now explicit
+
+Relevant/Important note counts for an already-finalized date reflect the **current** date-relevance
+model, not what was frozen into that date's History record — consistent with 12B's own "live, not
+frozen" decision for park hours, and never computed by querying History. The panel's own label ("Active
+Operational Notes") is deliberately generic rather than "Notes in Finalized Passdown," avoiding any
+implication that these counts represent what associates actually received (Part V).
+
+### Accessibility (Part AB)
+
+Day-cell `AutomationName` now composes the passdown-status and notes-summary accessibility text from
+the same two new presentation types, e.g. `"August 21, 2026. Open, 10 AM to 10 PM. Today. Selected.
+Finalized. 2 active operational notes, 1 Important."` — and, per the precedence fix above, a
+Finalized date's automation name now says **only** "Finalized," never also "Draft in progress." The
+selected-date panel's Passdown Status/Active Operational Notes values each carry a composed
+`AutomationProperties.Name` (see above). Every existing 12A/12B accessibility guarantee (today/
+selected/operating-state text equivalents, never color-only) is preserved.
+
+### Visual validation — PARTIAL (unchanged constraint)
+
+Same constraint as every prior Phase 9–12 document: no pixel/bitmap screenshot renderer is referenced
+by this codebase's test projects. `OperationsCalendarView_MixedPassdownAndImportantNoteStatesAcrossTheMonth_ConstructsWithoutError`
+exercises a month mixing No Draft/Draft/Finalized cells and Important-note dates through Avalonia's
+real XAML loader (construction-level evidence, not pixel-level), alongside the existing 1280×860/
+960×640 layout-pass tests (unchanged, still passing with the two new day-cell lines added). Recorded
+honestly as **PARTIAL** — actual on-screen density/legibility should be spot-checked in a Windows 11 VM
+per `CLAUDE.md`'s platform guidance before this ships.
+
+### Schema (Part AJ) — unchanged
+
+No migration was added. Database schema remains **10**; `AssociateDraftPayload` schema remains **3**;
+`FinalizedPassdownSnapshot` schema remains **1**. Both new fields
+(`OperationsCalendarDay.ImportantOperationalNoteCount`,
+`OperationsCalendarSelectedDateSummary.ImportantOperationalNoteCount`) are computed fresh on every
+`LoadAsync` from the existing `operational_notes` table — nothing new is persisted, and no Calendar-
+specific status table was created (Part AJ's explicit instruction).
+
+### Tests added (Phase 12C)
+
+- `OperationsCalendarServiceTests.cs` — **+17**: the three day-cell passdown-flag combinations
+  (no draft/no finalized, draft only, both draft and finalized — proving the raw `HasAssociateDraft`
+  flag survives finalization at the data layer), relevant-note counts of 0/1/many, Important count as a
+  subset of relevant count (day cell and selected-date summary both), resolved notes excluded from both
+  counts, upcoming/expired/open-ended/boundary-date (ends-on/begins-on) note relevance, note count
+  keyed to each grid date rather than "today," an off-month cell still carrying real underlying data,
+  a call-counting proof that the Important count adds no new Operational Notes query, and a 120-note
+  bounded-load data-set case.
+- `OperationsCalendarPassdownPresentationTests.cs` (new, 10 tests) — `DeriveStatus`'s precedence
+  directly (both flags true → Finalized; draft only; neither), and `Build`'s cell/detail/accessibility
+  text for all three statuses including the last-saved/finalized-timestamp/empty-state note variants.
+- `OperationsCalendarNotesPresentationTests.cs` (new, 5 tests) — the compact cell text, detail count/
+  Important lines, and accessibility text across 0/1/many relevant and 0/1/many Important notes.
+- `OperationsCalendarPresentationTests.cs` — **+4**: selected-date No Draft/Draft In Progress/Finalized
+  detail text, and the combined relevant-plus-Important notes detail text.
+- `OperationsCalendarViewModelTests.cs` — **+4**: day-cell `PassdownStatusLabel`/`NotesSummaryText` for
+  No Draft/Draft/Finalized-over-Draft/Important-notes cases; the pre-existing automation-name test was
+  updated (not just extended) to assert the new Finalized-only precedence and the new "active
+  operational notes" wording.
+- `OperationsCalendarViewTests.cs` — **+2**: a month mixing passdown lifecycle states and Important-note
+  dates, and the selected-date panel's Passdown Status/Active Operational Notes text/binding.
+
+**42 new tests total** (1323 Phase 12B baseline + 42 = 1365).
+
+### Full validation (Phase 12C)
+
+`dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors.
+`dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — **1365/1365**. Run three times;
+one run hit the same pre-existing, previously-documented (Phase 6D) Avalonia headless cross-assembly
+parallelism flake on an *unrelated* Phase 11 view (`OperationalNotesView`, not any Phase 12 file) during
+`XamlIlPopulate` — the other two runs, including the final one, passed all 1365 cleanly. No Operations
+Calendar or Operational Notes test failed on its own merits in any run. No live internet was used or
+required.
+
+### What Phase 12C does *not* implement
+
+- Alerts, alarm-style severity styling, or any red-for-Important treatment (Part F/AA).
+- The Manager workflow, app rename, refresh-policy changes, manual-hours/buyout UI redesign, ERT
+  behavior changes, app logo, or the release ZIP rebuild (Phase 12F's scope) — all explicitly out of
+  scope per `CLAUDE.md` and this phase's own instructions.
+- Calendar-driven inclusion of a persistent note into an Associate draft — still exclusively
+  Associate → Notes (Part K/U), unchanged since 11D.
+- A History date pre-selection seam (Part M) — re-evaluated, still no clean seam; deferred again.
+- A denser per-day note preview beyond a count, or note titles/bodies anywhere on this screen
+  (Part S/U) — counts only, by design.
+- Date-aware deep-linking into Operational Notes Manager's own filter/selection state (Part N) —
+  evaluated and left generic, matching 11C's identical decision for Dashboard.
+
+## Deferred to 12D–12F
+
+- Richer source-health overlays beyond park hours.
+- Any denser per-day note preview beyond a count, or note titles/bodies in month cells (12A/12C's own
+  deferred item).
+- A History date pre-selection seam (re-evaluated in 12C, still deferred).
+- A frozen-hours read model for finalized dates, if a future phase decides it's worth the added
+  query cost/architecture.
+- Date-aware deep-linking into Operational Notes Manager from Calendar's selected date.
+- The renamed-app work, refresh-policy overhaul, manual-hours/buyout redesign, ERT simplification,
+  logo, Alerts, and Manager workflow — all still deferred per `CLAUDE.md`.
+
+12D has not started.

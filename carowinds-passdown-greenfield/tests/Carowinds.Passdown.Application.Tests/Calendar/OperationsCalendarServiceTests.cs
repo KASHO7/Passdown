@@ -606,6 +606,298 @@ public class OperationsCalendarServiceTests
         Assert.Equal(dashboardSnapshot.ParkStatus.Hours.Effective.Closing, calendarSnapshot.Selected.ParkHours.Effective.Closing);
     }
 
+    // ==================================================================================
+    // Phase 12C — Passdown Status + Persistent Operational Notes overlays
+    // ==================================================================================
+
+    private static Task<OperationalNote> AddNoteAsync(
+        TestEnvironment env, DateOnly effectiveFrom, DateOnly? effectiveThrough = null,
+        OperationalNotePriority priority = OperationalNotePriority.Normal, string title = "Test note") =>
+        env.OperationalNotes.CreateAsync(new OperationalNoteDraft(title, null, OperationalNoteCategory.General, priority, effectiveFrom, effectiveThrough));
+
+    // Part AK #4: a date with both a saved draft and a finalized record shows Finalized, never Draft,
+    // at the day-cell level — the same precedence already proven for the selected-date summary.
+    [Fact]
+    public async Task LoadAsync_DateHasBothSavedDraftAndFinalizedRecord_DayCellPassdownFlagsFavorFinalized()
+    {
+        var env = CreateEnvironment();
+        var date = new DateOnly(2026, 8, 18);
+        await SaveDraftAsync(env, date, AssociateDraftPayload.CreateDefault());
+        await AddFinalizedAsync(env, date, env.Clock.UtcNow);
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), SelectedDate);
+
+        var day = snapshot.Days.Single(d => d.Date == date);
+        Assert.True(day.HasFinalizedPassdown);
+        Assert.True(day.HasAssociateDraft); // the underlying draft row still exists (spec Part B) — Calendar status presentation, not this raw flag, applies precedence.
+    }
+
+    // Part AK #1/2/3: the three passdown-status day-cell flag combinations.
+    [Fact]
+    public async Task LoadAsync_NoSavedDraftAndNoFinalizedRecord_DayCellFlagsAreBothFalse()
+    {
+        var env = CreateEnvironment();
+        var date = new DateOnly(2026, 8, 18);
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), SelectedDate);
+
+        var day = snapshot.Days.Single(d => d.Date == date);
+        Assert.False(day.HasFinalizedPassdown);
+        Assert.False(day.HasAssociateDraft);
+    }
+
+    [Fact]
+    public async Task LoadAsync_SavedDraftOnly_DayCellHasDraftFlagTrueAndFinalizedFlagFalse()
+    {
+        var env = CreateEnvironment();
+        var date = new DateOnly(2026, 8, 18);
+        await SaveDraftAsync(env, date, AssociateDraftPayload.CreateDefault());
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), SelectedDate);
+
+        var day = snapshot.Days.Single(d => d.Date == date);
+        Assert.False(day.HasFinalizedPassdown);
+        Assert.True(day.HasAssociateDraft);
+    }
+
+    // Part AK #5/6/7: relevant note counts of 0, 1, and >1 for a given date.
+    [Fact]
+    public async Task LoadAsync_NoRelevantNotes_CountIsZero()
+    {
+        var env = CreateEnvironment();
+        var date = new DateOnly(2026, 8, 18);
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), SelectedDate);
+
+        Assert.Equal(0, snapshot.Days.Single(d => d.Date == date).RelevantOperationalNoteCount);
+    }
+
+    [Fact]
+    public async Task LoadAsync_OneRelevantNote_CountIsOne()
+    {
+        var env = CreateEnvironment();
+        var date = new DateOnly(2026, 8, 18);
+        await AddNoteAsync(env, date);
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), SelectedDate);
+
+        Assert.Equal(1, snapshot.Days.Single(d => d.Date == date).RelevantOperationalNoteCount);
+    }
+
+    [Fact]
+    public async Task LoadAsync_MultipleRelevantNotes_CountReflectsAll()
+    {
+        var env = CreateEnvironment();
+        var date = new DateOnly(2026, 8, 18);
+        await AddNoteAsync(env, date, title: "A");
+        await AddNoteAsync(env, date, title: "B");
+        await AddNoteAsync(env, date, title: "C");
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), SelectedDate);
+
+        Assert.Equal(3, snapshot.Days.Single(d => d.Date == date).RelevantOperationalNoteCount);
+    }
+
+    // Part AK #8: ImportantOperationalNoteCount is a subset of RelevantOperationalNoteCount.
+    [Fact]
+    public async Task LoadAsync_MixOfNormalAndImportantNotes_ImportantCountReflectsOnlyImportant()
+    {
+        var env = CreateEnvironment();
+        var date = new DateOnly(2026, 8, 18);
+        await AddNoteAsync(env, date, priority: OperationalNotePriority.Normal, title: "Normal 1");
+        await AddNoteAsync(env, date, priority: OperationalNotePriority.Important, title: "Important 1");
+        await AddNoteAsync(env, date, priority: OperationalNotePriority.Important, title: "Important 2");
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), SelectedDate);
+
+        var day = snapshot.Days.Single(d => d.Date == date);
+        Assert.Equal(3, day.RelevantOperationalNoteCount);
+        Assert.Equal(2, day.ImportantOperationalNoteCount);
+
+        var selected = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), date);
+        Assert.Equal(3, selected.Selected.RelevantOperationalNoteCount);
+        Assert.Equal(2, selected.Selected.ImportantOperationalNoteCount);
+    }
+
+    // Part AK #9: a resolved note is never counted, relevant or Important.
+    [Fact]
+    public async Task LoadAsync_ResolvedNote_ExcludedFromBothCounts()
+    {
+        var env = CreateEnvironment();
+        var date = new DateOnly(2026, 8, 18);
+        var note = await AddNoteAsync(env, date, priority: OperationalNotePriority.Important);
+        await env.OperationalNotes.ResolveAsync(note.Id);
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), SelectedDate);
+
+        var day = snapshot.Days.Single(d => d.Date == date);
+        Assert.Equal(0, day.RelevantOperationalNoteCount);
+        Assert.Equal(0, day.ImportantOperationalNoteCount);
+    }
+
+    // Part AK #10: an upcoming note (EffectiveFrom in the future relative to the date being checked) is excluded.
+    [Fact]
+    public async Task LoadAsync_UpcomingNote_ExcludedForEarlierDate()
+    {
+        var env = CreateEnvironment();
+        var checkedDate = new DateOnly(2026, 8, 18);
+        await AddNoteAsync(env, effectiveFrom: checkedDate.AddDays(1));
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), SelectedDate);
+
+        Assert.Equal(0, snapshot.Days.Single(d => d.Date == checkedDate).RelevantOperationalNoteCount);
+    }
+
+    // Part AK #11: an expired note (EffectiveThrough in the past relative to the date being checked) is excluded.
+    [Fact]
+    public async Task LoadAsync_ExpiredNote_ExcludedForLaterDate()
+    {
+        var env = CreateEnvironment();
+        var checkedDate = new DateOnly(2026, 8, 18);
+        await AddNoteAsync(env, effectiveFrom: checkedDate.AddDays(-10), effectiveThrough: checkedDate.AddDays(-1));
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), SelectedDate);
+
+        Assert.Equal(0, snapshot.Days.Single(d => d.Date == checkedDate).RelevantOperationalNoteCount);
+    }
+
+    // Part AK #12: an open-ended note (null EffectiveThrough) is counted for a date long after EffectiveFrom.
+    [Fact]
+    public async Task LoadAsync_OpenEndedNote_CountedForDateWellAfterEffectiveFrom()
+    {
+        var env = CreateEnvironment();
+        var checkedDate = new DateOnly(2026, 8, 18);
+        await AddNoteAsync(env, effectiveFrom: checkedDate.AddDays(-30), effectiveThrough: null);
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), SelectedDate);
+
+        Assert.Equal(1, snapshot.Days.Single(d => d.Date == checkedDate).RelevantOperationalNoteCount);
+    }
+
+    // Part AK #13/14: boundary dates — a note ending on, or beginning on, the checked date is counted.
+    [Fact]
+    public async Task LoadAsync_NoteEndingOnCheckedDate_IsCounted()
+    {
+        var env = CreateEnvironment();
+        var checkedDate = new DateOnly(2026, 8, 18);
+        await AddNoteAsync(env, effectiveFrom: checkedDate.AddDays(-5), effectiveThrough: checkedDate);
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), SelectedDate);
+
+        Assert.Equal(1, snapshot.Days.Single(d => d.Date == checkedDate).RelevantOperationalNoteCount);
+    }
+
+    [Fact]
+    public async Task LoadAsync_NoteBeginningOnCheckedDate_IsCounted()
+    {
+        var env = CreateEnvironment();
+        var checkedDate = new DateOnly(2026, 8, 18);
+        await AddNoteAsync(env, effectiveFrom: checkedDate);
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), SelectedDate);
+
+        Assert.Equal(1, snapshot.Days.Single(d => d.Date == checkedDate).RelevantOperationalNoteCount);
+    }
+
+    // Part AK #15: note relevance is evaluated per Calendar date, never against "today" — a note
+    // relevant only for a past date does not leak into every other cell's count.
+    [Fact]
+    public async Task LoadAsync_NoteCountUsesEachCalendarDate_NotTodaysDate()
+    {
+        var env = CreateEnvironment();
+        var noteDate = new DateOnly(2026, 8, 5);
+        var otherDate = new DateOnly(2026, 8, 6);
+        await AddNoteAsync(env, effectiveFrom: noteDate, effectiveThrough: noteDate);
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), SelectedDate);
+
+        Assert.Equal(1, snapshot.Days.Single(d => d.Date == noteDate).RelevantOperationalNoteCount);
+        Assert.Equal(0, snapshot.Days.Single(d => d.Date == otherDate).RelevantOperationalNoteCount);
+    }
+
+    // Part AK #16: off-month cells still carry real underlying data in the snapshot (spec Part I says
+    // the *view* hides the overlay for off-month cells — the Application-layer snapshot itself never
+    // fabricates or suppresses a cell's own real values).
+    [Fact]
+    public async Task LoadAsync_OffMonthCell_StillCarriesRealPassdownAndNoteData()
+    {
+        var env = CreateEnvironment();
+        // The grid for August 2026 includes trailing July days; pick one that's off-month.
+        var offMonthDate = new DateOnly(2026, 7, 31);
+        await SaveDraftAsync(env, offMonthDate, AssociateDraftPayload.CreateDefault());
+        await AddNoteAsync(env, offMonthDate);
+
+        var snapshot = await env.Service.LoadAsync(new DateOnly(2026, 8, 1), SelectedDate);
+
+        var offMonthDay = snapshot.Days.SingleOrDefault(d => d.Date == offMonthDate);
+        Assert.NotNull(offMonthDay);
+        Assert.False(offMonthDay!.IsInDisplayedMonth);
+        Assert.True(offMonthDay.HasAssociateDraft);
+        Assert.Equal(1, offMonthDay.RelevantOperationalNoteCount);
+    }
+
+    // Part AK #33/34: computing ImportantOperationalNoteCount adds no additional Operational Notes
+    // query — it is derived in memory from the exact same all-notes list already loaded once.
+    [Fact]
+    public async Task LoadAsync_ComputingImportantCounts_DoesNotAddAnOperationalNotesQuery()
+    {
+        var env = CreateEnvironment();
+        var countingNotes = new CountingOperationalNotesService(env.OperationalNotes);
+        var associateService = new AssociatePassdownService(env.Drafts, env.DatedResults, new InMemoryCatalogProductRepository(), new FakeRefreshOrchestrator(), countingNotes, env.Clock);
+        var service = new OperationsCalendarService(associateService, env.Drafts, env.DatedResults, env.FinalizedPassdowns, countingNotes, env.Clock);
+
+        await service.LoadAsync(new DateOnly(2026, 8, 1), SelectedDate);
+
+        Assert.Equal(1, countingNotes.ListAllCallCount);
+    }
+
+    // Part AK #35: a large data set (100+ notes across a month) still loads bounded and local.
+    [Fact]
+    public async Task LoadAsync_HundredPlusOperationalNotes_LoadsCorrectlyAndBounded()
+    {
+        var env = CreateEnvironment();
+        var monthStart = new DateOnly(2026, 8, 1);
+        for (var i = 0; i < 120; i++)
+        {
+            var day = monthStart.AddDays(i % 31);
+            await AddNoteAsync(env, effectiveFrom: day, priority: i % 5 == 0 ? OperationalNotePriority.Important : OperationalNotePriority.Normal, title: $"Note {i}");
+        }
+
+        var countingNotes = new CountingOperationalNotesService(env.OperationalNotes);
+        var associateService = new AssociatePassdownService(env.Drafts, env.DatedResults, new InMemoryCatalogProductRepository(), new FakeRefreshOrchestrator(), countingNotes, env.Clock);
+        var service = new OperationsCalendarService(associateService, env.Drafts, env.DatedResults, env.FinalizedPassdowns, countingNotes, env.Clock);
+
+        var snapshot = await service.LoadAsync(monthStart, monthStart);
+
+        Assert.Equal(1, countingNotes.ListAllCallCount);
+        Assert.True(snapshot.Days.Sum(d => d.RelevantOperationalNoteCount) > 0);
+        Assert.True(snapshot.Days.Sum(d => d.ImportantOperationalNoteCount) > 0);
+    }
+
+    /// <summary>Counts <c>ListAsync</c> calls specifically (spec Phase 12C Part O), wrapping a real service so relevance/ordering stay authentic.</summary>
+    private sealed class CountingOperationalNotesService(IOperationalNotesService inner) : IOperationalNotesService
+    {
+        public int ListAllCallCount { get; private set; }
+
+        public Task<OperationalNote> CreateAsync(OperationalNoteDraft draft, CancellationToken cancellationToken = default) =>
+            inner.CreateAsync(draft, cancellationToken);
+
+        public Task<OperationalNote> UpdateAsync(Guid id, OperationalNoteDraft draft, CancellationToken cancellationToken = default) =>
+            inner.UpdateAsync(id, draft, cancellationToken);
+
+        public Task<OperationalNote> ResolveAsync(Guid id, CancellationToken cancellationToken = default) =>
+            inner.ResolveAsync(id, cancellationToken);
+
+        public Task<IReadOnlyList<OperationalNote>> ListAsync(CancellationToken cancellationToken = default)
+        {
+            ListAllCallCount++;
+            return inner.ListAsync(cancellationToken);
+        }
+
+        public Task<IReadOnlyList<OperationalNote>> ListRelevantForDateAsync(DateOnly operatingDate, CancellationToken cancellationToken = default) =>
+            inner.ListRelevantForDateAsync(operatingDate, cancellationToken);
+    }
+
     // Part Z #20: exactly one query per collaborator per month load, regardless of grid size —
     // never one repository round trip per day cell.
     [Fact]
