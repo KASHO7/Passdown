@@ -225,8 +225,8 @@ public class AssociateViewModelDraftEditingTests
         await viewModel.PendingLoad;
 
         viewModel.ManualHoursOverrideEnabled = true;
-        viewModel.ManualOpeningTime = new TimeSpan(11, 0, 0);
-        viewModel.ManualClosingTime = new TimeSpan(22, 0, 0);
+        viewModel.ManualOpeningTimeText = "11:00 AM";
+        viewModel.ManualClosingTimeText = "10:00 PM";
         await ElapseAndAwaitSaveAsync(viewModel, scheduler);
 
         var manualOverride = service.SaveCalls.Last().Draft.ManualHoursOverride;
@@ -243,8 +243,8 @@ public class AssociateViewModelDraftEditingTests
         await viewModel.PendingLoad;
 
         viewModel.PrivateBuyoutEnabled = true;
-        viewModel.PrivateBuyoutOpeningTime = new TimeSpan(18, 0, 0);
-        viewModel.PrivateBuyoutClosingTime = new TimeSpan(23, 0, 0);
+        viewModel.PrivateBuyoutOpeningTimeText = "6:00 PM";
+        viewModel.PrivateBuyoutClosingTimeText = "11:00 PM";
         viewModel.PrivateBuyoutDetails = "Acme Corp holiday party";
         await ElapseAndAwaitSaveAsync(viewModel, scheduler);
 
@@ -266,8 +266,8 @@ public class AssociateViewModelDraftEditingTests
         Assert.Equal(ParkHoursBadgeKind.NotChecked, viewModel.ParkHours!.BadgeKind); // official hours were never checked in the fake default workspace.
 
         viewModel.ManualHoursOverrideEnabled = true;
-        viewModel.ManualOpeningTime = new TimeSpan(11, 0, 0);
-        viewModel.ManualClosingTime = new TimeSpan(22, 0, 0);
+        viewModel.ManualOpeningTimeText = "11:00 AM";
+        viewModel.ManualClosingTimeText = "10:00 PM";
 
         Assert.Equal(ParkHoursBadgeKind.ManualOverride, viewModel.ParkHours!.BadgeKind);
         Assert.Equal("11:00 AM – 10:00 PM", viewModel.ParkHours.HeadlineText);
@@ -288,8 +288,8 @@ public class AssociateViewModelDraftEditingTests
         await viewModel.PendingLoad;
 
         viewModel.ManualHoursOverrideEnabled = true;
-        viewModel.ManualOpeningTime = new TimeSpan(11, 0, 0);
-        viewModel.ManualClosingTime = new TimeSpan(22, 0, 0);
+        viewModel.ManualOpeningTimeText = "11:00 AM";
+        viewModel.ManualClosingTimeText = "10:00 PM";
         await ElapseAndAwaitSaveAsync(viewModel, scheduler);
 
         var effective = viewModel.Workspace!.ParkHours.Effective;
@@ -306,8 +306,8 @@ public class AssociateViewModelDraftEditingTests
         await viewModel.PendingLoad;
 
         viewModel.PrivateBuyoutEnabled = true;
-        viewModel.PrivateBuyoutOpeningTime = new TimeSpan(18, 0, 0);
-        viewModel.PrivateBuyoutClosingTime = new TimeSpan(23, 0, 0);
+        viewModel.PrivateBuyoutOpeningTimeText = "6:00 PM";
+        viewModel.PrivateBuyoutClosingTimeText = "11:00 PM";
         await ElapseAndAwaitSaveAsync(viewModel, scheduler);
 
         var effective = viewModel.Workspace!.ParkHours.Effective;
@@ -324,8 +324,8 @@ public class AssociateViewModelDraftEditingTests
         await viewModel.PendingLoad;
 
         viewModel.ManualHoursOverrideEnabled = true;
-        viewModel.ManualOpeningTime = new TimeSpan(11, 0, 0);
-        viewModel.ManualClosingTime = new TimeSpan(22, 0, 0);
+        viewModel.ManualOpeningTimeText = "11:00 AM";
+        viewModel.ManualClosingTimeText = "10:00 PM";
         await ElapseAndAwaitSaveAsync(viewModel, scheduler);
         Assert.True(viewModel.Workspace!.ParkHours.Effective.IsManualOverrideApplied);
 
@@ -346,8 +346,8 @@ public class AssociateViewModelDraftEditingTests
         await viewModel.PendingLoad;
 
         viewModel.ManualHoursOverrideEnabled = true;
-        viewModel.ManualOpeningTime = new TimeSpan(11, 0, 0);
-        viewModel.ManualClosingTime = new TimeSpan(22, 0, 0);
+        viewModel.ManualOpeningTimeText = "11:00 AM";
+        viewModel.ManualClosingTimeText = "10:00 PM";
         await ElapseAndAwaitSaveAsync(viewModel, scheduler);
 
         var otherDate = Today.AddDays(1);
@@ -359,8 +359,8 @@ public class AssociateViewModelDraftEditingTests
         await viewModel.PendingLoad;
 
         Assert.True(viewModel.ManualHoursOverrideEnabled);
-        Assert.Equal(new TimeSpan(11, 0, 0), viewModel.ManualOpeningTime);
-        Assert.Equal(new TimeSpan(22, 0, 0), viewModel.ManualClosingTime);
+        Assert.Equal("11:00 AM", viewModel.ManualOpeningTimeText);
+        Assert.Equal("10:00 PM", viewModel.ManualClosingTimeText);
         Assert.True(viewModel.Workspace!.ParkHours.Effective.IsManualOverrideApplied);
     }
 
@@ -371,8 +371,8 @@ public class AssociateViewModelDraftEditingTests
         await viewModel.PendingLoad;
 
         viewModel.PrivateBuyoutEnabled = true;
-        viewModel.PrivateBuyoutOpeningTime = new TimeSpan(18, 0, 0);
-        viewModel.PrivateBuyoutClosingTime = new TimeSpan(23, 0, 0);
+        viewModel.PrivateBuyoutOpeningTimeText = "6:00 PM";
+        viewModel.PrivateBuyoutClosingTimeText = "11:00 PM";
         viewModel.PrivateBuyoutDetails = "Acme Corp holiday party";
         await ElapseAndAwaitSaveAsync(viewModel, scheduler);
 
@@ -384,8 +384,8 @@ public class AssociateViewModelDraftEditingTests
         await viewModel.PendingLoad;
 
         Assert.True(viewModel.PrivateBuyoutEnabled);
-        Assert.Equal(new TimeSpan(18, 0, 0), viewModel.PrivateBuyoutOpeningTime);
-        Assert.Equal(new TimeSpan(23, 0, 0), viewModel.PrivateBuyoutClosingTime);
+        Assert.Equal("6:00 PM", viewModel.PrivateBuyoutOpeningTimeText);
+        Assert.Equal("11:00 PM", viewModel.PrivateBuyoutClosingTimeText);
         Assert.Equal("Acme Corp holiday party", viewModel.PrivateBuyoutDetails);
         Assert.True(viewModel.Workspace!.ParkHours.Effective.IsPrivateBuyoutApplied);
     }
@@ -400,8 +400,8 @@ public class AssociateViewModelDraftEditingTests
         await viewModel.PendingLoad;
 
         viewModel.ManualHoursOverrideEnabled = true;
-        viewModel.ManualOpeningTime = new TimeSpan(9, 0, 0);
-        viewModel.ManualClosingTime = new TimeSpan(23, 0, 0);
+        viewModel.ManualOpeningTimeText = "9:00 AM";
+        viewModel.ManualClosingTimeText = "11:00 PM";
         await ElapseAndAwaitSaveAsync(viewModel, scheduler);
 
         var model = AssociatePassdownDocumentModelBuilder.Build(viewModel.Workspace!, FixedNow);
@@ -417,8 +417,8 @@ public class AssociateViewModelDraftEditingTests
         await viewModel.PendingLoad;
 
         viewModel.PrivateBuyoutEnabled = true;
-        viewModel.PrivateBuyoutOpeningTime = new TimeSpan(18, 0, 0);
-        viewModel.PrivateBuyoutClosingTime = new TimeSpan(23, 0, 0);
+        viewModel.PrivateBuyoutOpeningTimeText = "6:00 PM";
+        viewModel.PrivateBuyoutClosingTimeText = "11:00 PM";
         viewModel.PrivateBuyoutDetails = "Acme Corp holiday party";
         await ElapseAndAwaitSaveAsync(viewModel, scheduler);
 

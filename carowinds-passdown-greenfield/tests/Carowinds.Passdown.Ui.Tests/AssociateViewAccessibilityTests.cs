@@ -85,6 +85,17 @@ public class AssociateViewAccessibilityTests
         Assert.Contains("Operational notes", names);
         Assert.Contains("Add a custom or internal product", names);
 
+        // Phase 13E Part AC: the redesigned typable Manual Hours/Private Buyout fields carry
+        // meaningful automation names (present in the logical tree regardless of the section's
+        // current IsVisible state, exactly like every other compiled-binding AutomationProperties.Name
+        // in this view).
+        Assert.Contains("Use a manual hours override", names);
+        Assert.Contains("Manual Hours Open", names);
+        Assert.Contains("Manual Hours Close", names);
+        Assert.Contains("Private buyout or custom hours", names);
+        Assert.Contains("Private Buyout Open", names);
+        Assert.Contains("Private Buyout Close", names);
+
         // Phase 11D Part AS: the two persistent-note section headings are always present, regardless
         // of whether any note is currently included/available.
         Assert.Contains("Included persistent operational notes", names);

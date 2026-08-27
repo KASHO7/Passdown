@@ -81,6 +81,23 @@ public partial class AssociateViewModel : ViewModelBase
     private int? _projectedAttendance;
     private int? _preSolds;
 
+    /// <summary>
+    /// The last successfully parsed (or loaded) Manual Hours / Private Buyout time, kept separate
+    /// from the editable <c>*Text</c> properties so an invalid/unparseable keystroke can never
+    /// overwrite it (Phase 13E Part N/AH #9-10) — mirrors <see cref="ProductRowViewModel"/>'s
+    /// "last valid override" pattern. <c>*TimeParseError</c> holds the current parser message, if any;
+    /// <see cref="ManualOpeningTimeError"/> and friends combine it with the "required while enabled"
+    /// rule (Part R).
+    /// </summary>
+    private TimeOnly? _manualOpeningTime;
+    private TimeOnly? _manualClosingTime;
+    private TimeOnly? _privateBuyoutOpeningTime;
+    private TimeOnly? _privateBuyoutClosingTime;
+    private string? _manualOpeningTimeParseError;
+    private string? _manualClosingTimeParseError;
+    private string? _privateBuyoutOpeningTimeParseError;
+    private string? _privateBuyoutClosingTimeParseError;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasWorkspace))]
     [NotifyPropertyChangedFor(nameof(ParkHours))]
@@ -171,32 +188,35 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ParkHours))]
     [NotifyPropertyChangedFor(nameof(ManualHoursWarningText))]
+    [NotifyPropertyChangedFor(nameof(ManualOpeningTimeError))]
+    [NotifyPropertyChangedFor(nameof(ManualClosingTimeError))]
     public partial bool ManualHoursOverrideEnabled { get; set; }
 
+    /// <summary>
+    /// Free-typed Manual Hours opening time (Phase 13E — replaces the stock <c>TimePicker</c>).
+    /// Bound with <c>UpdateSourceTrigger=LostFocus</c> (see <c>AssociateView.axaml</c>) so parsing/
+    /// normalization runs once per commit (Tab/Enter/click-away), never per keystroke — this is what
+    /// lets <see cref="OnManualOpeningTimeTextChanged"/> safely rewrite the field to its canonical
+    /// display (Part P) without fighting the associate mid-type. See <see cref="OperationalTimeParser"/>.
+    /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ParkHours))]
-    [NotifyPropertyChangedFor(nameof(ManualHoursWarningText))]
-    public partial TimeSpan? ManualOpeningTime { get; set; }
+    public partial string? ManualOpeningTimeText { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ParkHours))]
-    [NotifyPropertyChangedFor(nameof(ManualHoursWarningText))]
-    public partial TimeSpan? ManualClosingTime { get; set; }
+    public partial string? ManualClosingTimeText { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ParkHours))]
     [NotifyPropertyChangedFor(nameof(PrivateBuyoutHoursWarningText))]
+    [NotifyPropertyChangedFor(nameof(PrivateBuyoutOpeningTimeError))]
+    [NotifyPropertyChangedFor(nameof(PrivateBuyoutClosingTimeError))]
     public partial bool PrivateBuyoutEnabled { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ParkHours))]
-    [NotifyPropertyChangedFor(nameof(PrivateBuyoutHoursWarningText))]
-    public partial TimeSpan? PrivateBuyoutOpeningTime { get; set; }
+    public partial string? PrivateBuyoutOpeningTimeText { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ParkHours))]
-    [NotifyPropertyChangedFor(nameof(PrivateBuyoutHoursWarningText))]
-    public partial TimeSpan? PrivateBuyoutClosingTime { get; set; }
+    public partial string? PrivateBuyoutClosingTimeText { get; set; }
 
     [ObservableProperty]
     public partial string? PrivateBuyoutDetails { get; set; }
@@ -390,8 +410,8 @@ public partial class AssociateViewModel : ViewModelBase
 
             var live = RecomputeParkHours(
                 workspace.ParkHours,
-                ManualHoursOverrideEnabled, ToTimeOnly(ManualOpeningTime), ToTimeOnly(ManualClosingTime),
-                PrivateBuyoutEnabled, ToTimeOnly(PrivateBuyoutOpeningTime), ToTimeOnly(PrivateBuyoutClosingTime));
+                ManualHoursOverrideEnabled, _manualOpeningTime, _manualClosingTime,
+                PrivateBuyoutEnabled, _privateBuyoutOpeningTime, _privateBuyoutClosingTime);
 
             return ParkHoursPresentation.Build(live);
         }
@@ -417,15 +437,39 @@ public partial class AssociateViewModel : ViewModelBase
         return official with { Effective = effective };
     }
 
+    /// <summary>
+    /// Soft, non-blocking range check (spec Phase 13A finding, preserved unchanged by Phase 13E Part
+    /// M — <see cref="ParkHoursCalculator"/> itself has no ordering rule at all, so treating this as a
+    /// hard block would be inventing new domain semantics without evidence, and could wrongly reject a
+    /// genuine overnight closing time). Distinct from <see cref="ManualOpeningTimeError"/>/
+    /// <see cref="ManualClosingTimeError"/>, which guard unparseable/missing text — this only fires
+    /// once both times are individually valid.
+    /// </summary>
     public string? ManualHoursWarningText =>
-        ManualHoursOverrideEnabled && ManualOpeningTime is { } manualOpen && ManualClosingTime is { } manualClose && manualClose <= manualOpen
-            ? "Closing time should be after opening time."
+        ManualHoursOverrideEnabled && _manualOpeningTime is { } manualOpen && _manualClosingTime is { } manualClose && manualClose <= manualOpen
+            ? "Closing time must be later than opening time."
             : null;
 
     public string? PrivateBuyoutHoursWarningText =>
-        PrivateBuyoutEnabled && PrivateBuyoutOpeningTime is { } buyoutOpen && PrivateBuyoutClosingTime is { } buyoutClose && buyoutClose <= buyoutOpen
-            ? "Closing time should be after opening time."
+        PrivateBuyoutEnabled && _privateBuyoutOpeningTime is { } buyoutOpen && _privateBuyoutClosingTime is { } buyoutClose && buyoutClose <= buyoutOpen
+            ? "Closing time must be later than opening time."
             : null;
+
+    /// <summary>
+    /// Combines the current parser error (if the typed text is syntactically/semantically invalid,
+    /// spec Part L) with the "required while enabled" rule (Part R) — blank is fine while Manual Hours
+    /// is off, but not once it's on. Never surfaces a raw parser exception (Part L).
+    /// </summary>
+    public string? ManualOpeningTimeError => _manualOpeningTimeParseError ?? RequiredTimeError(ManualHoursOverrideEnabled, _manualOpeningTime);
+
+    public string? ManualClosingTimeError => _manualClosingTimeParseError ?? RequiredTimeError(ManualHoursOverrideEnabled, _manualClosingTime);
+
+    public string? PrivateBuyoutOpeningTimeError => _privateBuyoutOpeningTimeParseError ?? RequiredTimeError(PrivateBuyoutEnabled, _privateBuyoutOpeningTime);
+
+    public string? PrivateBuyoutClosingTimeError => _privateBuyoutClosingTimeParseError ?? RequiredTimeError(PrivateBuyoutEnabled, _privateBuyoutClosingTime);
+
+    private static string? RequiredTimeError(bool sectionEnabled, TimeOnly? committedValue) =>
+        sectionEnabled && committedValue is null ? OperationalTimeParser.InvalidTimeMessage : null;
 
     public IReadOnlyList<DailyFeatureTypeOption> DailyFeatureTypeOptions => DailyFeatureTypeOption.All;
 
@@ -779,17 +823,93 @@ public partial class AssociateViewModel : ViewModelBase
 
     partial void OnManualHoursOverrideEnabledChanged(bool value) => ScheduleAutosave();
 
-    partial void OnManualOpeningTimeChanged(TimeSpan? value) => ScheduleAutosave();
-
-    partial void OnManualClosingTimeChanged(TimeSpan? value) => ScheduleAutosave();
-
     partial void OnPrivateBuyoutEnabledChanged(bool value) => ScheduleAutosave();
 
-    partial void OnPrivateBuyoutOpeningTimeChanged(TimeSpan? value) => ScheduleAutosave();
-
-    partial void OnPrivateBuyoutClosingTimeChanged(TimeSpan? value) => ScheduleAutosave();
-
     partial void OnPrivateBuyoutDetailsChanged(string? value) => ScheduleAutosave();
+
+    /// <summary>
+    /// Phase 13E's typable-time commit path, shared by all four Manual Hours/Private Buyout fields
+    /// via the delegates below so the actual parsing rule lives in exactly one place
+    /// (<see cref="OperationalTimeParser"/>, spec Part G) even though each field still needs its own
+    /// backing field/error/notifications. On success: the last-valid committed value updates, the
+    /// field is rewritten to its canonical display if it isn't already (Part D/P — harmless no-op
+    /// re-entry into the same handler when the text is already normalized), and autosave is scheduled.
+    /// On failure: nothing about the committed value changes — an unparseable keystroke can never
+    /// become active effective-hours data (Part N) — only the error message updates.
+    /// </summary>
+    private void CommitOperationalTimeText(
+        string? text,
+        Action<TimeOnly?> setCommitted,
+        Action<string?> setParseError,
+        Action<string?> setNormalizedText,
+        Action notifyDependents)
+    {
+        if (!OperationalTimeParser.TryParse(text, out var parsed, out var error))
+        {
+            setParseError(error);
+            return;
+        }
+
+        setParseError(null);
+        setCommitted(parsed);
+        notifyDependents();
+
+        var normalized = parsed is { } time ? OperationalTimeFormatter.Format(time) : null;
+        if (!string.Equals(normalized, text, StringComparison.Ordinal))
+        {
+            setNormalizedText(normalized);
+        }
+
+        ScheduleAutosave();
+    }
+
+    partial void OnManualOpeningTimeTextChanged(string? value) => CommitOperationalTimeText(
+        value,
+        setCommitted: v => _manualOpeningTime = v,
+        setParseError: e => { _manualOpeningTimeParseError = e; OnPropertyChanged(nameof(ManualOpeningTimeError)); },
+        setNormalizedText: t => ManualOpeningTimeText = t,
+        notifyDependents: () =>
+        {
+            OnPropertyChanged(nameof(ManualOpeningTimeError));
+            OnPropertyChanged(nameof(ParkHours));
+            OnPropertyChanged(nameof(ManualHoursWarningText));
+        });
+
+    partial void OnManualClosingTimeTextChanged(string? value) => CommitOperationalTimeText(
+        value,
+        setCommitted: v => _manualClosingTime = v,
+        setParseError: e => { _manualClosingTimeParseError = e; OnPropertyChanged(nameof(ManualClosingTimeError)); },
+        setNormalizedText: t => ManualClosingTimeText = t,
+        notifyDependents: () =>
+        {
+            OnPropertyChanged(nameof(ManualClosingTimeError));
+            OnPropertyChanged(nameof(ParkHours));
+            OnPropertyChanged(nameof(ManualHoursWarningText));
+        });
+
+    partial void OnPrivateBuyoutOpeningTimeTextChanged(string? value) => CommitOperationalTimeText(
+        value,
+        setCommitted: v => _privateBuyoutOpeningTime = v,
+        setParseError: e => { _privateBuyoutOpeningTimeParseError = e; OnPropertyChanged(nameof(PrivateBuyoutOpeningTimeError)); },
+        setNormalizedText: t => PrivateBuyoutOpeningTimeText = t,
+        notifyDependents: () =>
+        {
+            OnPropertyChanged(nameof(PrivateBuyoutOpeningTimeError));
+            OnPropertyChanged(nameof(ParkHours));
+            OnPropertyChanged(nameof(PrivateBuyoutHoursWarningText));
+        });
+
+    partial void OnPrivateBuyoutClosingTimeTextChanged(string? value) => CommitOperationalTimeText(
+        value,
+        setCommitted: v => _privateBuyoutClosingTime = v,
+        setParseError: e => { _privateBuyoutClosingTimeParseError = e; OnPropertyChanged(nameof(PrivateBuyoutClosingTimeError)); },
+        setNormalizedText: t => PrivateBuyoutClosingTimeText = t,
+        notifyDependents: () =>
+        {
+            OnPropertyChanged(nameof(PrivateBuyoutClosingTimeError));
+            OnPropertyChanged(nameof(ParkHours));
+            OnPropertyChanged(nameof(PrivateBuyoutHoursWarningText));
+        });
 
     partial void OnProjectedAttendanceTextChanged(string? value)
     {
@@ -864,12 +984,20 @@ public partial class AssociateViewModel : ViewModelBase
             var draft = workspace.Draft;
 
             ManualHoursOverrideEnabled = draft.ManualHoursOverride.Enabled;
-            ManualOpeningTime = ToTimeSpan(draft.ManualHoursOverride.OpeningTime);
-            ManualClosingTime = ToTimeSpan(draft.ManualHoursOverride.ClosingTime);
+            _manualOpeningTime = draft.ManualHoursOverride.OpeningTime;
+            _manualOpeningTimeParseError = null;
+            ManualOpeningTimeText = FormatTimeOrNull(draft.ManualHoursOverride.OpeningTime);
+            _manualClosingTime = draft.ManualHoursOverride.ClosingTime;
+            _manualClosingTimeParseError = null;
+            ManualClosingTimeText = FormatTimeOrNull(draft.ManualHoursOverride.ClosingTime);
 
             PrivateBuyoutEnabled = draft.PrivateBuyout.Enabled;
-            PrivateBuyoutOpeningTime = ToTimeSpan(draft.PrivateBuyout.OpeningTime);
-            PrivateBuyoutClosingTime = ToTimeSpan(draft.PrivateBuyout.ClosingTime);
+            _privateBuyoutOpeningTime = draft.PrivateBuyout.OpeningTime;
+            _privateBuyoutOpeningTimeParseError = null;
+            PrivateBuyoutOpeningTimeText = FormatTimeOrNull(draft.PrivateBuyout.OpeningTime);
+            _privateBuyoutClosingTime = draft.PrivateBuyout.ClosingTime;
+            _privateBuyoutClosingTimeParseError = null;
+            PrivateBuyoutClosingTimeText = FormatTimeOrNull(draft.PrivateBuyout.ClosingTime);
             PrivateBuyoutDetails = draft.PrivateBuyout.Details;
 
             _projectedAttendance = draft.ProjectedAttendance;
@@ -973,8 +1101,8 @@ public partial class AssociateViewModel : ViewModelBase
 
         return existing with
         {
-            ManualHoursOverride = new ManualHoursOverride(ManualHoursOverrideEnabled, ToTimeOnly(ManualOpeningTime), ToTimeOnly(ManualClosingTime)),
-            PrivateBuyout = new PrivateBuyoutOverride(PrivateBuyoutEnabled, ToTimeOnly(PrivateBuyoutOpeningTime), ToTimeOnly(PrivateBuyoutClosingTime), NullIfBlank(PrivateBuyoutDetails)),
+            ManualHoursOverride = new ManualHoursOverride(ManualHoursOverrideEnabled, _manualOpeningTime, _manualClosingTime),
+            PrivateBuyout = new PrivateBuyoutOverride(PrivateBuyoutEnabled, _privateBuyoutOpeningTime, _privateBuyoutClosingTime, NullIfBlank(PrivateBuyoutDetails)),
             ProjectedAttendance = _projectedAttendance,
             PreSolds = _preSolds,
             EarlyRideTime = new EarlyRideTimeDetails(NullIfBlank(EarlyRideTimeDetailsText), ParseLines(ParticipatingAttractionsText)),
@@ -1178,9 +1306,7 @@ public partial class AssociateViewModel : ViewModelBase
             .ToList();
     }
 
-    private static TimeOnly? ToTimeOnly(TimeSpan? value) => value is { } span ? TimeOnly.FromTimeSpan(span) : null;
-
-    private static TimeSpan? ToTimeSpan(TimeOnly? value) => value?.ToTimeSpan();
+    private static string? FormatTimeOrNull(TimeOnly? value) => value is { } time ? OperationalTimeFormatter.Format(time) : null;
 
     /// <summary>Default <see cref="IPdfSaveFilePicker"/> when none is supplied — only reachable if the composition root failed to register the real one; every production path registers <see cref="Services.AvaloniaPdfSaveFilePicker"/>.</summary>
     private sealed class UnavailablePdfSaveFilePicker : IPdfSaveFilePicker

@@ -395,8 +395,12 @@
                              IsVisible="{Binding ParkHours.StaleNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                              Classes="fieldWarning" TextWrapping="Wrap" />
 
-                  <!-- Manual hours override + private buyout (Part D): one shared, compact override
-                       area instead of two oversized standalone bordered blocks. -->
+                  <!-- Manual hours override + private buyout (Part D/I/J, Phase 13E): one shared,
+                       compact override area instead of two oversized standalone bordered blocks.
+                       Time entry is a typable TextBox (Phase 13E — replaces the stock click-and-spin
+                       TimePicker, spec docs/phase13-hardening.md Phase 13E) bound with
+                       UpdateSourceTrigger=LostFocus so parsing/normalization commits once per
+                       Tab/click-away/Enter, not per keystroke (Part O/P). -->
                   <Border Classes="inset">
                     <StackPanel Spacing="10">
                       <Grid ColumnDefinitions="*,*">
@@ -404,13 +408,31 @@
                           <CheckBox Content="Manual hours override"
                                     IsChecked="{Binding ManualHoursOverrideEnabled}"
                                     AutomationProperties.Name="Use a manual hours override" />
-                          <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ManualHoursOverrideEnabled}">
-                            <TimePicker SelectedTime="{Binding ManualOpeningTime}" MinWidth="0"
-                                        AutomationProperties.Name="Manual override opening time" />
-                            <TextBlock Text="–" VerticalAlignment="Center" />
-                            <TimePicker SelectedTime="{Binding ManualClosingTime}" MinWidth="0"
-                                        AutomationProperties.Name="Manual override closing time" />
-                          </StackPanel>
+                          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="2"
+                                IsVisible="{Binding ManualHoursOverrideEnabled}">
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Open" Classes="fieldLabel" VerticalAlignment="Center" />
+                            <StackPanel Grid.Row="0" Grid.Column="1" Spacing="0">
+                              <TextBox Text="{Binding ManualOpeningTimeText, UpdateSourceTrigger=LostFocus}"
+                                       PlaceholderText="9:00 AM" MinWidth="110" HorizontalAlignment="Left"
+                                       KeyDown="TimeTextBox_OnKeyDown"
+                                       AutomationProperties.Name="Manual Hours Open" />
+                              <TextBlock Text="{Binding ManualOpeningTimeError}"
+                                         IsVisible="{Binding ManualOpeningTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                         Classes="fieldError" TextWrapping="Wrap"
+                                         AutomationProperties.Name="{Binding ManualOpeningTimeError}" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Close" Classes="fieldLabel" VerticalAlignment="Center" />
+                            <StackPanel Grid.Row="1" Grid.Column="1" Spacing="0">
+                              <TextBox Text="{Binding ManualClosingTimeText, UpdateSourceTrigger=LostFocus}"
+                                       PlaceholderText="10:00 PM" MinWidth="110" HorizontalAlignment="Left"
+                                       KeyDown="TimeTextBox_OnKeyDown"
+                                       AutomationProperties.Name="Manual Hours Close" />
+                              <TextBlock Text="{Binding ManualClosingTimeError}"
+                                         IsVisible="{Binding ManualClosingTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                         Classes="fieldError" TextWrapping="Wrap"
+                                         AutomationProperties.Name="{Binding ManualClosingTimeError}" />
+                            </StackPanel>
+                          </Grid>
                           <TextBlock Text="{Binding ManualHoursWarningText}"
                                      IsVisible="{Binding ManualHoursWarningText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                      Classes="fieldWarning" TextWrapping="Wrap" />
@@ -420,13 +442,31 @@
                           <CheckBox Content="Private buyout / custom hours"
                                     IsChecked="{Binding PrivateBuyoutEnabled}"
                                     AutomationProperties.Name="Private buyout or custom hours" />
-                          <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding PrivateBuyoutEnabled}">
-                            <TimePicker SelectedTime="{Binding PrivateBuyoutOpeningTime}" MinWidth="0"
-                                        AutomationProperties.Name="Private buyout opening time" />
-                            <TextBlock Text="–" VerticalAlignment="Center" />
-                            <TimePicker SelectedTime="{Binding PrivateBuyoutClosingTime}" MinWidth="0"
-                                        AutomationProperties.Name="Private buyout closing time" />
-                          </StackPanel>
+                          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="2"
+                                IsVisible="{Binding PrivateBuyoutEnabled}">
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Open" Classes="fieldLabel" VerticalAlignment="Center" />
+                            <StackPanel Grid.Row="0" Grid.Column="1" Spacing="0">
+                              <TextBox Text="{Binding PrivateBuyoutOpeningTimeText, UpdateSourceTrigger=LostFocus}"
+                                       PlaceholderText="6:00 PM" MinWidth="110" HorizontalAlignment="Left"
+                                       KeyDown="TimeTextBox_OnKeyDown"
+                                       AutomationProperties.Name="Private Buyout Open" />
+                              <TextBlock Text="{Binding PrivateBuyoutOpeningTimeError}"
+                                         IsVisible="{Binding PrivateBuyoutOpeningTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                         Classes="fieldError" TextWrapping="Wrap"
+                                         AutomationProperties.Name="{Binding PrivateBuyoutOpeningTimeError}" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Close" Classes="fieldLabel" VerticalAlignment="Center" />
+                            <StackPanel Grid.Row="1" Grid.Column="1" Spacing="0">
+                              <TextBox Text="{Binding PrivateBuyoutClosingTimeText, UpdateSourceTrigger=LostFocus}"
+                                       PlaceholderText="11:00 PM" MinWidth="110" HorizontalAlignment="Left"
+                                       KeyDown="TimeTextBox_OnKeyDown"
+                                       AutomationProperties.Name="Private Buyout Close" />
+                              <TextBlock Text="{Binding PrivateBuyoutClosingTimeError}"
+                                         IsVisible="{Binding PrivateBuyoutClosingTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                         Classes="fieldError" TextWrapping="Wrap"
+                                         AutomationProperties.Name="{Binding PrivateBuyoutClosingTimeError}" />
+                            </StackPanel>
+                          </Grid>
                           <TextBox Text="{Binding PrivateBuyoutDetails}"
                                    IsVisible="{Binding PrivateBuyoutEnabled}"
                                    PlaceholderText="Group name, contact, or other details"

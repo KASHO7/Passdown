@@ -1602,3 +1602,255 @@ and View Date Pricing shipped, Task Scheduler/multi-user posture audited and doc
 required — already compliant with CLAUDE.md's constraints), full suite green, build clean, docs
 updated — Phase 13D is complete per this document's own success criteria. One local commit follows;
 13E is explicitly not started.
+
+## Phase 13E — Manual Hours / Private Buyout typable time entry
+
+Phase 13E is a UX/input redesign only (per its own scope, CLAUDE.md's greenfield/workflow rules, and
+this document's own risk register item #12): it replaces the stock Avalonia `TimePicker` used for
+Manual Hours and Private Buyout with a keyboard-typable `TextBox`, and fixes one real correctness gap
+13A found (an unparseable value could never occur before, since a picker cannot produce garbage text —
+but a typable field can, and that must never reach effective-hours data). No park-hours business rule,
+persistence shape, or schema changed.
+
+### 1. Prior problem (Part A, confirmed directly from code before changing anything)
+
+Both Manual Hours and Private Buyout bound `TimePicker.SelectedTime` directly to a `TimeSpan?`
+property (`AssociateViewModel.ManualOpeningTime`/`ManualClosingTime`/`PrivateBuyoutOpeningTime`/
+`PrivateBuyoutClosingTime`), converted to/from `TimeOnly?` only at the ViewModel boundary
+(`ToTimeOnly`/`ToTimeSpan`, now removed). Manual Hours and Buyout were two independently hand-written,
+structurally identical property/handler blocks (13A's own duplication finding). The open/close
+ordering check (`ManualHoursWarningText`/`PrivateBuyoutHoursWarningText`) was — and remains — a
+**non-blocking** warning: `ParkHoursCalculator.Calculate` has no ordering rule of its own at all (it
+passes whichever `TimeOnly?` values it's given straight through for both the manual-override and
+buyout branches), so there was never a "closed unless open<close" invariant to violate; the warning is
+purely a ViewModel-level UX hint that never gated `CanCreatePdf` or autosave, before or after this
+phase. Overnight ranges were (and remain) neither explicitly supported nor blocked — this is preserved
+exactly, per Part M's "don't invent new semantics without evidence."
+
+### 2. New control design (Part B) and grammar (Parts C/G/H)
+
+`Carowinds.Passdown.Domain.Hours.OperationalTimeParser`/`OperationalTimeFormatter` (new, zero
+dependencies — same package as `ParkHoursCalculator`) are the one shared parser/formatter Part G
+requires; every one of the four fields (Manual Open/Close, Buyout Open/Close) calls the same
+`TryParse`/`Format`, never a per-field copy. No new NuGet dependency, no custom `UserControl` — a plain
+`TextBox` was sufficient (13A already concluded this; confirmed again here).
+
+Supported grammar (deterministic, culture-invariant — Part H's explicit requirement not to let machine
+locale interpret `9.30` or `09/10`):
+
+| Input shape | Example | Notes |
+|---|---|---|
+| Bare hour | `9` | 1-12 only; no meridiem defaults to AM |
+| Hour:minute | `9:30` | minute 00-59 |
+| Bare hour + meridiem | `9am`, `9 AM`, `10pm` | space before meridiem optional |
+| Hour:minute + meridiem | `9:00am`, `10:30 PM` | case-insensitive |
+| Digit run + meridiem | `930am`, `1030am` | 3-4 digits, no colon — **requires** a meridiem; a bare digit run with none (`930`) is rejected as ambiguous, never guessed |
+| Bare `12` / `12:MM`, no meridiem | `12`, `12:15` | documented default: noon (PM), not midnight — the everyday reading of "12 o'clock" alone |
+
+Explicitly **not** supported, rejected outright rather than guessed at: 24-hour hours above 12 without
+a meridiem (`13:00`, `25:00`), decimal points (`9.30`), slashes (`09/10`), single-letter meridiems
+(`9a`), and any other unmatched shape. Blank/whitespace is a valid "no value" at the parser level
+(`TryParse` returns `true`, `result: null`) — whether blank is *acceptable* depends on context (see
+Part R below), which the parser deliberately has no opinion on (Part G: no UI/required-ness
+dependency).
+
+Canonical display: `OperationalTimeFormatter.Format` — `TimeOnly.ToString("h:mm tt",
+CultureInfo.InvariantCulture)`, e.g. `9:00 AM`, `10:30 PM`. 28 parser tests + 6 formatter tests cover
+Part AG's exact minimum list plus the documented edge cases above
+(`OperationalTimeParserTests`/`OperationalTimeFormatterTests`, `Carowinds.Passdown.Domain.Tests`).
+
+### 3. Commit/normalization model (Parts E/O/P/Q) — LostFocus binding, not per-keystroke
+
+Each `TextBox` binds `Text` with `UpdateSourceTrigger=LostFocus` (`AssociateView.axaml`) — a real,
+supported Avalonia 12.1.1 binding option (confirmed against the shipped `Avalonia.Base.dll`), not a
+custom behavior. This means the ViewModel's `OnXxxTextChanged` partial method — where parsing,
+normalization, and autosave scheduling all happen — fires once per **commit** (Tab, click-away, or
+Enter), never once per keystroke. This was a deliberate departure from the otherwise-identical
+per-keystroke pattern already used for `ProjectedAttendanceText`/`DisplayPriceOverrideText` elsewhere
+in this screen: those fields never rewrite their own `Text` after a successful parse, so per-keystroke
+firing is harmless there; a time field *must* rewrite to its canonical display on success (Part
+P's `930am` → `9:30 AM` requirement), and doing that per-keystroke would fight the associate mid-type
+(typing `9` would jump to `9:00 AM` before they can type `9:30`). LostFocus binding avoids that
+entirely without inventing a bespoke debounce.
+
+Enter is handled by one small, shared code-behind handler (`AssociateView.axaml.cs`,
+`TimeTextBox_OnKeyDown`) that clears keyboard focus via `TopLevel.FocusManager.Focus(null, ...)` when
+Enter is pressed in one of the four fields, and marks the key handled — forcing the same LostFocus
+commit path and preventing Enter from reaching any unrelated default button (Part Q). This is pure
+focus plumbing, not persistence/business logic (CLAUDE.md's Avalonia boundary): the actual parse/commit
+still lives entirely in the ViewModel.
+
+On a successful parse: the last-valid backing `TimeOnly?` field updates, the field's own parse error
+clears, `ParkHours`/the relevant `*HoursWarningText` are re-notified (live effective-hours recompute,
+unchanged mechanism from before this phase), the text is rewritten to canonical form only if it isn't
+already (harmless single re-entrant call, verified by test), and `ScheduleAutosave()` runs — the same
+debounce every other field on this screen already uses. On failure: only the error message updates;
+the backing field, `ManualHoursOverride`/`PrivateBuyout` draft shape, and any already-saved value are
+completely untouched, and no autosave is scheduled (`AssociateViewModelOperationalTimeEntryTests.InvalidText_DoesNotScheduleAutosave_ValidCorrectionResumesIt`
+asserts this directly against the debounce scheduler's own schedule count, not just save-call timing).
+
+### 4. Manual Hours / Private Buyout UI (Parts I/J)
+
+Both sections now read as a compact two-row grid — "Open" / "Close" labels beside typable fields,
+placeholder text showing the expected shape (`9:00 AM`/`10:00 PM` for Manual, `6:00 PM`/`11:00 PM` for
+Buyout) — replacing the two-`TimePicker`-plus-dash horizontal row. Buyout intentionally uses the exact
+same interaction pattern as Manual (Part J: "do not give Buyout a different time-entry UX") — both
+route through the identical `CommitOperationalTimeText` ViewModel helper and `OperationalTimeParser`
+call. The existing enable/disable checkboxes, the Buyout details `TextBox`, and the soft range-warning
+`TextBlock` are unchanged in position and behavior.
+
+### 5. Enable/disable semantics (Part K) — audited, preserved exactly
+
+Confirmed directly from the pre-13E code: disabling Manual Hours or Buyout never cleared the typed
+values (unlike Early Ride Time's own explicit disable-clears convention,
+`OnIsEarlyRideTimeEnabledChanged`). This phase preserves that: `OnManualHoursOverrideEnabledChanged`/
+`OnPrivateBuyoutEnabledChanged` still only call `ScheduleAutosave()` — no field is cleared on disable.
+Re-enabling restores exactly what was typed before, with no error, since blank/required-ness only
+applies while the section is enabled (`AssociateViewModelOperationalTimeEntryTests.ManualHoursOverrideEnabled_Disabled_RetainsTypedValues`/
+`PrivateBuyoutEnabled_Disabled_RetainsTypedValues`).
+
+### 6. Validation (Parts L/M/N/R)
+
+Two independent, clearly distinguished validation signals per field, both rendered as concise
+`fieldError`/`fieldWarning` text (never a raw parser exception, never color-only):
+
+- **Per-field error** (`ManualOpeningTimeError` etc., `fieldError` style — the same style
+  `ProjectedAttendanceError`/`DisplayPriceOverrideError` already use elsewhere on this screen):
+  `"Enter a time such as 9:00 AM."` — shown for either an unparseable/malformed value, or a blank value
+  *while the section is enabled* (Part R: required-while-enabled, fine while disabled). This is the
+  actual correctness fix Part N asked for: an invalid/unparseable value can now structurally never
+  become the active `ManualHoursOverride`/`PrivateBuyout` domain value, because the backing field this
+  phase introduced is only ever written on a successful parse.
+- **Range warning** (`ManualHoursWarningText`/`PrivateBuyoutHoursWarningText`, `fieldWarning` style,
+  unchanged position/severity from pre-13E): `"Closing time must be later than opening time."`
+  (reworded to match spec Part L's example text; behavior unchanged — still non-blocking, still fires
+  only once both individual fields already parse successfully). Kept **non-blocking** deliberately:
+  `ParkHoursCalculator` has no ordering invariant to enforce, and turning this into a hard block would
+  be new domain semantics invented without evidence (Part M), with a real risk of wrongly rejecting a
+  genuine overnight closing time this codebase has never explicitly ruled in or out.
+
+### 7. Autosave interaction (Part O) — unchanged debounce, gated on valid commits only
+
+`ScheduleAutosave()` — the same single debounce mechanism every other Associate field already uses —
+is only ever called from `CommitOperationalTimeText` after a successful parse. Combined with the
+LostFocus commit model (§3), this means a half-typed value (`9:`, `9:0`) can never trigger a save: it
+never reaches `OnXxxTextChanged` until the field is left, and even then a still-invalid value stops at
+the error branch before `ScheduleAutosave()` is reached.
+
+### 8. Existing-data / backward compatibility (Parts S/T/AM)
+
+`ApplyWorkspaceToFields` now sets the backing `TimeOnly?` field directly from
+`draft.ManualHoursOverride`/`draft.PrivateBuyout` and formats the corresponding `*Text` property via
+`OperationalTimeFormatter` — an existing stored `09:30` loads and displays as `9:30 AM` with no
+migration. `ManualHoursOverride`/`PrivateBuyoutOverride` (the actual persisted record shapes) were not
+touched at all — only how the ViewModel gets values into and out of them changed. **Database schema
+stays 11. `AssociateDraftPayload` schema stays 3. `FinalizedPassdownSnapshot` schema stays 1** — no
+migration was needed or added, confirmed by inspection (this phase touched zero persistence/migration
+code) and by the full suite (including `PortableLifecycleTests`) staying green unmodified.
+
+### 9. Effective-hours precedence / Calendar / Dashboard / PDF / History regression (Parts U-Y, AJ)
+
+`ParkHoursCalculator.Calculate` and `AssociateParkHoursComposer` were not touched. The live `ParkHours`
+getter and `SaveDraftNowAsync`'s post-save `RecomputeParkHours` call now read the new backing
+`TimeOnly?` fields directly instead of converting from the old `TimeSpan?` properties — same values,
+same calculation, one less conversion step. Every pre-existing integration test proving Manual
+Hours/Buyout flow correctly into `Workspace.ParkHours.Effective`, the PDF document model, and (via
+existing Phase 9/13D coverage) finalization/History passed unmodified against the new input path
+(`AssociateViewModelDraftEditingTests` — updated only to type text instead of setting `TimeSpan`
+values directly, asserting the identical `TimeOnly` outcomes). No Calendar or Dashboard code was
+touched — both already read through the same `AssociateParkHoursComposer`/`EffectiveHours` path.
+
+### 10. Waterpark / Deep Refresh independence (Parts AA/AB/Z)
+
+Not touched, not reachable from this change: Carolina Harbor hours have no manual-override or
+buyout concept (Phase 13D, unchanged) and are read straight from `ParkHoursPayload`, entirely separate
+from `ManualHoursOverride`/`PrivateBuyout`. No code path from a `TextBox` `TextChanged`/`LostFocus`
+event reaches `IRefreshOrchestrator`, `IScheduledRefreshRunner`, or any HTTP/Playwright source —
+confirmed by inspection (the entire feature is `AssociateViewModel`/`AssociateView`/`Domain.Hours`
+only) and by the full suite's existing no-network-dependency tests staying green.
+
+### 11. Accessibility (Part AC)
+
+`AutomationProperties.Name` updated to spec's own naming: "Manual Hours Open", "Manual Hours Close",
+"Private Buyout Open", "Private Buyout Close" (previously "Manual override opening time" etc.) — each
+field's error `TextBlock` also carries its own `AutomationProperties.Name` bound to the same error
+text, so a screen reader surfaces the validation message, not just a red/amber color. Labels ("Open"/
+"Close") are plain `fieldLabel` text blocks beside each field (Grid-aligned, not `TextBox`-owned
+labels), matching this screen's existing convention rather than introducing a new one.
+`AssociateViewAccessibilityTests` extended to assert all six new/renamed names are present in the
+compiled logical tree.
+
+### 12. Keyboard / layout / scaling status (Parts AK/AL/AD)
+
+- **Keyboard**: Tab order is the existing Grid/StackPanel declaration order (unchanged structurally —
+  only the controls inside the existing panels changed from `TimePicker` to `TextBox`), so typing,
+  Tab, typing, Tab flows exactly as spec Part E describes with no popup at any point. Enter-commits-
+  and-consumes is proven at the unit level (`CommitOperationalTimeText`/`OnXxxTextChanged` tests) and
+  by the code-behind handler's own logic; a true keyboard-injection integration test (simulating a real
+  Enter keypress through Avalonia's input pipeline in the headless test host) was **not** attempted —
+  marked **PARTIAL**, consistent with Part AK's "do not fabricate keyboard PASS if the framework cannot
+  simulate it reliably" and this codebase's own precedent of avoiding synthetic input-pipeline tests.
+  Ctrl+A/backspace/normal text editing are unaffected — nothing this phase added intercepts any key
+  other than Enter, and only inside the four time fields.
+- **Layout**: `AssociateViewOperationalTimeLayoutTests` — real `Measure`/`Arrange` passes at both
+  1280×860 and 960×640 across six representative states (Manual disabled; Manual enabled+valid; Manual
+  enabled+invalid with a long validation message; Buyout enabled+valid; both sections
+  visible+the range warning showing) all construct/layout without throwing. Same documented boundary as
+  every prior Phase 12/13 layout pass: no pixel/bitmap renderer exists in this environment, so this is
+  construction/layout-level evidence, not a pixel-level PASS.
+  **1280×860: PASS (construction/layout-level). 960×640: PASS (construction/layout-level).**
+- **Windows scaling (100/125/150%)**: unchanged limitation — a plain `TextBox` inherits normal
+  DPI-aware layout (no fixed-size spinner flyout, unlike the old `TimePicker`), but real Windows-host
+  scale validation remains a manual task, as in every prior phase. **DEFERRED — manual Windows-VM
+  task**, expected to be favorable given the control is now a resizing `TextBox` rather than a
+  fixed-chrome flyout.
+
+### 13. Dead-code audit (Part AF)
+
+`grep -rn "TimePicker" src/` after this change finds zero remaining `<TimePicker>` elements or
+`Style Selector="TimePicker...">` blocks anywhere in the app (only two doc-comment mentions of the
+phase's own history remain). No dedicated TimePicker style, converter, or helper existed before this
+phase to clean up — `TimePicker` is a stock Avalonia control (part of the `Avalonia.Controls`
+namespace already referenced everywhere), not a separate package, so there is no now-unused dependency
+to remove from any `.csproj`.
+
+### 14. Tests added; final count
+
+**57 new tests** (28 `OperationalTimeParserTests` + 6 `OperationalTimeFormatterTests` in
+`Carowinds.Passdown.Domain.Tests`; 13 `AssociateViewModelOperationalTimeEntryTests` + 10
+`AssociateViewOperationalTimeLayoutTests` in `Carowinds.Passdown.Ui.Tests`), plus targeted updates
+(not net-new) to `AssociateViewModelDraftEditingTests` (typed-text instead of `TimeSpan` values, same
+assertions) and `AssociateViewAccessibilityTests` (six new automation-name assertions). **1508 → 1565**,
+all passing, `Category!=LiveSmoke`, re-run twice consecutively both fully green (Domain 100, Application
+453, Documents 101, Infrastructure 350, Ui 561). One pre-existing flake was observed once during a full
+run (`HistoryViewTests.HistoryView_WithSelectedDetail_ConstructsAndExposesCriticalAutomationNames`,
+the same documented Avalonia-headless XAML-population parallelism race first recorded in Phase
+6D/12B, and again in 13A/13B/13D against different views) — passed cleanly in isolation and on
+immediate re-run; `HistoryView.axaml` was not touched by this phase. `dotnet build
+CarowindsPassdown.slnx` — **0 warnings, 0 errors.**
+
+### 15. Schema/version confirmation
+
+**Database schema: 11 (unchanged). `AssociateDraftPayload` schema: 3 (unchanged).
+`FinalizedPassdownSnapshot` schema: 1 (unchanged).** No migration was added or needed — confirmed by
+inspection (zero persistence-layer files touched) and by `PortableLifecycleTests` staying green
+unmodified.
+
+### 16. Work deferred to 13F–13H
+
+Unchanged from every prior phase's own deferral list: rename/branding, Alerts, Manager workflow, the
+final release rebuild, ERT structured-time semantics (Phase 13A's proposed ERT derivation was never
+implemented — `EarlyRideTimeDetails` remains free text, untouched by this phase), and real Windows-host
+scale/DPI validation. Also explicitly not started per this phase's own scope: any optional quick-picker
+UI (spec Part F allowed one but called it optional; typing alone already satisfies the phase's stated
+goal, and adding a picker/preset-button row was judged unnecessary clutter for a first pass — revisit
+only if real supervisor feedback asks for one).
+
+## Git checkpoint (Phase 13E)
+
+Manual Hours/Private Buyout time entry redesigned end to end: one shared, dependency-free
+parser/formatter (`OperationalTimeParser`/`OperationalTimeFormatter`), a `TextBox` + `LostFocus`-commit
+interaction replacing the stock `TimePicker`, per-field validation distinguishing unparseable/required
+text from the pre-existing non-blocking range warning, unchanged effective-hours precedence and
+autosave debounce, zero schema/migration changes, zero network/refresh-path changes, 57 new tests, full
+suite green (1565/1565), build clean. One local commit follows; 13F is explicitly not started.
