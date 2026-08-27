@@ -20,9 +20,13 @@ public class MainViewModelNavigationTests
     private static MainViewModel CreateMainViewModel(out OperationsDashboardViewModel dashboard, out AssociateViewModel associate, out PassdownHistoryViewModel history) =>
         CreateMainViewModel(out dashboard, out associate, out _, out history);
 
-    private static MainViewModel CreateMainViewModel(out OperationsDashboardViewModel dashboard, out AssociateViewModel associate, out OperationalNotesViewModel notes, out PassdownHistoryViewModel history)
+    private static MainViewModel CreateMainViewModel(out OperationsDashboardViewModel dashboard, out AssociateViewModel associate, out OperationalNotesViewModel notes, out PassdownHistoryViewModel history) =>
+        CreateMainViewModel(out dashboard, out _, out associate, out notes, out history);
+
+    private static MainViewModel CreateMainViewModel(out OperationsDashboardViewModel dashboard, out OperationsCalendarViewModel calendar, out AssociateViewModel associate, out OperationalNotesViewModel notes, out PassdownHistoryViewModel history)
     {
         dashboard = new OperationsDashboardViewModel(new FakeOperationsDashboardService());
+        calendar = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), new FakeClock(new DateTimeOffset(AssociateDate.ToDateTime(new TimeOnly(15, 0)), TimeSpan.Zero)));
         associate = new AssociateViewModel(new FakeAssociatePassdownService(), new FakeClock(new DateTimeOffset(AssociateDate.ToDateTime(new TimeOnly(15, 0)), TimeSpan.Zero)));
         notes = new OperationalNotesViewModel(new FakeOperationalNotesService(), new SystemClock());
         var historyService = new FakePassdownHistoryService
@@ -30,7 +34,7 @@ public class MainViewModelNavigationTests
             Summaries = [new FinalizedPassdownSummary(HistoryDate, DateTimeOffset.UtcNow, FinalizationOrigin.Scheduled, true, 100)],
         };
         history = new PassdownHistoryViewModel(historyService, new FakeFinalizedPassdownPdfRetrievalService());
-        return new MainViewModel(dashboard, associate, notes, history);
+        return new MainViewModel(dashboard, calendar, associate, notes, history);
     }
 
     // 2: top-level nav defaults to Dashboard (spec Phase 10A Part Q).
@@ -249,14 +253,15 @@ public class MainViewModelNavigationTests
         Assert.Equal(HistoryDate, history.SelectedItem?.PassdownDate);
     }
 
-    // Phase 11B Part AI #1/#2/#3/#4: top-level navigation now includes Operational Notes (and only
-    // it) between Associate Passdown and History — no Manager/Alerts/Calendar value exists at all.
+    // Phase 11B Part AI #1/#2/#3/#4 (updated Phase 12A Part B): top-level navigation includes
+    // Operational Notes between Associate Passdown and History, and (as of Phase 12A) Operations
+    // Calendar between Dashboard and Associate Passdown — no Manager/Alerts value exists at all.
     [Fact]
-    public void AppSection_ContainsOperationalNotesAndNoManagerAlertsOrCalendar()
+    public void AppSection_ContainsOperationsCalendarAndOperationalNotesAndNoManagerOrAlerts()
     {
         var values = Enum.GetNames<AppSection>();
 
-        Assert.Equal(["Dashboard", "AssociatePassdown", "OperationalNotes", "History"], values);
+        Assert.Equal(["Dashboard", "OperationsCalendar", "AssociatePassdown", "OperationalNotes", "History"], values);
     }
 
     // Phase 11B Part AI #5: Dashboard remains the default startup section.
@@ -378,5 +383,147 @@ public class MainViewModelNavigationTests
 
         main.ShowDashboardSectionCommand.Execute(null);
         Assert.Equal(AppSection.Dashboard, main.SelectedSection);
+    }
+
+    // Phase 12A Part B: Dashboard <-> Operations Calendar navigation, and Dashboard stays default.
+    [Fact]
+    public void DashboardToOperationsCalendarAndBack_SwitchesSection()
+    {
+        var main = CreateMainViewModel(out _, out _, out _, out _, out _);
+
+        Assert.Equal(AppSection.Dashboard, main.SelectedSection);
+
+        main.ShowOperationsCalendarSectionCommand.Execute(null);
+        Assert.Equal(AppSection.OperationsCalendar, main.SelectedSection);
+        Assert.True(main.IsOperationsCalendarSectionSelected);
+
+        main.ShowDashboardSectionCommand.Execute(null);
+        Assert.Equal(AppSection.Dashboard, main.SelectedSection);
+    }
+
+    // Phase 12A Part F/G: "Open Passdown" from Calendar routes to Associate's Overview section and
+    // explicitly sets its selected date to whatever Calendar had selected.
+    [Fact]
+    public async Task CalendarOpenAssociateCommand_RoutesToAssociateOverviewWithCalendarSelectedDate()
+    {
+        var main = CreateMainViewModel(out _, out var calendar, out var associate, out _, out _);
+        await calendar.PendingLoad;
+        associate.SelectedSection = AssociateSection.Notes;
+        var targetDate = new DateOnly(2026, 8, 5);
+        calendar.SelectDateCommand.Execute(targetDate);
+        await calendar.PendingLoad;
+
+        calendar.OpenAssociateCommand.Execute(null);
+
+        Assert.Equal(AppSection.AssociatePassdown, main.SelectedSection);
+        Assert.Equal(AssociateSection.Overview, associate.SelectedSection);
+        Assert.Equal(targetDate, associate.SelectedDate);
+    }
+
+    // Phase 12A Part F: "Open Operational Notes" from Calendar is generic navigation only.
+    [Fact]
+    public async Task CalendarOpenOperationalNotesCommand_NavigatesToOperationalNotesSection()
+    {
+        var main = CreateMainViewModel(out _, out var calendar, out _, out _, out _);
+        await calendar.PendingLoad;
+
+        calendar.OpenOperationalNotesCommand.Execute(null);
+
+        Assert.Equal(AppSection.OperationalNotes, main.SelectedSection);
+    }
+
+    // Phase 12A Part C: switching to Calendar never corrupts Associate's own selected date, and vice
+    // versa — the two are entirely independent unless Calendar's own "Open Passdown" is used.
+    [Fact]
+    public async Task SwitchingToCalendar_NeverChangesAssociateSelectedDate()
+    {
+        var main = CreateMainViewModel(out _, out var calendar, out var associate, out _, out _);
+        await associate.PendingLoad;
+        await calendar.PendingLoad;
+
+        main.ShowOperationsCalendarSectionCommand.Execute(null);
+        calendar.SelectDateCommand.Execute(new DateOnly(2026, 8, 5));
+        await calendar.PendingLoad;
+        main.ShowAssociateSectionCommand.Execute(null);
+
+        Assert.Equal(AssociateDate, associate.SelectedDate);
+        Assert.Equal(new DateOnly(2026, 8, 5), calendar.SelectedDate);
+    }
+
+    // Phase 12A Part C/B: Calendar's own displayed month/selected date survive navigating away and
+    // back — nothing recreates it, matching how History's own selection already survives the same
+    // round trip.
+    [Fact]
+    public async Task NavigatingAwayFromCalendarAndBack_PreservesItsOwnDisplayedMonthAndSelectedDate()
+    {
+        var main = CreateMainViewModel(out _, out var calendar, out _, out _, out var history);
+        await calendar.PendingLoad;
+
+        main.ShowOperationsCalendarSectionCommand.Execute(null);
+        calendar.NextMonthCommand.Execute(null);
+        calendar.SelectDateCommand.Execute(new DateOnly(2026, 9, 10));
+        await calendar.PendingLoad;
+
+        main.ShowDashboardSectionCommand.Execute(null);
+        main.ShowHistorySectionCommand.Execute(null);
+        main.ShowOperationsCalendarSectionCommand.Execute(null);
+
+        Assert.Same(calendar, main.Calendar);
+        Assert.Equal(new DateOnly(2026, 9, 1), calendar.DisplayedMonth);
+        Assert.Equal(new DateOnly(2026, 9, 10), calendar.SelectedDate);
+    }
+
+    // Phase 12A Part J: History and Operational Notes remain independent of Calendar — neither their
+    // own state nor Associate's is disturbed by visiting Calendar in between.
+    [Fact]
+    public async Task NavigatingThroughCalendar_PreservesHistorySelectionAndAssociateState()
+    {
+        var main = CreateMainViewModel(out _, out var calendar, out var associate, out _, out var history);
+        await associate.PendingLoad;
+        await history.PendingLoad;
+        await calendar.PendingLoad;
+
+        main.ShowHistorySectionCommand.Execute(null);
+        history.SelectedItem = history.HistoryItems[0];
+        await history.PendingDetailLoad;
+
+        main.ShowOperationsCalendarSectionCommand.Execute(null);
+        main.ShowAssociateSectionCommand.Execute(null);
+        main.ShowOperationsCalendarSectionCommand.Execute(null);
+        main.ShowHistorySectionCommand.Execute(null);
+
+        Assert.Equal(AssociateDate, associate.SelectedDate);
+        Assert.Equal(HistoryDate, history.SelectedItem?.PassdownDate);
+    }
+
+    // Phase 12A Part J: Operational Notes Manager is entirely unaffected by Calendar navigation.
+    [Fact]
+    public async Task NavigatingThroughCalendar_OperationalNotesManagerUnaffected()
+    {
+        var main = CreateMainViewModel(out _, out var calendar, out _, out var notes, out _);
+        await notes.PendingLoad;
+        await calendar.PendingLoad;
+        notes.LifecycleFilter = OperationalNoteLifecycleFilter.Resolved;
+
+        main.ShowOperationsCalendarSectionCommand.Execute(null);
+        main.ShowOperationalNotesSectionCommand.Execute(null);
+
+        Assert.Equal(OperationalNoteLifecycleFilter.Resolved, notes.LifecycleFilter);
+    }
+
+    // Phase 12A Part X (extends Phase 11B Part X): a dirty Operational Notes editor also disables
+    // navigating to Operations Calendar, not only Dashboard/Associate/History.
+    [Fact]
+    public async Task DirtyOperationalNotesEditor_AlsoDisablesOperationsCalendarNavigation()
+    {
+        var main = CreateMainViewModel(out _, out _, out _, out var notes, out _);
+        await notes.PendingLoad;
+        main.ShowOperationalNotesSectionCommand.Execute(null);
+
+        notes.NewNoteCommand.Execute(null);
+        Assert.False(main.ShowOperationsCalendarSectionCommand.CanExecute(null));
+
+        notes.CancelCommand.Execute(null);
+        Assert.True(main.ShowOperationsCalendarSectionCommand.CanExecute(null));
     }
 }

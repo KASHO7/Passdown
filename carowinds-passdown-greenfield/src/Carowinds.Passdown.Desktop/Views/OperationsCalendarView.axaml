@@ -1,0 +1,221 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="860"
+             x:Class="Carowinds.Passdown.Desktop.Views.OperationsCalendarView"
+             x:DataType="vm:OperationsCalendarViewModel">
+
+  <!-- Phase 12A: the Operations Calendar foundation — a summary/routing surface ("what dates should I
+       pay attention to, and where do I go next?"), not a second Associate/Notes/History editor. Every
+       style class below is a small, self-contained subset mirroring DashboardView/HistoryView's own
+       visual language (Avalonia Styles declared inside one UserControl are scoped to its own visual
+       tree). -->
+  <UserControl.Styles>
+
+    <Style Selector="TextBlock.pageTitle">
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.sectionTitle">
+      <Setter Property="FontSize" Value="13.5" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="LetterSpacing" Value="0.4" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+    <Style Selector="TextBlock.muted">
+      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+      <Setter Property="FontSize" Value="12.5" />
+    </Style>
+    <Style Selector="TextBlock.fieldError">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownErrorBrush}" />
+      <Setter Property="FontSize" Value="12.5" />
+      <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+    <Style Selector="TextBlock.weekdayHeader">
+      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="LetterSpacing" Value="0.5" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
+
+    <Style Selector="Border.panel">
+      <Setter Property="Padding" Value="18" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceTintBrush}" />
+    </Style>
+
+    <Style Selector="Border.chip">
+      <Setter Property="Background" Value="{DynamicResource PassdownChipBrush}" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="9,3" />
+    </Style>
+    <Style Selector="Border.chip TextBlock">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+
+    <Style Selector="Button.primaryAction">
+      <Setter Property="Background" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownHeaderForegroundBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="Padding" Value="14,7" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.secondaryAction">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="Padding" Value="14,7" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.secondaryAction:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
+    </Style>
+
+    <!-- One day cell (spec Part E/I): plain Button so it is keyboard-reachable with FluentTheme's
+         default focus ring; today/selected/out-of-month are each a distinct visual treatment, and
+         every one of them also has a textual equivalent in OperationsCalendarDayViewModel.AutomationName
+         (status is never color-only). -->
+    <Style Selector="Button.calendarDay">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Margin" Value="2" />
+      <Setter Property="Padding" Value="6,4" />
+      <Setter Property="MinHeight" Value="60" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="VerticalContentAlignment" Value="Top" />
+    </Style>
+    <Style Selector="Button.calendarDay.outOfMonth">
+      <Setter Property="Opacity" Value="0.4" />
+    </Style>
+    <Style Selector="Button.calendarDay.today">
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
+    </Style>
+    <Style Selector="Button.calendarDay.selected">
+      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
+    </Style>
+    <Style Selector="TextBlock.dayIndicator">
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+    </Style>
+
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+
+    <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceTintBrush}"
+            BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <StackPanel Grid.Column="0" Spacing="2">
+          <TextBlock Text="OPERATIONS CALENDAR" Classes="sectionTitle" Margin="0" />
+          <TextBlock Text="{Binding Presentation.DisplayedMonthText}" Classes="pageTitle"
+                     AutomationProperties.Name="Displayed month" />
+        </StackPanel>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button Content="‹ Prev" Classes="secondaryAction" Command="{Binding PreviousMonthCommand}"
+                  AutomationProperties.Name="Previous month" />
+          <Button Content="Today" Classes="secondaryAction" Command="{Binding GoToTodayCommand}"
+                  AutomationProperties.Name="Go to today" />
+          <Button Content="Next ›" Classes="secondaryAction" Command="{Binding NextMonthCommand}"
+                  AutomationProperties.Name="Next month" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <ScrollViewer Grid.Row="1" Padding="24,20,24,24">
+      <StackPanel Spacing="16">
+
+        <ProgressBar IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoading}" />
+
+        <TextBlock Text="{Binding ErrorMessage}" Classes="fieldError" TextWrapping="Wrap"
+                   IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+        <Grid IsVisible="{Binding HasSnapshot}" ColumnDefinitions="*,320">
+
+          <StackPanel Grid.Column="0" Spacing="8" Margin="0,0,16,0">
+
+            <Grid ColumnDefinitions="*,*,*,*,*,*,*" AutomationProperties.Name="Weekday headers">
+              <TextBlock Grid.Column="0" Text="Sun" Classes="weekdayHeader" />
+              <TextBlock Grid.Column="1" Text="Mon" Classes="weekdayHeader" />
+              <TextBlock Grid.Column="2" Text="Tue" Classes="weekdayHeader" />
+              <TextBlock Grid.Column="3" Text="Wed" Classes="weekdayHeader" />
+              <TextBlock Grid.Column="4" Text="Thu" Classes="weekdayHeader" />
+              <TextBlock Grid.Column="5" Text="Fri" Classes="weekdayHeader" />
+              <TextBlock Grid.Column="6" Text="Sat" Classes="weekdayHeader" />
+            </Grid>
+
+            <ItemsControl ItemsSource="{Binding Days}" AutomationProperties.Name="Calendar month grid">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <UniformGrid Columns="7" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:OperationsCalendarDayViewModel">
+                  <Button Classes="calendarDay" Classes.today="{Binding IsToday}" Classes.selected="{Binding IsSelected}"
+                          Classes.outOfMonth="{Binding !IsInDisplayedMonth}"
+                          Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AutomationName}">
+                    <StackPanel Spacing="2">
+                      <TextBlock Text="{Binding DayNumber}" FontWeight="SemiBold" FontSize="13" />
+                      <TextBlock Text="Finalized" Classes="dayIndicator" IsVisible="{Binding HasFinalizedPassdown}" />
+                      <TextBlock Text="Draft" Classes="dayIndicator" IsVisible="{Binding HasAssociateDraft}" />
+                      <TextBlock Text="{Binding NoteCountText}" Classes="dayIndicator" IsVisible="{Binding HasOperationalNotes}" />
+                    </StackPanel>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+          </StackPanel>
+
+          <Border Grid.Column="1" Classes="panel" AutomationProperties.Name="Selected date summary">
+            <StackPanel Spacing="10">
+              <TextBlock Text="Selected Date" Classes="sectionTitle" />
+              <TextBlock Text="{Binding Presentation.SelectedDateText}" FontSize="16" FontWeight="Bold" TextWrapping="Wrap" />
+              <Border Classes="chip" HorizontalAlignment="Left" IsVisible="{Binding Presentation.SelectedDateIsToday}">
+                <TextBlock Text="Today" />
+              </Border>
+
+              <TextBlock Text="{Binding Presentation.PassdownStatusText}" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding Presentation.FinalizedText}" Classes="muted" TextWrapping="Wrap"
+                         IsVisible="{Binding Presentation.FinalizedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <TextBlock Text="{Binding Presentation.OperationalNotesCountText}" Classes="muted" TextWrapping="Wrap" />
+
+              <StackPanel Spacing="8" Margin="0,10,0,0">
+                <Button Content="Open Passdown" Classes="primaryAction" Command="{Binding OpenAssociateCommand}"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="Open Passdown"
+                        AutomationProperties.HelpText="Opens Associate Passdown set to the selected date." />
+                <Button Content="Open History" Classes="secondaryAction" Command="{Binding OpenHistoryCommand}"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="Open History"
+                        AutomationProperties.HelpText="Opens Passdown History. Enabled once the selected date has been finalized." />
+                <Button Content="Open Operational Notes" Classes="secondaryAction" Command="{Binding OpenOperationalNotesCommand}"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="Open Operational Notes"
+                        AutomationProperties.HelpText="Opens the Operational Notes manager." />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+        </Grid>
+
+      </StackPanel>
+    </ScrollViewer>
+
+  </Grid>
+
+</UserControl>

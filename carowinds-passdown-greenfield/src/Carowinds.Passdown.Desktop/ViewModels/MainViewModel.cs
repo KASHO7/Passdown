@@ -7,6 +7,7 @@ namespace Carowinds.Passdown.Desktop.ViewModels;
 public enum AppSection
 {
     Dashboard,
+    OperationsCalendar,
     AssociatePassdown,
     OperationalNotes,
     History,
@@ -34,14 +35,16 @@ public enum AppSection
 /// </summary>
 public partial class MainViewModel : ViewModelBase
 {
-    public MainViewModel(OperationsDashboardViewModel dashboard, AssociateViewModel associate, OperationalNotesViewModel notes, PassdownHistoryViewModel history)
+    public MainViewModel(OperationsDashboardViewModel dashboard, OperationsCalendarViewModel calendar, AssociateViewModel associate, OperationalNotesViewModel notes, PassdownHistoryViewModel history)
     {
         ArgumentNullException.ThrowIfNull(dashboard);
+        ArgumentNullException.ThrowIfNull(calendar);
         ArgumentNullException.ThrowIfNull(associate);
         ArgumentNullException.ThrowIfNull(notes);
         ArgumentNullException.ThrowIfNull(history);
 
         Dashboard = dashboard;
+        Calendar = calendar;
         Associate = associate;
         Notes = notes;
         History = history;
@@ -66,17 +69,31 @@ public partial class MainViewModel : ViewModelBase
         // there is preserved exactly as it was before Dashboard routed here.
         Dashboard.OpenOperationalNotesRequested += (_, _) => ShowOperationalNotesSection();
 
+        // Phase 12A Part F: "Open Passdown" from Calendar explicitly sets Associate's selected date
+        // (unlike Dashboard's own deep links, which deliberately never touch it) — the Calendar's
+        // whole purpose is routing to a specific date. "Open History"/"Open Operational Notes" stay
+        // generic, matching the same choice already made for Dashboard's own routing.
+        Calendar.OpenAssociateRequested += (_, date) =>
+        {
+            Associate.SelectedDate = date;
+            Associate.SelectedSection = AssociateSection.Overview;
+            ShowAssociateSection();
+        };
+        Calendar.OpenHistoryRequested += (_, _) => ShowHistorySection();
+        Calendar.OpenOperationalNotesRequested += (_, _) => ShowOperationalNotesSection();
+
         // Phase 11B Part X: the smallest Notes-specific unsaved-changes guard, not a generic
         // navigation-guard framework. OperationalNotesViewModel.IsEditing is the one signal this type
-        // observes; whenever it changes, the three other section buttons' enabled state is
-        // re-evaluated so a supervisor mid-create/edit cannot silently navigate away and lose the
-        // in-progress note (spec Part W's "disable changing selection while dirty" applied one level
-        // up, to top-level navigation).
+        // observes; whenever it changes, the other section buttons' enabled state is re-evaluated so a
+        // supervisor mid-create/edit cannot silently navigate away and lose the in-progress note (spec
+        // Part W's "disable changing selection while dirty" applied one level up, to top-level
+        // navigation).
         Notes.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(OperationalNotesViewModel.IsEditing))
             {
                 ShowDashboardSectionCommand.NotifyCanExecuteChanged();
+                ShowOperationsCalendarSectionCommand.NotifyCanExecuteChanged();
                 ShowAssociateSectionCommand.NotifyCanExecuteChanged();
                 ShowHistorySectionCommand.NotifyCanExecuteChanged();
             }
@@ -84,6 +101,8 @@ public partial class MainViewModel : ViewModelBase
     }
 
     public OperationsDashboardViewModel Dashboard { get; }
+
+    public OperationsCalendarViewModel Calendar { get; }
 
     public AssociateViewModel Associate { get; }
 
@@ -93,15 +112,19 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDashboardSectionSelected))]
+    [NotifyPropertyChangedFor(nameof(IsOperationsCalendarSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsAssociateSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsOperationalNotesSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsHistorySectionSelected))]
     [NotifyCanExecuteChangedFor(nameof(ShowDashboardSectionCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ShowOperationsCalendarSectionCommand))]
     [NotifyCanExecuteChangedFor(nameof(ShowAssociateSectionCommand))]
     [NotifyCanExecuteChangedFor(nameof(ShowHistorySectionCommand))]
     public partial AppSection SelectedSection { get; set; } = AppSection.Dashboard;
 
     public bool IsDashboardSectionSelected => SelectedSection == AppSection.Dashboard;
+
+    public bool IsOperationsCalendarSectionSelected => SelectedSection == AppSection.OperationsCalendar;
 
     public bool IsAssociateSectionSelected => SelectedSection == AppSection.AssociatePassdown;
 
@@ -111,6 +134,9 @@ public partial class MainViewModel : ViewModelBase
 
     [RelayCommand(CanExecute = nameof(CanLeaveOperationalNotesSection))]
     private void ShowDashboardSection() => SelectedSection = AppSection.Dashboard;
+
+    [RelayCommand(CanExecute = nameof(CanLeaveOperationalNotesSection))]
+    private void ShowOperationsCalendarSection() => SelectedSection = AppSection.OperationsCalendar;
 
     [RelayCommand(CanExecute = nameof(CanLeaveOperationalNotesSection))]
     private void ShowAssociateSection() => SelectedSection = AppSection.AssociatePassdown;

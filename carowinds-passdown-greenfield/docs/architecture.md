@@ -688,3 +688,49 @@ legacy-machine collision verification against a real legacy install, the sanitiz
 export, nontechnical-tester instructions, and any further reduction of the Playwright package's
 footprint. Manager workflow remains out of scope per CLAUDE.md's current scope decision,
 unaffected by this phase.
+
+## Phase 12A — Operations Calendar foundation
+
+Full design rationale, date-semantics detail, and the "real bug found and fixed" note live in
+`docs/phase12-operations-calendar.md`; this section only records what was added and where.
+
+Phase 12A adds a fifth top-level app-shell section, `AppSection.OperationsCalendar`
+(`Dashboard | Operations Calendar | Associate Passdown | Operational Notes | History`), placed
+between Dashboard and Associate Passdown — a month-grid planning/routing surface, built the same
+way Phase 10A's Dashboard and Phase 9D's History were: a local-only Application-layer read model
+projected over existing state, never a second business-rule implementation.
+
+- **Application** (`Carowinds.Passdown.Application.Calendar`): `IOperationsCalendarService`/
+  `OperationsCalendarService` — depends on `IAssociatePassdownService` (the selected date's own
+  composed workspace), `IAssociateDraftRepository` (`ListSavedDraftDatesAsync`, the same signal
+  Phase 9B's `ScheduledPassdownFinalizer` already uses for eligibility), `IFinalizedPassdownRepository`
+  (metadata only via `ListAsync` — never `GetByDateAsync`, so a calendar load can never materialize
+  a historical PDF blob), `IOperationalNotesService` (`ListAsync` plus the existing
+  `OperationalNoteRelevance.IsRelevantForDate` predicate, applied in memory per day — never a second
+  relevance rule), and `IClock`. `OperationsCalendarSnapshot` carries a month grid
+  (`OperationsCalendarDay`: date, in-month/today flags, finalized/draft/note-count indicators) plus
+  one `OperationsCalendarSelectedDateSummary` (passdown status — NoDraft/DraftInProgress/Finalized —
+  plus note count) for whichever date is currently selected. Exactly three repository/service calls
+  happen per load regardless of grid size, never an N+1 per day cell.
+- **Desktop** (`OperationsCalendarViewModel`, `OperationsCalendarDayViewModel`,
+  `OperationsCalendarPresentation`, `OperationsCalendarView.axaml`): depends only on
+  `IOperationsCalendarService`/`IClock` — no repository/HTTP/PDF dependency, mirroring
+  `OperationsDashboardViewModel`'s own shape. "Today" is always Eastern via `IClock`+
+  `EasternTimeZone`, never `DateTime.Today`/`.Now`. `SelectedDate` is independent of
+  `AssociateViewModel.SelectedDate` except through the one explicit "Open Passdown" action, which
+  sets it deliberately (the Calendar's whole purpose is routing to a specific date) — "Open
+  History"/"Open Operational Notes" stay generic navigation, the same choice Phase 10C already made
+  and documented for Dashboard's own routing (evaluated again here, not re-litigated). `MainViewModel`
+  remains the sole navigation owner; the Calendar view model itself has no knowledge of `AppSection`
+  or any sibling view model.
+- **Tests**: `OperationsCalendarServiceTests` (Application, 18 cases — grid completeness/weekday
+  alignment across several month shapes, Eastern-today near a UTC boundary, per-day/selected-date
+  classification, the never-loads-a-PDF-blob guarantee), `OperationsCalendarViewModelTests` (13),
+  `OperationsCalendarViewTests` (4), plus extensions to `MainViewModelNavigationTests` (state
+  isolation between Calendar and Associate/History/Operational Notes in both directions, the dirty-
+  Operational-Notes-editor guard extended to Calendar's own nav command) and `CompositionRootTests`.
+  1286/1286 total (1242 Phase 11F baseline + 44 new), 0 warnings/errors, run twice for flakiness.
+
+No schema change — database schema stays 10, snapshot schema stays 1. Deferred to 12B+: richer
+per-day overlays, denser note previews, a History date-preselection seam, Alerts, and the Manager
+workflow (still out of scope per CLAUDE.md).

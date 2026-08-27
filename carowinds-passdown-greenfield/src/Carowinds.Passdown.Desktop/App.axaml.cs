@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.Calendar;
 using Carowinds.Passdown.Application.Catalog;
 using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Diagnostics;
@@ -165,6 +166,13 @@ public partial class App : global::Avalonia.Application
         // above) — it never performs HTTP/Playwright retrieval and never loads a finalized PDF blob.
         services.AddSingleton<IOperationsDashboardService, OperationsDashboardService>();
         services.AddTransient<OperationsDashboardViewModel>();
+
+        // Phase 12A: the Operations Calendar foundation — a local-only planning/routing surface.
+        // IOperationsCalendarService depends only on already-registered local abstractions
+        // (IAssociatePassdownService/IAssociateDraftRepository/IFinalizedPassdownRepository/
+        // IOperationalNotesService/IClock); no HTTP/Playwright/Task Scheduler dependency exists.
+        services.AddSingleton<IOperationsCalendarService, OperationsCalendarService>();
+        services.AddTransient<OperationsCalendarViewModel>();
 
         // Phase 11A: the persistent Operational Notes domain/persistence/service foundation.
         // IOperationalNotesService depends on IOperationalNoteRepository/IClock only — nothing here

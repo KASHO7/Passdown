@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.Calendar;
 using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.History;
 using Carowinds.Passdown.Application.OperationalNotes;
@@ -110,6 +111,19 @@ public class CompositionRootTests
         var provider = App.BuildServiceProvider();
 
         Assert.NotNull(provider.GetRequiredService<OperationalNotesViewModel>());
+        Assert.NotNull(provider.GetRequiredService<MainViewModel>());
+    }
+
+    // Phase 12A: the Operations Calendar foundation's Application/Desktop seams resolve from the same
+    // composition root, and MainViewModel now resolves with its fifth (Calendar) constructor argument
+    // satisfied.
+    [Fact]
+    public void BuildServiceProvider_ResolvesOperationsCalendarServices()
+    {
+        var provider = App.BuildServiceProvider();
+
+        Assert.NotNull(provider.GetRequiredService<IOperationsCalendarService>());
+        Assert.NotNull(provider.GetRequiredService<OperationsCalendarViewModel>());
         Assert.NotNull(provider.GetRequiredService<MainViewModel>());
     }
 }
