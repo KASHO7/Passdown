@@ -26,4 +26,27 @@ public interface IRefreshOrchestrator
     /// keep updating through the normal per-operation persistence path regardless.
     /// </summary>
     Task<RefreshSummary> RunUserForcedRefreshAsync(DateOnly date, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 13D Part L/O/Q: the one authoritative Deep Refresh operation, shared by scheduled/
+    /// startup-catch-up maintenance and the manual "Run Deep Refresh" button (never a second,
+    /// duplicated implementation). Always refreshes Park Hours across the full future coverage
+    /// window (<see cref="Freshness.ParkHoursCoveragePlanner"/>), unconditionally — this is the one
+    /// source family Deep Refresh exists to widen beyond the normal rolling window. Every other
+    /// dated source runs over the normal rolling window, and every catalog source runs once;
+    /// <paramref name="bypassFreshness"/> controls only whether that other work is due-gated
+    /// (<see langword="false"/> — scheduled/startup-catch-up nightly maintenance, preserving normal
+    /// cost/cadence) or fully unconditional (<see langword="true"/> — the manual button, and the
+    /// first/insufficient-coverage "Check Online" bootstrap, spec Part M). <paramref name="focusDate"/>,
+    /// when supplied, guarantees every non-Park-Hours dated source also covers that specific date even
+    /// if it falls outside the normal rolling window — used by the insufficient-coverage Check Online
+    /// bootstrap so the date the associate actually asked about is never left out. Updates
+    /// scheduled-cadence source state for every source it touches (unlike <see cref="RunUserForcedRefreshAsync"/>)
+    /// — a Deep Refresh genuinely is a fresh check.
+    /// </summary>
+    Task<RefreshSummary> RunDeepRefreshAsync(
+        bool bypassFreshness,
+        DateOnly? focusDate = null,
+        IProgress<RefreshProgress>? progress = null,
+        CancellationToken cancellationToken = default);
 }

@@ -269,6 +269,45 @@ public class AssociateViewModelProductEditingTests
         Assert.DoesNotContain("catalog|", id, StringComparison.Ordinal);
     }
 
+    // Phase 13D Part AC/AD/AG: a saved price override must reach Workspace.Products immediately — this
+    // is what AssociatePassdownDocumentModelBuilder (and therefore the generated PDF) actually reads
+    // via AssociateProduct.EffectiveDisplayPrice, not Draft.ProductOverrides directly. Before the 13D
+    // fix, SaveDraftNowAsync updated Draft/SaveStatus/ParkHours but left Products holding whatever the
+    // last full compose produced, so CreatePdfAsync's PDF (built from Workspace) silently kept showing
+    // the official price even though the draft itself was saved correctly.
+    [Fact]
+    public async Task PriceOverride_AfterAutosave_FlowsIntoWorkspaceProducts_ForPdfGeneration()
+    {
+        var product = SampleProduct(price: 60m);
+        var (viewModel, _, scheduler) = CreateViewModel(date => FakeAssociatePassdownService.DefaultWorkspace(date) with { Products = [product] });
+        await viewModel.PendingLoad;
+
+        var row = viewModel.ProductSections.Single().Products.Single();
+        row.DisplayPriceOverrideText = "45.00";
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var workspaceProduct = Assert.Single(viewModel.Workspace!.Products);
+        Assert.Equal(45.00m, workspaceProduct.DisplayPriceOverride);
+        Assert.Equal(45.00m, workspaceProduct.EffectiveDisplayPrice);
+    }
+
+    // Same fix, generic second product (not Bring-A-Friend/any specific name) proving the fix is not
+    // product-name-specific, plus proves IncludeOnPdf flows through the same path.
+    [Fact]
+    public async Task IncludeToggle_AfterAutosave_FlowsIntoWorkspaceProducts_ForPdfGeneration()
+    {
+        var product = SampleProduct(identitySuffix: "PKG-B", name: "Ordinary Season Pass", category: SourceCategory.SeasonPasses);
+        var (viewModel, _, scheduler) = CreateViewModel(date => FakeAssociatePassdownService.DefaultWorkspace(date) with { Products = [product] });
+        await viewModel.PendingLoad;
+
+        var row = viewModel.ProductSections.Single().Products.Single();
+        row.IncludeOnPdf = false;
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var workspaceProduct = Assert.Single(viewModel.Workspace!.Products);
+        Assert.False(workspaceProduct.IncludeOnPdf);
+    }
+
     // 27. A product edit made while a save is already in flight is not lost.
     [Fact]
     public async Task ProductEditDuringActiveSave_IsEventuallyPersisted()

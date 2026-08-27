@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Dashboard;
+using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Hours;
@@ -80,6 +81,39 @@ internal sealed class FakeOperationsDashboardService : IOperationsDashboardServi
         return CheckOnlineResultFactory?.Invoke() ?? new OperationsDashboardCheckOnlineResult(
             DefaultSnapshot(DefaultDate),
             new RefreshSummary(RefreshJobType.UserForced, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, OperationsAttempted: 0, Succeeded: 0, Failed: 0, Cancelled: 0, Results: []));
+    }
+
+    public int DeepRefreshCallCount { get; private set; }
+
+    public Func<DeepRefreshActionResult>? DeepRefreshResultFactory { get; set; }
+
+    public DeepRefreshStatusView? DeepRefreshStatusOverride { get; set; }
+
+    public Exception? DeepRefreshException { get; set; }
+
+    public TaskCompletionSource<bool>? DeepRefreshGate { get; set; }
+
+    public Task<DeepRefreshStatusView> GetDeepRefreshStatusAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(DeepRefreshStatusOverride ?? new DeepRefreshStatusView(Status: null, NeedsDeepRefresh: false));
+
+    public async Task<DeepRefreshActionResult> RunDeepRefreshAsync(IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)
+    {
+        DeepRefreshCallCount++;
+
+        if (DeepRefreshGate is not null)
+        {
+            await DeepRefreshGate.Task;
+        }
+
+        if (DeepRefreshException is not null)
+        {
+            throw DeepRefreshException;
+        }
+
+        return DeepRefreshResultFactory?.Invoke() ?? new DeepRefreshActionResult(
+            DefaultSnapshot(DefaultDate),
+            new RefreshSummary(RefreshJobType.DeepRefresh, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, OperationsAttempted: 0, Succeeded: 0, Failed: 0, Cancelled: 0, Results: []),
+            new DeepRefreshStatusView(Status: null, NeedsDeepRefresh: false));
     }
 
     public static OperationsDashboardSnapshot DefaultSnapshot(DateOnly date) => new(

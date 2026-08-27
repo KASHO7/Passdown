@@ -10,6 +10,7 @@ using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Tests.TestSupport;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Catalog;
 using Carowinds.Passdown.Domain.Retrieval;
 
 namespace Carowinds.Passdown.Application.Tests.Calendar;
@@ -86,6 +87,28 @@ public class OperationsCalendarServiceTests
             strategy: RetrievalStrategy.DirectApi, requestedDate: date, confirmedDate: null, technicalDetail: null);
 
         return env.DatedResults.RecordFailedAttemptAsync(new DatedResultKey(SourceCategory.ParkHours, date), evidence);
+    }
+
+    /// <summary>Seeds a real Dated Admission product for <paramref name="date"/> (Phase 13D Part AH), reusing the same payload shape <see cref="DatedAdmissionSource"/> itself produces.</summary>
+    private static Task SeedAdmissionAsync(TestEnvironment env, DateOnly date, params DatedAdmissionProduct[] products)
+    {
+        var evidence = new SourceEvidence(
+            sourceName: "test-admission", sourceUrl: new Uri("https://example.com/tickets"),
+            timeChecked: env.Clock.UtcNow, status: RetrievalStatus.Verified, detail: "Test.",
+            strategy: RetrievalStrategy.DirectApi, requestedDate: date, confirmedDate: date, technicalDetail: null);
+
+        return env.DatedResults.RecordSuccessAsync(
+            new DatedResultKey(SourceCategory.DatedAdmissionTickets, date), evidence, JsonSerializer.Serialize(new DatedAdmissionPayload(products)));
+    }
+
+    private static Task SeedAdmissionNotPublishedAsync(TestEnvironment env, DateOnly date)
+    {
+        var evidence = new SourceEvidence(
+            sourceName: "test-admission", sourceUrl: new Uri("https://example.com/tickets"),
+            timeChecked: env.Clock.UtcNow, status: RetrievalStatus.NotPublished, detail: "Test.",
+            strategy: RetrievalStrategy.DirectApi, requestedDate: date, confirmedDate: null, technicalDetail: null);
+
+        return env.DatedResults.RecordSuccessAsync(new DatedResultKey(SourceCategory.DatedAdmissionTickets, date), evidence, payloadJson: null);
     }
 
     private static Task SaveDraftAsync(TestEnvironment env, DateOnly date, AssociateDraftPayload draft) =>
@@ -919,6 +942,63 @@ public class OperationsCalendarServiceTests
         // range/batch call per day cell (42 cells in August 2026's grid).
         Assert.Equal(1, countingDatedResults.RangeCallCount);
         Assert.Equal(1, countingDrafts.RangeCallCount);
+    }
+
+    // ==================================================================================
+    // Phase 13D Part AH — selected-date Daily Admission price
+    // ==================================================================================
+
+    [Fact]
+    public async Task LoadAsync_ExactDatedAdmissionPublished_ReportsAvailablePrice()
+    {
+        var env = CreateEnvironment();
+        await SeedAdmissionAsync(env, SelectedDate, new DatedAdmissionProduct("pkg-1day", "Park Ticket", 49.00m, null, null, SelectedDate));
+
+        var snapshot = await env.Service.LoadAsync(SelectedDate, SelectedDate);
+
+        Assert.Equal(OperationsCalendarDailyAdmissionStatus.Available, snapshot.Selected.DailyAdmission!.Status);
+        Assert.Equal(49.00m, snapshot.Selected.DailyAdmission.PriceAmount);
+        Assert.Equal(PriceKind.ExactDated, snapshot.Selected.DailyAdmission.PriceKind);
+    }
+
+    // Part AF/AH: the cheapest product in the category is chosen structurally (never a hardcoded
+    // product-name match) — proven by seeding a pricier bundle alongside the base ticket.
+    [Fact]
+    public async Task LoadAsync_MultipleAdmissionProducts_ChoosesCheapestAsBaseTicket()
+    {
+        var env = CreateEnvironment();
+        await SeedAdmissionAsync(
+            env, SelectedDate,
+            new DatedAdmissionProduct("pkg-bundle", "Ticket + Meal Bundle", 69.00m, null, null, SelectedDate),
+            new DatedAdmissionProduct("pkg-1day", "Park Ticket", 49.00m, null, null, SelectedDate));
+
+        var snapshot = await env.Service.LoadAsync(SelectedDate, SelectedDate);
+
+        Assert.Equal("Park Ticket", snapshot.Selected.DailyAdmission!.DisplayName);
+        Assert.Equal(49.00m, snapshot.Selected.DailyAdmission.PriceAmount);
+    }
+
+    [Fact]
+    public async Task LoadAsync_AdmissionNotPublished_ReportsNotPublished_NeverFabricatesPrice()
+    {
+        var env = CreateEnvironment();
+        await SeedAdmissionNotPublishedAsync(env, SelectedDate);
+
+        var snapshot = await env.Service.LoadAsync(SelectedDate, SelectedDate);
+
+        Assert.Equal(OperationsCalendarDailyAdmissionStatus.NotPublished, snapshot.Selected.DailyAdmission!.Status);
+        Assert.Null(snapshot.Selected.DailyAdmission.PriceAmount);
+    }
+
+    [Fact]
+    public async Task LoadAsync_NoAdmissionDataAtAll_ReportsNotCheckedYet()
+    {
+        var env = CreateEnvironment();
+
+        var snapshot = await env.Service.LoadAsync(SelectedDate, SelectedDate);
+
+        Assert.Equal(OperationsCalendarDailyAdmissionStatus.NotCheckedYet, snapshot.Selected.DailyAdmission!.Status);
+        Assert.Null(snapshot.Selected.DailyAdmission.PriceAmount);
     }
 
     /// <summary>Counts <c>GetByDateAsync</c> calls specifically, wrapping a real in-memory repository so every other behavior stays authentic.</summary>

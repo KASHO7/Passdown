@@ -6,18 +6,20 @@ using QuestPDF.Infrastructure;
 namespace Carowinds.Passdown.Documents.Associate;
 
 /// <summary>
-/// QuestPDF-backed <see cref="IAssociatePassdownPdfGenerator"/> (spec Part H; Phase 8B redesign,
-/// corrected to a strict one-page document). No network, database, filesystem, or Desktop
+/// QuestPDF-backed <see cref="IAssociatePassdownPdfGenerator"/> (spec Part H; Phase 8B redesign to a
+/// one-page-normal document; revised Phase 13D Part AA/AB so overflow content renders onto real
+/// additional pages instead of being refused). No network, database, filesystem, or Desktop
 /// dependency — every value it prints comes from the <see cref="AssociatePassdownDocumentModel"/>
 /// passed in, so the same model always produces the same bytes. Layout follows spec §11.1/§11.2 and
 /// Phase 8B Parts 2-11: US Letter portrait, black/white-safe (text, weight, and hairline borders
-/// only — no color-coded meaning), exactly one page — there is no continuation page for this
-/// document type; <see cref="IAssociatePassdownPreflightService"/> refuses generation outright
-/// rather than ever producing a second page. Content is organized by visual hierarchy tier (spec
-/// Part 3) rather than as a flat table: an operational summary strip, a distinct Daily Feature
-/// panel, Key Selling price tiles, Promotion callout cards, compact adaptive Reference columns, and
-/// an Operational Notes panel — each its own small reusable composer method below rather than one
-/// large method of arbitrary coordinates (spec Part 11).
+/// only — no color-coded meaning). Generation is normally one page but is no longer capped at one —
+/// see <see cref="AssociatePassdownPdfResult.PageCount"/> for the real, authoritative count, which
+/// the caller must use to show an unmistakable multi-page warning rather than silently accepting a
+/// spilled-over document. Content is organized by visual hierarchy tier (spec Part 3) rather than as
+/// a flat table: an operational summary strip, a distinct Daily Feature panel, Key Selling price
+/// tiles, Promotion callout cards, compact adaptive Reference columns, and an Operational Notes
+/// panel — each its own small reusable composer method below rather than one large method of
+/// arbitrary coordinates (spec Part 11).
 /// </summary>
 public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerator
 {
@@ -71,30 +73,24 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
         var preflight = _preflightService.Evaluate(model);
         if (!preflight.CanGenerate)
         {
-            return new AssociatePassdownPdfResult(AssociatePassdownPdfStatus.ValidationFailed, null, preflight);
+            // Phase 13D Part AA: the only remaining generation-refusal case is "nothing to print"
+            // (no operating date) — an estimated one-page overflow no longer refuses generation.
+            return new AssociatePassdownPdfResult(AssociatePassdownPdfStatus.ValidationFailed, null, preflight, PageCount: 0);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Exactly one page, always — no continuation page exists for this document type (spec
-        // correction). Preflight above is a cheap estimate-based gate; it is not a QuestPDF layout
-        // pass, so it can in principle be wrong. QuestPDF itself does not throw when a single
-        // Page()'s content overflows it — it silently continues drawing onto additional physical
-        // pages — so an estimate that was ever too generous would otherwise ship a multi-page PDF
-        // unnoticed. CountGeneratedPdfPages below is the actual safety net: it verifies what was
-        // really produced and refuses to hand back more than one page under any circumstance.
+        // Phase 13D Part AA/AB: the Associate Passdown is normally one page, but content that
+        // overflows is now allowed to render onto real additional pages rather than being refused
+        // outright — QuestPDF does not throw when a single Page()'s content overflows it, it simply
+        // continues drawing onto additional physical pages. CountGeneratedPdfPages below reads the
+        // actual, authoritative page count of what was produced (never the pre-render estimate) so
+        // the caller can show an unmistakable warning without losing the associate's work.
         var document = Document.Create(container => container.Page(page => ComposePage(page, model, cancellationToken)));
         var bytes = document.GeneratePdf();
+        var pageCount = CountGeneratedPdfPages(bytes);
 
-        if (CountGeneratedPdfPages(bytes) > 1)
-        {
-            var overflowPreflight = new AssociatePassdownPreflightResult(
-                AssociatePassdownPreflightStatus.ExceedsOnePage,
-                [AssociatePassdownPreflightService.ExceedsOnePageMessage]);
-            return new AssociatePassdownPdfResult(AssociatePassdownPdfStatus.ValidationFailed, null, overflowPreflight);
-        }
-
-        return new AssociatePassdownPdfResult(AssociatePassdownPdfStatus.Generated, bytes, preflight);
+        return new AssociatePassdownPdfResult(AssociatePassdownPdfStatus.Generated, bytes, preflight, pageCount);
     }
 
     /// <summary>

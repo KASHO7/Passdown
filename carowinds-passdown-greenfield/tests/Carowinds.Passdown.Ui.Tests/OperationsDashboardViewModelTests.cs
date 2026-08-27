@@ -194,4 +194,89 @@ public class OperationsDashboardViewModelTests
 
         Assert.Equal(1, service.CheckOnlineCallCount);
     }
+
+    // ==================================================================================
+    // Phase 13D Part O/P/V — manual Run Deep Refresh
+    // ==================================================================================
+
+    [Fact]
+    public async Task RunDeepRefreshCommand_UpdatesSnapshotStatusAndResultMessage()
+    {
+        var newSnapshot = FakeOperationsDashboardService.DefaultSnapshot(FakeOperationsDashboardService.DefaultDate);
+        var summary = new RefreshSummary(RefreshJobType.DeepRefresh, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, OperationsAttempted: 5, Succeeded: 5, Failed: 0, Cancelled: 0, Results: []);
+        var status = new DeepRefreshStatusView(
+            new DeepRefreshStatusRecord(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DeepRefreshOutcome.Success, new DateOnly(2026, 9, 30), 5, 0),
+            NeedsDeepRefresh: false);
+        var service = new FakeOperationsDashboardService
+        {
+            DeepRefreshResultFactory = () => new DeepRefreshActionResult(newSnapshot, summary, status),
+        };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        await viewModel.RunDeepRefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, service.DeepRefreshCallCount);
+        Assert.Same(newSnapshot, viewModel.Snapshot);
+        Assert.Same(status, viewModel.DeepRefreshStatus);
+        Assert.NotNull(viewModel.DeepRefreshPresentation);
+        Assert.False(string.IsNullOrEmpty(viewModel.DeepRefreshResultMessage));
+        Assert.False(viewModel.DeepRefreshHadIssues);
+        Assert.False(viewModel.IsRunningDeepRefresh);
+    }
+
+    [Fact]
+    public async Task RunDeepRefreshCommand_Failure_PreservesExistingSnapshotAndSetsMessage()
+    {
+        var service = new FakeOperationsDashboardService { DeepRefreshException = new InvalidOperationException("boom") };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+        var originalSnapshot = viewModel.Snapshot;
+
+        await viewModel.RunDeepRefreshCommand.ExecuteAsync(null);
+
+        Assert.Same(originalSnapshot, viewModel.Snapshot);
+        Assert.True(viewModel.DeepRefreshHadIssues);
+        Assert.False(string.IsNullOrEmpty(viewModel.DeepRefreshResultMessage));
+        Assert.DoesNotContain("boom", viewModel.DeepRefreshResultMessage);
+        Assert.False(viewModel.IsRunningDeepRefresh);
+    }
+
+    // Part O: Run Deep Refresh is always available, even when local coverage already looks healthy —
+    // never conditionally hidden based on NeedsDeepRefresh or scheduler status.
+    [Fact]
+    public async Task RunDeepRefreshCommand_AlwaysAvailable_EvenWithHealthyCoverage()
+    {
+        var service = new FakeOperationsDashboardService
+        {
+            DeepRefreshStatusOverride = new DeepRefreshStatusView(
+                new DeepRefreshStatusRecord(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DeepRefreshOutcome.Success, new DateOnly(2026, 9, 30), 5, 0),
+                NeedsDeepRefresh: false),
+        };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        Assert.True(viewModel.RunDeepRefreshCommand.CanExecute(null));
+
+        await viewModel.RunDeepRefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, service.DeepRefreshCallCount);
+    }
+
+    [Fact]
+    public async Task RunDeepRefreshCommand_CannotRunConcurrently()
+    {
+        var service = new FakeOperationsDashboardService { DeepRefreshGate = new TaskCompletionSource<bool>() };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+
+        var firstRun = viewModel.RunDeepRefreshCommand.ExecuteAsync(null);
+        Assert.True(viewModel.IsRunningDeepRefresh);
+        Assert.False(viewModel.RunDeepRefreshCommand.CanExecute(null));
+
+        service.DeepRefreshGate!.SetResult(true);
+        await firstRun;
+
+        Assert.Equal(1, service.DeepRefreshCallCount);
+    }
 }

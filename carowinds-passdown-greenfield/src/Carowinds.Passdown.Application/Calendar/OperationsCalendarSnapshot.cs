@@ -1,6 +1,41 @@
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Domain.Catalog;
 
 namespace Carowinds.Passdown.Application.Calendar;
+
+/// <summary>
+/// Phase 13D Part AH: the selected date's regular Daily Admission price, compact and status-aware.
+/// <see cref="NotPublished"/> means the official source was checked and confirmed nothing is
+/// published yet for this date (spec-honest, never a guess); <see cref="Unavailable"/> covers a
+/// checked-but-failed/errored source (never silently treated as "not published"); <see cref="Available"/>
+/// carries a real, never-fabricated price read straight from the already-composed
+/// <see cref="AssociateProduct"/> for this date — no second pricing computation.
+/// </summary>
+public enum OperationsCalendarDailyAdmissionStatus
+{
+    NotCheckedYet,
+    NotPublished,
+    Unavailable,
+    Available,
+}
+
+/// <summary>
+/// The selected date's regular Daily Admission price (Phase 13D Part AH/AK) — deliberately just one
+/// product, never every Fast Lane option/pass/promotion/bundle (Part AK); "View Date Pricing" (Part
+/// AI) is the seam to the full Products detail. Sourced from the exact same composed
+/// <see cref="AssociateProduct"/> list <see cref="Associate.IAssociatePassdownService.LoadAssociateDateAsync"/>
+/// already produced for the selected date's workspace — never a second query/composition.
+/// </summary>
+public sealed record OperationsCalendarDailyAdmissionPrice(
+    OperationsCalendarDailyAdmissionStatus Status,
+    string? DisplayName,
+    decimal? PriceAmount,
+    PriceKind PriceKind,
+    string? PriceQualifier)
+{
+    public static readonly OperationsCalendarDailyAdmissionPrice NotCheckedYet =
+        new(OperationsCalendarDailyAdmissionStatus.NotCheckedYet, null, null, PriceKind.Unknown, null);
+}
 
 /// <summary>
 /// A date's park-hours operating state for the Operations Calendar (Phase 12B Part B) — its own
@@ -81,7 +116,8 @@ public sealed record OperationsCalendarSelectedDateSummary(
     int RelevantOperationalNoteCount,
     OperationsCalendarOperatingState OperatingState,
     AssociateParkHoursView ParkHours,
-    int ImportantOperationalNoteCount = 0);
+    int ImportantOperationalNoteCount = 0,
+    OperationsCalendarDailyAdmissionPrice? DailyAdmission = null);
 
 /// <summary>
 /// The Application-layer read model an Operations Calendar screen is built from (Phase 12A Part D) —

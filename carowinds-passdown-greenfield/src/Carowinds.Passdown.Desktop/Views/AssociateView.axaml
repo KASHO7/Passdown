@@ -65,6 +65,23 @@
       <Setter Property="FontWeight" Value="Medium" />
     </Style>
 
+    <!-- Phase 13D Part Z/AA/AT: a conspicuous, persistent warning shown near Create PDF whenever the
+         most recently generated PDF exceeded one page — deliberately not the small "fieldWarning"
+         helper-text style (spec: "do not use a subtle helper-text style"). Text alone states the
+         fact (never color-only); the amber border/tint is a supplement. -->
+    <Style Selector="Border.multiPageWarning">
+      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownWarningBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Padding" Value="14,10" />
+    </Style>
+    <Style Selector="Border.multiPageWarning TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownWarningBrush}" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="FontSize" Value="13" />
+    </Style>
+
     <!-- Panels: one restrained, brand-tinted container style used everywhere instead of nested cards. -->
     <Style Selector="Border.panel">
       <Setter Property="Padding" Value="18" />
@@ -289,6 +306,15 @@
         <ProgressBar IsIndeterminate="True" Height="3"
                      IsVisible="{Binding IsBusy}" />
 
+        <!-- Phase 13D Part Z/AA/AT: persistent regardless of which section (Overview/Products/Notes)
+             is active, and regardless of how many times Create PDF is pressed while content stays
+             over one page — it only reflects the real, most recently generated page count, never a
+             transient/reset-on-click state. -->
+        <Border Classes="multiPageWarning" IsVisible="{Binding HasMultiPagePdfWarning}"
+                AutomationProperties.Name="{Binding MultiPageWarningText}">
+          <TextBlock Text="{Binding MultiPageWarningText}" TextWrapping="Wrap" />
+        </Border>
+
         <TextBlock Text="{Binding RefreshStatusMessage}"
                    IsVisible="{Binding RefreshStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                    Classes="muted" />
@@ -352,6 +378,14 @@
                     <TextBlock Grid.Row="1" Grid.Column="0" Text="Avenue" Classes="muted" Margin="0,0,12,0" />
                     <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ParkHours.AvenueText, FallbackValue='—'}" FontWeight="Medium" />
                   </Grid>
+
+                  <!-- Carolina Harbor / waterpark hours (spec Phase 13D Part H) — omitted cleanly
+                       whenever not published for this date, never a separate card. -->
+                  <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ParkHours.HasWaterparkHours}">
+                    <TextBlock Text="Carolina Harbor" Classes="muted" />
+                    <TextBlock Text="{Binding ParkHours.WaterparkHeadlineText}" FontWeight="Medium"
+                               AutomationProperties.Name="{Binding ParkHours.WaterparkHeadlineText, StringFormat='Carolina Harbor hours: {0}'}" />
+                  </StackPanel>
 
                   <TextBlock Text="{Binding ParkHours.VerificationText}"
                              IsVisible="{Binding ParkHours.VerificationText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"

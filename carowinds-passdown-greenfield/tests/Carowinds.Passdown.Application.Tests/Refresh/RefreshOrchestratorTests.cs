@@ -662,4 +662,99 @@ public class RefreshOrchestratorTests
     {
         public void Report(T value) => callback(value);
     }
+
+    // ==================================================================================
+    // Phase 13D Part L/O/Q — RunDeepRefreshAsync
+    // ==================================================================================
+
+    // Part J/K/L: Park Hours always plans the full future coverage window, even when it just
+    // succeeded moments ago and would otherwise never be due again today.
+    [Fact]
+    public async Task RunDeepRefreshAsync_ParkHours_AlwaysPlansFullCoverageWindow_RegardlessOfDueness()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var parkHours = AlwaysSucceedsDated("park-hours.official", SourceCategory.ParkHours, datedResults);
+        var env = CreateEnvironment([parkHours]);
+        await env.SourceStates.SaveAsync(new SourceStateRecord("park-hours.official", SourceCategory.ParkHours, env.Clock.UtcNow, env.Clock.UtcNow, env.Clock.UtcNow.AddDays(1), null, 0));
+
+        var summary = await env.Orchestrator.RunDeepRefreshAsync(bypassFreshness: false);
+
+        var today = DateOnly.FromDateTime(env.Clock.UtcNow.Date);
+        var expectedWindow = ParkHoursCoveragePlanner.BuildCoverageWindow(today);
+        Assert.Equal(expectedWindow.Count, summary.OperationsAttempted);
+        Assert.Equal(expectedWindow.Count, summary.Succeeded);
+        Assert.Equal(expectedWindow.OrderBy(d => d), summary.Results.Select(r => r.RequestedDate!.Value).OrderBy(d => d));
+    }
+
+    // Part Q: when not bypassing freshness (scheduled/startup-catch-up), a non-Park-Hours source that
+    // already succeeded recently is skipped, mirroring RunScheduledRefreshAsync's own due-gating —
+    // never a second, duplicated due-gating implementation.
+    [Fact]
+    public async Task RunDeepRefreshAsync_BypassFreshnessFalse_OtherSourcesStayDueGated()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var parkHours = AlwaysSucceedsDated("park-hours.official", SourceCategory.ParkHours, datedResults);
+        var fastLane = AlwaysSucceedsDated("fast-lane", SourceCategory.DatedFastLane, datedResults);
+        var env = CreateEnvironment([parkHours, fastLane]);
+        await env.SourceStates.SaveAsync(new SourceStateRecord("fast-lane", SourceCategory.DatedFastLane, env.Clock.UtcNow, env.Clock.UtcNow, env.Clock.UtcNow.AddDays(1), null, 0));
+
+        var summary = await env.Orchestrator.RunDeepRefreshAsync(bypassFreshness: false);
+
+        Assert.DoesNotContain(summary.Results, r => r.SourceId == "fast-lane");
+        Assert.Contains(summary.Results, r => r.SourceId == "park-hours.official");
+    }
+
+    // Part O: the manual "Run Deep Refresh" button bypasses freshness entirely — every source runs,
+    // including one that just succeeded.
+    [Fact]
+    public async Task RunDeepRefreshAsync_BypassFreshnessTrue_EverySourceRunsUnconditionally()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var catalogProducts = new InMemoryCatalogProductRepository();
+        var parkHours = AlwaysSucceedsDated("park-hours.official", SourceCategory.ParkHours, datedResults);
+        var fastLane = AlwaysSucceedsDated("fast-lane", SourceCategory.DatedFastLane, datedResults);
+        var reconciliation = CreateReconciliationService(catalogProducts);
+        var promotions = CatalogRegistration("promotions", SourceCategory.Promotions, reconciliation,
+            (_, _) => Task.FromResult(SourceResult<CatalogPayload>.Success("promotions", FakeEvidence.Verified(FixedNow), new CatalogPayload([FakeProduct(SourceCategory.Promotions, "Deal")]))));
+        var env = CreateEnvironment([parkHours, fastLane, promotions]);
+        await env.SourceStates.SaveAsync(new SourceStateRecord("fast-lane", SourceCategory.DatedFastLane, env.Clock.UtcNow, env.Clock.UtcNow, env.Clock.UtcNow.AddDays(1), null, 0));
+        await env.SourceStates.SaveAsync(new SourceStateRecord("promotions", SourceCategory.Promotions, env.Clock.UtcNow, env.Clock.UtcNow, env.Clock.UtcNow.AddDays(1), null, 0));
+
+        var summary = await env.Orchestrator.RunDeepRefreshAsync(bypassFreshness: true);
+
+        Assert.Contains(summary.Results, r => r.SourceId == "fast-lane");
+        Assert.Contains(summary.Results, r => r.SourceId == "promotions");
+    }
+
+    // Part M: the insufficient-coverage Check Online bootstrap's focus date must be covered for
+    // every dated source even when it falls outside the normal 7-day rolling window.
+    [Fact]
+    public async Task RunDeepRefreshAsync_FocusDateOutsideNormalWindow_StillCoveredForDatedSources()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var parkHours = AlwaysSucceedsDated("park-hours.official", SourceCategory.ParkHours, datedResults);
+        var fastLane = AlwaysSucceedsDated("fast-lane", SourceCategory.DatedFastLane, datedResults);
+        var env = CreateEnvironment([parkHours, fastLane]);
+        var farFocusDate = new DateOnly(2026, 9, 15);
+
+        var summary = await env.Orchestrator.RunDeepRefreshAsync(bypassFreshness: true, focusDate: farFocusDate);
+
+        Assert.Contains(summary.Results, r => r.SourceId == "fast-lane" && r.RequestedDate == farFocusDate);
+    }
+
+    // Part L: unlike RunUserForcedRefreshAsync, a successful Deep Refresh updates scheduled-cadence
+    // source state — it genuinely is a fresh check for every source it touches.
+    [Fact]
+    public async Task RunDeepRefreshAsync_UpdatesSourceState_UnlikeUserForced()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var parkHours = AlwaysSucceedsDated("park-hours.official", SourceCategory.ParkHours, datedResults);
+        var env = CreateEnvironment([parkHours]);
+
+        await env.Orchestrator.RunDeepRefreshAsync(bypassFreshness: true);
+
+        var state = await env.SourceStates.GetAsync("park-hours.official");
+        Assert.NotNull(state);
+        Assert.NotNull(state!.LastSuccessAt);
+    }
 }

@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Refresh;
 
 namespace Carowinds.Passdown.Application.Dashboard;
@@ -9,6 +10,22 @@ namespace Carowinds.Passdown.Application.Dashboard;
 /// one round trip.
 /// </summary>
 public sealed record OperationsDashboardCheckOnlineResult(OperationsDashboardSnapshot Snapshot, RefreshSummary Summary);
+
+/// <summary>
+/// Phase 13D Part U/V: the Dashboard-facing Deep Refresh status — the persisted
+/// <see cref="DeepRefreshStatusRecord"/> (null when no Deep Refresh has ever completed) plus
+/// <see cref="NeedsDeepRefresh"/>, computed the same way <see cref="Associate.AssociatePassdownService"/>'s
+/// own insufficient-coverage Check Online bootstrap computes it (spec Part L) — never a second rule.
+/// </summary>
+public sealed record DeepRefreshStatusView(DeepRefreshStatusRecord? Status, bool NeedsDeepRefresh);
+
+/// <summary>
+/// The result of one manual "Run Deep Refresh" action (Phase 13D Part O/P) — mirrors
+/// <see cref="OperationsDashboardCheckOnlineResult"/>'s shape, plus the freshly recomputed
+/// <see cref="DeepRefreshStatusView"/> so the caller never needs a second round trip to show the
+/// updated status.
+/// </summary>
+public sealed record DeepRefreshActionResult(OperationsDashboardSnapshot Snapshot, RefreshSummary Summary, DeepRefreshStatusView Status);
 
 /// <summary>
 /// The Application-layer seam a supervisor's Operations Dashboard is built from (Phase 10A Part J):
@@ -35,4 +52,16 @@ public interface IOperationsDashboardService
     /// from an explicit user action; opening or reloading the Dashboard never calls this.
     /// </summary>
     Task<OperationsDashboardCheckOnlineResult> CheckOnlineAsync(IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Current Deep Refresh status (Phase 13D Part U/V) — safe to call on every Dashboard load; purely a local read, never triggers retrieval.</summary>
+    Task<DeepRefreshStatusView> GetDeepRefreshStatusAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Explicit manual "Run Deep Refresh" (Phase 13D Part O/P) — always available regardless of
+    /// automatic scheduling status, runs the same authoritative
+    /// <see cref="IRefreshOrchestrator.RunDeepRefreshAsync"/> operation scheduled/startup-catch-up
+    /// maintenance uses, fully unconditional (freshness bypassed), through the same overlap-lock
+    /// guard <see cref="CheckOnlineAsync"/> uses. Never called except from an explicit user action.
+    /// </summary>
+    Task<DeepRefreshActionResult> RunDeepRefreshAsync(IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default);
 }

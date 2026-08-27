@@ -68,6 +68,11 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
 
     public bool HasEffectiveHoursLine => EffectiveHoursLine is not null;
 
+    /// <summary>"Harbor 11–6", or <see langword="null"/> when Carolina Harbor's hours were not published for this date (Phase 13D Part D/E/F) — shown in the same cell as <see cref="EffectiveHoursLine"/>, never a separate badge.</summary>
+    public string? WaterparkLine { get; }
+
+    public bool HasWaterparkLine => WaterparkLine is not null;
+
     public bool HasOperatingStateLabel => OperatingStateLabel is not null;
 
     /// <summary>Spec Part J: a compact, reused-not-recomputed staleness indicator — see <see cref="OperationsCalendarOperatingStatePresentation.IsStale"/>.</summary>
@@ -94,6 +99,7 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
         OperatingStateLabel = operatingStatePresentation.CompactStateLabel;
         EffectiveHoursLine = operatingStatePresentation.CompactHoursLine;
         IsHoursStale = operatingStatePresentation.IsStale;
+        WaterparkLine = operatingStatePresentation.CompactWaterparkLine;
 
         var passdownStatus = OperationsCalendarPassdownPresentation.DeriveStatus(day.HasFinalizedPassdown, day.HasAssociateDraft);
         var passdownPresentation = OperationsCalendarPassdownPresentation.Build(passdownStatus);

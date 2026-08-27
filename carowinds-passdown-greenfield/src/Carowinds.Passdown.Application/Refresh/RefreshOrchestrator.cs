@@ -36,7 +36,8 @@ public sealed class RefreshOrchestrator(
     IReadOnlyDictionary<SourceCategory, FreshnessPolicy> freshnessPolicies,
     IJobBrowserSessionFactory browserSessionFactory,
     IClock clock,
-    RefreshOrchestratorOptions options) : IRefreshOrchestrator
+    RefreshOrchestratorOptions options,
+    IDeepRefreshStatusRepository? deepRefreshStatusRepository = null) : IRefreshOrchestrator
 {
     public async Task<RefreshSummary> RunScheduledRefreshAsync(IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)
     {
@@ -61,6 +62,136 @@ public sealed class RefreshOrchestrator(
 
         return await ExecuteJobAsync(RefreshJobType.UserForced, operations, updateSourceState: false, progress, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    public async Task<RefreshSummary> RunDeepRefreshAsync(
+        bool bypassFreshness,
+        DateOnly? focusDate = null,
+        IProgress<RefreshProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var operations = await PlanDeepRefreshOperationsAsync(bypassFreshness, focusDate, cancellationToken).ConfigureAwait(false);
+        var summary = await ExecuteJobAsync(RefreshJobType.DeepRefresh, operations, updateSourceState: true, progress, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (deepRefreshStatusRepository is not null)
+        {
+            await PersistDeepRefreshStatusAsync(summary, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        return summary;
+    }
+
+    /// <summary>
+    /// Phase 13D Part U/AR: records truthfully what this run actually achieved — never optimistically
+    /// marking a partial/failed run as Success, and <see cref="DeepRefreshStatusRecord.CoverageThrough"/>
+    /// reflects the real last-consecutive-succeeded Park Hours date from today, not the desired target.
+    /// Deliberately <see cref="CancellationToken.None"/>, mirroring <see cref="UpdateSourceStateAsync"/>'s
+    /// own reasoning — a caller-cancelled job must not lose this bookkeeping for whatever did complete.
+    /// </summary>
+    private async Task PersistDeepRefreshStatusAsync(RefreshSummary summary, CancellationToken cancellationToken)
+    {
+        var outcome = summary.Failed == 0 && summary.Cancelled == 0
+            ? DeepRefreshOutcome.Success
+            : summary.Succeeded > 0
+                ? DeepRefreshOutcome.Partial
+                : DeepRefreshOutcome.Failed;
+
+        var today = DateOnly.FromDateTime(EasternTimeZone.ConvertFromUtc(clock.UtcNow).DateTime);
+        var parkHoursResults = summary.Results
+            .Where(r => r.Category == SourceCategory.ParkHours && r.RequestedDate is not null)
+            .OrderBy(r => r.RequestedDate)
+            .ToList();
+
+        DateOnly? coverageThrough = null;
+        for (var date = today; ; date = date.AddDays(1))
+        {
+            var result = parkHoursResults.FirstOrDefault(r => r.RequestedDate == date);
+            if (result is not { Outcome: SourceOperationOutcomeKind.Success })
+            {
+                break;
+            }
+
+            coverageThrough = date;
+        }
+
+        var record = new DeepRefreshStatusRecord(
+            LastAttemptAtUtc: summary.CompletedAt,
+            LastSuccessAtUtc: outcome == DeepRefreshOutcome.Success ? summary.CompletedAt : null,
+            Outcome: outcome,
+            CoverageThrough: coverageThrough,
+            SourceSuccessCount: summary.Succeeded,
+            SourceFailureCount: summary.Failed);
+
+        await deepRefreshStatusRepository!.SaveAsync(record, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Park Hours always plans the full future coverage window, unconditionally (Part J/K/L) — the
+    /// due-ness clock only ever asks "was this source checked in the last day," a different question
+    /// from "is next month's calendar populated," so due-gating Park Hours here would never actually
+    /// achieve the coverage this operation exists to guarantee. Every other source reuses the exact
+    /// same due-gated planning <see cref="PlanScheduledOperationsAsync"/> already implements when
+    /// <paramref name="bypassFreshness"/> is false (never a second, duplicated due-gating
+    /// implementation), or the same unconditional shape <see cref="RunUserForcedRefreshAsync"/> uses
+    /// — across the normal rolling window rather than one date — when it is true.
+    /// </summary>
+    private async Task<IReadOnlyList<PlannedOperation>> PlanDeepRefreshOperationsAsync(
+        bool bypassFreshness, DateOnly? focusDate, CancellationToken cancellationToken)
+    {
+        var normalWindow = rollingDatePlanner.GetRefreshWindow();
+
+        List<PlannedOperation> otherPlanned;
+        if (bypassFreshness)
+        {
+            otherPlanned = registrations
+                .Where(r => r.Category != SourceCategory.ParkHours)
+                .SelectMany(r => r.Scope == SourceScope.Dated
+                    ? BuildDatedWindowWithFocusDate(r, normalWindow, focusDate)
+                    : [new PlannedOperation(r, RequestedDate: null, normalWindow.Count)])
+                .ToList();
+        }
+        else
+        {
+            var scheduled = await PlanScheduledOperationsAsync(cancellationToken).ConfigureAwait(false);
+            otherPlanned = scheduled.Where(p => p.Registration.Category != SourceCategory.ParkHours).ToList();
+
+            // Even when only due sources are refreshed, an explicitly requested focus date (the
+            // insufficient-coverage Check Online bootstrap) must still be covered for every dated
+            // source regardless of due-ness — the associate asked about this specific date.
+            if (focusDate is { } date && !normalWindow.Contains(date))
+            {
+                otherPlanned = otherPlanned
+                    .Concat(registrations
+                        .Where(r => r.Category != SourceCategory.ParkHours && r.Scope == SourceScope.Dated)
+                        .Select(r => new PlannedOperation(r, date, normalWindow.Count)))
+                    .ToList();
+            }
+        }
+
+        var today = DateOnly.FromDateTime(EasternTimeZone.ConvertFromUtc(clock.UtcNow).DateTime);
+        var parkHoursWindow = ParkHoursCoveragePlanner.BuildCoverageWindow(today);
+        var parkHoursRegistration = registrations.Single(r => r.Category == SourceCategory.ParkHours);
+        var parkHoursPlanned = parkHoursWindow
+            .Select((date, rank) => new PlannedOperation(parkHoursRegistration, date, rank))
+            .ToList();
+
+        var rebasedOther = otherPlanned.Select(p => p with { Rank = p.Rank + parkHoursWindow.Count });
+        return parkHoursPlanned.Concat(rebasedOther).OrderBy(p => p.Rank).ToList();
+    }
+
+    private static IEnumerable<PlannedOperation> BuildDatedWindowWithFocusDate(
+        SourceRegistration registration, IReadOnlyList<DateOnly> window, DateOnly? focusDate)
+    {
+        for (var rank = 0; rank < window.Count; rank++)
+        {
+            yield return new PlannedOperation(registration, window[rank], rank);
+        }
+
+        if (focusDate is { } date && !window.Contains(date))
+        {
+            yield return new PlannedOperation(registration, date, window.Count);
+        }
     }
 
     /// <summary>Only a due source is planned at all (Part B) — the rolling window (today, tomorrow, the remaining days, spec §6.5) is expanded solely for sources that are actually due.</summary>

@@ -122,6 +122,7 @@ public partial class App : global::Avalonia.Application
             new Migration0008CreateFinalizedPassdownsTable(),
             new Migration0009AddFinalizedPassdownPdfColumns(),
             new Migration0010CreateOperationalNotesTable(),
+            new Migration0011CreateDeepRefreshStatusTable(),
         ]);
         services.AddSingleton<MigrationRunner>();
 
@@ -173,7 +174,10 @@ public partial class App : global::Avalonia.Application
 
         // Phase 10A: the Operations Dashboard foundation. IOperationsDashboardService reads
         // IAssociatePassdownService/IFinalizedPassdownRepository only (both already registered
-        // above) — it never performs HTTP/Playwright retrieval and never loads a finalized PDF blob.
+        // above) for GetTodayAsync/LoadAsync — those never perform HTTP/Playwright retrieval and
+        // never load a finalized PDF blob. Phase 13D Part O adds the manual "Run Deep Refresh"
+        // action, which does need IRefreshOrchestrator/IDeepRefreshStatusRepository directly, plus
+        // the same shared overlap-lock factory Check Online uses (Part AQ — never a second guard).
         services.AddSingleton<IOperationsDashboardService, OperationsDashboardService>();
         services.AddTransient<OperationsDashboardViewModel>();
 
@@ -230,6 +234,10 @@ public partial class App : global::Avalonia.Application
 
         // Persistence (Phase 2 repository ports over the same SqliteConnectionFactory already registered above).
         services.AddSingleton<ISourceStateRepository, SqliteSourceStateRepository>();
+        // Phase 13D Part U: the single-row Deep Refresh status table — consumed by RefreshOrchestrator
+        // (writes truthfully after every RunDeepRefreshAsync) and by AssociatePassdownService/
+        // OperationsDashboardService (read the coverage-based NeedsDeepRefresh decision).
+        services.AddSingleton<IDeepRefreshStatusRepository, SqliteDeepRefreshStatusRepository>();
         services.AddSingleton<IDatedResultRepository, SqliteDatedResultRepository>();
         services.AddSingleton<ICatalogProductRepository, SqliteCatalogProductRepository>();
         services.AddSingleton<IProductHistoryRepository, SqliteProductHistoryRepository>();

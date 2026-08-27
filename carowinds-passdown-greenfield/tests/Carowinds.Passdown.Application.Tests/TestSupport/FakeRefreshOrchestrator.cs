@@ -16,6 +16,11 @@ internal sealed class FakeRefreshOrchestrator : IRefreshOrchestrator
 
     public Func<DateOnly, CancellationToken, Task>? OnManualDateRefresh { get; set; }
 
+    public List<(bool BypassFreshness, DateOnly? FocusDate)> DeepRefreshCalls { get; } = [];
+
+    /// <summary>When set, returned by <see cref="RunDeepRefreshAsync"/> instead of an empty summary.</summary>
+    public RefreshSummary? DeepRefreshSummaryOverride { get; set; }
+
     /// <summary>When set, returned by <see cref="RunScheduledRefreshAsync"/> instead of an empty summary — lets a test script a specific success/failure/cancelled mix.</summary>
     public RefreshSummary? ScheduledRefreshSummaryOverride { get; set; }
 
@@ -35,6 +40,13 @@ internal sealed class FakeRefreshOrchestrator : IRefreshOrchestrator
         }
 
         return EmptySummary(RefreshJobType.UserForced);
+    }
+
+    public Task<RefreshSummary> RunDeepRefreshAsync(
+        bool bypassFreshness, DateOnly? focusDate = null, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)
+    {
+        DeepRefreshCalls.Add((bypassFreshness, focusDate));
+        return Task.FromResult(DeepRefreshSummaryOverride ?? EmptySummary(RefreshJobType.DeepRefresh));
     }
 
     private static RefreshSummary EmptySummary(RefreshJobType jobType) =>

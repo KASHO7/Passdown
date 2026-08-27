@@ -47,11 +47,13 @@ public class AssociatePassdownServiceTests
         new("Fake Source", SourceUrl, timeChecked, status, $"{status}.", RetrievalStrategy.DirectApi,
             requestedDate, confirmedDate: status == RetrievalStatus.Verified ? requestedDate : null);
 
-    private static Task SeedParkHoursAsync(InMemoryDatedResultRepository repo, DateOnly date, TimeOnly opening, TimeOnly closing, DateTimeOffset timeChecked) =>
+    private static Task SeedParkHoursAsync(
+        InMemoryDatedResultRepository repo, DateOnly date, TimeOnly opening, TimeOnly closing, DateTimeOffset timeChecked,
+        TimeOnly? waterparkOpening = null, TimeOnly? waterparkClosing = null) =>
         repo.RecordSuccessAsync(
             new DatedResultKey(SourceCategory.ParkHours, date),
             Evidence(RetrievalStatus.Verified, timeChecked, date),
-            JsonSerializer.Serialize(new ParkHoursPayload(opening, closing)));
+            JsonSerializer.Serialize(new ParkHoursPayload(opening, closing, waterparkOpening, waterparkClosing)));
 
     private static Task SeedParkHoursClosedAsync(InMemoryDatedResultRepository repo, DateOnly date, DateTimeOffset timeChecked) =>
         repo.RecordSuccessAsync(new DatedResultKey(SourceCategory.ParkHours, date), Evidence(RetrievalStatus.Closed, timeChecked, date), payloadJson: null);
@@ -302,6 +304,34 @@ public class AssociatePassdownServiceTests
         Assert.Equal(new TimeOnly(9, 15), workspace.ParkHours.Effective.AvenueOpening);
         Assert.False(workspace.ParkHours.Effective.IsManualOverrideApplied);
         Assert.Equal(AssociateVerificationState.Verified, workspace.ParkHours.Verification.State);
+    }
+
+    // Phase 13D Part D/E: waterpark hours flow through to the composed workspace when the source
+    // published them, and are simply absent (never fabricated) when it didn't.
+    [Fact]
+    public async Task ComposeParkHours_WithWaterparkHoursPublished_ExposesThem()
+    {
+        var env = CreateEnvironment();
+        await SeedParkHoursAsync(env.DatedResults, Date, new TimeOnly(10, 0), new TimeOnly(21, 0), FixedNow, new TimeOnly(11, 0), new TimeOnly(18, 0));
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+
+        Assert.True(workspace.ParkHours.HasWaterparkHours);
+        Assert.Equal(new TimeOnly(11, 0), workspace.ParkHours.WaterparkOpening);
+        Assert.Equal(new TimeOnly(18, 0), workspace.ParkHours.WaterparkClosing);
+    }
+
+    [Fact]
+    public async Task ComposeParkHours_WithoutWaterparkHoursPublished_LeavesThemAbsent()
+    {
+        var env = CreateEnvironment();
+        await SeedParkHoursAsync(env.DatedResults, Date, new TimeOnly(10, 0), new TimeOnly(21, 0), FixedNow);
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+
+        Assert.False(workspace.ParkHours.HasWaterparkHours);
+        Assert.Null(workspace.ParkHours.WaterparkOpening);
+        Assert.Null(workspace.ParkHours.WaterparkClosing);
     }
 
     [Fact]

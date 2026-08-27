@@ -82,7 +82,7 @@ public class DashboardViewTests
         await viewModel.PendingLoad;
 
         var view = new DashboardView { DataContext = viewModel };
-        var checkOnlineBusyBar = view.GetLogicalDescendants().OfType<ProgressBar>().Single(p => p.Width == 140);
+        var checkOnlineBusyBar = view.GetLogicalDescendants().OfType<ProgressBar>().Single(p => p.Name == "CheckOnlineBusyBar");
         Assert.NotSame(checkOnlineBusyBar, view.GetLogicalDescendants().OfType<ProgressBar>().Single(p => double.IsNaN(p.Width)));
 
         var runTask = viewModel.CheckOnlineCommand.ExecuteAsync(null);

@@ -45,6 +45,13 @@ public static class AssociateParkHoursComposer
             draft.PrivateBuyout.OpeningTime,
             draft.PrivateBuyout.ClosingTime);
 
-        return new AssociateParkHoursView(effective, verification, officialIsClosed, officialPayload?.OpeningTime, officialPayload?.ClosingTime);
+        return new AssociateParkHoursView(
+            effective,
+            verification,
+            officialIsClosed,
+            officialPayload?.OpeningTime,
+            officialPayload?.ClosingTime,
+            officialPayload?.WaterparkOpeningTime,
+            officialPayload?.WaterparkClosingTime);
     }
 }

@@ -50,6 +50,9 @@ public class StartupProfilingTests
 
         public Task<RefreshSummary> RunUserForcedRefreshAsync(DateOnly date, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Startup profiling never triggers retrieval.");
+
+        public Task<RefreshSummary> RunDeepRefreshAsync(bool bypassFreshness, DateOnly? focusDate = null, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Startup profiling never triggers retrieval.");
     }
 
     private static IReadOnlyList<IMigration> AllMigrations =>

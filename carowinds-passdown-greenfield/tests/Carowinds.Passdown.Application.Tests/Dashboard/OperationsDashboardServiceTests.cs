@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.Concurrency;
 using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.OperationalNotes;
@@ -37,7 +38,11 @@ public class OperationsDashboardServiceTests
         IOperationalNotesService OperationalNotes,
         FakeClock Clock);
 
-    private static TestEnvironment CreateEnvironment(FakeClock? clock = null, IOperationalNotesService? operationalNotes = null)
+    private static TestEnvironment CreateEnvironment(
+        FakeClock? clock = null,
+        IOperationalNotesService? operationalNotes = null,
+        bool wireDeepRefreshOrchestrator = false,
+        InMemoryDeepRefreshStatusRepository? deepRefreshStatusRepository = null)
     {
         clock ??= new FakeClock(FixedNow);
         var drafts = new InMemoryAssociateDraftRepository();
@@ -47,7 +52,14 @@ public class OperationsDashboardServiceTests
         operationalNotes ??= new OperationalNotesService(new InMemoryOperationalNoteRepository(), clock);
         var associateService = new AssociatePassdownService(drafts, datedResults, catalogProducts, refreshOrchestrator, operationalNotes, clock);
         var finalizedPassdowns = new CountingFinalizedPassdownRepository();
-        var service = new OperationsDashboardService(associateService, finalizedPassdowns, operationalNotes, clock);
+
+        // wireDeepRefreshOrchestrator mirrors the real composition root: OperationsDashboardService's
+        // manual "Run Deep Refresh" action needs a direct IRefreshOrchestrator/IDeepRefreshStatusRepository
+        // dependency (Phase 13D Part O), unlike Load/GetToday which never reach the orchestrator at all —
+        // proven behaviorally below, not merely by absence of a constructor parameter.
+        var service = wireDeepRefreshOrchestrator
+            ? new OperationsDashboardService(associateService, finalizedPassdowns, operationalNotes, clock, refreshOrchestrator, deepRefreshStatusRepository ?? new InMemoryDeepRefreshStatusRepository())
+            : new OperationsDashboardService(associateService, finalizedPassdowns, operationalNotes, clock);
         return new TestEnvironment(service, drafts, datedResults, catalogProducts, refreshOrchestrator, finalizedPassdowns, operationalNotes, clock);
     }
 
@@ -78,15 +90,103 @@ public class OperationsDashboardServiceTests
         Assert.Equal(new DateOnly(2026, 9, 1), snapshot.OperatingDate);
     }
 
-    // #6/#23: no HTTP/Playwright/refresh dependency exists on this type by construction.
+    // #6/#23: Phase 13D Part O gave this service an optional IRefreshOrchestrator dependency for the
+    // explicit manual "Run Deep Refresh" action — so the invariant this test actually needs to prove
+    // is behavioral, not "no such parameter exists": opening/reloading the Dashboard (GetTodayAsync/
+    // LoadAsync) must never itself reach the orchestrator, even when one is wired up for Deep Refresh.
     [Fact]
-    public void Constructor_HasNoRefreshOrchestratorOrRetrievalDependency()
+    public async Task LoadAndGetToday_NeverReachTheRefreshOrchestrator_EvenWhenOneIsWired()
+    {
+        var env = CreateEnvironment(wireDeepRefreshOrchestrator: true);
+
+        await env.Service.GetTodayAsync();
+        await env.Service.LoadAsync(Date);
+
+        Assert.Empty(env.RefreshOrchestrator.DeepRefreshCalls);
+        Assert.Empty(env.RefreshOrchestrator.ManualDateRefreshCalls);
+        Assert.Equal(0, env.RefreshOrchestrator.ScheduledRefreshCallCount);
+    }
+
+    // No HTTP/Playwright dependency exists on this type by construction — still a clean reflection
+    // check, since that invariant genuinely never changes regardless of the orchestrator wiring above.
+    [Fact]
+    public void Constructor_HasNoHttpDependency()
     {
         var constructor = typeof(OperationsDashboardService).GetConstructors().Single();
         var parameterTypes = constructor.GetParameters().Select(p => p.ParameterType).ToArray();
 
-        Assert.DoesNotContain(parameterTypes, t => t == typeof(IRefreshOrchestrator));
         Assert.DoesNotContain(parameterTypes, t => t.Name.Contains("Http", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // ==================================================================================
+    // Phase 13D Part O/P/U/V — manual Run Deep Refresh
+    // ==================================================================================
+
+    [Fact]
+    public async Task GetDeepRefreshStatusAsync_NeverRun_ReportsNeedsDeepRefresh()
+    {
+        var env = CreateEnvironment(wireDeepRefreshOrchestrator: true);
+
+        var status = await env.Service.GetDeepRefreshStatusAsync();
+
+        Assert.Null(status.Status);
+        Assert.True(status.NeedsDeepRefresh);
+    }
+
+    [Fact]
+    public async Task RunDeepRefreshAsync_CallsOrchestrator_Unconditionally_FocusedOnToday()
+    {
+        var env = CreateEnvironment(wireDeepRefreshOrchestrator: true);
+
+        await env.Service.RunDeepRefreshAsync();
+
+        var call = Assert.Single(env.RefreshOrchestrator.DeepRefreshCalls);
+        Assert.True(call.BypassFreshness);
+        Assert.Equal(Date, call.FocusDate);
+    }
+
+    [Fact]
+    public async Task RunDeepRefreshAsync_AlwaysAvailable_RegardlessOfHealthyCoverage()
+    {
+        var statusRepository = new InMemoryDeepRefreshStatusRepository();
+        await statusRepository.SaveAsync(new DeepRefreshStatusRecord(FixedNow, FixedNow, DeepRefreshOutcome.Success, Date.AddMonths(2), 10, 0));
+        var env = CreateEnvironment(wireDeepRefreshOrchestrator: true, deepRefreshStatusRepository: statusRepository);
+
+        await env.Service.RunDeepRefreshAsync();
+
+        Assert.Single(env.RefreshOrchestrator.DeepRefreshCalls); // Part O: runs even with healthy coverage.
+    }
+
+    // Part O: if another refresh is already running, do not start a second one — report AlreadyInProgress.
+    [Fact]
+    public async Task RunDeepRefreshAsync_LockAlreadyHeld_ReportsAlreadyInProgress_NeverCallsOrchestrator()
+    {
+        var clock = new FakeClock(FixedNow);
+        var drafts = new InMemoryAssociateDraftRepository();
+        var datedResults = new InMemoryDatedResultRepository();
+        var catalogProducts = new InMemoryCatalogProductRepository();
+        var refreshOrchestrator = new FakeRefreshOrchestrator();
+        var operationalNotes = new OperationalNotesService(new InMemoryOperationalNoteRepository(), clock);
+        var associateService = new AssociatePassdownService(drafts, datedResults, catalogProducts, refreshOrchestrator, operationalNotes, clock);
+        var finalizedPassdowns = new CountingFinalizedPassdownRepository();
+        var alwaysHeldLock = new AlwaysHeldLock();
+        var service = new OperationsDashboardService(
+            associateService, finalizedPassdowns, operationalNotes, clock, refreshOrchestrator,
+            new InMemoryDeepRefreshStatusRepository(), () => alwaysHeldLock);
+
+        var result = await service.RunDeepRefreshAsync();
+
+        Assert.True(result.Summary.WasSkippedDueToOverlap);
+        Assert.Empty(refreshOrchestrator.DeepRefreshCalls);
+    }
+
+    private sealed class AlwaysHeldLock : IScheduledRefreshLock
+    {
+        public bool TryAcquire() => false;
+
+        public void Dispose()
+        {
+        }
     }
 
     // #12: no draft ever saved -> NoDraft, never Finalized/DraftInProgress.

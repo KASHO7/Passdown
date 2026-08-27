@@ -1078,3 +1078,527 @@ Retrieval coverage complete, pricing semantics complete, fixtures/tests complete
 decision measured, full suite green (1470/1470, `Category!=LiveSmoke`), build clean (0/0), docs
 updated — Phase 13C is complete per this document's own success criteria. One local commit follows;
 13D is explicitly not started.
+
+## Phase 13D — Operations Calendar integration hardening, Deep Refresh, and Passdown/PDF corrections
+
+Phase 13D treats Calendar, refresh coverage, and Passdown output as one integration layer, closing
+real operational issues found during use rather than adding new product/parser scope (that remains
+future work). Nothing in 13A–13C's architecture was reopened except where explicitly described
+below.
+
+### 1–3. Calendar cell geometry, dense-cell/notes behavior, dense-month regression: PASS
+
+Root cause: `Button.calendarDay` (`src/Carowinds.Passdown.Desktop/Views/OperationsCalendarView.axaml`)
+set `MinHeight="72"` with no cap — a floor, not a ceiling. Since `UniformGrid`'s cell size is driven
+by the single tallest child's desired size across the *entire* grid, one date carrying enough
+optional content (Custom Hours + waterpark line + Stale + many Important notes) inflated every cell
+in the month, and the amount of inflation changed month to month depending on which date happened to
+be busiest — exactly the "visually inconsistent" symptom reported.
+
+Fix: `MinHeight` replaced with a fixed `Height="132"` (uniform for every cell regardless of content)
+plus `ClipToBounds="True"`, and every compact indicator line (`dayStateLabel`/`dayHoursLine`/
+`dayWaterparkLine`/`dayStaleLabel`/`dayIndicator`) now sets `TextWrapping="NoWrap"` +
+`TextTrimming="CharacterEllipsis"` so a long value trims instead of wrapping to a second line. This
+makes "one date's content cannot expand only that date's cell" structurally true (a fixed-height
+control cannot grow from its own content), not merely usually true. Off-month cells share the exact
+same style, so their reduced content doesn't shrink them either.
+
+**Test-harness honesty note**: this headless test environment (no real compositor/window) does not
+realize `ItemsControl`-generated day-cell containers via `Measure`/`Arrange` alone — confirmed
+empirically (`GetLogicalDescendants`/`GetVisualDescendants` both found zero `Button.calendarDay`
+instances after a manual layout pass without a real windowed session). Per-cell pixel-bounds
+assertions are therefore not achievable here. What *is* proven, in `OperationsCalendarViewTests.cs`:
+(1) `CalendarDayStyle_UsesFixedHeight_NotMinHeight` — reads the compiled `Style` object directly and
+asserts a `Height` setter exists, `MinHeight` does not, and `ClipToBounds=true` does; this is the
+actual mechanism proof, not inferred. (2) Construction/layout-doesn't-throw regression coverage at
+both 1280×860 and 960×640 for a dense month with one extreme content outlier alongside sparse
+siblings, off-month cells present, every operating state, and waterpark hours — the densest
+realistic combination this phase describes.
+
+### 4–5. Carolina Harbor / waterpark hours source audit and semantics: PASS
+
+Traced directly, not guessed: `docs/retrieval/park-hours-source.md`'s own live investigation (Phase
+3B) already recorded that the CloudFront `operating-hours/park/{id}` response can carry a second
+`operatings[]` entry, `operatingTypeName == "Waterpark"` (id 70), on dates Carolina Harbor is
+separately open — the raw source has always exposed it; `ParkHoursSource` simply never read it
+before this phase. Fixed by extending the same adapter: `ReadWaterparkHours` performs the identical
+defensive lookup the main-gate parsing already does, lenient rather than strict (absent/blank/
+unparseable → `null`/`null`, never a whole-retrieval failure). `ParkHoursPayload` gained two nullable
+fields (`WaterparkOpeningTime`/`WaterparkClosingTime`) — additive JSON, no schema migration, since
+this payload is stored as opaque JSON text in the existing `dated_results` value column.
+
+### 6–8. Waterpark hours model, Calendar presentation, selected-date presentation: PASS
+
+`AssociateParkHoursView` gained `WaterparkOpening`/`WaterparkClosing` (+ computed `HasWaterparkHours`)
+alongside the existing main-gate fields — no manual-override/private-buyout concept applies to the
+waterpark (spec never asked for one), so unlike the main gate there is no second "effective hours"
+calculation, just the raw official value passed through. `AssociateParkHoursComposer.Compose` reads
+it straight off `ParkHoursPayload`. Presentation: `ParkHoursPresentation.WaterparkHeadlineText`
+("11:00 AM – 6:00 PM") and `OperationsCalendarOperatingStatePresentation.CompactWaterparkLine`
+("Harbor 11 AM–6 PM") are both computed only from `HasWaterparkHours` — no per-date hardcoded season
+window anywhere. Calendar day cell: one additional compact line in the *same* cell (`dayWaterparkLine`
+style, muted relative to the main hours line), never a separate badge/card. Calendar selected-date
+panel: a "Carolina Harbor" section, shown only when `Presentation.HasWaterparkHours`, cleanly absent
+otherwise (no blank placeholder).
+
+### 9. Waterpark hours elsewhere (Dashboard/Associate/PDF): PARTIAL BY DESIGN
+
+Added to Associate Overview's existing Park Hours panel (same `ParkHoursPresentation`, so this was a
+one-line XAML addition, not a second formatter) — satisfies spec's "app operational surfaces may show
+them where useful." **Deliberately not added to Dashboard's Data Status card** — Dashboard's park-
+status summary is already a single-line-per-category compact surface, and Carolina Harbor is not one
+of Dashboard's tracked source categories; adding it would need a new category concept for a feature
+Calendar and Associate already cover well. **Deliberately not added to the PDF** — spec explicitly
+cautions against expanding PDF content unnecessarily, and the printed Passdown's Park Hours panel is
+already tight; Carolina Harbor is available to the associate in-app (Calendar, Associate Overview)
+without needing to reach the printed page.
+
+### 10. Prior Park Hours/Dated Admission/Fast Lane/Haunted refresh horizon: PASS (audited)
+
+Read directly from `RefreshOrchestrator.PlanScheduledOperationsAsync`/`IRollingDatePlanner`: every
+`SourceScope.Dated` registration (Park Hours, Dated Admission, Dated Fast Lane, Dated Haunted, Dated
+Bring-A-Friend Duo) shared one horizon — `RollingDatePlanner.GetRefreshWindow()`, default 7 days
+(today through today+6), unconditionally, for both the pre-13D scheduled path and (unchanged) the
+`RunUserForcedRefreshAsync` per-selected-date behavior. No source had its own independent horizon.
+
+### 11–12. Calendar-aware Park Hours coverage policy; population cost measurement: PASS — measured, not guessed
+
+New `ParkHoursCoveragePlanner.BuildCoverageWindow(today)`
+(`src/Carowinds.Passdown.Application/Freshness/ParkHoursCoveragePlanner.cs`): today through the last
+day of *next* calendar month — the spec's own preferred target (today Aug 27 → Sep 30). Chosen over
+"current + next displayed month" because it needs no Calendar-viewport awareness at all (a pure
+function of today's date), so the same coverage guarantee holds however far the user navigates.
+
+**Measured this phase**, live, from this dev host (2026-08-27), against the real CloudFront endpoint
+`ParkHoursSource` itself calls, bounded to 3 concurrent requests (matching
+`RefreshOrchestratorOptions.MaxConcurrency`'s existing default — the same concurrency a real Deep
+Refresh actually runs under, not a separate assumption): **35 requests (today Aug 27 → Sep 30 2026),
+all HTTP 200, total wall time 8.6 seconds.** Per-date requests, not a single range/calendar response
+— the source's own "monthly" endpoint form exists (documented in `docs/retrieval/park-hours-source.md`
+since Phase 3B) but was not adopted here: it returns the same per-date shape aggregated by month
+rather than a genuinely cheaper payload, and switching adapters mid-phase for an untested response
+shape was judged riskier than the already-fast per-date path. At ~0.25s/request effective throughput
+under bounded concurrency, this easily qualifies as "cheap" per Part K's own instruction — no
+conservative fallback policy was needed. Combined with Phase 13C's own measured commercial-source cost
+(7 fetches, ~6.6s under the same bounded concurrency) and the unchanged 7-day windows for the other
+four dated families (up to 28 more operations, same pool), a full steady-state Deep Refresh is
+estimated at roughly 20–25 seconds wall time — comfortably inside Part AO's "tens of seconds
+unattended/manual may be acceptable" guidance. See Part 37 below for the as-implemented performance
+accounting.
+
+### 13. Deep Refresh architecture: PASS
+
+One new orchestrator method, `IRefreshOrchestrator.RunDeepRefreshAsync(bool bypassFreshness,
+DateOnly? focusDate, ...)` (`src/Carowinds.Passdown.Application/Refresh/RefreshOrchestrator.cs`) — the
+one authoritative operation every trigger in this phase shares, never a second/duplicated
+implementation:
+
+- **Park Hours** always plans the full coverage window, unconditionally — due-ness answers "was this
+  source checked in the last day," a different question from "is next month's calendar populated," so
+  due-gating Park Hours here would never actually achieve the coverage guarantee this operation exists
+  for.
+- **Every other dated/catalog source** reuses the *existing* `PlanScheduledOperationsAsync` due-gating
+  logic verbatim when `bypassFreshness: false` (scheduled/startup-catch-up nightly maintenance — same
+  cost/cadence as before this phase), or the same unconditional shape `RunUserForcedRefreshAsync`
+  already uses — across the normal 7-day window rather than one date — when `bypassFreshness: true`
+  (the manual button, and the insufficient-coverage Check Online bootstrap).
+- **`focusDate`**, when supplied, guarantees every non-Park-Hours dated source also covers that
+  specific date even if it falls outside the normal 7-day window — so the insufficient-coverage
+  bootstrap never leaves out the date the associate actually asked about.
+- Always updates `source_state` (unlike `RunUserForcedRefreshAsync`) — a Deep Refresh genuinely is a
+  fresh check for every source it touches, and marking it so prevents the next due-based check from
+  redundantly re-hitting a source moments after a manual Deep Refresh already covered it.
+
+### 14. Coverage eligibility rule (`NeedsDeepRefresh`): PASS
+
+`Application.Freshness.DeepRefreshCoverage.NeedsDeepRefresh(DeepRefreshStatusRecord?, DateOnly today)`
+— computed purely from local persisted state (the last Deep Refresh's own recorded
+`CoverageThrough`), never "has this user ever clicked Check Online": true when no Deep Refresh has
+ever completed, or when `CoverageThrough` trails the target horizon by more than 3 days (a small
+slack so one date's transient fetch failure on the last run doesn't force every subsequent Check
+Online back into bootstrap mode).
+
+### 15. First/insufficient-coverage Check Online: PASS
+
+`AssociatePassdownService.CheckAssociateDateOnlineAsync` (the one shared entry point Dashboard and
+Associate's own Check Online both already funneled through, per 13B) now checks
+`NeedsDeepRefresh` first (only when a `IDeepRefreshStatusRepository` is supplied — optional
+constructor parameter, default `null` preserves every pre-13D caller/test unconditionally): if
+insufficient, calls `RunDeepRefreshAsync(bypassFreshness: true, focusDate: operatingDate)` instead of
+the normal `RunUserForcedRefreshAsync(operatingDate)` — restoring Park Hours coverage and
+force-refreshing every commercial source in the same click, with the selected date itself still
+guaranteed covered via `focusDate`.
+
+### 16. Subsequent Check Online: PASS — unchanged, confirmed fast
+
+Once `CoverageThrough` is healthy, `CheckAssociateDateOnlineAsync` takes the original, unmodified
+`RunUserForcedRefreshAsync(operatingDate)` path — exactly the same single-date + all-catalog-sources
+scope as every pre-13D Check Online, no widened cost.
+
+### 17–18. Manual Run Deep Refresh; UX: PASS
+
+`IOperationsDashboardService.RunDeepRefreshAsync` (new) — always available regardless of automatic
+scheduling status, runs `RunDeepRefreshAsync(bypassFreshness: true, focusDate: today)` unconditionally
+(never gated on `NeedsDeepRefresh`), through the exact same overlap-lock guard `CheckOnlineAsync`
+already uses (`Func<IScheduledRefreshLock>?`) — if another refresh already holds the lock, returns
+`RefreshSummary.AlreadyInProgress` rather than starting a second concurrent orchestrator run. Wired
+into Dashboard → Data Status (`OperationsDashboardViewModel.RunDeepRefreshCommand`, mutually exclusive
+with Check Online/Reload at the UI level, on top of the shared lock's own authoritative guarantee).
+UX matches spec's literal before/running/success/partial copy
+(`DeepRefreshStatusPresentation`/`RefreshMessages.Progress`) — "Checking online and preparing upcoming
+dates…" while running, "✓ {timestamp}" / "Incomplete · {timestamp}" / coverage-through text on
+completion, no fake progress percentages (the existing indeterminate `ProgressBar` is reused
+verbatim).
+
+### 19. Scheduled 6 AM behavior: PASS
+
+`ScheduledRefreshRunner.RunAsync` (shared by both `RefreshMode.Scheduled` and
+`RefreshMode.StartupCatchUp`) now calls `RunDeepRefreshAsync(bypassFreshness: false, focusDate: null,
+...)` instead of the old `RunScheduledRefreshAsync` — literally "reuses the same authoritative Deep
+Refresh operation," not a parallel implementation. Finalization-before-refresh ordering
+(`ScheduledRefreshHost`/`StartupCatchUpRefresh`'s own try/catch structure) was not touched — neither
+file changed at all, only the one orchestrator call inside `ScheduledRefreshRunner` changed.
+
+### 20. StartupCatchUp: PASS
+
+Because `StartupCatchUpRefresh` already called the shared `IScheduledRefreshRunner.RunAsync(RefreshMode
+.StartupCatchUp, ...)` (Phase 6B/13B), and that runner now calls `RunDeepRefreshAsync` instead of the
+old due-gated method, StartupCatchUp automatically inherits full Deep Refresh behavior — including the
+unconditional Park Hours coverage restoration — with zero changes to `StartupCatchUpRefresh` itself.
+This is exactly Part T's "missed 6 AM → next app start restores coverage in background, no modal
+interruption" requirement: it was already a detached, never-awaited background task before this
+phase (Phase 6B), and remains one — only what it awaits internally got deeper.
+
+### 21. Multi-user/per-user storage implications: PASS (confirmed unchanged)
+
+`AppPaths.LocalApplicationDataDirectory` resolves per-Windows-user (`%LOCALAPPDATA%`); nothing in this
+phase's additions (new migration, new repository, new orchestrator method) introduces any
+machine-wide state, shared database, or cross-user coordination. `deep_refresh_status` (new table) is
+one row inside the same per-user SQLite file every other table already lives in — User A's Deep
+Refresh never touches User B's database, confirmed by construction (no new connection
+factory/path was introduced).
+
+### 22. Task Scheduler current configuration: PASS (audited directly from packaging script, no change)
+
+Read directly from `packaging/windows/Install-ScheduledRefresh.ps1` (not inferred from Windows UI):
+
+| Setting | Value | Source line |
+|---|---|---|
+| Principal | `New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited` | line 116 |
+| Logon type | **Interactive — "run only when user is logged on" behavior**; will not run while the installing user is logged out | line 116 |
+| Admin requirement | None (`RunLevel Limited`) | line 116 |
+| Password/credential | None stored — Interactive logon type needs no stored password | line 116, doc comment lines 19-20 |
+| Task ownership | Per-user — registered under the *installing* user's own account, not a shared/SYSTEM task | line 116 |
+| `StartWhenAvailable` | Enabled — runs as soon as possible after a missed scheduled start (machine asleep/off at 6 AM) | line 106 |
+| `MultipleInstances` | `IgnoreNew` — Task Scheduler's own first line of defense; `FileScheduledRefreshLock` remains the authoritative overlap guard | line 107 |
+| Battery behavior | `AllowStartIfOnBatteries`, `DontStopIfGoingOnBatteries` | line 108 |
+| Network prerequisite | None configured (`-RequiresNetwork` deliberately omitted, per the script's own comment) | lines 93-95 |
+| `WakeToRun` | Not set — never wakes a sleeping/hibernating machine | line 96-99 |
+
+### 23. Logged-out automatic execution decision: DEFERRED BY DESIGN — accepted limitation, unchanged
+
+The current `LogonType Interactive` principal cannot run while the installing user is logged out —
+this was true before Phase 13D and remains true after it. Per CLAUDE.md's own explicit multi-user
+guidance (preferred policy items 1–5) and this phase's Part R instruction, the correct action given
+that guidance is: **do not change it.** Achieving logged-out execution would require either a SYSTEM-
+level scheduled task (violates "no admin-only services," changes the app from portable/no-admin to
+requiring elevation) or a stored-credential `Password`/`S4U` logon (violates "no stored Windows
+passwords/credential prompts," a real security regression for a portable local tool). Both are
+explicitly prohibited by CLAUDE.md's MULTI-USER ENVIRONMENT section. The accepted trade-off: if no
+applicable Windows user session exists at 6 AM, that user's scheduled refresh simply does not run —
+recovered automatically, without a stored password or elevated service, by `StartupCatchUpRefresh`
+the next time that user's own session starts the app (Part 20 above). No code change was made; this
+section records the decision explicitly, as Part S requires, rather than leaving it implicit.
+
+### 24. Last Deep Refresh persistence/status: PASS — small, justified migration
+
+`source_state` (existing, per-source) cannot represent "how many sources succeeded/failed in the last
+whole Deep Refresh job" or "what future date range is actually covered" — neither is a per-source
+concept, so representing it there would mean inventing a fake synthetic source id, a worse fit than a
+dedicated table. New: `Migration0011CreateDeepRefreshStatusTable` — one single-row table
+(`deep_refresh_status`, `id` fixed at 1), fields: `last_attempt_at_utc` (always recorded),
+`last_success_at_utc` (only when the run's own outcome was fully `Success` — Part U's "distinguish
+attempted from succeeded"), `outcome` (`Success`/`Partial`/`Failed`), `coverage_through` (nullable
+date), `source_success_count`, `source_failure_count`. **Database schema: 10 → 11.**
+`AssociateDraftPayload` schema stays 3, `FinalizedPassdownSnapshot` schema stays 1 — neither touched.
+Written truthfully by `RefreshOrchestrator.RunDeepRefreshAsync` itself (not by each caller
+separately, so every trigger — scheduled, startup-catch-up, manual, bootstrap Check Online — gets
+identical, correct bookkeeping with no risk of one call site forgetting to record it):
+`CoverageThrough` is computed from the *actual* just-executed Park Hours results (the last
+consecutive `Success` date starting from today), never the desired target — a run that only partially
+succeeded reports exactly how far it actually got.
+
+### 25. Dashboard indicator: PASS
+
+Dashboard → Data Status gained a compact "DEEP REFRESH" sub-section (below the existing Check
+Online/count-chips/source-breakdown content, inside the same panel — never a second Alerts-style
+card): one headline line (✓/Incomplete/Failed + timestamp), an optional detail line (failure count),
+an optional coverage line ("Park hours available through Sep 30"), and the `Run Deep Refresh` button
+with its own dedicated busy indicator (`IsRunningDeepRefresh`, distinct from `IsCheckingOnline`).
+
+### 26. Calendar indicator decision: DEFERRED BY DESIGN — not added
+
+Spec Part W offers this as optional ("Optionally add..."). Not added this phase: Dashboard → Data
+Status is already the authoritative, single place Deep Refresh status lives (Part 25), and Calendar
+already shows `EffectiveHoursLine` for the displayed dates directly — a supervisor scanning the grid
+already sees whether hours are populated without needing a second, summarized "coverage through"
+readout duplicating what Dashboard says. Revisit only if real user feedback asks for it.
+
+### 27. Last Verified vs. Deep Refresh vs. Check Online semantics: PASS — kept distinct, never confused
+
+- **Last Deep Refresh** (new, Part 24): broad future/cache maintenance operation status.
+- **Last Check Online**: not separately tracked as its own persisted concept (unchanged from every
+  prior phase) — `RefreshSummary`/`RefreshMessages` already report a normal Check Online's own
+  plain-language result inline, per-action, not as a persisted status row.
+- **Last Verified**: unchanged, per-source (`AssociateVerificationInfo.LastVerifiedAt`), still visible
+  in-app (Dashboard Data Status source breakdown, Associate's own Park Hours/product panels, Calendar).
+  Never conflated with Deep Refresh status in any of the new UI added this phase.
+
+### 28. Passdown/PDF Last Verified removal: PASS
+
+Root cause traced to exactly one place: `AssociatePassdownDocumentModelBuilder.BuildVerificationText`
+(`src/Carowinds.Passdown.Documents/Associate/AssociatePassdownDocumentModelBuilder.cs`) built
+`"Last verified {timestamp}"`/`"Not verified"`/etc. text, rendered by
+`AssociatePassdownPdfGenerator` inside the Park Hours panel. Now returns `null` unconditionally — kept
+as an always-null method (rather than removing `PdfParkHours.VerificationText`/
+`FinalizedParkHoursSnapshot.VerificationText`) so neither the print model's nor the finalized-
+snapshot's shape changes, avoiding a schema bump for a text-suppression change. New regression test
+(`AssociatePassdownPdfGeneratorTests.StaleDataDay_NeverPrintsVerificationMetadata`) proves the phrases
+never appear even for a day whose underlying data is genuinely stale. In-app surfaces (Dashboard Data
+Status, Associate's own on-screen Park Hours panel via `ParkHoursPresentation`, Calendar) were not
+touched — they read the same `AssociateVerificationInfo` through a completely separate formatter.
+
+### 29–30. Multi-page PDF warning; action behavior: PASS
+
+Root architecture change: the PDF generator previously refused to generate anything once actual or
+estimated content exceeded one page (`AssociatePassdownPdfStatus.ValidationFailed` for
+`ExceedsOnePage`), discarding the associate's entire draft's worth of PDF work. Per spec Part AA
+("do not automatically block... allow generation/save, make the consequence unmistakable"):
+`AssociatePassdownPreflightResult.CanGenerate` now only blocks on `MissingOperatingDate` (nothing to
+print at all); `AssociatePassdownPdfGenerator.Generate` always produces the document and reports the
+*real* post-generation page count (`AssociatePassdownPdfResult.PageCount`, QuestPDF's own pagination,
+never the pre-render estimate) rather than refusing. Finalization inherits the same behavior
+automatically (`FinalizedPassdownSnapshotBuilder.BuildProjection` already just checked
+`Status == Generated`) — an unattended scheduled finalization no longer loses an entire day's frozen
+record merely because content ran long; the frozen PDF simply spans more than one physical page.
+
+UI: `AssociateViewModel.PdfPageCount` (int, default 1) updates only when a real generation actually
+produces bytes — never reset to a false "no warning" state merely because `CreatePdfCommand` was
+pressed again, satisfying Part Z's "repeated button presses do not hide/reset it." A new persistent
+banner (`Border.multiPageWarning`, distinct amber border + bold text, deliberately *not* the existing
+small `fieldWarning` helper-text style) sits in Associate's header area, visible regardless of which
+internal section (Overview/Products/Notes) is active, reading exactly the example wording ("WARNING —
+Passdown is 2 pages. Reduce content before printing if possible."), text-only (never color-only) —
+`AutomationProperties.Name` bound to the same text.
+
+### 31–32. Page-count detection audit; multi-page test coverage: PASS
+
+`CountGeneratedPdfPages` (unchanged mechanism — reads the real generated PDF's own `/Type /Pages
+.../Count N` object) is now the *only* signal driving the warning; the line-budget preflight estimate
+remains only as an internal early classification, never surfaced to the UI as the page count. Tests
+(`AssociatePassdownPdfGeneratorTests`): normal content → `PageCount == 1`; `ExcessiveDay` fixture →
+generates successfully with `PageCount > 1` (was previously `ValidationFailed`/no bytes); repeated
+generation retains an accurate count; `FinalizedPassdownProjectionTests` proves finalization itself
+now succeeds (not throws) for the same excessive-content fixture, producing a real multi-page frozen
+PDF.
+
+### 33. Custom Associate product value PDF bug — root cause found and fixed: PASS
+
+Traced end to end, confirmed **not** BAF-specific (the bug affects every official product's override
+uniformly): the precedence chain itself
+(`ProductRowViewModel.DisplayPriceOverride` → `AssociateDraftPayload.ProductOverrides[identity]` →
+`AssociatePassdownDocumentModelBuilder.BuildOfficialRow` reading
+`AssociateProduct.EffectiveDisplayPrice`) was already correct. The actual break:
+`AssociateViewModel.SaveDraftNowAsync` (`src/Carowinds.Passdown.Desktop/ViewModels/AssociateViewModel.cs`),
+after a successful autosave, updated `Workspace` via `current with { Draft = draft, SaveStatus =
+status, ParkHours = parkHours }` — **`Products` was never included in that `with` expression**, so
+`Workspace.Products[i].DisplayPriceOverride`/`IncludeOnPdf` kept whatever value the *last full
+compose* (initial load, date switch, or Check Online) had produced, silently ignoring every override
+saved since. `CreatePdfAsync` always reads `Workspace` (never re-composes), so a custom value typed
+and autosaved just before pressing "Create PDF" — the single most common real-world sequence — never
+reached the PDF, even though the draft itself was correctly persisted to disk (which is why the value
+*did* survive a reload, masking the bug outside of the exact "edit then immediately print" sequence).
+
+### 34. Custom-value precedence fix: PASS
+
+`SaveDraftNowAsync` now also rebuilds `Products` from the freshly-saved `draft.ProductOverrides`
+(matching each product by `ProductIdentity`, leaving `IsCustom` entries untouched since those already
+flow correctly via `Draft.CustomProducts`) and includes it in the same `with` expression. Applies
+uniformly to every official product (dated or catalog) — no product-name branching anywhere in the
+fix, satisfying Part AF's "not special-cased" requirement directly.
+
+### 35. PDF/finalization/History regression: PASS
+
+`AssociateViewModelProductEditingTests` gained two tests proving the exact defect site directly:
+`PriceOverride_AfterAutosave_FlowsIntoWorkspaceProducts_ForPdfGeneration` (a Daily Admission product)
+and `IncludeToggle_AfterAutosave_FlowsIntoWorkspaceProducts_ForPdfGeneration` (a Season Pass — a
+second, differently-categorized product, proving the fix isn't accidentally scoped to one category)
+— both assert `Workspace.Products` (what `CreatePdfAsync` actually reads) reflects the just-saved
+override immediately after autosave, without a date switch or Check Online in between. The
+Documents-layer chain (`Workspace.Products` → `PdfProductRow.EffectivePriceText` → generated PDF text,
+and → `FinalizedProductRowSnapshot` → frozen History) was already covered by existing 13C-era tests
+(`AssociatePassdownDocumentModelBuilderPriceSemanticsTests`, `FinalizedPassdownProjectionTests`) and
+remains green, unmodified — combined, the full chain from keystroke to frozen History is proven.
+
+### 36. Selected-date Daily Admission price: PASS
+
+`OperationsCalendarSelectedDateSummary.DailyAdmission` (new,
+`OperationsCalendarDailyAdmissionPrice`) — computed in `OperationsCalendarService` from the *already-
+composed* `AssociateWorkspace.Products` for the selected date (the same call the panel's other
+sections already used — no new query). Per Part AF, the base admission product is identified
+structurally, never by matching a specific display name: the lowest-priced product in the
+`DatedAdmissionTickets` category (bundles/upsells are reliably priced higher than the base ticket).
+`PriceKind.StartingFrom` is surfaced explicitly ("Starting from $39.00") so a floor price can never be
+misread as exact for the selected date; no product in the category at all falls back to the category's
+own checked/not-published/unavailable status — never a fabricated price.
+
+### 37. View Date Pricing behavior; Calendar state preservation: PASS
+
+New `OperationsCalendarViewModel.ViewDatePricingCommand`/`ViewDatePricingRequested` event, wired in
+`MainViewModel` exactly like the existing "Open Passdown" deep link — sets
+`AssociateViewModel.SelectedDate` and `SelectedSection = AssociateSection.Products`, then switches the
+top-level section. Purely local: no network call is triggered by navigation itself (the destination
+screen already loads local-only per its own existing contract); Calendar's own `SelectedDate`/snapshot
+are never mutated by this action (proven by
+`CalendarViewDatePricingCommand_NeverChangesCalendarSelectedDate`). Calendar's own summary stays
+compact per Part AK — only the one Daily Admission line, never every Fast Lane option/pass/promotion/
+bundle; View Date Pricing is the explicit seam to that full detail.
+
+### 38. Daily commercial refresh preservation; new-offer discovery: PASS — unchanged
+
+Every Phase 13C daily-cadence commercial source (Promotions' dual-page fetch, Season Passes, both
+Add-Ons sources, Bring-A-Friend Duo, Military/First Responder) is registered exactly as it was;
+`RunDeepRefreshAsync`'s catalog-scope planning reuses the identical registration list every other
+orchestrator method already iterates — no per-source allowlist exists anywhere to have silently
+dropped one. Generic, name-agnostic discovery (`ProductCardHtmlParser`) is untouched.
+
+### 39. Partial-failure/LKG behavior: PASS — unchanged, inherited
+
+`RunDeepRefreshAsync` executes through the exact same `ExecuteJobAsync` every other orchestrator
+method already uses — bounded concurrency, immediate per-operation persistence, Error-never-becomes-
+absence, cancellation-safe. No new execution logic was written for this phase; only planning
+(*which* operations to run) changed.
+
+### 40. Deep Refresh performance: PASS — measured (see Part 11–12 above for the Park Hours figure)
+
+Full steady-state Deep Refresh (bypassFreshness: false, everything due — the 6 AM common case): ~35
+Park Hours requests (measured 8.6s) + up to 28 other-dated-source requests + 7 catalog requests (13C
+measured 6.6s for the catalog portion alone), all sharing one `MaxConcurrency=3` pool — estimated
+20–25s total wall time. Comfortably within "tens of seconds... acceptable" (Part AO); no unnecessary
+date fanout or expensive source was found. The manual/bootstrap `bypassFreshness: true` path adds the
+same catalog + normal-window dated requests unconditionally regardless of due-ness, so its cost is the
+same order of magnitude, not materially larger.
+
+### 41. Startup non-blocking regression: PASS — re-confirmed structurally unchanged
+
+`App.axaml.cs`'s synchronous startup path (`OnFrameworkInitializationCompleted`) was not touched by
+this phase at all — `StartCatchUpRefresh` remains the one detached, never-awaited fire-and-forget call
+after `desktop.MainWindow` is assigned, exactly as Phase 6B established. `StartupProfilingTests`'
+`UnreachableRefreshOrchestrator` fake (now also implementing `RunDeepRefreshAsync` as a throw) still
+passes, proving no local-load path in that harness reaches the orchestrator regardless of the new
+method's existence.
+
+### 42. Refresh-lock/overlap behavior: PASS
+
+`RunDeepRefreshAsync` — like `RunScheduledRefreshAsync`/`RunUserForcedRefreshAsync` before it — has no
+lock logic of its own; the *callers* (`ScheduledRefreshHost`, `StartupCatchUpRefresh`,
+`OperationsDashboardService.RunDeepRefreshAsync`, `AssociatePassdownService.CheckAssociateDateOnlineAsync`)
+each acquire the one shared `FileScheduledRefreshLock` before calling it, exactly as before this
+phase. New test coverage: `OperationsDashboardServiceTests.RunDeepRefreshAsync_LockAlreadyHeld_ReportsAlreadyInProgress_NeverCallsOrchestrator`.
+
+### 43. Accessibility: PASS
+
+New interactive/status elements all carry meaningful `AutomationProperties.Name`/`HelpText`: "Run Deep
+Refresh" (button), "Deep Refresh status" (headline text, `HelpText` carries the full composed status
+sentence), "View Date Pricing" (button), "Carolina Harbor hours: {value}" (waterpark lines, Calendar
+and Associate Overview), "Daily ticket price: {value}" (Calendar selected-date price), and the
+multi-page warning banner's own `AutomationProperties.Name` bound to its visible text. None of the new
+status signals (Deep Refresh outcome, multi-page warning, waterpark presence) depend on color alone —
+every one has an equivalent text/automation-name path, matching every existing surface's convention in
+this codebase.
+
+### 44. 1280×860 / 960×640; Windows scaling status: PARTIAL — construction/layout-level only (unchanged limitation)
+
+Same honest boundary as every prior Phase 12 pass: this dev environment has no pixel/bitmap renderer,
+so 1280×860/960×640 coverage here proves construction and a real `Measure`/`Arrange` layout pass
+completes without throwing at both sizes for the phase's new content (waterpark lines, Deep Refresh
+status block, multi-page warning banner, Daily Admission price/View Date Pricing button) — not a
+pixel-level visual PASS. Real Windows-scale (100/125/150%) validation remains a manual Windows-host
+task, as in every prior phase.
+
+### 45. Schema/version decision: PASS — one small, justified migration
+
+**Database schema: 10 → 11** (`Migration0011CreateDeepRefreshStatusTable`, justified in Part 24 above
+— `source_state`'s per-source shape cannot represent a whole-job outcome or a coverage-through date
+without inventing a fake source id). **`AssociateDraftPayload` schema stays 3.**
+**`FinalizedPassdownSnapshot` schema stays 1.** Every other change this phase (waterpark hours,
+`PriceKind`/pricing display, PDF page count) is either additive-nullable JSON already stored as opaque
+text, or purely computed/transient — no other migration was needed. Old-database upgrade coverage:
+`PortableLifecycleTests.HistoricalSchema_BeforeAssociateDrafts_UpgradesForwardPreservingExistingData`
+(existing test, updated to expect the new version) and a new dedicated
+`SqliteDeepRefreshStatusRepositoryTests` (round-trip, upsert, and truthful-null-on-failure coverage).
+
+### 46–47. Tests added; final non-live test count: PASS
+
+**Net new tests this phase: 38** (1470 → **1508**, all passing, `Category!=LiveSmoke`; Domain 66,
+Application 453, Documents 101, Infrastructure 350, Ui 538; re-run repeatedly for flakiness — see
+Part 48 below for the one known pre-existing flake class observed). Representative additions by area:
+Calendar geometry/style-inspection and dense-content layout coverage; waterpark hours (Infrastructure
+adapter, Application composition, Desktop presentation); the Deep Refresh orchestrator method (full
+coverage window, due-gated vs. unconditional, focus-date, source-state truthfulness); Deep Refresh
+status persistence (repository round-trip/upsert/truthful-failure); Dashboard manual Deep Refresh
+(ViewModel command behavior + service-level overlap-lock guard); the insufficient-coverage Check
+Online bootstrap (exercised through existing `AssociatePassdownServiceTests`/`RefreshOrchestratorTests`
+scaffolding rather than a new dedicated file); the custom-value PDF regression (two products, proving
+the fix is not category-specific); multi-page PDF generator behavior (real overflow now generates
+with an accurate page count, both at the generator and finalization layers); Last Verified removal
+from the PDF (stale-data regression); selected-date Daily Admission pricing (available/cheapest-of-
+multiple/not-published/never-checked); and View Date Pricing navigation (routing + Calendar-state
+preservation). Plus targeted updates (not net-new) to `ScheduledRefreshRunnerTests`,
+`Phase9EIntegrationTests`, and `PortableLifecycleTests` for the Deep Refresh call-site and
+schema-version changes, and to `DashboardViewTests` for the new Deep Refresh UI elements.
+
+### 48. Build result: PASS
+
+`dotnet build CarowindsPassdown.slnx` — **0 warnings, 0 errors.** Full suite (`Category!=LiveSmoke`)
+re-run twice consecutively, both fully green (1508/1508). Across additional repeated `Ui.Tests`-only
+runs during this phase, the same pre-existing Avalonia-headless XAML-population parallelism race
+already documented in 6D/12B/13A/13B recurred intermittently (~1 in 3–4 runs), each time against a
+*different* random Avalonia view-construction test (e.g. `HistoryView_EmptyHistory_...`,
+`AssociateView_Constructs_...`, `DashboardView_EachParkStatus_...`) — every one passed cleanly in
+isolation on immediate re-run. Not a regression introduced by this phase; recorded here per Part BF's
+explicit request to report it, not fixed (out of scope, matches established precedent).
+
+### 49. Docs updated: PASS
+
+This file (this section); `docs/retrieval/park-hours-source.md` (waterpark-hours finding, Phase 13D
+addendum); `docs/phase12-operations-calendar.md` (Phase 13D addendum — geometry fix, waterpark
+presentation, Daily Admission price/View Date Pricing); `docs/architecture.md` (Phase 13D addendum —
+`RunDeepRefreshAsync`, schema 11, `IDeepRefreshStatusRepository`). 13A–13C history was not rewritten.
+
+### 50. Work deferred to new 13E–13H: unchanged from 13A/13B/13C's own deferral list
+
+Manual Hours/Private Buyout redesign, ERT semantics, rename/branding, Alerts, Manager workflow, and
+the final release rebuild all remain exactly as originally scoped — none of it was started this phase.
+Also explicitly not started per this phase's own instructions: any change to the current 7-day
+rolling window for non-Park-Hours dated sources (only Park Hours was widened, per spec Part J's own
+scope), and any Windows-host live validation (remains a manual task).
+
+### Known limitation, recorded honestly (Part 23 above)
+
+Logged-out automatic 6 AM execution remains not possible under the current per-user, no-admin,
+no-stored-password Task Scheduler principal — an accepted trade-off given CLAUDE.md's explicit
+multi-user constraints, recovered via `StartupCatchUpRefresh` the next time each affected user's own
+session starts the app. Not a regression from this phase; the same limitation existed before it and
+was simply not previously written down as a deliberate decision.
+
+## Git checkpoint
+
+Calendar geometry fixed, waterpark hours implemented end to end, Deep Refresh architecture complete
+(orchestrator, status persistence, manual button, coverage-aware Check Online bootstrap, scheduled/
+startup-catch-up reuse), custom-value PDF bug fixed with regression coverage, multi-page PDF warning
+replaces the prior hard block, Last Verified removed from the printed Passdown, selected-date pricing
+and View Date Pricing shipped, Task Scheduler/multi-user posture audited and documented (no change
+required — already compliant with CLAUDE.md's constraints), full suite green, build clean, docs
+updated — Phase 13D is complete per this document's own success criteria. One local commit follows;
+13E is explicitly not started.

@@ -70,6 +70,16 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     public event EventHandler<DateOnly>? OpenAssociateRequested;
 
     /// <summary>
+    /// Raised by "View Date Pricing" (Phase 13D Part AI/AJ) — routes to the existing Associate
+    /// Passdown Products section for the selected date, purely local-only navigation (never triggers
+    /// Check Online just because the associate navigated). Deliberately a distinct event from
+    /// <see cref="OpenAssociateRequested"/> (which targets Overview) so <see cref="MainViewModel"/>
+    /// can route each to a different internal Associate section without this view model knowing
+    /// <c>AssociateSection</c> exists.
+    /// </summary>
+    public event EventHandler<DateOnly>? ViewDatePricingRequested;
+
+    /// <summary>
     /// Raised by "Open History" (Phase 12A Part F). Carries the Calendar's currently selected date
     /// (Phase 12D Part I/J) so <see cref="MainViewModel"/> can ask <see cref="PassdownHistoryViewModel"/>
     /// to preselect the matching finalized record via its own <c>SelectByDateAsync</c> seam — this
@@ -197,6 +207,9 @@ public partial class OperationsCalendarViewModel : ViewModelBase
 
     [RelayCommand]
     private void OpenAssociate() => OpenAssociateRequested?.Invoke(this, SelectedDate);
+
+    [RelayCommand]
+    private void ViewDatePricing() => ViewDatePricingRequested?.Invoke(this, SelectedDate);
 
     [RelayCommand(CanExecute = nameof(CanOpenHistory))]
     private void OpenHistory() => OpenHistoryRequested?.Invoke(this, SelectedDate);

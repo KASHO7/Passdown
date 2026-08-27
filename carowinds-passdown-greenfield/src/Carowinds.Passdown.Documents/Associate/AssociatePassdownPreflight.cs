@@ -12,11 +12,12 @@ public enum AssociatePassdownPreflightStatus
     FitsOnePage,
 
     /// <summary>
-    /// Content exceeds one page's estimated capacity. Unlike Phase 8B's original design, this is not
-    /// a "move the rest to a continuation page" signal — the Associate Passdown never has a second
-    /// page, so this means generation is refused outright (spec correction Part "Required behavior").
-    /// Nothing is silently dropped or shrunk to force a fit; the supervisor must shorten Operational
-    /// Notes or hide an optional section and try again.
+    /// Content is estimated to exceed one page's capacity. Phase 13D Part AA: this is no longer a
+    /// generation-refusal signal — <see cref="AssociatePassdownPdfGenerator"/> still generates and
+    /// saves the PDF (QuestPDF paginates the overflow onto real additional pages rather than clipping
+    /// it), and the caller is expected to surface an unmistakable warning from the generator's actual
+    /// post-generation page count (see <see cref="AssociatePassdownPdfResult.PageCount"/>) rather than
+    /// block the associate's work. This estimate remains only as an early, pre-render signal.
     /// </summary>
     ExceedsOnePage,
 
@@ -26,18 +27,21 @@ public enum AssociatePassdownPreflightStatus
 
 /// <summary>
 /// The outcome of checking an <see cref="AssociatePassdownDocumentModel"/> for one-page fit (spec
-/// Part F/G) — computed once here so the generator never re-derives its own, possibly inconsistent,
-/// notion of what fits. Deterministic and presentation-neutral: this is a line-count estimate over
-/// already-final display strings, never an actual QuestPDF layout pass. There is no page-one/
-/// continuation split here (Phase 8B-correction removed the continuation page entirely) — the
-/// generator either renders the model's full content on the single page, or nothing at all.
+/// Part F/G; revised Phase 13D Part AA) — computed once here so the generator never re-derives its
+/// own, possibly inconsistent, notion of what fits. Deterministic and presentation-neutral: this is a
+/// line-count estimate over already-final display strings, never an actual QuestPDF layout pass.
 /// </summary>
 public sealed record AssociatePassdownPreflightResult(
     AssociatePassdownPreflightStatus Status,
     IReadOnlyList<string> Reasons)
 {
-    /// <summary>True only when the content is expected to render as exactly one page — <see cref="AssociatePassdownPdfGenerator"/> refuses to generate anything otherwise (spec correction: never a second page).</summary>
-    public bool CanGenerate => Status == AssociatePassdownPreflightStatus.FitsOnePage;
+    /// <summary>
+    /// True whenever there is a document to render at all — Phase 13D Part AA: an estimated
+    /// multi-page document is no longer refused, only one with no operating date at all (nothing to
+    /// print). <see cref="AssociatePassdownPdfGenerator"/> is the actual, authoritative source of
+    /// whether the real generated PDF exceeds one page (its own post-generation page count).
+    /// </summary>
+    public bool CanGenerate => Status != AssociatePassdownPreflightStatus.MissingOperatingDate;
 }
 
 public interface IAssociatePassdownPreflightService

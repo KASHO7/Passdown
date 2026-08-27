@@ -114,14 +114,19 @@
       <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
     </Style>
 
-    <!-- One day cell (spec Part E/I; Phase 12B Part M/V): plain Button so it is keyboard-reachable
-         with FluentTheme's default focus ring; today/selected/out-of-month are each a distinct
-         border/background treatment (never the only signal — every one of them, plus operating
-         state/hours, also has a textual equivalent in
+    <!-- One day cell (spec Part E/I; Phase 12B Part M/V; Phase 13D Part A/B geometry hardening): plain
+         Button so it is keyboard-reachable with FluentTheme's default focus ring; today/selected/
+         out-of-month are each a distinct border/background treatment (never the only signal — every
+         one of them, plus operating state/hours, also has a textual equivalent in
          OperationsCalendarDayViewModel.AutomationName). Deliberately no per-operating-state color
          (spec Part V "avoid one color per operating state ... red for Closed") — the compact text
          labels below are the state signal; today/selected keep their existing border/band treatment
-         so the two concerns never visually collide. -->
+         so the two concerns never visually collide.
+         Phase 13D: MinHeight (content could grow the cell taller than its siblings) replaced with a
+         fixed Height, uniform for every cell regardless of how many optional indicator lines a given
+         date has (notes, Important notes, waterpark hours, staleness) — combined with ClipToBounds and
+         single-line/trimmed content below, this is what makes "one date's content must never expand
+         only that date's cell" actually structurally impossible rather than merely usually true. -->
     <Style Selector="Button.calendarDay">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="1" />
@@ -129,7 +134,8 @@
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="Margin" Value="2" />
       <Setter Property="Padding" Value="6,4" />
-      <Setter Property="MinHeight" Value="72" />
+      <Setter Property="Height" Value="132" />
+      <Setter Property="ClipToBounds" Value="True" />
       <Setter Property="HorizontalContentAlignment" Value="Left" />
       <Setter Property="VerticalContentAlignment" Value="Top" />
     </Style>
@@ -158,6 +164,8 @@
     <Style Selector="TextBlock.dayIndicator">
       <Setter Property="FontSize" Value="10" />
       <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+      <Setter Property="TextWrapping" Value="NoWrap" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
     <!-- Compact operating-state label ("CLOSED"/"CUSTOM"/"BUYOUT"/"NOT PUBLISHED"/"UNAVAILABLE",
          spec Part C/D/E/F/G/H/I) — text only, no per-state color (Part V). -->
@@ -166,16 +174,31 @@
       <Setter Property="FontWeight" Value="Bold" />
       <Setter Property="LetterSpacing" Value="0.3" />
       <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+      <Setter Property="TextWrapping" Value="NoWrap" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
     <Style Selector="TextBlock.dayHoursLine">
       <Setter Property="FontSize" Value="10.5" />
       <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="TextWrapping" Value="NoWrap" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
     <!-- Reuses the app's existing amber "warning, not error" convention (spec Part J) — never red. -->
     <Style Selector="TextBlock.dayStaleLabel">
       <Setter Property="FontSize" Value="9.5" />
       <Setter Property="FontStyle" Value="Italic" />
       <Setter Property="Foreground" Value="{DynamicResource PassdownWarningBrush}" />
+      <Setter Property="TextWrapping" Value="NoWrap" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <!-- Compact Carolina Harbor line (spec Phase 13D Part F) — same cell as main park hours, never a
+         separate badge/card; slightly muted relative to dayHoursLine so the main gate's hours stay
+         the visually primary line. -->
+    <Style Selector="TextBlock.dayWaterparkLine">
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+      <Setter Property="TextWrapping" Value="NoWrap" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
   </UserControl.Styles>
@@ -246,6 +269,8 @@
                       <StackPanel Spacing="1" IsVisible="{Binding IsInDisplayedMonth}">
                         <TextBlock Text="{Binding OperatingStateLabel}" Classes="dayStateLabel" IsVisible="{Binding HasOperatingStateLabel}" />
                         <TextBlock Text="{Binding EffectiveHoursLine}" Classes="dayHoursLine" IsVisible="{Binding HasEffectiveHoursLine}" />
+                        <!-- Phase 13D Part F: same cell as main park hours, never a separate badge. -->
+                        <TextBlock Text="{Binding WaterparkLine}" Classes="dayWaterparkLine" IsVisible="{Binding HasWaterparkLine}" />
                         <TextBlock Text="Stale" Classes="dayStaleLabel" IsVisible="{Binding IsHoursStale}" />
                         <TextBlock Text="{Binding PassdownStatusLabel}" Classes="dayIndicator" />
                         <!-- Phase 12E Part H: the "Important" clause reuses the app's one established
@@ -304,6 +329,21 @@
               <TextBlock Text="{Binding Presentation.ParkHoursStaleNoteText}" Classes="fieldWarning" TextWrapping="Wrap"
                          IsVisible="{Binding Presentation.ParkHoursStaleNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
+              <!-- Carolina Harbor / waterpark hours (spec Phase 13D Part G) — omitted cleanly (no
+                   blank placeholder) whenever not published for the selected date. -->
+              <StackPanel Spacing="2" IsVisible="{Binding Presentation.HasWaterparkHours}">
+                <TextBlock Text="Carolina Harbor" Classes="muted" Margin="0" />
+                <TextBlock Text="{Binding Presentation.WaterparkHoursText}" TextWrapping="Wrap"
+                           AutomationProperties.Name="{Binding Presentation.WaterparkHoursText, StringFormat='Carolina Harbor hours: {0}'}" />
+              </StackPanel>
+
+              <!-- Daily Admission pricing (spec Phase 13D Part AH/AK) — deliberately just one compact
+                   line, never every Fast Lane option/pass/promotion/bundle; View Date Pricing (below)
+                   is the seam to full detail. -->
+              <TextBlock Text="Daily Ticket" Classes="sectionTitle detail" />
+              <TextBlock Text="{Binding Presentation.DailyAdmissionPriceText}" FontWeight="SemiBold"
+                         AutomationProperties.Name="{Binding Presentation.DailyAdmissionPriceText, StringFormat='Daily ticket price: {0}'}" />
+
               <!-- Passdown Status (spec Phase 12C Part J/Y): No Draft/Draft In Progress/Finalized,
                    reusing OperationsCalendarPassdownPresentation for both the label and its detail
                    note (last-saved/finalized timestamp, or an empty-state sentence). -->
@@ -342,6 +382,12 @@
                         HorizontalAlignment="Stretch"
                         AutomationProperties.Name="Open History"
                         AutomationProperties.HelpText="{Binding OpenHistoryHelpText}" />
+                <!-- Phase 13D Part AI/AJ: local-only navigation to Associate's Products section for the
+                     selected date — never triggers Check Online by itself. -->
+                <Button Content="View Date Pricing" Classes="secondaryAction" Command="{Binding ViewDatePricingCommand}"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="View Date Pricing"
+                        AutomationProperties.HelpText="Opens full product pricing for the selected date." />
                 <Button Content="Open Operational Notes" Classes="secondaryAction" Command="{Binding OpenOperationalNotesCommand}"
                         HorizontalAlignment="Stretch"
                         AutomationProperties.Name="Open Operational Notes"

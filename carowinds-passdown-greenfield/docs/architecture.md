@@ -822,3 +822,49 @@ those affect how later phases call into `Carowinds.Passdown.Application.Refresh`
 No schema change (database schema stays 10, `AssociateDraftPayload` schema stays 3, snapshot schema
 stays 1) and no startup-architecture change — `App.OnFrameworkInitializationCompleted`'s
 migration-then-window-then-detached-catch-up ordering is exactly as Phase 6B left it.
+
+## Phase 13D additions — Deep Refresh architecture
+
+Full rationale, measurement, and validation live in `docs/phase13-hardening.md`'s own Phase 13D
+section; this entry only records the API-contract/schema changes future phases need to know about.
+
+- **`IRefreshOrchestrator` gained one new method**: `RunDeepRefreshAsync(bool bypassFreshness,
+  DateOnly? focusDate, IProgress<RefreshProgress>? progress, CancellationToken)` — the one
+  authoritative coverage-aware maintenance operation, shared by scheduled/startup-catch-up
+  (`bypassFreshness: false`), the manual "Run Deep Refresh" button, and the insufficient-coverage
+  Check Online bootstrap (both `bypassFreshness: true`). Always plans Park Hours across the full
+  future coverage window (`Application.Freshness.ParkHoursCoveragePlanner` — today through the end of
+  next calendar month) unconditionally; every other source is either due-gated (reusing the existing
+  `PlanScheduledOperationsAsync` logic verbatim) or fully unconditional, depending on
+  `bypassFreshness`. Unlike `RunUserForcedRefreshAsync`, this method *does* update `source_state` —
+  a Deep Refresh genuinely is a fresh check for every source it touches.
+- **`ScheduledRefreshRunner`** (both `RefreshMode.Scheduled` and `RefreshMode.StartupCatchUp`) now
+  calls `RunDeepRefreshAsync(bypassFreshness: false, ...)` instead of the old
+  `RunScheduledRefreshAsync` — literally reusing the same operation, not a second implementation.
+  `RunScheduledRefreshAsync` itself is unchanged and still exists (still exercised directly by its own
+  test suite), simply no longer called from this one production call site.
+- **`AssociatePassdownService.CheckAssociateDateOnlineAsync`** gained an optional
+  `IDeepRefreshStatusRepository? deepRefreshStatusRepository = null` constructor parameter (default
+  `null` preserves every pre-13D caller/test unconditionally). When supplied, it computes
+  `Application.Freshness.DeepRefreshCoverage.NeedsDeepRefresh` first; if coverage is insufficient it
+  calls `RunDeepRefreshAsync(bypassFreshness: true, focusDate: operatingDate, ...)` instead of the
+  normal `RunUserForcedRefreshAsync(operatingDate, ...)`.
+- **`IOperationsDashboardService`** gained `GetDeepRefreshStatusAsync`/`RunDeepRefreshAsync` (the
+  manual-button entry point), backed by new optional `OperationsDashboardService` constructor
+  parameters (`IRefreshOrchestrator?`, `IDeepRefreshStatusRepository?`,
+  `Func<IScheduledRefreshLock>?`, all default `null`) — `GetTodayAsync`/`LoadAsync` never reach the
+  orchestrator regardless of whether these are supplied (proven behaviorally, not just by
+  constructor-signature absence, since the orchestrator dependency is now a legitimate, if optional,
+  part of this service's contract).
+- **New persistence**: `Application.Persistence.IDeepRefreshStatusRepository`/
+  `DeepRefreshStatusRecord` (`LastAttemptAtUtc`, `LastSuccessAtUtc`, `Outcome`
+  [`Success`/`Partial`/`Failed`], `CoverageThrough`, `SourceSuccessCount`, `SourceFailureCount`) — one
+  single-row SQLite table, `Migration0011CreateDeepRefreshStatusTable`
+  (`Infrastructure.Storage.Repositories.SqliteDeepRefreshStatusRepository`). Written truthfully by
+  `RefreshOrchestrator.RunDeepRefreshAsync` itself after every run, from every trigger, so no call
+  site can forget to record it.
+
+**Database schema: 10 → 11** (the one new table above). `AssociateDraftPayload` schema stays 3;
+`FinalizedPassdownSnapshot` schema stays 1 — neither was touched; both waterpark hours
+(`ParkHoursPayload`'s two new nullable fields) and PDF page count (`AssociatePassdownPdfResult.PageCount`)
+are additive-nullable/transient values that needed no schema change of their own.

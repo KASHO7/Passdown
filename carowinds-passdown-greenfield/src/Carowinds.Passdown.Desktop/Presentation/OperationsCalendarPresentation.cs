@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Calendar;
+using Carowinds.Passdown.Domain.Catalog;
 
 namespace Carowinds.Passdown.Desktop.Presentation;
 
@@ -23,8 +24,14 @@ public sealed record OperationsCalendarPresentation(
     string ParkStatusText,
     string? EffectiveHoursText,
     string? ParkHoursVerificationText,
-    string? ParkHoursStaleNoteText)
+    string? ParkHoursStaleNoteText,
+    string? WaterparkHoursText = null,
+    string? DailyAdmissionPriceText = null)
 {
+    /// <summary>Phase 13D Part G: omitted cleanly (no blank placeholder) whenever the waterpark's hours were not published for the selected date.</summary>
+    public bool HasWaterparkHours => WaterparkHoursText is not null;
+
+
     public static OperationsCalendarPresentation Build(OperationsCalendarSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -68,6 +75,26 @@ public sealed record OperationsCalendarPresentation(
             parkStatusText,
             showsHours ? parkHoursPresentation.HeadlineText : null,
             parkHoursPresentation.VerificationText,
-            parkHoursPresentation.StaleNoteText);
+            parkHoursPresentation.StaleNoteText,
+            parkHoursPresentation.WaterparkHeadlineText,
+            BuildDailyAdmissionPriceText(selected.DailyAdmission));
     }
+
+    /// <summary>
+    /// Phase 13D Part AH: never fabricates a price — each status maps to text that says exactly what
+    /// is known, mirroring the same Not Published/Unavailable vocabulary already used elsewhere on
+    /// this screen (never a new one). <see cref="PriceKind.StartingFrom"/> is the one qualifier
+    /// surfaced explicitly (spec's own "is this exact for the selected date" signal) so a floor price
+    /// is never read as if it were exact.
+    /// </summary>
+    private static string BuildDailyAdmissionPriceText(OperationsCalendarDailyAdmissionPrice? dailyAdmission) => dailyAdmission?.Status switch
+    {
+        OperationsCalendarDailyAdmissionStatus.Available when dailyAdmission.PriceAmount is { } amount =>
+            dailyAdmission.PriceKind == PriceKind.StartingFrom
+                ? $"Starting from {amount:C}"
+                : amount.ToString("C"),
+        OperationsCalendarDailyAdmissionStatus.NotPublished => "Not Published",
+        OperationsCalendarDailyAdmissionStatus.Unavailable => "Unavailable",
+        _ => "Not checked yet",
+    };
 }

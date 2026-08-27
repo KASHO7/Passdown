@@ -84,26 +84,17 @@ public static class AssociatePassdownDocumentModelBuilder
             string.IsNullOrWhiteSpace(buyoutDetails) ? null : buyoutDetails.Trim());
     }
 
-    /// <summary>Only surfaced when it could mislead the reader about how current the shown official hours are (spec Part D) — an active manual/buyout override is the associate's own authoritative input, not something stale official data undermines.</summary>
-    private static string? BuildVerificationText(AssociateVerificationInfo verification, EffectiveHours effective)
-    {
-        if (effective.IsManualOverrideApplied || effective.IsPrivateBuyoutApplied)
-        {
-            return null;
-        }
-
-        return verification.State switch
-        {
-            AssociateVerificationState.NotCheckedYet => "Not verified",
-            AssociateVerificationState.Stale => verification.LastVerifiedAt is { } staleAt
-                ? $"Last verified {FormatTimestamp(staleAt)} - may be out of date"
-                : "Not recently verified - may be out of date",
-            AssociateVerificationState.Error or AssociateVerificationState.Unavailable => "Unavailable - could not be checked",
-            AssociateVerificationState.Verified when verification.LastVerifiedAt is { } verifiedAt =>
-                $"Last verified {FormatTimestamp(verifiedAt)}",
-            _ => null,
-        };
-    }
+    /// <summary>
+    /// Phase 13D Part Y: the printed/frozen Associate Passdown no longer carries retrieval-
+    /// verification metadata ("Last verified ...", staleness) at all — that diagnostic signal remains
+    /// fully visible in-app (Dashboard Data Status, Associate's own on-screen Park Hours panel, and
+    /// the Operations Calendar all read the same <see cref="AssociateVerificationInfo"/> this method
+    /// used to format), so the printed handoff stays operationally focused (spec Part AS). Kept as an
+    /// always-null method (rather than deleted, with <see cref="PdfParkHours.VerificationText"/> and
+    /// <see cref="Application.Finalization.FinalizedParkHoursSnapshot.VerificationText"/> removed) so
+    /// neither the print model's nor the finalized-snapshot's shape changes — no schema migration.
+    /// </summary>
+    private static string? BuildVerificationText(AssociateVerificationInfo verification, EffectiveHours effective) => null;
 
     private static PdfEarlyRideTime BuildEarlyRideTime(EarlyRideTimeDetails details)
     {

@@ -113,6 +113,37 @@ public class OperationsCalendarOperatingStatePresentationTests
         Assert.Equal("9:30 AM–9:15 PM", presentation.CompactHoursLine);
     }
 
+    // ==================================================================================
+    // Phase 13D Part D/E/F — waterpark hours in the same compact cell
+    // ==================================================================================
+
+    [Fact]
+    public void Build_OpenWithWaterparkPublished_AddsCompactHarborLine()
+    {
+        var hours = ParkHours(false, new TimeOnly(10, 0), new TimeOnly(22, 0), manualEnabled: false, buyoutEnabled: false)
+            with
+        { WaterparkOpening = new TimeOnly(11, 0), WaterparkClosing = new TimeOnly(18, 0) };
+
+        var presentation = OperationsCalendarOperatingStatePresentation.Build(OperationsCalendarOperatingState.Open, hours);
+
+        Assert.True(presentation.HasCompactWaterparkLine);
+        Assert.Equal("Harbor 11 AM–6 PM", presentation.CompactWaterparkLine);
+        Assert.Contains("Carolina Harbor 11 AM to 6 PM", presentation.AccessibilityText);
+    }
+
+    // Part E: the normal case for most of the year — no waterpark row, no placeholder, no error.
+    [Fact]
+    public void Build_OpenWithoutWaterparkPublished_OmitsHarborLineCleanly()
+    {
+        var hours = ParkHours(false, new TimeOnly(10, 0), new TimeOnly(22, 0), manualEnabled: false, buyoutEnabled: false);
+
+        var presentation = OperationsCalendarOperatingStatePresentation.Build(OperationsCalendarOperatingState.Open, hours);
+
+        Assert.False(presentation.HasCompactWaterparkLine);
+        Assert.Null(presentation.CompactWaterparkLine);
+        Assert.DoesNotContain("Harbor", presentation.AccessibilityText);
+    }
+
     private static AssociateParkHoursView ParkHours(
         bool officialClosed, TimeOnly? officialOpen, TimeOnly? officialClose,
         bool manualEnabled, TimeOnly? manualOpen = null, TimeOnly? manualClose = null,

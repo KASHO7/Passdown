@@ -1,4 +1,6 @@
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.Concurrency;
+using Carowinds.Passdown.Application.Freshness;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Refresh;
@@ -25,7 +27,10 @@ public sealed class OperationsDashboardService(
     IAssociatePassdownService associatePassdownService,
     IFinalizedPassdownRepository finalizedPassdownRepository,
     IOperationalNotesService operationalNotesService,
-    IClock clock) : IOperationsDashboardService
+    IClock clock,
+    IRefreshOrchestrator? refreshOrchestrator = null,
+    IDeepRefreshStatusRepository? deepRefreshStatusRepository = null,
+    Func<IScheduledRefreshLock>? refreshLockFactory = null) : IOperationsDashboardService
 {
     public Task<OperationsDashboardSnapshot> GetTodayAsync(CancellationToken cancellationToken = default) =>
         LoadAsync(TodayEastern(), cancellationToken);
@@ -49,6 +54,55 @@ public sealed class OperationsDashboardService(
         var result = await associatePassdownService.CheckAssociateDateOnlineAsync(today, progress, cancellationToken).ConfigureAwait(false);
         var snapshot = await BuildSnapshotAsync(today, result.Workspace, cancellationToken).ConfigureAwait(false);
         return new OperationsDashboardCheckOnlineResult(snapshot, result.Summary);
+    }
+
+    public async Task<DeepRefreshStatusView> GetDeepRefreshStatusAsync(CancellationToken cancellationToken = default)
+    {
+        var status = deepRefreshStatusRepository is null
+            ? null
+            : await deepRefreshStatusRepository.GetAsync(cancellationToken).ConfigureAwait(false);
+
+        return new DeepRefreshStatusView(status, DeepRefreshCoverage.NeedsDeepRefresh(status, TodayEastern()));
+    }
+
+    /// <summary>
+    /// Manual "Run Deep Refresh" (Phase 13D Part O/P) — always available, regardless of automatic
+    /// scheduling status (Part O "must remain available even if automatic scheduled refresh exists").
+    /// Shares the exact overlap-lock guard <see cref="CheckOnlineAsync"/> uses (never a second guard
+    /// implementation) — if a scheduled/startup-catch-up/other Deep Refresh already holds the lock,
+    /// this reports "already in progress" and reloads current local state rather than starting a
+    /// second concurrent orchestrator run.
+    /// </summary>
+    public async Task<DeepRefreshActionResult> RunDeepRefreshAsync(IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)
+    {
+        if (refreshOrchestrator is null)
+        {
+            throw new InvalidOperationException($"{nameof(RunDeepRefreshAsync)} requires an {nameof(IRefreshOrchestrator)} — none was supplied to this service.");
+        }
+
+        var today = TodayEastern();
+        RefreshSummary summary;
+
+        var refreshLock = refreshLockFactory?.Invoke();
+        if (refreshLock is not null && !refreshLock.TryAcquire())
+        {
+            summary = RefreshSummary.AlreadyInProgress(clock.UtcNow);
+        }
+        else
+        {
+            try
+            {
+                summary = await refreshOrchestrator.RunDeepRefreshAsync(bypassFreshness: true, focusDate: today, progress, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                refreshLock?.Dispose();
+            }
+        }
+
+        var snapshot = await LoadAsync(today, cancellationToken).ConfigureAwait(false);
+        var status = await GetDeepRefreshStatusAsync(cancellationToken).ConfigureAwait(false);
+        return new DeepRefreshActionResult(snapshot, summary, status);
     }
 
     private async Task<OperationsDashboardSnapshot> BuildSnapshotAsync(DateOnly operatingDate, AssociateWorkspace workspace, CancellationToken cancellationToken)

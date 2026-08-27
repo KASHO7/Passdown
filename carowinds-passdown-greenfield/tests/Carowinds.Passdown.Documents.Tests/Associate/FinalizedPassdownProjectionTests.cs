@@ -116,17 +116,18 @@ public class FinalizedPassdownProjectionTests
         Assert.Contains("Acme Corp", text);
     }
 
-    // Part I: PDF-generation failure (here, content that cannot fit on the strict one-page layout —
-    // AssociateWorkspaceFixtures.ExcessiveDay, the same fixture AssociatePassdownPdfGeneratorTests
-    // uses to exercise generator-level rejection) must fail BuildProjection outright rather than
-    // return a snapshot with no PDF.
+    // Phase 13D Part AA: content that overflows one page (AssociateWorkspaceFixtures.ExcessiveDay, the
+    // same fixture AssociatePassdownPdfGeneratorTests uses to exercise real multi-page generation) no
+    // longer blocks finalization outright — an unattended scheduled finalization must not silently
+    // lose an entire day's frozen record merely because content ran long. The frozen PDF simply spans
+    // more than one physical page.
     [Fact]
-    public void BuildProjection_ContentExceedsOnePage_ThrowsRatherThanReturningSnapshotOnly()
+    public void BuildProjection_ContentExceedsOnePage_StillFinalizes_WithMultiPageFrozenPdf()
     {
-        var exception = Assert.Throws<InvalidOperationException>(
-            () => Builder.BuildProjection(AssociateWorkspaceFixtures.ExcessiveDay(), AsOf));
+        var projection = Builder.BuildProjection(AssociateWorkspaceFixtures.ExcessiveDay(), AsOf);
 
-        Assert.Contains("2026-08-21", exception.Message);
+        Assert.NotNull(projection.PdfBytes);
+        Assert.True(PdfInspector.CountPages(projection.PdfBytes) > 1);
     }
 
     // Part G/U: no network/filesystem/user-interaction dependency — BuildProjection is constructed

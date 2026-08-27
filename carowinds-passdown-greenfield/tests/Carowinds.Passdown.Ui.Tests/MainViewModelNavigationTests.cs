@@ -425,6 +425,42 @@ public class MainViewModelNavigationTests
         Assert.Equal(targetDate, associate.SelectedDate);
     }
 
+    // Phase 13D Part AI/AJ: "View Date Pricing" from Calendar routes to Associate's Products section,
+    // explicitly setting its selected date to whatever Calendar had selected — the local-only
+    // navigation seam, never a network check.
+    [Fact]
+    public async Task CalendarViewDatePricingCommand_RoutesToAssociateProductsWithCalendarSelectedDate()
+    {
+        var main = CreateMainViewModel(out _, out var calendar, out var associate, out _, out _);
+        await calendar.PendingLoad;
+        associate.SelectedSection = AssociateSection.Notes;
+        var targetDate = new DateOnly(2026, 8, 5);
+        calendar.SelectDateCommand.Execute(targetDate);
+        await calendar.PendingLoad;
+
+        calendar.ViewDatePricingCommand.Execute(null);
+
+        Assert.Equal(AppSection.AssociatePassdown, main.SelectedSection);
+        Assert.Equal(AssociateSection.Products, associate.SelectedSection);
+        Assert.Equal(targetDate, associate.SelectedDate);
+    }
+
+    // Part AJ: View Date Pricing never mutates Calendar's own SelectedDate/Snapshot — navigation is a
+    // one-way read of whatever was already selected, not a round trip back into Calendar's state.
+    [Fact]
+    public async Task CalendarViewDatePricingCommand_NeverChangesCalendarSelectedDate()
+    {
+        var main = CreateMainViewModel(out _, out var calendar, out _, out _, out _);
+        await calendar.PendingLoad;
+        var targetDate = new DateOnly(2026, 8, 5);
+        calendar.SelectDateCommand.Execute(targetDate);
+        await calendar.PendingLoad;
+
+        calendar.ViewDatePricingCommand.Execute(null);
+
+        Assert.Equal(targetDate, calendar.SelectedDate);
+    }
+
     // Phase 12A Part F: "Open Operational Notes" from Calendar is generic navigation only.
     [Fact]
     public async Task CalendarOpenOperationalNotesCommand_NavigatesToOperationalNotesSection()

@@ -295,6 +295,24 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     public partial string? PdfExportMessage { get; set; }
 
+    /// <summary>
+    /// The real, authoritative page count of the most recently generated PDF (Phase 13D Part AA/AB) —
+    /// never a preflight estimate. Defaults to 1 (no warning) until a PDF has actually been generated
+    /// for the current session; only updated when generation actually produces bytes, so it is never
+    /// reset to a false "no warning" state merely because <see cref="CreatePdfCommand"/> was pressed
+    /// again (Part Z: repeated presses must not hide/reset the warning).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasMultiPagePdfWarning))]
+    [NotifyPropertyChangedFor(nameof(MultiPageWarningText))]
+    public partial int PdfPageCount { get; set; } = 1;
+
+    public bool HasMultiPagePdfWarning => PdfPageCount > 1;
+
+    public string? MultiPageWarningText => HasMultiPagePdfWarning
+        ? $"WARNING — Passdown is {PdfPageCount} pages. Reduce content before printing if possible."
+        : null;
+
     /// <summary>True while <see cref="ExportDiagnosticsCommand"/> is building/saving the diagnostic ZIP (Phase 7F Part F) — mirrors <see cref="IsExportingPdf"/>; kept independent of <see cref="IsBusy"/> so a Check Online/date load doesn't block this local-only export.</summary>
     [ObservableProperty]
     public partial bool IsExportingDiagnostics { get; set; }
@@ -547,6 +565,16 @@ public partial class AssociateViewModel : ViewModelBase
             }
 
             var result = _pdfExportService.GeneratePdf(workspace, DateTimeOffset.Now);
+
+            // Phase 13D Part AA/AB: reflects the real generated page count whenever a document was
+            // actually produced — including an overflow that still generated onto extra pages.
+            // Never overwritten by a validation failure that produced nothing (PageCount 0), so a
+            // stale-but-real prior warning is not silently cleared by an unrelated failure.
+            if (result.PageCount > 0)
+            {
+                PdfPageCount = result.PageCount;
+            }
+
             if (result.PdfBytes is not { } pdfBytes)
             {
                 _logger?.LogWarning("Associate PDF failed validation for {OperatingDate}: {Status}", workspace.OperatingDate, result.Preflight.Status);
@@ -1042,7 +1070,34 @@ public partial class AssociateViewModel : ViewModelBase
                     draft.ManualHoursOverride.Enabled, draft.ManualHoursOverride.OpeningTime, draft.ManualHoursOverride.ClosingTime,
                     draft.PrivateBuyout.Enabled, draft.PrivateBuyout.OpeningTime, draft.PrivateBuyout.ClosingTime);
 
-                Workspace = current with { Draft = draft, SaveStatus = status, ParkHours = parkHours };
+                // Phase 13D Part AC/AD: the just-saved draft's per-product include/price overrides must
+                // also be reflected onto Workspace.Products immediately — this is what
+                // AssociatePassdownDocumentModelBuilder actually reads (via AssociateProduct.EffectiveDisplayPrice/
+                // IncludeOnPdf), not Draft.ProductOverrides directly. Before this fix, CreatePdfAsync's
+                // FlushPendingAutosaveAsync -> SaveDraftNowAsync path updated Draft (so the override
+                // survived a reload) but left Products holding whatever official/default values the last
+                // full compose (initial load / date switch / Check Online) produced, so a custom value
+                // typed and saved just before "Create PDF" never reached the PDF unless something else
+                // happened to force a full recompose in between. Applies to every official product
+                // (dated or catalog) uniformly — never special-cased by category/name.
+                var updatedProducts = current.Products
+                    .Select(product =>
+                    {
+                        if (product.IsCustom)
+                        {
+                            return product;
+                        }
+
+                        var productOverride = draft.ProductOverrides.GetValueOrDefault(product.ProductIdentity, ProductDraftOverride.Default);
+                        return product with
+                        {
+                            IncludeOnPdf = productOverride.IncludeOnPdf,
+                            DisplayPriceOverride = productOverride.DisplayPriceOverride,
+                        };
+                    })
+                    .ToList();
+
+                Workspace = current with { Draft = draft, SaveStatus = status, ParkHours = parkHours, Products = updatedProducts };
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

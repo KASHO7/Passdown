@@ -5,9 +5,14 @@ using Microsoft.Extensions.Logging;
 namespace Carowinds.Passdown.Application.Refresh;
 
 /// <summary>
-/// <see cref="IScheduledRefreshRunner"/> built on <see cref="IRefreshOrchestrator.RunScheduledRefreshAsync"/>
-/// (Phase 6A Part D). Never calls <see cref="IRefreshOrchestrator.RunUserForcedRefreshAsync"/> —
-/// unattended execution always runs the due-sources rolling-window job, never a user-forced check.
+/// <see cref="IScheduledRefreshRunner"/> built on <see cref="IRefreshOrchestrator.RunDeepRefreshAsync"/>
+/// (Phase 6A Part D; Phase 13D Part Q: scheduled/startup-catch-up maintenance now reuses the same
+/// authoritative Deep Refresh operation the manual "Run Deep Refresh" button uses, rather than a
+/// second/narrower implementation — called with <c>bypassFreshness: false</c> so every non-Park-Hours
+/// source stays due-gated exactly as the prior due-sources rolling-window job was, while Park Hours
+/// still always extends to its full future coverage window). Never calls
+/// <see cref="IRefreshOrchestrator.RunUserForcedRefreshAsync"/> — unattended execution always runs
+/// this due-gated deep-maintenance job, never a user-forced check.
 /// </summary>
 public sealed class ScheduledRefreshRunner(
     IRefreshOrchestrator orchestrator,
@@ -24,7 +29,7 @@ public sealed class ScheduledRefreshRunner(
         var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
         logger.LogInformation("Scheduled refresh started ({Mode}) at {StartedAt} (version {Version}).", mode, clock.UtcNow, version);
 
-        var summary = await orchestrator.RunScheduledRefreshAsync(progress: null, cancellationToken).ConfigureAwait(false);
+        var summary = await orchestrator.RunDeepRefreshAsync(bypassFreshness: false, focusDate: null, progress: null, cancellationToken).ConfigureAwait(false);
 
         LogSummary(summary);
 

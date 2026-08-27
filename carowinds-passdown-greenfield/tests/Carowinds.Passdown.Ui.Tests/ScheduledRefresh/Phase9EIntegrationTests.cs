@@ -47,6 +47,9 @@ public class Phase9EIntegrationTests
 
         public Task<RefreshSummary> RunUserForcedRefreshAsync(DateOnly date, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Finalization must never trigger a refresh.");
+
+        public Task<RefreshSummary> RunDeepRefreshAsync(bool bypassFreshness, DateOnly? focusDate = null, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Finalization must never trigger a refresh.");
     }
 
     private static IReadOnlyList<IMigration> AllMigrations =>
@@ -327,8 +330,14 @@ public class Phase9EIntegrationTests
     // ==================================================================
 
     [Fact]
-    public async Task RealPdfGenerationFailure_BlocksRefresh_PreservesState_ThenSucceedsOnRetryAfterFixed()
+    public async Task ExcessiveDraftContent_NoLongerBlocksScheduledFinalization_ProducesMultiPageFrozenPdf()
     {
+        // Phase 13D Part AA: excessive content is no longer refused by AssociatePassdownPdfGenerator —
+        // it renders onto real additional pages instead. This test used to prove the opposite (a real
+        // PDF-generation failure blocks scheduled refresh); that failure mode no longer exists for
+        // "too much content," so this now proves the new, intentional behavior instead: an unattended
+        // scheduled finalization must not lose a whole day's frozen record merely because content ran
+        // long, and refresh proceeds normally afterward.
         var passdownDate = new DateOnly(2026, 8, 25);
         var tempDb = NewTempDb();
         try
@@ -337,10 +346,8 @@ public class Phase9EIntegrationTests
             var seedClock = new FakeClock(new DateTimeOffset(2026, 8, 25, 12, 0, 0, TimeSpan.Zero));
             var seedEnv = BuildEnvironment(tempDb, seedClock);
 
-            // Excessive content that the real AssociatePassdownPdfGenerator's strict one-page layout
-            // rejects (mirrors Documents.Tests' AssociateWorkspaceFixtures.ExcessiveDay composition).
-            // Deliberately draft-only (no catalog/dated seeding): the fix on retry below is simply
-            // re-saving the draft, so nothing else needs to be undone for the retry to succeed.
+            // Excessive content that exceeds one page (mirrors Documents.Tests'
+            // AssociateWorkspaceFixtures.ExcessiveDay composition) but is otherwise perfectly valid.
             var excessiveDraft = RepresentativeDraft() with
             {
                 OperationalNotes = Enumerable.Range(1, 6)
@@ -358,26 +365,14 @@ public class Phase9EIntegrationTests
 
             var exitCode = await host.RunAsync();
 
-            Assert.Equal(ScheduledRefreshExitCode.FatalFailure, exitCode);
-            Assert.Equal(0, refreshRunner.CallCount); // refresh never invoked for this invocation.
+            Assert.Equal(ScheduledRefreshExitCode.Success, exitCode);
+            Assert.Equal(1, refreshRunner.CallCount); // refresh proceeds — finalization did not fail.
 
-            var afterFailureEnv = BuildEnvironment(tempDb, clock);
-            Assert.False(await afterFailureEnv.FinalizedPassdowns.ExistsForDateAsync(passdownDate)); // no partial row.
-            var draftAfterFailure = await afterFailureEnv.Drafts.GetAsync(passdownDate);
-            Assert.NotNull(draftAfterFailure); // pre-refresh persisted source state (the draft) is unchanged.
-
-            // Retry: replace the excessive draft with the normal representative one; the same
-            // now-eligible date should finalize successfully and refresh should then proceed.
-            await SaveDraftAsync(afterFailureEnv.Drafts, passdownDate, RepresentativeDraft(), clock.UtcNow);
-            var retryRefreshRunner = new FakeScheduledRefreshRunner { ResultToReturn = FakeScheduledRefreshRunner.EmptySuccess() };
-            var retryHost = new ScheduledRefreshHost(() => BuildHostProvider(tempDb, clock, retryRefreshRunner));
-
-            var retryExitCode = await retryHost.RunAsync();
-
-            Assert.Equal(ScheduledRefreshExitCode.Success, retryExitCode);
-            Assert.Equal(1, retryRefreshRunner.CallCount);
-            var afterRetryEnv = BuildEnvironment(tempDb, clock);
-            Assert.True(await afterRetryEnv.FinalizedPassdowns.ExistsForDateAsync(passdownDate));
+            var afterEnv = BuildEnvironment(tempDb, clock);
+            Assert.True(await afterEnv.FinalizedPassdowns.ExistsForDateAsync(passdownDate));
+            var finalized = await afterEnv.FinalizedPassdowns.GetByDateAsync(passdownDate);
+            Assert.NotNull(finalized!.PdfBytes);
+            Assert.True(finalized.PdfBytes!.Length > 0);
         }
         finally
         {

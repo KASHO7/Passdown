@@ -21,6 +21,9 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
     private const int CarowindsParkId = 30;
     private const string ParkOperatingTypeName = "Park";
 
+    /// <summary>Phase 13D Part D: the same "Waterpark" operating-type entry documented (but previously left unread) in docs/retrieval/park-hours-source.md — present in the payload only on dates Carolina Harbor is separately open.</summary>
+    private const string WaterparkOperatingTypeName = "Waterpark";
+
     /// <summary>
     /// The human-facing official page (spec §5.1) — used as <see cref="SourceEvidence.SourceUrl"/>
     /// so evidence points somewhere a person can verify, rather than the CloudFront implementation
@@ -142,6 +145,8 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
                     $"Unparseable Park operating times '{parkItem.TimeFrom}'-'{parkItem.TimeTo}' for {requestedDate:yyyy-MM-dd}."));
         }
 
+        var (waterparkOpening, waterparkClosing) = ReadWaterparkHours(day);
+
         return SourceResult<ParkHoursPayload>.Success(
             SourceId,
             new SourceEvidence(
@@ -153,7 +158,32 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
                 RetrievalStrategy.DirectApi,
                 requestedDate: requestedDate,
                 confirmedDate: confirmedDate),
-            new ParkHoursPayload(openingTime, closingTime));
+            new ParkHoursPayload(openingTime, closingTime, waterparkOpening, waterparkClosing));
+    }
+
+    /// <summary>
+    /// Phase 13D Part D: reads the optional second <c>"Waterpark"</c> operating-type entry the same
+    /// response carries on dates Carolina Harbor is separately open — never guessed, never defaulted
+    /// to a hardcoded season window. Deliberately lenient: an absent, blank, or unparseable waterpark
+    /// entry yields <see langword="null"/>/<see langword="null"/> rather than failing the whole
+    /// retrieval — the main gate's hours (already validated above) are the critical data this source
+    /// exists for; the waterpark line is a same-payload bonus, not a second source of truth to guard
+    /// as strictly.
+    /// </summary>
+    private static (TimeOnly? Opening, TimeOnly? Closing) ReadWaterparkHours(ParkHoursApiDate day)
+    {
+        var waterparkItem = day.Operatings?
+            .FirstOrDefault(o => string.Equals(o.OperatingTypeName, WaterparkOperatingTypeName, StringComparison.OrdinalIgnoreCase))
+            ?.Items?.FirstOrDefault();
+
+        if (waterparkItem is null
+            || !TryParseClockTime(waterparkItem.TimeFrom, out var opening)
+            || !TryParseClockTime(waterparkItem.TimeTo, out var closing))
+        {
+            return (null, null);
+        }
+
+        return (opening, closing);
     }
 
     private SourceResult<ParkHoursPayload> Error(

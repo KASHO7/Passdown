@@ -568,25 +568,27 @@ public sealed class AssociatePassdownPdfGeneratorTests
     // one page is refused by preflight — with a useful, actionable reason — rather than spilling to
     // a continuation page.
     [Fact]
-    public void ExcessiveContent_FailsPreflightRatherThanGeneratingASecondPage()
+    public void ExcessiveContent_StillGenerates_ButReportsMoreThanOnePage()
     {
+        // Phase 13D Part AA/AB: excessive content is no longer refused — it renders onto real
+        // additional pages, and the authoritative page count (never the preflight estimate) is what
+        // a caller must use to warn the associate.
         var workspace = AssociateWorkspaceFixtures.ExcessiveDay();
         var model = BuildModel(workspace);
 
         var result = Generator.Generate(model);
 
-        Assert.Equal(AssociatePassdownPdfStatus.ValidationFailed, result.Status);
-        Assert.Null(result.PdfBytes);
-        Assert.Equal(AssociatePassdownPreflightStatus.ExceedsOnePage, result.Preflight.Status);
-        Assert.NotEmpty(result.Preflight.Reasons);
-        Assert.Contains(result.Preflight.Reasons, reason => reason.Contains("one page", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(AssociatePassdownPdfStatus.Generated, result.Status);
+        Assert.NotNull(result.PdfBytes);
+        Assert.True(result.PageCount > 1);
+        Assert.Equal(result.PageCount, PdfInspector.CountPages(result.PdfBytes!));
     }
 
-    // No Associate Passdown generation path can ever produce more than one physical page: a
-    // successful generation is always exactly one page (asserted throughout this file via
-    // PdfInspector.CountPages), and a too-large model fails validation instead of rendering at all.
+    // Normal-sized content always renders as exactly one physical page (asserted throughout this file
+    // via PdfInspector.CountPages); a too-large model still generates, but PageCount reports the real
+    // overflow rather than silently staying at 1 (Phase 13D Part AA/AB).
     [Fact]
-    public void SuccessfulGeneration_NeverProducesMoreThanOnePage()
+    public void SuccessfulGeneration_NormalContentIsExactlyOnePage_ExcessiveContentReportsRealOverflow()
     {
         foreach (var fixture in new Func<AssociateWorkspace>[]
         {
@@ -600,12 +602,31 @@ public sealed class AssociatePassdownPdfGeneratorTests
             var result = Generator.Generate(BuildModel(fixture()));
 
             Assert.Equal(AssociatePassdownPdfStatus.Generated, result.Status);
+            Assert.Equal(1, result.PageCount);
             Assert.Equal(1, PdfInspector.CountPages(result.PdfBytes!));
         }
 
         var excessiveResult = Generator.Generate(BuildModel(AssociateWorkspaceFixtures.ExcessiveDay()));
-        Assert.Equal(AssociatePassdownPdfStatus.ValidationFailed, excessiveResult.Status);
-        Assert.Null(excessiveResult.PdfBytes);
+        Assert.Equal(AssociatePassdownPdfStatus.Generated, excessiveResult.Status);
+        Assert.NotNull(excessiveResult.PdfBytes);
+        Assert.True(excessiveResult.PageCount > 1);
+    }
+
+    // Phase 13D Part Y: retrieval-verification metadata ("Last verified", "Not verified", staleness
+    // wording) never appears on the printed Associate Passdown, even for a day whose data is stale —
+    // that diagnostic signal stays in-app only (Dashboard Data Status, Associate's on-screen Park
+    // Hours panel, the Operations Calendar).
+    [Fact]
+    public void StaleDataDay_NeverPrintsVerificationMetadata()
+    {
+        var result = Generator.Generate(BuildModel(AssociateWorkspaceFixtures.StaleDataDay()));
+
+        Assert.Equal(AssociatePassdownPdfStatus.Generated, result.Status);
+        var text = PdfInspector.ExtractAllText(result.PdfBytes!);
+
+        Assert.DoesNotContain("Last verified", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Not verified", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("may be out of date", text, StringComparison.OrdinalIgnoreCase);
     }
 
     // 25. PDF begins with valid PDF bytes.

@@ -16,8 +16,11 @@ public sealed record OperationsCalendarOperatingStatePresentation(
     string? CompactStateLabel,
     string? CompactHoursLine,
     bool IsStale,
-    string AccessibilityText)
+    string AccessibilityText,
+    string? CompactWaterparkLine = null)
 {
+    public bool HasCompactWaterparkLine => CompactWaterparkLine is not null;
+
     public static OperationsCalendarOperatingStatePresentation Build(OperationsCalendarOperatingState state, AssociateParkHoursView parkHours)
     {
         ArgumentNullException.ThrowIfNull(parkHours);
@@ -77,7 +80,19 @@ public sealed record OperationsCalendarOperatingStatePresentation(
             accessibilityText += ". Stale — showing last known information.";
         }
 
-        return new OperationsCalendarOperatingStatePresentation(compactStateLabel, compactHoursLine, isStale, accessibilityText);
+        // Phase 13D Part F: compact, name-prefixed line in the SAME cell as main park hours — never a
+        // separate badge/card — shown only when the source actually published Carolina Harbor's hours
+        // for this date (never fabricated, never a placeholder for "not operating").
+        string? compactWaterparkLine = parkHours.HasWaterparkHours
+            ? $"Harbor {FormatCompactRange(parkHours.WaterparkOpening, parkHours.WaterparkClosing)}"
+            : null;
+
+        if (compactWaterparkLine is not null)
+        {
+            accessibilityText += $". Carolina Harbor {FormatAccessibleRange(parkHours.WaterparkOpening, parkHours.WaterparkClosing)}.";
+        }
+
+        return new OperationsCalendarOperatingStatePresentation(compactStateLabel, compactHoursLine, isStale, accessibilityText, compactWaterparkLine);
     }
 
     /// <summary>"10 AM–10 PM" — no leading zero, minutes only shown when not on the hour, to fit a compact cell (spec Part D/C).</summary>

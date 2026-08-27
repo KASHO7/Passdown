@@ -98,6 +98,17 @@ public partial class MainViewModel : ViewModelBase
         };
         Calendar.OpenOperationalNotesRequested += (_, _) => ShowOperationalNotesSection();
 
+        // Phase 13D Part AI/AJ: "View Date Pricing" routes to Associate's Products section for the
+        // selected date — same date-preservation/flush-then-load path as "Open Passdown" above, just
+        // targeting a different internal section, so an in-progress edit elsewhere is never lost and
+        // Calendar's own SelectedDate is left untouched by the navigation itself.
+        Calendar.ViewDatePricingRequested += (_, date) =>
+        {
+            Associate.SelectedDate = date;
+            Associate.SelectedSection = AssociateSection.Products;
+            ShowAssociateSection();
+        };
+
         // Phase 11B Part X: the smallest Notes-specific unsaved-changes guard, not a generic
         // navigation-guard framework. OperationalNotesViewModel.IsEditing is the one signal this type
         // observes; whenever it changes, the other section buttons' enabled state is re-evaluated so a

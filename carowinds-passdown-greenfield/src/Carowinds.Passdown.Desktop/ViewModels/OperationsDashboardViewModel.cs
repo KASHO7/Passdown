@@ -39,6 +39,7 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmptyOrErrorState))]
     [NotifyCanExecuteChangedFor(nameof(CheckOnlineCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RunDeepRefreshCommand))]
     public partial bool IsLoading { get; set; }
 
     [ObservableProperty]
@@ -49,6 +50,7 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CheckOnlineCommand))]
     [NotifyCanExecuteChangedFor(nameof(ReloadCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RunDeepRefreshCommand))]
     public partial bool IsCheckingOnline { get; set; }
 
     /// <summary>"Checking official sources…" / per-source progress text, shown only while <see cref="IsCheckingOnline"/> is true (Part N).</summary>
@@ -61,6 +63,29 @@ public partial class OperationsDashboardViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial bool CheckOnlineHadIssues { get; set; }
+
+    /// <summary>Current Deep Refresh status (Phase 13D Part U/V) — loaded alongside the snapshot; refreshed again after a manual run.</summary>
+    [ObservableProperty]
+    public partial DeepRefreshStatusView? DeepRefreshStatus { get; set; }
+
+    [ObservableProperty]
+    public partial DeepRefreshStatusPresentation? DeepRefreshPresentation { get; set; }
+
+    /// <summary>Busy state for the explicit "Run Deep Refresh" action (Phase 13D Part O) — distinct from <see cref="IsCheckingOnline"/>/<see cref="IsLoading"/>, mirroring the same pattern.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RunDeepRefreshCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CheckOnlineCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ReloadCommand))]
+    public partial bool IsRunningDeepRefresh { get; set; }
+
+    [ObservableProperty]
+    public partial string? DeepRefreshStatusMessage { get; set; }
+
+    [ObservableProperty]
+    public partial string? DeepRefreshResultMessage { get; set; }
+
+    [ObservableProperty]
+    public partial bool DeepRefreshHadIssues { get; set; }
 
     /// <summary>
     /// Raised when the "Open Passdown" action is used (Phase 10A Part O; Phase 10C Part G) — routes to
@@ -114,7 +139,7 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanReload))]
     private async Task ReloadAsync() => await LoadAsync().ConfigureAwait(true);
 
-    private bool CanReload() => !IsCheckingOnline;
+    private bool CanReload() => !IsCheckingOnline && !IsRunningDeepRefresh;
 
     /// <summary>
     /// Explicit "Check Online" (Phase 10D Part L/M/N): reuses the exact same manual-date refresh
@@ -159,7 +184,7 @@ public partial class OperationsDashboardViewModel : ViewModelBase
         }
     }
 
-    private bool CanCheckOnline() => !IsLoading && !IsCheckingOnline;
+    private bool CanCheckOnline() => !IsLoading && !IsCheckingOnline && !IsRunningDeepRefresh;
 
     private async Task LoadAsync()
     {
@@ -182,7 +207,66 @@ public partial class OperationsDashboardViewModel : ViewModelBase
         {
             IsLoading = false;
         }
+
+        await LoadDeepRefreshStatusAsync().ConfigureAwait(true);
     }
+
+    private async Task LoadDeepRefreshStatusAsync()
+    {
+        try
+        {
+            var status = await _service.GetDeepRefreshStatusAsync().ConfigureAwait(true);
+            DeepRefreshStatus = status;
+            DeepRefreshPresentation = DeepRefreshStatusPresentation.Build(status);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogError(ex, "Failed to load Deep Refresh status.");
+        }
+    }
+
+    /// <summary>
+    /// Explicit manual "Run Deep Refresh" (Phase 13D Part O/P) — always available (never hidden based
+    /// on scheduler status), runs regardless of coverage health, and reuses the exact same
+    /// <see cref="IOperationsDashboardService.RunDeepRefreshAsync"/> operation scheduled/startup-
+    /// catch-up maintenance uses. Mutually exclusive with Check Online/Reload at the UI level (their
+    /// own <c>Can...</c> gates check <see cref="IsRunningDeepRefresh"/> too) — the shared overlap lock
+    /// is still the authoritative guard, this is just responsive UX on top of it.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanRunDeepRefresh))]
+    private async Task RunDeepRefreshAsync()
+    {
+        IsRunningDeepRefresh = true;
+        DeepRefreshResultMessage = null;
+        DeepRefreshHadIssues = false;
+        DeepRefreshStatusMessage = "Checking online and preparing upcoming dates…";
+
+        var progress = new Progress<RefreshProgress>(p => DeepRefreshStatusMessage = RefreshMessages.Progress(p));
+
+        try
+        {
+            var result = await _service.RunDeepRefreshAsync(progress).ConfigureAwait(true);
+            Snapshot = result.Snapshot;
+            Presentation = OperationsDashboardPresentation.Build(result.Snapshot);
+            DeepRefreshStatus = result.Status;
+            DeepRefreshPresentation = DeepRefreshStatusPresentation.Build(result.Status);
+            DeepRefreshResultMessage = RefreshMessages.Summary(result.Summary);
+            DeepRefreshHadIssues = result.Summary.Failed > 0 || result.Summary.Cancelled > 0;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogError(ex, "Run Deep Refresh failed unexpectedly.");
+            DeepRefreshResultMessage = "Could not run Deep Refresh right now. Locally saved information is unchanged.";
+            DeepRefreshHadIssues = true;
+        }
+        finally
+        {
+            IsRunningDeepRefresh = false;
+            DeepRefreshStatusMessage = null;
+        }
+    }
+
+    private bool CanRunDeepRefresh() => !IsLoading && !IsCheckingOnline && !IsRunningDeepRefresh;
 
     [RelayCommand(CanExecute = nameof(CanOpenPassdown))]
     private void OpenPassdown() => OpenAssociateOverviewRequested?.Invoke(this, EventArgs.Empty);

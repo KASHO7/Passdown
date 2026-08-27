@@ -1582,3 +1582,28 @@ release rebuild (7E/9F/10F/11F) has carried, not a new risk.
 **Phase 12 (Operations Calendar) is complete — READY WITH ACCEPTED LIMITATIONS.** Phase 13 (app rename,
 refresh-policy overhaul, pricing/retrieval fixes, manual-hours/buyout redesign, ERT simplification,
 logo, Alerts) was confirmed not started.
+
+## Phase 13D addendum — geometry hardening, waterpark hours, selected-date pricing
+
+Full rationale, root-cause analysis, and validation live in `docs/phase13-hardening.md`'s own Phase
+13D section; this addendum only records what changed in the Calendar screen itself.
+
+- **Cell geometry fix**: `Button.calendarDay`'s `MinHeight="72"` (a floor, not a ceiling — the actual
+  cause of content-driven cell inflation) was replaced with a fixed `Height="132"` +
+  `ClipToBounds="True"`, uniform for every cell regardless of content. Every compact indicator line
+  now trims (`TextTrimming="CharacterEllipsis"`, `TextWrapping="NoWrap"`) instead of wrapping.
+- **Waterpark hours**: `AssociateParkHoursView`/`OperationsCalendarDay` carry Carolina Harbor's hours
+  (nullable, published-dates-only) alongside the main gate's. Day cell: one additional compact line
+  (`dayWaterparkLine`) in the same cell, never a separate badge. Selected-date panel: a "Carolina
+  Harbor" section, shown only when applicable.
+- **Selected-date Daily Admission price**: `OperationsCalendarSelectedDateSummary.DailyAdmission`,
+  sourced from the selected date's already-composed `AssociateWorkspace.Products` (no new query) —
+  the lowest-priced `DatedAdmissionTickets` product, identified structurally, never by name.
+- **View Date Pricing**: new `OperationsCalendarViewModel.ViewDatePricingCommand`/
+  `ViewDatePricingRequested`, wired in `MainViewModel` exactly like the existing "Open Passdown" deep
+  link, targeting Associate's Products section instead of Overview — local-only navigation, never
+  triggers a network check, never mutates Calendar's own `SelectedDate`.
+
+No schema change from any of the above — database schema moved 10→11 this phase, but for an unrelated
+reason (`deep_refresh_status`, see `docs/phase13-hardening.md`), not for anything in the Calendar
+screen itself.

@@ -1,10 +1,13 @@
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Layout;
 using Avalonia.LogicalTree;
+using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Calendar;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
+using Carowinds.Passdown.Domain.Hours;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
 
 namespace Carowinds.Passdown.Ui.Tests;
@@ -335,5 +338,103 @@ public class OperationsCalendarViewTests
         view.Arrange(new Rect(0, 0, 960, 640));
 
         Assert.True(view.Bounds.Width > 0 && view.Bounds.Height > 0);
+    }
+
+    // ==================================================================================
+    // Phase 13D Part A/B/C/AV — equal day-cell geometry regardless of content
+    // ==================================================================================
+    //
+    // This headless test harness (no real compositor/window — see the file's own remark on the
+    // existing 1280×860/960×640 tests above) does not realize ItemsControl's generated day-cell
+    // containers via Measure/Arrange alone (confirmed empirically: neither GetLogicalDescendants nor
+    // GetVisualDescendants finds them without a real windowed layout pass), so per-cell pixel bounds
+    // cannot be asserted here. Two things ARE reliably provable in this environment and both are
+    // asserted below: (1) the compiled Button.calendarDay style itself sets a fixed Height — never a
+    // MinHeight/no-cap, which is the actual mechanism that makes every cell equal regardless of
+    // content, inspected directly off the loaded Style object, not inferred; (2) construction/layout
+    // never throws under the densest realistic content this phase's own dense-month scenario
+    // describes (mixed states, waterpark hours, many notes concentrated on one outlier date, off-month
+    // cells alongside it) at both target viewports.
+
+    private static AssociateParkHoursView OpenParkHoursWithWaterpark => new(
+        ParkHoursCalculator.Calculate(false, new TimeOnly(10, 0), new TimeOnly(22, 0), false, null, null, false, null, null),
+        new AssociateVerificationInfo(AssociateVerificationState.Stale, DateTimeOffset.UtcNow.AddDays(-2), TimeSpan.FromDays(2), "Stale."),
+        OfficialIsClosed: false,
+        OfficialOpening: new TimeOnly(10, 0),
+        OfficialClosing: new TimeOnly(22, 0),
+        WaterparkOpening: new TimeOnly(11, 0),
+        WaterparkClosing: new TimeOnly(18, 0));
+
+    /// <summary>Builds one exceptionally content-heavy day (every indicator: custom hours, waterpark, stale, many Important notes, a Draft) alongside otherwise-sparse siblings — the direct regression target for Part A/B "one date's content must NOT expand only that date's cell."</summary>
+    private static OperationsCalendarSnapshot DenseSingleOutlierDaySnapshot(DateOnly month, DateOnly selected)
+    {
+        var baseline = FakeOperationsCalendarService.DefaultSnapshot(month, selected);
+        var days = baseline.Days
+            .Select((d, index) => index == 3
+                ? d with
+                {
+                    OperatingState = OperationsCalendarOperatingState.CustomHours,
+                    ParkHours = OpenParkHoursWithWaterpark,
+                    HasFinalizedPassdown = false,
+                    HasAssociateDraft = true,
+                    RelevantOperationalNoteCount = 27,
+                    ImportantOperationalNoteCount = 14,
+                }
+                : d)
+            .ToList();
+        return baseline with { Days = days };
+    }
+
+    // Part A: the day-cell style itself uses a fixed Height, not MinHeight — read directly off the
+    // compiled Style object rather than inferred, so this fails immediately if a future edit reverts
+    // to an auto-growing MinHeight.
+    [Fact]
+    public void CalendarDayStyle_UsesFixedHeight_NotMinHeight()
+    {
+        var view = new OperationsCalendarView();
+
+        var calendarDayStyle = view.Styles
+            .OfType<Avalonia.Styling.Style>()
+            .Single(s => s.Selector!.ToString() == "Button.calendarDay");
+
+        var setters = calendarDayStyle.Setters.OfType<Avalonia.Styling.Setter>().ToList();
+        Assert.Contains(setters, s => s.Property == Layoutable.HeightProperty);
+        Assert.DoesNotContain(setters, s => s.Property == Layoutable.MinHeightProperty);
+        Assert.Contains(setters, s => s.Property == Visual.ClipToBoundsProperty && Equals(s.Value, true));
+    }
+
+    [Theory]
+    [InlineData(1280, 860)]
+    [InlineData(960, 640)]
+    public async Task OperationsCalendarView_DenseMonthWithSingleOutlierDayAndWaterpark_LayoutDoesNotThrow(double width, double height)
+    {
+        var service = new FakeOperationsCalendarService { SnapshotFactory = DenseSingleOutlierDaySnapshot };
+        var viewModel = new OperationsCalendarViewModel(service, CreateClock());
+        await viewModel.PendingLoad;
+
+        var view = new OperationsCalendarView { DataContext = viewModel, Width = width, Height = height };
+        view.Measure(new Size(width, height));
+        view.Arrange(new Rect(0, 0, width, height));
+
+        Assert.True(view.Bounds.Width > 0 && view.Bounds.Height > 0);
+        // The outlier date's own view-model properties reflect the dense content (proving the binding
+        // path exists end to end) without needing realized pixel bounds to prove the style caps it.
+        var outlierDay = viewModel.Days.Single(d => d.HasWaterparkLine);
+        Assert.True(outlierDay.HasImportantOperationalNotes);
+        Assert.NotNull(outlierDay.NotesSummaryText);
+    }
+
+    // Part AV #10: off-month cells still bind/layout cleanly alongside a content-heavy in-month date.
+    [Fact]
+    public async Task OperationsCalendarView_OffMonthCellsAlongsideDenseOutlierDay_ConstructsWithoutError()
+    {
+        var service = new FakeOperationsCalendarService { SnapshotFactory = DenseSingleOutlierDaySnapshot };
+        var viewModel = new OperationsCalendarViewModel(service, CreateClock());
+        await viewModel.PendingLoad;
+
+        var view = new OperationsCalendarView { DataContext = viewModel };
+
+        Assert.Contains(viewModel.Days, d => !d.IsInDisplayedMonth);
+        Assert.Same(viewModel, view.DataContext);
     }
 }

@@ -48,6 +48,40 @@ public class ParkHoursSourceTests
         Assert.Equal(new TimeOnly(19, 0), result.Payload!.ClosingTime);
     }
 
+    // Phase 13D Part D: the same response can carry a second "Waterpark" operating-type entry on
+    // dates Carolina Harbor is separately open — now read, previously silently ignored.
+    [Fact]
+    public async Task RetrieveAsync_DateWithWaterparkEntry_PopulatesWaterparkHours()
+    {
+        var requestedDate = new DateOnly(2026, 8, 22);
+        var source = BuildSource(JsonResponse("open-date-with-waterpark.json"), out _);
+
+        var result = await source.RetrieveAsync(Request(requestedDate), CancellationToken.None);
+
+        Assert.Equal(RetrievalStatus.Verified, result.Evidence.Status);
+        Assert.NotNull(result.Payload);
+        Assert.Equal(new TimeOnly(10, 0), result.Payload!.OpeningTime);
+        Assert.Equal(new TimeOnly(19, 0), result.Payload!.ClosingTime);
+        Assert.Equal(new TimeOnly(11, 0), result.Payload!.WaterparkOpeningTime);
+        Assert.Equal(new TimeOnly(18, 0), result.Payload!.WaterparkClosingTime);
+    }
+
+    // Phase 13D Part E: no waterpark entry at all (the normal case for most of the year) must never
+    // be treated as an error, and must never fabricate a season-end assumption — both fields are
+    // simply null.
+    [Fact]
+    public async Task RetrieveAsync_DateWithoutWaterparkEntry_LeavesWaterparkHoursNull()
+    {
+        var requestedDate = new DateOnly(2026, 8, 20);
+        var source = BuildSource(JsonResponse("open-date.json"), out _);
+
+        var result = await source.RetrieveAsync(Request(requestedDate), CancellationToken.None);
+
+        Assert.NotNull(result.Payload);
+        Assert.Null(result.Payload!.WaterparkOpeningTime);
+        Assert.Null(result.Payload!.WaterparkClosingTime);
+    }
+
     [Fact]
     public async Task RetrieveAsync_PublishedClosedDate_ReturnsClosedWithoutPayload()
     {

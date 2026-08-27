@@ -34,7 +34,8 @@ public sealed class AssociatePassdownService(
     IRefreshOrchestrator refreshOrchestrator,
     IOperationalNotesService operationalNotesService,
     IClock clock,
-    Func<IScheduledRefreshLock>? refreshLockFactory = null) : IAssociatePassdownService
+    Func<IScheduledRefreshLock>? refreshLockFactory = null,
+    IDeepRefreshStatusRepository? deepRefreshStatusRepository = null) : IAssociatePassdownService
 {
     private static readonly SourceCategory[] CatalogCategories =
     [
@@ -92,14 +93,31 @@ public sealed class AssociatePassdownService(
 
     private async Task<AssociateOnlineCheckResult> RunForcedRefreshAsync(DateOnly operatingDate, IProgress<RefreshProgress>? progress, CancellationToken cancellationToken)
     {
-        var summary = await refreshOrchestrator.RunUserForcedRefreshAsync(operatingDate, progress, cancellationToken).ConfigureAwait(false);
+        // Phase 13D Part M/N: when future Park Hours coverage is insufficient (never run before, or
+        // fallen behind the target horizon — computed purely from local persisted state, never "has
+        // this user ever clicked Check Online"), this same click also bootstraps that coverage and
+        // force-refreshes every supported commercial source, rather than leaving the associate to
+        // discover thin Calendar coverage some other time. Once coverage is healthy, Check Online
+        // stays the normal, fast, single-date UserForced refresh (Part N) — never an unnecessary
+        // whole-month repopulation. A null repository (every pre-13D caller/test) preserves the exact
+        // prior behavior unconditionally.
+        var summary = deepRefreshStatusRepository is not null && await NeedsDeepRefreshAsync(cancellationToken).ConfigureAwait(false)
+            ? await refreshOrchestrator.RunDeepRefreshAsync(bypassFreshness: true, operatingDate, progress, cancellationToken).ConfigureAwait(false)
+            : await refreshOrchestrator.RunUserForcedRefreshAsync(operatingDate, progress, cancellationToken).ConfigureAwait(false);
 
         // Recomposed unconditionally, whether the refresh above succeeded or failed: on failure,
-        // RunUserForcedRefreshAsync's own registrations already left every prior last-known-good
-        // value untouched (spec §6.7), so this simply re-reads whatever is now the current cached
-        // state either way — no separate success/failure branch is needed here.
+        // the orchestrator's own registrations already left every prior last-known-good value
+        // untouched (spec §6.7), so this simply re-reads whatever is now the current cached state
+        // either way — no separate success/failure branch is needed here.
         var workspace = await ComposeAsync(operatingDate, cancellationToken).ConfigureAwait(false);
         return new AssociateOnlineCheckResult(workspace, summary);
+    }
+
+    private async Task<bool> NeedsDeepRefreshAsync(CancellationToken cancellationToken)
+    {
+        var status = await deepRefreshStatusRepository!.GetAsync(cancellationToken).ConfigureAwait(false);
+        var today = DateOnly.FromDateTime(EasternTimeZone.ConvertFromUtc(clock.UtcNow).DateTime);
+        return DeepRefreshCoverage.NeedsDeepRefresh(status, today);
     }
 
     public async Task<AssociateSaveStatus> SaveDraftAsync(DateOnly operatingDate, AssociateDraftPayload draft, CancellationToken cancellationToken = default)

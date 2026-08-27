@@ -13,4 +13,15 @@ public enum RefreshJobType
     /// <see cref="RefreshMode.UserForced"/>.
     /// </summary>
     UserForced,
+
+    /// <summary>
+    /// Phase 13D: the coverage-aware maintenance operation — always refreshes Park Hours across the
+    /// full future coverage window (today through the end of next calendar month, unconditionally),
+    /// plus every other dated/catalog source over the normal rolling window, either due-gated
+    /// (scheduled/startup catch-up maintenance) or fully unconditional (the manual "Run Deep Refresh"
+    /// button, and the first/insufficient-coverage "Check Online" bootstrap). Updates scheduled-
+    /// cadence source state, unlike <see cref="UserForced"/> — a successful Deep Refresh genuinely is
+    /// a fresh check for every source it touches.
+    /// </summary>
+    DeepRefresh,
 }

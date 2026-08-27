@@ -226,7 +226,7 @@
                        from the header's IsLoading ProgressBar — the local reload and the online check
                        are two different kinds of "busy" and must not look like the same one to a
                        screen reader or at a glance. -->
-                  <ProgressBar IsIndeterminate="True" Height="3" Width="140" HorizontalAlignment="Right"
+                  <ProgressBar x:Name="CheckOnlineBusyBar" IsIndeterminate="True" Height="3" Width="140" HorizontalAlignment="Right"
                                IsVisible="{Binding IsCheckingOnline}" />
                   <TextBlock Text="{Binding CheckOnlineStatusMessage}" Classes="muted" HorizontalAlignment="Right"
                              TextWrapping="Wrap" MaxWidth="230" TextAlignment="Right"
@@ -290,6 +290,40 @@
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
+                </StackPanel>
+              </Grid>
+
+              <!-- Phase 13D Part U/V: Deep Refresh status + the always-available manual action —
+                   distinct from Check Online (Part X: Last Deep Refresh / Last Check Online / Last
+                   Verified are three different concepts). Kept compact — one headline line, one
+                   optional detail line, one optional coverage line, and the button — never a second
+                   Alerts-style panel (Part V). -->
+              <Border Height="1" Background="{DynamicResource PassdownDividerBrush}" Margin="0,2,0,0" />
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Spacing="2">
+                  <TextBlock Text="DEEP REFRESH" Classes="sectionTitle" Margin="0" />
+                  <TextBlock Text="{Binding DeepRefreshPresentation.HeadlineText}" FontWeight="SemiBold"
+                             AutomationProperties.Name="Deep Refresh status"
+                             AutomationProperties.HelpText="{Binding DeepRefreshPresentation.AutomationText}" />
+                  <TextBlock Text="{Binding DeepRefreshPresentation.DetailText}" Classes="muted" TextWrapping="Wrap"
+                             IsVisible="{Binding DeepRefreshPresentation.DetailText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  <TextBlock Text="{Binding DeepRefreshPresentation.CoverageText}" Classes="muted" TextWrapping="Wrap"
+                             IsVisible="{Binding DeepRefreshPresentation.CoverageText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Spacing="6" HorizontalAlignment="Right">
+                  <Button Content="Run Deep Refresh" Classes="secondaryAction" HorizontalAlignment="Right"
+                          Command="{Binding RunDeepRefreshCommand}"
+                          AutomationProperties.Name="Run Deep Refresh"
+                          AutomationProperties.HelpText="Restores upcoming Park Hours coverage and refreshes every supported product/pricing source, regardless of when it last ran." />
+                  <ProgressBar x:Name="DeepRefreshBusyBar" IsIndeterminate="True" Height="3" Width="140" HorizontalAlignment="Right"
+                               IsVisible="{Binding IsRunningDeepRefresh}" />
+                  <TextBlock Text="{Binding DeepRefreshStatusMessage}" Classes="muted" HorizontalAlignment="Right"
+                             TextWrapping="Wrap" MaxWidth="230" TextAlignment="Right"
+                             IsVisible="{Binding DeepRefreshStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  <TextBlock Text="{Binding DeepRefreshResultMessage}" Classes="muted" FontWeight="SemiBold" HorizontalAlignment="Right"
+                             TextWrapping="Wrap" MaxWidth="230" TextAlignment="Right"
+                             IsVisible="{Binding DeepRefreshResultMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 </StackPanel>
               </Grid>
 

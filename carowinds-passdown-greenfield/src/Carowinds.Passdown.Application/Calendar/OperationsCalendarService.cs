@@ -3,6 +3,7 @@ using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Catalog;
 using Carowinds.Passdown.Domain.Hours;
 
 namespace Carowinds.Passdown.Application.Calendar;
@@ -111,7 +112,48 @@ public sealed class OperationsCalendarService(
             noteCount,
             ClassifyOperatingState(workspace.ParkHours),
             workspace.ParkHours,
-            ImportantOperationalNoteCount: CountImportant(allNotes, selectedDate));
+            ImportantOperationalNoteCount: CountImportant(allNotes, selectedDate),
+            DailyAdmission: BuildDailyAdmissionPrice(workspace));
+    }
+
+    /// <summary>
+    /// Phase 13D Part AH: the selected date's regular Daily Admission price — read straight from the
+    /// already-composed <see cref="AssociateWorkspace.Products"/> list (never a second retrieval/
+    /// composition). Deliberately just one representative product per Part AK's "keep it compact"
+    /// rule: among every <see cref="SourceCategory.DatedAdmissionTickets"/> product for this date, the
+    /// lowest-priced one — the base admission ticket is reliably the cheapest option in this category
+    /// (bundles/upsells are always priced higher), so this identifies it structurally rather than by
+    /// matching a specific product name (never special-cased per Part AF's "generic, not
+    /// name-specific" rule). Never fabricates a price: no product in the category at all is reported
+    /// via the category's own checked/unchecked/unavailable status, exactly like every other Dashboard/
+    /// Calendar status surface.
+    /// </summary>
+    private static OperationsCalendarDailyAdmissionPrice BuildDailyAdmissionPrice(AssociateWorkspace workspace)
+    {
+        var candidate = workspace.Products
+            .Where(p => p.Category == SourceCategory.DatedAdmissionTickets && p.OfficialPriceAmount is not null)
+            .OrderBy(p => p.OfficialPriceAmount)
+            .FirstOrDefault();
+
+        if (candidate is not null)
+        {
+            return new OperationsCalendarDailyAdmissionPrice(
+                OperationsCalendarDailyAdmissionStatus.Available,
+                candidate.DisplayName,
+                candidate.OfficialPriceAmount,
+                candidate.PriceKind,
+                candidate.PriceQualifier);
+        }
+
+        var categoryStatus = workspace.CategoryStatuses.FirstOrDefault(s => s.Category == SourceCategory.DatedAdmissionTickets);
+        var status = categoryStatus?.State switch
+        {
+            AssociateVerificationState.NotPublished => OperationsCalendarDailyAdmissionStatus.NotPublished,
+            AssociateVerificationState.Unavailable or AssociateVerificationState.Error => OperationsCalendarDailyAdmissionStatus.Unavailable,
+            _ => OperationsCalendarDailyAdmissionStatus.NotCheckedYet,
+        };
+
+        return new OperationsCalendarDailyAdmissionPrice(status, DisplayName: null, PriceAmount: null, PriceKind.Unknown, PriceQualifier: null);
     }
 
     /// <summary>

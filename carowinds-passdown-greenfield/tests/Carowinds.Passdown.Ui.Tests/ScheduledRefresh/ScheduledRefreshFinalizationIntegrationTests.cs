@@ -38,6 +38,9 @@ public class ScheduledRefreshFinalizationIntegrationTests
 
         public Task<RefreshSummary> RunUserForcedRefreshAsync(DateOnly date, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Finalization must never trigger a refresh.");
+
+        public Task<RefreshSummary> RunDeepRefreshAsync(bool bypassFreshness, DateOnly? focusDate = null, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Finalization must never trigger a refresh.");
     }
 
     private static IServiceProvider BuildProvider(string databasePath, FakeClock clock, FakeScheduledRefreshRunner refreshRunner)
