@@ -301,3 +301,104 @@ anywhere in the live evidence for this page, and inventing one to satisfy would-
 would violate spec §5.2's never-fabricate rule the same way populating validity from `promoBar` would
 have. If a future revalidation finds either field, add extraction for it then, grounded in that
 evidence.
+
+## Phase 13A audit (2026-08-27) — current retrieval architecture, product identity, and gaps
+
+Read-only trace performed for the Phase 13A audit, following docs → fixtures → Infrastructure source
+adapters → DI registration → parsers → reconciliation → tests end to end for every currently
+implemented source. Nothing below supersedes the live-investigation findings above — it is a
+structural map and gap list layered on top of them.
+
+### Currently implemented commercial surfaces (8 sources, all wired into DI and the refresh orchestrator)
+
+| # | Source | Adapter (file) | `SourceCategory` | Date-sensitive? | Cadence |
+|---|---|---|---|---|---|
+| 1 | Park hours | `ParkHoursSource.cs` | `ParkHours` | Yes (per-date) | Daily |
+| 2 | Dated admission tickets | `DatedAdmissionSource.cs` | `DatedAdmissionTickets` | Yes (per-date) | Daily |
+| 3 | Dated Fast Lane | `DatedFastLaneSource.cs` | `DatedFastLane` | Yes (per-date) | Daily |
+| 4 | Dated haunted attractions (SCarowinds) | `DatedHauntedSource.cs` | `HauntedAttractions` | Yes (per-date) | Daily |
+| 5 | Promotions | `PromotionsCatalogSource.cs` | `Promotions` | No (catalog) | Daily |
+| 6 | Season passes | `SeasonPassCatalogSource.cs` | `SeasonPasses` | No (catalog) | Rolling (config `SeasonPassRefreshIntervalDays`) |
+| 7 | Season-pass add-ons | `SeasonPassAddOnsCatalogSource.cs` | `AddOns` (shared) | No (catalog) | Rolling (config `AddOnRefreshIntervalDays`) |
+| 8 | General add-ons | `GeneralAddOnsCatalogSource.cs` | `AddOns` (shared) | No (catalog) | Rolling (config `AddOnRefreshIntervalDays`) |
+
+All 8 are registered in `src/Carowinds.Passdown.Desktop/App.axaml.cs` (`AddRefreshOrchestration`,
+lines ~252–259 for the adapter singletons, ~272–279 for their `SourceRegistration` pairing with
+either `IDatedResultRepository` (sources 1–4, `dated_results` table) or
+`IProductReconciliationService` (sources 5–8, `catalog_products`/`product_history` tables). Cadences
+come from `FreshnessPolicyCatalog.Build` (`Application/Freshness/FreshnessPolicyCatalog.cs`).
+
+Sources 1–4 share one parsing foundation (`Infrastructure/Retrieval/Sources/AccessoKeywordCalendar.cs`,
+the accesso `getkeywordcalendar` envelope). Sources 5–7 share another
+(`ProductCardHtmlParser.cs`/`CatalogCardMapper.cs`, the `productv2-card` markup). Source 8
+(`GeneralAddOnHtmlParser.cs`) has its own separately-evidenced parser for `add-ons`' simpler card
+shape, reusing only `ProductCardHtmlParser`'s generic string-scanning utilities and the shared
+`CatalogCardMapper` for identity/mapping — not the `productv2-card` shape itself.
+
+### Product families actually observed (from fixtures + live-investigation evidence, not guessed)
+
+Dated: `Park Ticket` (admission), `FAST LANE RESERVE`/`FAST LANE ULTIMATE`, `Haunted Attractions
+Pass`/`Haunted Attractions Express Pass`.
+
+Catalog: `Bring-A-Friend Ticket` (Promotions, keyword `SnapWizard`), `2027 Gold Pass` (present as
+**two independently-tracked catalog rows** — one under `Promotions` with Sanity id
+`9d031bb4-...`, one under `SeasonPasses` with Sanity id `550e3db6-...`, correctly kept separate by
+`CatalogProductKey`'s category scoping), `All Season Fast Lane`, `All Season Dining Access`, `All
+Season FunPix` (Season-Pass Add-Ons), `Single Day FunPix`, `All Season FunPix` again (General
+Add-Ons — same display name, different page/source, different keyword — `27AddonsPhoto` vs. the
+season-pass add-ons page's own copy of the same name/keyword pair, i.e. genuinely the same product
+reachable from two pages today, unlike the two differently-id'd Gold Pass cards).
+
+### Product-identity collision analysis (spec §7.2 precedence: official id > official URL > source+category+name)
+
+Verified directly in `Domain/Catalog/CatalogProductKey.cs`: `Create` (lines 51–65) tries
+`officialProductId` first, then `officialUrl` (never populated by any current adapter — no
+per-product URL exists on any page investigated), then falls back to
+`FromSourceAndName`. Every key is additionally scoped by `SourceCategory` (`ToString()` is
+`{Category}:{Value}`), so cross-category name collisions (e.g. the same "2027 Gold Pass" name
+appearing under both `Promotions` and `SeasonPasses`) are already safe by construction — proven
+correct by the real Phase 3F4 case above.
+
+**Real collision surface**: the id tier (`FromOfficialId`) builds its key from the id alone —
+`id:{normalizedId}` — with **no product-name component at all**. Two genuinely different products
+that happened to share one official id (accesso keyword or Sanity doc id) would silently collide and
+overwrite each other's catalog row; the name-fallback tier does not have this problem, since
+`Normalize` (lowercase + whitespace-collapse only, no punctuation stripping) still keeps differently-
+named products apart — e.g. a hypothetical "Bring-A-Friend Duo" would normalize to
+`"bring-a-friend duo"`, distinct from `"Bring-A-Friend Ticket"`'s `"bring-a-friend ticket"`. This
+means an ordinary Bring-A-Friend ticket, a hypothetical Bring-A-Friend Duo, and a Military/
+First-Responder ticket would **not** collide today under the name tier, and are safe as long as each
+retains (or lacks) its own distinct official id. This has not been proven safe under the id tier,
+because none of those product lines exist in any current fixture or adapter to check against real
+accesso keyword/Sanity id data (see gap below).
+
+A secondary, opposite-direction identity fragility: because `Normalize` doesn't strip hyphens/
+punctuation, `"Bring-A-Friend"` vs. a hypothetical unhyphenated `"Bring A Friend"` rendering would
+mint two *different* keys (under-merging), not collide (over-merging) — worth knowing if display-name
+formatting ever drifts, but not a data-loss risk the way an id collision would be.
+
+### Known gaps identified this pass
+
+- **Id-tier collision risk is unverified for any product not yet onboarded** (see above) — should be
+  checked against live accesso/Sanity data before wiring up any new product line that might share a
+  keyword with an existing one.
+- **`biggest-sale-of-the-year`** (Promotions' documented secondary URL) remains investigated but
+  deliberately unadopted — it currently serves a priceless marketing CTA card that would throw
+  `FormatException` through `ProductCardHtmlParser`'s all-or-nothing title/price rule.
+- **`fallwizard`** (an admission+maze bundle keyword, distinct from `HAPWizard`) was found live during
+  the haunted-attractions investigation but was deliberately not implemented — out of scope for that
+  phase.
+- **LKG (`LastKnownGood<T>`) storage-side behavior was not independently re-verified this pass** —
+  confirmed correct at the Domain-type level (`Domain/Retrieval/LastKnownGood.cs`), but this audit did
+  not re-open `SqliteDatedResultRepository`'s internals to confirm it actually persists values through
+  that wrapper.
+
+### Flag for Phase 13C discovery (not investigated further here — a separate agent is tracing *why*)
+
+**Bring-A-Friend Duo** and **Military/First-Responder tickets** do not appear in any of: the 8
+adapters' source code, any fixture under `fixtures/catalog-source/`, `fixtures/promotions/`,
+`fixtures/season-pass-add-ons/`, or `fixtures/general-add-ons/`, or any live-investigation doc in
+`docs/retrieval/`. This was confirmed by direct inspection of Infrastructure source files and fixture
+contents, not inferred from their absence at the Application layer. Their absence is flagged here as a
+traced fact for 13C's discovery work; the reason they were never onboarded is out of this audit's
+scope.
