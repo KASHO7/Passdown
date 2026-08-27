@@ -28,6 +28,7 @@ public partial class PassdownHistoryViewModel : ViewModelBase
     private int _detailLoadVersion;
     private Task _pendingLoad = Task.CompletedTask;
     private Task _pendingDetailLoad = Task.CompletedTask;
+    private Task _pendingSelectByDate = Task.CompletedTask;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasHistory))]
@@ -104,6 +105,30 @@ public partial class PassdownHistoryViewModel : ViewModelBase
 
     /// <summary>The in-flight (or most recently finished) detail load triggered by <see cref="SelectedItem"/> changing.</summary>
     public Task PendingDetailLoad => _pendingDetailLoad;
+
+    /// <summary>The in-flight (or most recently finished) call started by <see cref="SelectByDateAsync"/>, so a test can await it deterministically.</summary>
+    public Task PendingSelectByDate => _pendingSelectByDate;
+
+    /// <summary>
+    /// Phase 12D Part I/J/K: the clean date-based seam <see cref="MainViewModel"/> uses to preselect a
+    /// finalized record when the Operations Calendar explicitly routes here for a specific date —
+    /// never constructed/searched from outside this type, and never used for plain top-level History
+    /// navigation (which must preserve whatever was already selected). Waits for the list load first so
+    /// a match can actually be found even if this is called before <see cref="LoadHistoryAsync"/>
+    /// finishes; if no matching row exists, History simply opens with its current selection untouched —
+    /// never a crash, and never a fabricated selection.
+    /// </summary>
+    public Task SelectByDateAsync(DateOnly date) => _pendingSelectByDate = SelectByDateCoreAsync(date);
+
+    private async Task SelectByDateCoreAsync(DateOnly date)
+    {
+        await PendingLoad.ConfigureAwait(true);
+        var match = HistoryItems.FirstOrDefault(item => item.PassdownDate == date);
+        if (match is not null)
+        {
+            SelectedItem = match;
+        }
+    }
 
     private async Task LoadHistoryAsync()
     {

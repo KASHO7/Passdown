@@ -227,6 +227,16 @@
                 <TextBlock Text="Today" />
               </Border>
 
+              <!-- Previous/Next Day (Phase 12D Part C): explicit day-stepping alongside the day-cell
+                   grid and month navigation — supervisors scanning adjacent days without switching
+                   months. Plain Buttons, keyboard-reachable like every other action on this screen. -->
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="‹ Prev Day" Classes="secondaryAction" Command="{Binding PreviousDayCommand}"
+                        AutomationProperties.Name="Previous day" />
+                <Button Content="Next Day ›" Classes="secondaryAction" Command="{Binding NextDayCommand}"
+                        AutomationProperties.Name="Next day" />
+              </StackPanel>
+
               <!-- Park Status / Effective Hours (spec Phase 12B Part K) — reuses the same
                    ParkHoursPresentation formatter Associate Overview/Dashboard already use; never a
                    second hours computation. -->

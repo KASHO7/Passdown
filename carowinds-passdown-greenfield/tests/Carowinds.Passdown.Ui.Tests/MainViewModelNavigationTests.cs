@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.Calendar;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Desktop.ViewModels;
@@ -23,11 +24,15 @@ public class MainViewModelNavigationTests
     private static MainViewModel CreateMainViewModel(out OperationsDashboardViewModel dashboard, out AssociateViewModel associate, out OperationalNotesViewModel notes, out PassdownHistoryViewModel history) =>
         CreateMainViewModel(out dashboard, out _, out associate, out notes, out history);
 
-    private static MainViewModel CreateMainViewModel(out OperationsDashboardViewModel dashboard, out OperationsCalendarViewModel calendar, out AssociateViewModel associate, out OperationalNotesViewModel notes, out PassdownHistoryViewModel history)
+    private static MainViewModel CreateMainViewModel(out OperationsDashboardViewModel dashboard, out OperationsCalendarViewModel calendar, out AssociateViewModel associate, out OperationalNotesViewModel notes, out PassdownHistoryViewModel history) =>
+        CreateMainViewModel(out dashboard, out calendar, out associate, out _, out notes, out history);
+
+    private static MainViewModel CreateMainViewModel(out OperationsDashboardViewModel dashboard, out OperationsCalendarViewModel calendar, out AssociateViewModel associate, out FakeAssociatePassdownService associateService, out OperationalNotesViewModel notes, out PassdownHistoryViewModel history)
     {
         dashboard = new OperationsDashboardViewModel(new FakeOperationsDashboardService());
         calendar = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), new FakeClock(new DateTimeOffset(AssociateDate.ToDateTime(new TimeOnly(15, 0)), TimeSpan.Zero)));
-        associate = new AssociateViewModel(new FakeAssociatePassdownService(), new FakeClock(new DateTimeOffset(AssociateDate.ToDateTime(new TimeOnly(15, 0)), TimeSpan.Zero)));
+        associateService = new FakeAssociatePassdownService();
+        associate = new AssociateViewModel(associateService, new FakeClock(new DateTimeOffset(AssociateDate.ToDateTime(new TimeOnly(15, 0)), TimeSpan.Zero)));
         notes = new OperationalNotesViewModel(new FakeOperationalNotesService(), new SystemClock());
         var historyService = new FakePassdownHistoryService
         {
@@ -525,5 +530,134 @@ public class MainViewModelNavigationTests
 
         notes.CancelCommand.Execute(null);
         Assert.True(main.ShowOperationsCalendarSectionCommand.CanExecute(null));
+    }
+
+    // ==================================================================================
+    // Phase 12D — date interaction, deep-linking, and state preservation
+    // ==================================================================================
+
+    // Part G/H/AA: "Open Passdown" from Calendar flushes Associate's pending autosave for the date
+    // currently being edited before switching — reusing AssociateViewModel's own existing
+    // SwitchDateAsync (flush-then-load) path rather than a second dirty-state framework. No unsaved
+    // work is silently discarded.
+    [Fact]
+    public async Task CalendarOpenAssociateCommand_FlushesDirtyAssociateAutosaveBeforeSwitchingDate()
+    {
+        var main = CreateMainViewModel(out _, out var calendar, out var associate, out var associateService, out _, out _);
+        await associate.PendingLoad;
+        await calendar.PendingLoad;
+
+        associate.ProjectedAttendanceText = "9000"; // dirty; the default 800ms debounce has not fired.
+        Assert.Equal(AssociateAutosaveState.Unsaved, associate.AutosaveState);
+
+        var targetDate = new DateOnly(2026, 8, 5);
+        calendar.SelectDateCommand.Execute(targetDate);
+        await calendar.PendingLoad;
+
+        calendar.OpenAssociateCommand.Execute(null);
+        await associate.PendingLoad;
+
+        Assert.Contains(associateService.SaveCalls, call => call.OperatingDate == AssociateDate && call.Draft.ProjectedAttendance == 9000);
+        Assert.Equal(targetDate, associate.SelectedDate);
+        Assert.Equal(AppSection.AssociatePassdown, main.SelectedSection);
+    }
+
+    // Part I/J/AK: the full round trip using a Calendar service scripted to report the selected date
+    // as Finalized — proving MainViewModel wires OpenHistoryRequested's carried date into
+    // PassdownHistoryViewModel.SelectByDateAsync, never constructing/searching a presentation object
+    // itself and never reaching into History's internals.
+    [Fact]
+    public async Task CalendarOpenHistoryCommand_WhenFinalized_RoutesAndSelectsMatchingHistoryRecord()
+    {
+        var calendarService = new FakeOperationsCalendarService
+        {
+            SnapshotFactory = (month, selected) => FakeOperationsCalendarService.DefaultSnapshot(month, selected) with
+            {
+                Selected = FakeOperationsCalendarService.DefaultSnapshot(month, selected).Selected with
+                {
+                    PassdownStatus = OperationsCalendarPassdownStatus.Finalized,
+                },
+            },
+        };
+        var calendar = new OperationsCalendarViewModel(calendarService, new FakeClock(new DateTimeOffset(AssociateDate.ToDateTime(new TimeOnly(15, 0)), TimeSpan.Zero)));
+        var dashboard = new OperationsDashboardViewModel(new FakeOperationsDashboardService());
+        var associate = new AssociateViewModel(new FakeAssociatePassdownService(), new FakeClock(new DateTimeOffset(AssociateDate.ToDateTime(new TimeOnly(15, 0)), TimeSpan.Zero)));
+        var notes = new OperationalNotesViewModel(new FakeOperationalNotesService(), new SystemClock());
+        var historyService = new FakePassdownHistoryService
+        {
+            Summaries = [new FinalizedPassdownSummary(HistoryDate, DateTimeOffset.UtcNow, FinalizationOrigin.Scheduled, true, 100)],
+        };
+        var history = new PassdownHistoryViewModel(historyService, new FakeFinalizedPassdownPdfRetrievalService());
+        var main = new MainViewModel(dashboard, calendar, associate, notes, history);
+        await calendar.PendingLoad;
+        await history.PendingLoad;
+
+        calendar.SelectDateCommand.Execute(HistoryDate);
+        await calendar.PendingLoad;
+        Assert.True(calendar.OpenHistoryCommand.CanExecute(null));
+
+        calendar.OpenHistoryCommand.Execute(null);
+        await history.PendingSelectByDate;
+
+        Assert.Equal(AppSection.History, main.SelectedSection);
+        Assert.Equal(HistoryDate, history.SelectedItem?.PassdownDate);
+    }
+
+    // Part K: plain top-level History navigation (not routed through Calendar's explicit date action)
+    // must preserve whatever History already had selected — only Calendar's own date-specific "Open
+    // History" is allowed to replace the selection.
+    [Fact]
+    public async Task GenericHistoryNavigation_PreservesExistingSelection_EvenAfterVisitingCalendar()
+    {
+        var main = CreateMainViewModel(out _, out var calendar, out _, out _, out var history);
+        await history.PendingLoad;
+        await calendar.PendingLoad;
+
+        main.ShowHistorySectionCommand.Execute(null);
+        history.SelectedItem = history.HistoryItems[0];
+        await history.PendingDetailLoad;
+
+        main.ShowOperationsCalendarSectionCommand.Execute(null);
+        main.ShowHistorySectionCommand.Execute(null);
+
+        Assert.Equal(HistoryDate, history.SelectedItem?.PassdownDate);
+    }
+
+    // Part R/S/T: Calendar's own DisplayedMonth/SelectedDate survive routing into Associate, History,
+    // and Operational Notes and back — none of those explicit "Open ..." actions re-anchor Calendar to
+    // Today or otherwise disturb its own state.
+    [Fact]
+    public async Task CalendarState_SurvivesOpenAssociateThenReturning()
+    {
+        var main = CreateMainViewModel(out _, out var calendar, out _, out _, out _);
+        await calendar.PendingLoad;
+
+        calendar.NextMonthCommand.Execute(null);
+        calendar.SelectDateCommand.Execute(new DateOnly(2026, 9, 12));
+        await calendar.PendingLoad;
+
+        calendar.OpenAssociateCommand.Execute(null);
+        main.ShowOperationsCalendarSectionCommand.Execute(null);
+
+        Assert.Equal(new DateOnly(2026, 9, 1), calendar.DisplayedMonth);
+        Assert.Equal(new DateOnly(2026, 9, 12), calendar.SelectedDate);
+    }
+
+    [Fact]
+    public async Task CalendarState_SurvivesOpenOperationalNotesThenReturning()
+    {
+        var main = CreateMainViewModel(out _, out var calendar, out _, out _, out _);
+        await calendar.PendingLoad;
+
+        calendar.PreviousMonthCommand.Execute(null);
+        await calendar.PendingLoad;
+        var monthBefore = calendar.DisplayedMonth;
+        var selectedBefore = calendar.SelectedDate;
+
+        calendar.OpenOperationalNotesCommand.Execute(null);
+        main.ShowOperationsCalendarSectionCommand.Execute(null);
+
+        Assert.Equal(monthBefore, calendar.DisplayedMonth);
+        Assert.Equal(selectedBefore, calendar.SelectedDate);
     }
 }

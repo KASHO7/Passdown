@@ -71,15 +71,31 @@ public partial class MainViewModel : ViewModelBase
 
         // Phase 12A Part F: "Open Passdown" from Calendar explicitly sets Associate's selected date
         // (unlike Dashboard's own deep links, which deliberately never touch it) — the Calendar's
-        // whole purpose is routing to a specific date. "Open History"/"Open Operational Notes" stay
-        // generic, matching the same choice already made for Dashboard's own routing.
+        // whole purpose is routing to a specific date. Setting AssociateViewModel.SelectedDate runs
+        // through its own existing SwitchDateAsync path (flush-pending-autosave-then-load), so a
+        // supervisor mid-edit on another date never loses unsaved work just because Calendar routed
+        // here (Phase 12D Part G/H) — no second dirty-state framework is introduced.
         Calendar.OpenAssociateRequested += (_, date) =>
         {
             Associate.SelectedDate = date;
             Associate.SelectedSection = AssociateSection.Overview;
             ShowAssociateSection();
         };
-        Calendar.OpenHistoryRequested += (_, _) => ShowHistorySection();
+
+        // Phase 12D Part I/J/K: Calendar's explicit "Open History" now asks PassdownHistoryViewModel to
+        // preselect the matching finalized record via its own date-based seam — never by constructing a
+        // PassdownHistorySummaryPresentation here or reaching into History's internals. This is
+        // deliberately different from Dashboard's own generic "Open History" (unchanged above), which
+        // must keep preserving whatever History already had selected; Calendar's action is
+        // date-specific, so intentionally replacing the selection here is correct. If no finalized row
+        // matches, SelectByDateAsync leaves History's current selection alone — no crash, no fake
+        // selection. Fire-and-forget is safe: PassdownHistoryViewModel.PendingSelectByDate lets a test
+        // await it deterministically.
+        Calendar.OpenHistoryRequested += (_, date) =>
+        {
+            _ = History.SelectByDateAsync(date);
+            ShowHistorySection();
+        };
         Calendar.OpenOperationalNotesRequested += (_, _) => ShowOperationalNotesSection();
 
         // Phase 11B Part X: the smallest Notes-specific unsaved-changes guard, not a generic

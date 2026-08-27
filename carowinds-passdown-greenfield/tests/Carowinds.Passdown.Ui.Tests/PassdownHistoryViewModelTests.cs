@@ -332,4 +332,90 @@ public class PassdownHistoryViewModelTests
         Assert.DoesNotContain(parameterTypeNames, name => name.Contains("Generator", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(parameterTypeNames, name => name.Contains("CatalogProduct", StringComparison.OrdinalIgnoreCase));
     }
+
+    // ==================================================================================
+    // Phase 12D Part I/J/K/AK — SelectByDateAsync, the clean date-based preselection seam
+    // Operations Calendar's explicit "Open History" uses.
+    // ==================================================================================
+
+    // Part AK #1: a matching finalized date is selected.
+    [Fact]
+    public async Task SelectByDateAsync_MatchingFinalizedDate_SelectsIt()
+    {
+        var service = new FakePassdownHistoryService
+        {
+            Summaries =
+            [
+                new FinalizedPassdownSummary(DateA, DateTimeOffset.UtcNow, FinalizationOrigin.Scheduled, true, 100),
+                new FinalizedPassdownSummary(DateB, DateTimeOffset.UtcNow, FinalizationOrigin.Scheduled, true, 100),
+            ],
+        };
+        var viewModel = CreateViewModel(service);
+        await viewModel.PendingLoad;
+
+        await viewModel.SelectByDateAsync(DateB);
+
+        Assert.Equal(DateB, viewModel.SelectedItem?.PassdownDate);
+    }
+
+    // Part AK #2/AL: an unknown/non-finalized date is handled safely — History still "opens" (the
+    // view model stays perfectly usable), no crash, and no fabricated selection.
+    [Fact]
+    public async Task SelectByDateAsync_NoMatchingDate_LeavesSelectionUnset_NoCrash()
+    {
+        var service = new FakePassdownHistoryService
+        {
+            Summaries = [new FinalizedPassdownSummary(DateA, DateTimeOffset.UtcNow, FinalizationOrigin.Scheduled, true, 100)],
+        };
+        var viewModel = CreateViewModel(service);
+        await viewModel.PendingLoad;
+
+        await viewModel.SelectByDateAsync(new DateOnly(2026, 8, 30));
+
+        Assert.Null(viewModel.SelectedItem);
+    }
+
+    // Part K: an explicit date-select intentionally replaces whatever was already selected — this is
+    // the one case where that's correct, since the action itself is date-specific.
+    [Fact]
+    public async Task SelectByDateAsync_ReplacesAnExistingSelection()
+    {
+        var service = new FakePassdownHistoryService
+        {
+            Summaries =
+            [
+                new FinalizedPassdownSummary(DateA, DateTimeOffset.UtcNow, FinalizationOrigin.Scheduled, true, 100),
+                new FinalizedPassdownSummary(DateB, DateTimeOffset.UtcNow, FinalizationOrigin.Scheduled, true, 100),
+            ],
+        };
+        var viewModel = CreateViewModel(service);
+        await viewModel.PendingLoad;
+        viewModel.SelectedItem = viewModel.HistoryItems.Single(i => i.PassdownDate == DateA);
+        await viewModel.PendingDetailLoad;
+
+        await viewModel.SelectByDateAsync(DateB);
+
+        Assert.Equal(DateB, viewModel.SelectedItem?.PassdownDate);
+    }
+
+    // Part AD: calling SelectByDateAsync before the list load finishes still resolves correctly — it
+    // waits on PendingLoad first rather than racing it.
+    [Fact]
+    public async Task SelectByDateAsync_CalledBeforeListLoadCompletes_StillResolvesCorrectly()
+    {
+        var gate = new TaskCompletionSource();
+        var service = new FakePassdownHistoryService
+        {
+            Summaries = [new FinalizedPassdownSummary(DateA, DateTimeOffset.UtcNow, FinalizationOrigin.Scheduled, true, 100)],
+            ListGate = () => gate.Task,
+        };
+        var viewModel = CreateViewModel(service);
+
+        var selectTask = viewModel.SelectByDateAsync(DateA);
+        gate.SetResult();
+        await viewModel.PendingLoad;
+        await selectTask;
+
+        Assert.Equal(DateA, viewModel.SelectedItem?.PassdownDate);
+    }
 }

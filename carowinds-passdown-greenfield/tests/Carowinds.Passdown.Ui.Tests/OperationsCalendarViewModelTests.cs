@@ -45,9 +45,12 @@ public class OperationsCalendarViewModelTests
         Assert.Equal(new DateOnly(2026, 8, 1), vm.DisplayedMonth);
     }
 
-    // #3: PreviousMonth/NextMonth move DisplayedMonth and reload, without touching SelectedDate.
+    // Phase 12D Part D: the chosen, documented behavior — PreviousMonth/NextMonth move DisplayedMonth
+    // and carry SelectedDate's day-of-month along with it (never leaving the selection in a month the
+    // grid no longer displays). FixedToday is the 21st, a day that exists in every month, so this
+    // exercises the "no clamping needed" path; clamping itself is covered separately below.
     [Fact]
-    public async Task PreviousAndNextMonthCommands_MoveDisplayedMonth_PreserveSelectedDate()
+    public async Task PreviousAndNextMonthCommands_MoveDisplayedMonthAndCarrySelectedDateAlong()
     {
         var service = new FakeOperationsCalendarService();
         var vm = new OperationsCalendarViewModel(service, CreateClock());
@@ -56,13 +59,76 @@ public class OperationsCalendarViewModelTests
         vm.PreviousMonthCommand.Execute(null);
         await vm.PendingLoad;
         Assert.Equal(new DateOnly(2026, 7, 1), vm.DisplayedMonth);
-        Assert.Equal(FixedToday, vm.SelectedDate);
+        Assert.Equal(new DateOnly(2026, 7, 21), vm.SelectedDate);
 
         vm.NextMonthCommand.Execute(null);
         vm.NextMonthCommand.Execute(null);
         await vm.PendingLoad;
         Assert.Equal(new DateOnly(2026, 9, 1), vm.DisplayedMonth);
-        Assert.Equal(FixedToday, vm.SelectedDate);
+        Assert.Equal(new DateOnly(2026, 9, 21), vm.SelectedDate);
+    }
+
+    // Phase 12D Part D: Jan 31 -> Next Month clamps to Feb 28 in a non-leap year.
+    [Fact]
+    public async Task NextMonthCommand_JanuaryThirtyFirst_ClampsToFebruaryTwentyEighth_NonLeapYear()
+    {
+        var vm = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), CreateClock());
+        await vm.PendingLoad;
+        vm.SelectDateCommand.Execute(new DateOnly(2027, 1, 31));
+        await vm.PendingLoad;
+
+        vm.NextMonthCommand.Execute(null);
+        await vm.PendingLoad;
+
+        Assert.Equal(new DateOnly(2027, 2, 1), vm.DisplayedMonth);
+        Assert.Equal(new DateOnly(2027, 2, 28), vm.SelectedDate);
+    }
+
+    // Phase 12D Part D: Jan 31 -> Next Month clamps to Feb 29 in a leap year.
+    [Fact]
+    public async Task NextMonthCommand_JanuaryThirtyFirst_ClampsToFebruaryTwentyNinth_LeapYear()
+    {
+        var vm = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), CreateClock());
+        await vm.PendingLoad;
+        vm.SelectDateCommand.Execute(new DateOnly(2028, 1, 31));
+        await vm.PendingLoad;
+
+        vm.NextMonthCommand.Execute(null);
+        await vm.PendingLoad;
+
+        Assert.Equal(new DateOnly(2028, 2, 1), vm.DisplayedMonth);
+        Assert.Equal(new DateOnly(2028, 2, 29), vm.SelectedDate);
+    }
+
+    // Phase 12D Part D/V: Dec -> Jan year crossing carries the day-of-month across the year boundary cleanly.
+    [Fact]
+    public async Task NextMonthCommand_DecemberToJanuary_CrossesYearBoundary()
+    {
+        var vm = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), CreateClock());
+        await vm.PendingLoad;
+        vm.SelectDateCommand.Execute(new DateOnly(2026, 12, 15));
+        await vm.PendingLoad;
+
+        vm.NextMonthCommand.Execute(null);
+        await vm.PendingLoad;
+
+        Assert.Equal(new DateOnly(2027, 1, 1), vm.DisplayedMonth);
+        Assert.Equal(new DateOnly(2027, 1, 15), vm.SelectedDate);
+    }
+
+    // Phase 12D Part AI: month navigation resolves to exactly one service load, never one per property.
+    [Fact]
+    public async Task NextMonthCommand_TriggersExactlyOneLoad()
+    {
+        var service = new FakeOperationsCalendarService();
+        var vm = new OperationsCalendarViewModel(service, CreateClock());
+        await vm.PendingLoad;
+        service.LoadCalls.Clear();
+
+        vm.NextMonthCommand.Execute(null);
+        await vm.PendingLoad;
+
+        Assert.Single(service.LoadCalls);
     }
 
     // #4: SelectDateCommand updates SelectedDate and reloads, without touching DisplayedMonth.
@@ -96,6 +162,186 @@ public class OperationsCalendarViewModelTests
 
         Assert.Equal(new DateOnly(2026, 8, 1), vm.DisplayedMonth);
         Assert.Equal(FixedToday, vm.SelectedDate);
+    }
+
+    // Phase 12D Part B: selecting an off-month cell moves the Calendar to that date's own month — the
+    // chosen, documented behavior (as opposed to leaving off-month cells purely informational).
+    [Fact]
+    public async Task SelectDateCommand_OffMonthDate_MovesDisplayedMonthToMatch()
+    {
+        var vm = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), CreateClock());
+        await vm.PendingLoad;
+
+        var offMonthDate = new DateOnly(2026, 9, 2); // a leading September day visible in August's grid
+        vm.SelectDateCommand.Execute(offMonthDate);
+        await vm.PendingLoad;
+
+        Assert.Equal(offMonthDate, vm.SelectedDate);
+        Assert.Equal(new DateOnly(2026, 9, 1), vm.DisplayedMonth);
+    }
+
+    // Phase 12D Part AI: an in-month selection resolves to exactly one service load.
+    [Fact]
+    public async Task SelectDateCommand_InMonthDate_TriggersExactlyOneLoad()
+    {
+        var service = new FakeOperationsCalendarService();
+        var vm = new OperationsCalendarViewModel(service, CreateClock());
+        await vm.PendingLoad;
+        service.LoadCalls.Clear();
+
+        vm.SelectDateCommand.Execute(new DateOnly(2026, 8, 5));
+        await vm.PendingLoad;
+
+        Assert.Single(service.LoadCalls);
+    }
+
+    // Phase 12D Part C: Next Day advances the selection by one day and stays within the same month.
+    [Fact]
+    public async Task NextDayCommand_AdvancesSelectedDateByOneDay()
+    {
+        var vm = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), CreateClock());
+        await vm.PendingLoad;
+
+        vm.NextDayCommand.Execute(null);
+        await vm.PendingLoad;
+
+        Assert.Equal(FixedToday.AddDays(1), vm.SelectedDate);
+        Assert.Equal(new DateOnly(2026, 8, 1), vm.DisplayedMonth);
+    }
+
+    // Phase 12D Part C: Previous Day steps back by one day.
+    [Fact]
+    public async Task PreviousDayCommand_StepsBackByOneDay()
+    {
+        var vm = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), CreateClock());
+        await vm.PendingLoad;
+
+        vm.PreviousDayCommand.Execute(null);
+        await vm.PendingLoad;
+
+        Assert.Equal(FixedToday.AddDays(-1), vm.SelectedDate);
+    }
+
+    // Phase 12D Part C/U: Next Day crosses a month boundary and DisplayedMonth follows.
+    [Fact]
+    public async Task NextDayCommand_CrossesMonthBoundary_DisplayedMonthFollows()
+    {
+        var vm = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), CreateClock());
+        await vm.PendingLoad;
+        vm.SelectDateCommand.Execute(new DateOnly(2026, 8, 31));
+        await vm.PendingLoad;
+
+        vm.NextDayCommand.Execute(null);
+        await vm.PendingLoad;
+
+        Assert.Equal(new DateOnly(2026, 9, 1), vm.SelectedDate);
+        Assert.Equal(new DateOnly(2026, 9, 1), vm.DisplayedMonth);
+    }
+
+    // Phase 12D Part C/U: Previous Day crosses backward across a month (and leap-year) boundary.
+    [Fact]
+    public async Task PreviousDayCommand_CrossesMonthBoundary_IntoLeapYearFebruary()
+    {
+        var vm = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), CreateClock());
+        await vm.PendingLoad;
+        vm.SelectDateCommand.Execute(new DateOnly(2028, 3, 1));
+        await vm.PendingLoad;
+
+        vm.PreviousDayCommand.Execute(null);
+        await vm.PendingLoad;
+
+        Assert.Equal(new DateOnly(2028, 2, 29), vm.SelectedDate);
+        Assert.Equal(new DateOnly(2028, 2, 1), vm.DisplayedMonth);
+    }
+
+    // Phase 12D Part C/V: Next Day crosses a year boundary cleanly.
+    [Fact]
+    public async Task NextDayCommand_CrossesYearBoundary()
+    {
+        var vm = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), CreateClock());
+        await vm.PendingLoad;
+        vm.SelectDateCommand.Execute(new DateOnly(2026, 12, 31));
+        await vm.PendingLoad;
+
+        vm.NextDayCommand.Execute(null);
+        await vm.PendingLoad;
+
+        Assert.Equal(new DateOnly(2027, 1, 1), vm.SelectedDate);
+        Assert.Equal(new DateOnly(2027, 1, 1), vm.DisplayedMonth);
+    }
+
+    // Phase 12D Part C/V: Previous Day crosses a year boundary backward.
+    [Fact]
+    public async Task PreviousDayCommand_CrossesYearBoundaryBackward()
+    {
+        var vm = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), CreateClock());
+        await vm.PendingLoad;
+        vm.SelectDateCommand.Execute(new DateOnly(2027, 1, 1));
+        await vm.PendingLoad;
+
+        vm.PreviousDayCommand.Execute(null);
+        await vm.PendingLoad;
+
+        Assert.Equal(new DateOnly(2026, 12, 31), vm.SelectedDate);
+        Assert.Equal(new DateOnly(2026, 12, 1), vm.DisplayedMonth);
+    }
+
+    // Phase 12D Part AI: day-stepping resolves to exactly one service load, never one per property.
+    [Fact]
+    public async Task NextDayCommand_CrossingMonthBoundary_TriggersExactlyOneLoad()
+    {
+        var service = new FakeOperationsCalendarService();
+        var vm = new OperationsCalendarViewModel(service, CreateClock());
+        await vm.PendingLoad;
+        vm.SelectDateCommand.Execute(new DateOnly(2026, 8, 31));
+        await vm.PendingLoad;
+        service.LoadCalls.Clear();
+
+        vm.NextDayCommand.Execute(null);
+        await vm.PendingLoad;
+
+        Assert.Single(service.LoadCalls);
+    }
+
+    // Phase 12D Part E/W: "Go to Today" follows the Eastern day change, not machine-local time — using
+    // a mutable IClock so the same view model observes "today" changing across the Eastern midnight
+    // boundary, exactly as the spec's deterministic-IClock requirement describes.
+    [Fact]
+    public async Task GoToTodayCommand_FollowsEasternMidnightBoundary()
+    {
+        // 11:59 PM Eastern on Aug 26, 2026 = 2026-08-27T03:59:00Z (EDT, UTC-4).
+        var clock = new FakeClock(new DateTimeOffset(2026, 8, 27, 3, 59, 0, TimeSpan.Zero));
+        var vm = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), clock);
+        await vm.PendingLoad;
+        Assert.Equal(new DateOnly(2026, 8, 26), vm.SelectedDate);
+
+        vm.NextMonthCommand.Execute(null);
+        await vm.PendingLoad;
+
+        // 12:01 AM Eastern on Aug 27, 2026 = 2026-08-27T04:01:00Z.
+        clock.UtcNow = new DateTimeOffset(2026, 8, 27, 4, 1, 0, TimeSpan.Zero);
+        vm.GoToTodayCommand.Execute(null);
+        await vm.PendingLoad;
+
+        Assert.Equal(new DateOnly(2026, 8, 27), vm.SelectedDate);
+        Assert.Equal(new DateOnly(2026, 8, 1), vm.DisplayedMonth);
+    }
+
+    // Phase 12D Part AI: "Go to Today" resolves to exactly one service load.
+    [Fact]
+    public async Task GoToTodayCommand_TriggersExactlyOneLoad()
+    {
+        var service = new FakeOperationsCalendarService();
+        var vm = new OperationsCalendarViewModel(service, CreateClock());
+        await vm.PendingLoad;
+        vm.NextMonthCommand.Execute(null);
+        await vm.PendingLoad;
+        service.LoadCalls.Clear();
+
+        vm.GoToTodayCommand.Execute(null);
+        await vm.PendingLoad;
+
+        Assert.Single(service.LoadCalls);
     }
 
     // #6: Days is rebuilt from the snapshot, and IsSelected reflects the snapshot's own SelectedDate.
@@ -170,10 +416,12 @@ public class OperationsCalendarViewModelTests
 
         Assert.True(vm.OpenHistoryCommand.CanExecute(null));
 
-        bool raised = false;
-        vm.OpenHistoryRequested += (_, _) => raised = true;
+        // Phase 12D Part I: the event carries the selected date, so MainViewModel can ask History to
+        // preselect the matching finalized record.
+        DateOnly? raisedDate = null;
+        vm.OpenHistoryRequested += (_, date) => raisedDate = date;
         vm.OpenHistoryCommand.Execute(null);
-        Assert.True(raised);
+        Assert.Equal(new DateOnly(2026, 8, 5), raisedDate);
     }
 
     // #10: "Open Operational Notes" always raises its event — generic navigation, no date gating.

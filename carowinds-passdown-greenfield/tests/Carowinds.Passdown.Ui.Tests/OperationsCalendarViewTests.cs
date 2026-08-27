@@ -84,6 +84,8 @@ public class OperationsCalendarViewTests
         Assert.Contains("Previous month", names);
         Assert.Contains("Go to today", names);
         Assert.Contains("Next month", names);
+        Assert.Contains("Previous day", names); // Phase 12D Part C/AE
+        Assert.Contains("Next day", names); // Phase 12D Part C/AE
         Assert.Contains("Calendar month grid", names);
         Assert.Contains("Selected date summary", names);
         Assert.Contains("Open Passdown", names);

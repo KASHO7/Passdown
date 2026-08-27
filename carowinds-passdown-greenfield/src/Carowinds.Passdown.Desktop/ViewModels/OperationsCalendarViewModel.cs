@@ -68,8 +68,15 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     /// <summary>Raised by "Open Passdown" (spec Part F/G) with the Calendar's currently selected date — <see cref="MainViewModel"/> is the one place that sets <see cref="AssociateViewModel.SelectedDate"/> from it.</summary>
     public event EventHandler<DateOnly>? OpenAssociateRequested;
 
-    /// <summary>Raised by "Open History" (spec Part F) — deliberately generic navigation, not a date pre-selection, matching the same choice already made for Dashboard's History integration (Phase 10C "Open History routing").</summary>
-    public event EventHandler? OpenHistoryRequested;
+    /// <summary>
+    /// Raised by "Open History" (Phase 12A Part F). Carries the Calendar's currently selected date
+    /// (Phase 12D Part I/J) so <see cref="MainViewModel"/> can ask <see cref="PassdownHistoryViewModel"/>
+    /// to preselect the matching finalized record via its own <c>SelectByDateAsync</c> seam — this
+    /// command is only enabled once that date is Finalized (<see cref="CanOpenHistory"/>), so the date
+    /// carried here always corresponds to a row History is expected to have. This view model still
+    /// never reaches into <see cref="PassdownHistoryViewModel"/> itself.
+    /// </summary>
+    public event EventHandler<DateOnly>? OpenHistoryRequested;
 
     /// <summary>Raised by "Open Operational Notes" (spec Part F) — generic navigation only, mirroring Dashboard's own "Open Operational Notes" (Phase 11C).</summary>
     public event EventHandler? OpenOperationalNotesRequested;
@@ -120,29 +127,78 @@ public partial class OperationsCalendarViewModel : ViewModelBase
         Days = value?.Days.Select(day => new OperationsCalendarDayViewModel(day, day.Date == value.SelectedDate, SelectDate)).ToList() ?? [];
     }
 
+    /// <summary>
+    /// Phase 12D Part D: preserves the selection's day-of-month across a month change, clamping to the
+    /// target month's own last day when it's shorter (Jan 31 → Feb 28/29) — the deliberately chosen,
+    /// documented alternative to always jumping the selection to the 1st.
+    /// </summary>
     [RelayCommand]
-    private void PreviousMonth() => DisplayedMonth = DisplayedMonth.AddMonths(-1);
+    private void PreviousMonth() => NavigateMonth(-1);
 
     [RelayCommand]
-    private void NextMonth() => DisplayedMonth = DisplayedMonth.AddMonths(1);
+    private void NextMonth() => NavigateMonth(1);
 
-    /// <summary>Resets both the displayed month and the selection to the current Eastern date — the two property changes each start their own load, but the version guard in <see cref="LoadAsync"/> ensures only the final one wins.</summary>
+    private void NavigateMonth(int monthDelta)
+    {
+        var newDisplayedMonth = DisplayedMonth.AddMonths(monthDelta);
+        var clampedDay = Math.Min(SelectedDate.Day, DateTime.DaysInMonth(newDisplayedMonth.Year, newDisplayedMonth.Month));
+        var newSelectedDate = new DateOnly(newDisplayedMonth.Year, newDisplayedMonth.Month, clampedDay);
+        SetDisplayedMonthAndSelectedDate(newDisplayedMonth, newSelectedDate);
+    }
+
+    /// <summary>Resets both the displayed month and the selection to the current Eastern date.</summary>
     [RelayCommand]
     private void GoToToday()
     {
         var today = TodayEastern();
-        DisplayedMonth = new DateOnly(today.Year, today.Month, 1);
-        SelectedDate = today;
+        SetDisplayedMonthAndSelectedDate(new DateOnly(today.Year, today.Month, 1), today);
     }
 
+    /// <summary>
+    /// Phase 12D Part B: the chosen, documented behavior for an off-month cell is that selecting it
+    /// moves the Calendar to that date's own month (never a silent no-op, and never leaving
+    /// <see cref="DisplayedMonth"/> pointed somewhere that no longer contains the selection). A
+    /// same-month selection is unaffected — setting <see cref="DisplayedMonth"/> to its own current
+    /// value is a no-op on an <c>[ObservableProperty]</c>, so only <see cref="SelectedDate"/> actually
+    /// changes and exactly one reload fires.
+    /// </summary>
     [RelayCommand]
-    private void SelectDate(DateOnly date) => SelectedDate = date;
+    private void SelectDate(DateOnly date) => SetDisplayedMonthAndSelectedDate(new DateOnly(date.Year, date.Month, 1), date);
+
+    /// <summary>Phase 12D Part C: explicit day-stepping — supervisors scanning adjacent days without reaching for month navigation or a day cell.</summary>
+    [RelayCommand]
+    private void PreviousDay() => StepSelectedDate(-1);
+
+    [RelayCommand]
+    private void NextDay() => StepSelectedDate(1);
+
+    private void StepSelectedDate(int dayDelta)
+    {
+        var newDate = SelectedDate.AddDays(dayDelta);
+        SetDisplayedMonthAndSelectedDate(new DateOnly(newDate.Year, newDate.Month, 1), newDate);
+    }
+
+    /// <summary>
+    /// Phase 12D Part AI: the single place both properties are ever changed together, so a caller that
+    /// wants "move to this date's month and select it" (day stepping across a boundary, off-month
+    /// selection, month navigation with day-of-month clamping, Go to Today) always resolves to exactly
+    /// one <see cref="LoadAsync"/> call — never one load per property, matching 12A's own
+    /// <c>_suppressAutoLoad</c> pattern already used for construction.
+    /// </summary>
+    private void SetDisplayedMonthAndSelectedDate(DateOnly displayedMonth, DateOnly selectedDate)
+    {
+        _suppressAutoLoad = true;
+        DisplayedMonth = displayedMonth;
+        SelectedDate = selectedDate;
+        _suppressAutoLoad = false;
+        _pendingLoad = LoadAsync();
+    }
 
     [RelayCommand]
     private void OpenAssociate() => OpenAssociateRequested?.Invoke(this, SelectedDate);
 
     [RelayCommand(CanExecute = nameof(CanOpenHistory))]
-    private void OpenHistory() => OpenHistoryRequested?.Invoke(this, EventArgs.Empty);
+    private void OpenHistory() => OpenHistoryRequested?.Invoke(this, SelectedDate);
 
     private bool CanOpenHistory() => Snapshot?.Selected.PassdownStatus == OperationsCalendarPassdownStatus.Finalized;
 

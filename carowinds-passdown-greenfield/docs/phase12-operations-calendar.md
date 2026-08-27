@@ -942,16 +942,364 @@ required.
 - Date-aware deep-linking into Operational Notes Manager's own filter/selection state (Part N) —
   evaluated and left generic, matching 11C's identical decision for Dashboard.
 
-## Deferred to 12D–12F
+## Deferred to 12D–12F (superseded in part by 12D — see below)
 
 - Richer source-health overlays beyond park hours.
 - Any denser per-day note preview beyond a count, or note titles/bodies in month cells (12A/12C's own
   deferred item).
-- A History date pre-selection seam (re-evaluated in 12C, still deferred).
+- A History date pre-selection seam — **now implemented, Phase 12D** (see below).
 - A frozen-hours read model for finalized dates, if a future phase decides it's worth the added
   query cost/architecture.
-- Date-aware deep-linking into Operational Notes Manager from Calendar's selected date.
+- Date-aware deep-linking into Operational Notes Manager from Calendar's selected date — **re-evaluated
+  in 12D, still deferred** (see below).
 - The renamed-app work, refresh-policy overhaul, manual-hours/buyout redesign, ERT simplification,
   logo, Alerts, and Manager workflow — all still deferred per `CLAUDE.md`.
 
-12D has not started.
+---
+
+## Phase 12D — date interaction, deep-linking, and navigation/state-preservation refinement
+
+Phase 12D turns the Calendar from a read-only summary into a real navigation hub: how a supervisor
+moves between dates inside the Calendar itself (day-cell selection, off-month cells, day/month
+stepping, Go to Today), how that maps onto past/today/future context, and — the one genuinely new
+architectural seam — how "Open History" now hands a specific date to `PassdownHistoryViewModel`
+instead of only opening the section generically. No schema change, no Alerts, no Manager workflow, no
+editor of any kind was added to this screen.
+
+### Selected-date semantics (Part A) — DisplayedMonth/SelectedDate stay Calendar-owned
+
+`OperationsCalendarViewModel.DisplayedMonth`/`SelectedDate` remain exactly as independent from
+`AssociateViewModel.SelectedDate`/`PassdownHistoryViewModel.SelectedItem`/
+`OperationalNotesViewModel`'s own filter/selection as 12A established — nothing in this phase changes
+that boundary. What 12D does add is a single internal invariant *within* the Calendar itself: every
+navigation action (day-cell click, Previous/Next Day, Previous/Next Month, Go to Today) now keeps
+`DisplayedMonth` and `SelectedDate` in the same month once it's done, via one new private helper,
+`SetDisplayedMonthAndSelectedDate(DateOnly, DateOnly)`. It suppresses the per-property auto-load flag
+(the same `_suppressAutoLoad` pattern 12A already used at construction), sets both properties, then
+issues exactly one `LoadAsync` call — so no navigation action here can ever produce the "one load per
+property" bug 12A's own constructor fix (see "Real bug found" above) already proved possible. Merely
+*viewing* a date (as opposed to acting on it) never mutates anything — selection remains entirely
+local/read-only (Part AB/AC, unchanged from 12A).
+
+### Off-month cell selection (Part B) — chosen: selecting moves the Calendar to that month
+
+**Decision: selecting an off-month cell moves `DisplayedMonth` to that date's own month, not left as
+informational-only.** `SelectDateCommand` now always calls
+`SetDisplayedMonthAndSelectedDate(new DateOnly(date.Year, date.Month, 1), date)` regardless of whether
+`date` is in- or out-of-month; a same-month click is unaffected in practice because setting an
+`[ObservableProperty]` to its own current value is a no-op — only `SelectedDate` actually changes, and
+exactly one reload still fires (`SelectDateCommand_InMonthDate_TriggersExactlyOneLoad`). Chosen over
+leaving off-month cells purely informational because a leading/trailing day is still a real, fully
+selectable date (12A already established this — off-month cells were never fabricated), and silently
+refusing to select it would be a worse, more confusing default than just navigating there — the same
+behavior a supervisor would expect from any calendar picker.
+`SelectDateCommand_OffMonthDate_MovesDisplayedMonthToMatch` proves this directly.
+
+### Previous/Next Day (Part C) — added
+
+**Decision: add explicit day-stepping**, as both `PreviousDayCommand`/`NextDayCommand` (buttons in the
+selected-date summary panel, "‹ Prev Day"/"Next Day ›") — supervisors scanning adjacent days is a real,
+common workflow this phase's own spec calls out, and the cost is two small buttons, not new UI
+complexity. Both route through the same `SetDisplayedMonthAndSelectedDate` helper via a shared
+`StepSelectedDate(int dayDelta)`: `SelectedDate.AddDays(delta)`, then `DisplayedMonth` recomputed from
+the new date's own year/month — so a step that crosses a month (Aug 31 → Sep 1) or year (Dec 31 → Jan
+1, Jan 1 → Dec 31) boundary always lands with `DisplayedMonth` following automatically, never left
+pointing at the old month. Exactly one reload per step
+(`NextDayCommand_CrossingMonthBoundary_TriggersExactlyOneLoad`).
+
+### Previous/Next Month (Part D) — chosen: preserve day-of-month, clamp when shorter
+
+**Decision: preserve `SelectedDate`'s day-of-month across a month change, clamping to the target
+month's own last day when it's shorter** (Jan 31 → Feb 28 in a non-leap year, Feb 29 in a leap year) —
+the explicitly preferred alternative over always resetting the selection to the 1st. Implemented as
+`NavigateMonth(int monthDelta)`: `DateTime.DaysInMonth` computes the target month's day count,
+`Math.Min(SelectedDate.Day, thatCount)` clamps, and the result is applied via
+`SetDisplayedMonthAndSelectedDate` (again, exactly one reload —
+`NextMonthCommand_TriggersExactlyOneLoad`). This is a **behavior change from 12A**, which previously
+left `SelectedDate` completely untouched by month navigation
+(`PreviousAndNextMonthCommands_MoveDisplayedMonth_PreserveSelectedDate` asserted the selection stayed
+on the *original* date even after two months of navigation) — that test was renamed to
+`PreviousAndNextMonthCommands_MoveDisplayedMonthAndCarrySelectedDateAlong` and now asserts the new,
+deliberately chosen day-of-month-following behavior instead. Chosen because leaving the selection
+behind in a month the grid no longer displays is the more surprising default; carrying the
+day-of-month along (with clamping) is what a supervisor already expects from every other date picker
+that supports month paging. Covered by dedicated Jan→Feb (non-leap and leap year) and Dec→Jan tests.
+
+### Go to Today (Part E) — unchanged behavior, now explicitly Eastern-boundary-tested
+
+`GoToTodayCommand`'s behavior is unchanged (resolves "today" via `IClock` + `EasternTimeZone`, sets
+both `DisplayedMonth`/`SelectedDate` to it, never touches `AssociateViewModel.SelectedDate`) but now
+routes through the same `SetDisplayedMonthAndSelectedDate` helper (one reload, not two — previously it
+relied on the load-version guard to discard the first of two loads; now only one load is ever started)
+and is covered by a new deterministic Eastern-midnight-boundary test,
+`GoToTodayCommand_FollowsEasternMidnightBoundary`, using a mutable `FakeClock`: at 11:59 PM Eastern
+"today" is Aug 26; advancing the same clock to 12:01 AM Eastern and re-invoking Go to Today moves it to
+Aug 27 — proving the day boundary is Eastern, never machine-local.
+
+### Past/today/future context (Part F) — no new field; PassdownStatus already carries it
+
+**Decision: no new `Past`/`Today`/`Future` classification was added.** The existing
+`OperationsCalendarPassdownStatus` (No Draft / Draft In Progress / Finalized, Phase 12C) already
+carries the practically relevant temporal signal for every action this screen exposes — a Finalized
+date behaves like a past date (Open History becomes available), a date with an in-progress draft
+behaves like today, and No Draft behaves like a future date, all without inventing a second,
+potentially-inconsistent classification computed from `selected.Date` vs. `Today` directly. Adding a
+redundant date-based enum that agrees with `PassdownStatus` in every real scenario would be pure
+duplication; one that could ever *disagree* with it would be a bug waiting to happen. No Draft on a
+future date remains deliberately neutral text, never a warning/alert (unchanged from 12C).
+
+### Open Passdown (Part G) — unchanged, now explicitly regression-tested for dirty state
+
+`OpenAssociateCommand`'s behavior is unchanged: it raises `OpenAssociateRequested` with the Calendar's
+`SelectedDate`, and `MainViewModel` sets `AssociateViewModel.SelectedDate` from it. What 12D adds is an
+explicit audit + regression test of *why* this is already safe.
+
+### Associate dirty-state interaction (Part H) — reuses AssociateViewModel's own existing guard
+
+Setting `AssociateViewModel.SelectedDate` was already routed, since Phase 4C, through
+`OnSelectedDateChanged` → `SwitchDateAsync`, which **flushes any pending autosave for the date
+currently being edited before loading the new date**:
+
+```csharp
+private async Task SwitchDateAsync(DateOnly newDate)
+{
+    await FlushPendingAutosaveAsync().ConfigureAwait(true);
+    await LoadDateAsync(newDate).ConfigureAwait(true);
+}
+```
+
+`FlushPendingAutosaveAsync` cancels the debounce timer and saves immediately if the current date is
+dirty (`_isDirty`) or a save is already in flight — so Calendar's "Open Passdown" (which sets
+`Associate.SelectedDate` exactly like any other date change) was **already safe by construction**; no
+second dirty-state framework was built. This phase adds the regression test that proves it end to end:
+`CalendarOpenAssociateCommand_FlushesDirtyAssociateAutosaveBeforeSwitchingDate` edits a field on
+`AssociateDate` (leaving it `Unsaved`), selects a different date in Calendar, clicks Open Passdown, and
+asserts the fake service's `SaveCalls` actually recorded the flushed save for the *original* date
+before the new date loaded — no unsaved work is silently discarded.
+
+### History date preselection (Part I/J/K/AD/AK) — a clean seam was found; implemented
+
+**Decision: implement it.** 12A/12B/12C all deferred this because `PassdownHistoryViewModel.SelectedItem`
+is typed as a `PassdownHistorySummaryPresentation`, not a `DateOnly`, and there was no seam that didn't
+mean either constructing that presentation type from outside `PassdownHistoryViewModel` or reaching
+into its loaded-item list. Phase 12D adds the missing seam **on** `PassdownHistoryViewModel` itself,
+where it belongs:
+
+```csharp
+public Task SelectByDateAsync(DateOnly date) => _pendingSelectByDate = SelectByDateCoreAsync(date);
+
+private async Task SelectByDateCoreAsync(DateOnly date)
+{
+    await PendingLoad.ConfigureAwait(true);
+    var match = HistoryItems.FirstOrDefault(item => item.PassdownDate == date);
+    if (match is not null)
+    {
+        SelectedItem = match;
+    }
+}
+```
+
+It waits for the list load first (so a call arriving before construction's own load finishes still
+resolves correctly — `SelectByDateAsync_CalledBeforeListLoadCompletes_StillResolvesCorrectly`), then
+looks up the match from its own already-loaded `HistoryItems` — never constructing or searching a
+presentation object from outside, never touched by `MainViewModel` or `OperationsCalendarViewModel`
+directly. If no matching row exists, `SelectedItem` is left exactly as it was — no crash, no fabricated
+selection (`SelectByDateAsync_NoMatchingDate_LeavesSelectionUnset_NoCrash`). `PendingSelectByDate`
+mirrors the existing `PendingLoad`/`PendingDetailLoad` pattern so a test can await it deterministically.
+
+`OperationsCalendarViewModel.OpenHistoryRequested` changed from a bare `EventHandler` to
+`EventHandler<DateOnly>`, carrying the Calendar's `SelectedDate` — safe to widen since the command is
+still only enabled once that date's `PassdownStatus` is `Finalized` (`CanOpenHistory`, unchanged), so
+the carried date always corresponds to a row History is expected to have. `MainViewModel` wires it:
+
+```csharp
+Calendar.OpenHistoryRequested += (_, date) =>
+{
+    _ = History.SelectByDateAsync(date);
+    ShowHistorySection();
+};
+```
+
+— never constructing a `PassdownHistorySummaryPresentation`, never searching `History.HistoryItems`
+itself, and never reaching past the one public method `PassdownHistoryViewModel` now exposes for this.
+`CalendarOpenHistoryCommand_WhenFinalized_RoutesAndSelectsMatchingHistoryRecord` proves the full round
+trip. **Query cost stays exactly what 12A already established** (Part AD): Calendar itself still never
+loads History detail or a PDF blob to prepare this — `SelectByDateAsync` only ever touches
+`HistoryItems`, the same metadata-only list `PassdownHistoryViewModel` already loads on construction;
+setting `SelectedItem` triggers the *same* detail load (`_historyService.GetAsync`) a manual row click
+would — this only happens because the user explicitly clicked "Open History," identical to History's
+own normal interaction cost.
+
+### Generic vs. explicit-date History navigation (Part K) — both proved side by side
+
+Dashboard's own "Open History" (Phase 10C, unchanged) remains deliberately generic — it never calls
+`SelectByDateAsync`, so a supervisor's existing History selection survives a Dashboard round trip
+exactly as before (`GenericHistoryNavigation_PreservesExistingSelection_EvenAfterVisitingCalendar`
+proves this holds even after an intervening visit to Calendar). Only Calendar's own date-specific
+"Open History" action calls `SelectByDateAsync`, and it may *intentionally* replace whatever History
+already had selected — that's correct precisely because the action is date-specific, not a bug in the
+generic-preservation guarantee.
+
+### Open Operational Notes (Part L/M) — chosen: stays generic; no date-context view added
+
+**Decision: keep "Open Operational Notes" fully generic**, unchanged from 12A/12C. The Operational
+Notes Manager's model (lifecycle/category/priority filters, not a date picker) doesn't have an
+equally clean, low-cost seam the way History's own `SelectedItem` did, and the spec's own guidance for
+this part is explicit that a temporary date-context view is optional and should be deferred if it
+would complicate this phase. Building one here would be exactly the kind of feature creep this phase's
+own instructions call out to avoid. Left as a candidate for a future phase.
+
+### Context-aware actions (Part N/O) — already correct from 12A/12C; disable, not hide
+
+Re-confirmed, no code changed: Open Passdown/Open Operational Notes have no `CanExecute` restriction
+(always available, any status); Open History is *disabled* (not hidden) via `CanOpenHistory` until the
+selected date is Finalized. **Decision: disable, don't hide** — an always-visible, sometimes-disabled
+button is more predictable and discoverable than a control that appears/disappears depending on
+status, and this was already 12A's own choice; 12D simply confirms and documents it as the deliberate,
+consistent rule for this screen rather than leaving it implicit.
+
+### Action labels (Part O) — unchanged, already precise
+
+"Open Passdown"/"Open History"/"Open Operational Notes"/"Today"/"Previous Month"/"Next Month" were
+already precise, non-vague labels from 12A; 12D's two new actions follow the same convention:
+"Previous Day"/"Next Day" (button text "‹ Prev Day"/"Next Day ›", automation name "Previous day"/"Next
+day").
+
+### Selected-date summary (Part P) — Previous/Next Day added; layout otherwise unchanged
+
+The selected-date panel gained one small addition: a `StackPanel` with the two day-stepping buttons,
+placed directly under the "Today" chip and above the Park/Passdown/Notes sections — no new panel, no
+editor, and the existing Park Status/Passdown Status/Active Operational Notes/action-button layout from
+12B/12C is otherwise untouched.
+
+### Month/date state preservation (Part Q/R/S/T/X) — unchanged guarantee, now covered from more angles
+
+`OperationsCalendarViewModel` is still constructed once at composition-root time and stays alive for
+the app's whole lifetime (12A) — nothing about 12D's new commands changes that. 12D adds explicit
+coverage of the same "Calendar state survives navigating away and back" guarantee 12A already proved,
+from three additional angles: after Open Passdown
+(`CalendarState_SurvivesOpenAssociateThenReturning`), after Open Operational Notes
+(`CalendarState_SurvivesOpenOperationalNotesThenReturning`), and (implicitly, since the mechanism is
+identical) after Open History via the new `SelectByDateAsync` path — none of Calendar's own
+`DisplayedMonth`/`SelectedDate` state is ever reset by any of these routing actions, and nothing
+re-anchors it to Today automatically on return. Reload-preserves-selection and
+finalization/note-count-reflection-on-reload were already proved at the Application-layer snapshot
+level in 12A–12C and are unaffected by this phase's ViewModel-only changes.
+
+### Local-only guarantee (Part AC) — unchanged
+
+No HTTP, Playwright, `IRefreshOrchestrator`, or Task Scheduler dependency was added or is reachable —
+`OperationsCalendarViewModel`'s constructor shape is unchanged, and `Constructor_HasNoRefreshOrPdfDependency`
+still passes unmodified. Every new command (`PreviousDayCommand`/`NextDayCommand`, the reshaped
+`SelectDateCommand`/`PreviousMonthCommand`/`NextMonthCommand`/`GoToTodayCommand`) still only ever calls
+`IOperationsCalendarService.LoadAsync` — the same one local, bounded-query method 12A–12C already
+proved is network-free.
+
+### Accessibility (Part AE) — two new automation names
+
+"Previous day"/"Next day" join the existing "Previous month"/"Go to today"/"Next month"/"Calendar month
+grid"/"Selected date summary"/"Open Passdown"/"Open History"/"Open Operational Notes" set;
+`OperationsCalendarView_WithSnapshot_ExposesCriticalAutomationNames` was extended (not replaced) to
+assert both. Day-cell automation text is unchanged from 12C.
+
+### Keyboard behavior (Part AF/AG) — no new control shape
+
+Previous/Next Day are plain `Button`s, identical in shape to every other action on this screen — no
+custom key handling was added or needed; FluentTheme's default Tab order and focus ring already make
+them keyboard-reachable, and Enter/Space already activate them through Avalonia's standard `Button` key
+bindings. **Decision: no arrow-key grid navigation was added** — the spec's own guidance treats this as
+optional and warns against building custom grid-navigation complexity without a clear need; day cells
+remain individually Tab-reachable `Button`s exactly as 12A established, which is sufficient for every
+action this screen exposes. No manual focus-forcing was added when a deep-link action switches
+sections — consistent with every prior Phase 9–12 view, which also never forces focus onto a specific
+control after a section switch; Avalonia's own default focus behavior on the newly-shown view is
+relied upon, with no focus traps introduced.
+
+### Duplicate-load/performance audit (Part AI) — the single load-per-action guarantee
+
+Every navigation action added or reshaped in this phase (`SelectDateCommand`, `PreviousDayCommand`,
+`NextDayCommand`, `PreviousMonthCommand`, `NextMonthCommand`, `GoToTodayCommand`) now routes through
+one shared helper, `SetDisplayedMonthAndSelectedDate`, that suppresses the auto-load flag while setting
+both properties and issues exactly one `LoadAsync` call — proven directly by six new
+`..._TriggersExactlyOneLoad` tests (one per action family: month nav, day step, day step crossing a
+month boundary, Go to Today, in-month selection). This closes off, by construction, the exact class of
+bug 12A's own constructor fix (see "Real bug found") already found once for two properties changing at
+construction time — now guaranteed for every runtime navigation action too, not just construction.
+
+### Schema (Part AM) — unchanged
+
+No migration was added. Database schema remains **10**; `AssociateDraftPayload` schema remains **3**;
+`FinalizedPassdownSnapshot` schema remains **1**. Every piece of 12D's new state
+(`PassdownHistoryViewModel`'s `_pendingSelectByDate` field, the Calendar's internal navigation helper)
+is in-memory ViewModel state only — nothing new is persisted, matching Part AM's explicit instruction.
+
+### Visual validation — PARTIAL (unchanged constraint)
+
+Same constraint as every prior Phase 9–12 document: no pixel/bitmap screenshot renderer is referenced
+by this codebase's test projects. The existing 1280×860/960×640 `Measure`/`Arrange` layout-pass tests
+(`OperationsCalendarView_LayoutAt1280x860_DoesNotThrow` / `..._LayoutAt960x640_DoesNotThrow`, unchanged
+from 12B) still pass with the two new Previous/Next Day buttons added to the selected-date panel.
+Recorded honestly as **PARTIAL** — actual on-screen density/button-crowding should be spot-checked in a
+Windows 11 VM per `CLAUDE.md`'s platform guidance before this ships.
+
+### Tests added (Phase 12D)
+
+- `OperationsCalendarViewModelTests.cs` — **+22** (net; one pre-existing test was renamed and its
+  assertions updated to match the new month-navigation behavior rather than removed): month navigation
+  carrying the day-of-month with clamping (non-leap Feb, leap Feb, Dec→Jan), off-month selection moving
+  `DisplayedMonth`, Previous/Next Day advancing/stepping back, day-stepping crossing a month boundary
+  (both directions, including into a leap-year February) and a year boundary (both directions), the
+  Eastern-midnight "Go to Today" boundary test, and one `..._TriggersExactlyOneLoad` test per action
+  family (month nav, in-month selection, day step, day step across a month boundary, Go to Today); the
+  existing "Open History" event test was extended to assert the event now carries the selected date.
+- `PassdownHistoryViewModelTests.cs` — **+4**: `SelectByDateAsync` selecting a matching finalized date,
+  safely no-op-ing on an unknown date, intentionally replacing an existing selection, and resolving
+  correctly when called before the list load completes.
+- `MainViewModelNavigationTests.cs` — **+5**: the Associate dirty-autosave-flushed-before-switch
+  regression, the full Calendar→History date-preselection round trip, generic History navigation still
+  preserving an existing selection after a Calendar visit, and Calendar's own state surviving an Open
+  Associate round trip and an Open Operational Notes round trip.
+- `OperationsCalendarViewTests.cs` — **+0 tests, +2 assertions**: the existing critical-automation-names
+  test was extended to also assert "Previous day"/"Next day".
+
+**24 new tests total** (1365 Phase 12C baseline − 1 renamed (no net count change) + 24 new = 1389),
+plus 2 assertions added to an existing test.
+
+### Full validation (Phase 12D)
+
+`dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors.
+`dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — **1389/1389** on clean runs.
+Run five times total under normal (parallel) execution; three of those five runs hit the same
+pre-existing, previously-documented (Phase 6D) Avalonia headless cross-assembly parallelism flake
+(`Avalonia.Controls.Panel.ChildrenChanged`/`AvaloniaList.NotifyAdd`/`AvaloniaPropertyDictionaryPool`
+during `XamlIlPopulate`) on *unrelated* Phase 9/10 views (`HistoryView`, `DashboardView` — different
+tests each time, never the same one twice, and never a Phase 12 file). The other two runs passed all
+1389 cleanly. No Operations Calendar, Passdown History, or Main navigation test failed on its own
+merits in any run. No live internet was used or required.
+
+### What Phase 12D does *not* implement
+
+- Any editor of any kind on this screen — still a summary/routing surface only.
+- A `Past`/`Today`/`Future` classification field — deliberately not added (Part F); `PassdownStatus`
+  already carries the practically relevant signal.
+- Arrow-key grid navigation between day cells — deliberately deferred as unnecessary complexity (Part
+  AF); Tab-reachable day-cell buttons remain sufficient.
+- Date-aware deep-linking into Operational Notes Manager — re-evaluated, still deferred (Part L/M); no
+  clean, low-cost seam exists yet without risking feature creep into the Manager's own model.
+- A frozen-hours read model for finalized dates (12B Part S) — still deferred.
+- Alerts, alarm-style severity styling, the Manager workflow, app rename, refresh-policy changes,
+  manual-hours/buyout UI redesign, ERT behavior changes, app logo, or the release ZIP rebuild (Phase
+  12F's scope) — all explicitly out of scope per `CLAUDE.md` and this phase's own instructions.
+
+## Deferred to 12E–12F
+
+- Richer source-health overlays beyond park hours.
+- Any denser per-day note preview beyond a count, or note titles/bodies in month cells.
+- A frozen-hours read model for finalized dates, if a future phase decides it's worth the added
+  query cost/architecture.
+- Date-aware deep-linking into Operational Notes Manager from Calendar's selected date.
+- Arrow-key grid navigation between day cells, if a future phase decides supervisors need it.
+- The renamed-app work, refresh-policy overhaul, manual-hours/buyout redesign, ERT simplification,
+  logo, Alerts, and Manager workflow — all still deferred per `CLAUDE.md`.
+
+12E has not started.
