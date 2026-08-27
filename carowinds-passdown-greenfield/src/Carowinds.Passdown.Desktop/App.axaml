@@ -12,7 +12,7 @@
     <Application.Resources>
         <ResourceDictionary>
 
-            <!-- Carowinds Admissions Operations brand identity (blue/white/red retheme): a restrained
+            <!-- Carowinds Operations brand identity (blue/white/red retheme): a restrained
                  navy-and-royal-blue treatment, tuned for an internal operations tool rather than a
                  public/marketing surface, with red reserved for warning/error accents only. The brand
                  band itself (deep navy + white text) does not invert with the OS light/dark theme, so

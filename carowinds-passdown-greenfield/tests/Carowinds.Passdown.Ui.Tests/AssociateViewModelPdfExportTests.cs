@@ -54,7 +54,7 @@ public class AssociateViewModelPdfExportTests
         await viewModel.CreatePdfCommand.ExecuteAsync(null);
 
         var fileName = Assert.Single(picker.Calls).SuggestedFileName;
-        Assert.Equal("Carowinds-Passdown-2026-08-21.pdf", fileName);
+        Assert.Equal("Carowinds-Operations-2026-08-21.pdf", fileName);
         Assert.DoesNotContain('/', fileName);
         Assert.DoesNotContain('\\', fileName);
     }

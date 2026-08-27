@@ -14,11 +14,13 @@
     derives AssemblyVersion/FileVersion (numeric only, e.g. 0.1.0.0) and InformationalVersion
     (includes the "-dev" suffix) from this single <Version> value; bump it by hand when a real
     release is cut. <Product> names the built exe's file-properties "Product name" field as the
-    user-facing "Carowinds Passdown" without renaming the Carowinds.Passdown.Desktop.exe binary
-    itself (docs/release-strategy.md "Application name").
+    user-facing "Carowinds Operations" (Phase 13G rename) without renaming the
+    Carowinds.Passdown.Desktop.exe binary itself — the internal project/assembly identity stays
+    Carowinds.Passdown throughout (docs/release-strategy.md "Application name";
+    docs/phase13-hardening.md "Phase 13G").
   -->
   <PropertyGroup>
     <Version>0.1.0-dev</Version>
-    <Product>Carowinds Passdown</Product>
+    <Product>Carowinds Operations</Product>
   </PropertyGroup>
 </Project>

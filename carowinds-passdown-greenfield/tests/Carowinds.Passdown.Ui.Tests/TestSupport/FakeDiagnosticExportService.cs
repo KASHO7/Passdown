@@ -12,6 +12,6 @@ internal sealed class FakeDiagnosticExportService : IDiagnosticExportService
     public Task<DiagnosticExportResult> BuildZipAsync(CancellationToken cancellationToken = default)
     {
         CallCount++;
-        return Task.FromResult(ResultFactory?.Invoke() ?? new DiagnosticExportResult([1, 2, 3], "Carowinds-Passdown-Diagnostics-20260822-1000.zip"));
+        return Task.FromResult(ResultFactory?.Invoke() ?? new DiagnosticExportResult([1, 2, 3], "Carowinds-Operations-Diagnostics-20260822-1000.zip"));
     }
 }

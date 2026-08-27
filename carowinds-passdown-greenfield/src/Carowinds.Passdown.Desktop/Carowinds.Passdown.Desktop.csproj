@@ -2,6 +2,10 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Phase 13G: the approved app icon, embedded into the published .exe's icon resource (Windows
+         Explorer/taskbar) and reused as the Avalonia window icon (Views/MainWindow.axaml). One
+         canonical source asset (Assets/logo.ico), not a separate icon per surface. -->
+    <ApplicationIcon>Assets\logo.ico</ApplicationIcon>
   </PropertyGroup>
 
   <!--

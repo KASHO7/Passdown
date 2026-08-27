@@ -1,5 +1,5 @@
-Carowinds Passdown — Tester Guide
-=================================
+Carowinds Operations — Tester Guide
+====================================
 
 Thanks for testing this app. You do not need any technical background to do this —
 just follow the steps below in order. If anything looks wrong or doesn't match what

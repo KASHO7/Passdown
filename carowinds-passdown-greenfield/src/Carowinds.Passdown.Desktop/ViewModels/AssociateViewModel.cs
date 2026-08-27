@@ -698,7 +698,7 @@ public partial class AssociateViewModel : ViewModelBase
                 return;
             }
 
-            var fileName = $"Carowinds-Passdown-{workspace.OperatingDate:yyyy-MM-dd}.pdf";
+            var fileName = $"Carowinds-Operations-{workspace.OperatingDate:yyyy-MM-dd}.pdf";
             var saveResult = await _pdfSavePicker.SaveAsync(pdfBytes, fileName).ConfigureAwait(true);
 
             PdfExportMessage = saveResult.Outcome switch

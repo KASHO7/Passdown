@@ -7,8 +7,8 @@
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="860"
         x:Class="Carowinds.Passdown.Desktop.Views.MainWindow"
         x:DataType="vm:MainViewModel"
-        Icon="/Assets/avalonia-logo.ico"
-        Title="Carowinds Admissions Operations"
+        Icon="/Assets/logo.ico"
+        Title="Carowinds Operations"
         Width="1280" Height="860" MinWidth="960" MinHeight="640">
 
     <Window.Styles>
@@ -43,10 +43,10 @@
     <DockPanel LastChildFill="True">
 
         <!-- Brand identity band (spec §10.2): a constant, theme-invariant deep-navy strip so the app
-             reads as "Carowinds Admissions Operations" the instant it opens, independent of the
-             light/dark surfaces underneath. Associate Passdown is the only workflow this release — no
-             mode selector/nav rail is needed for one item, and no Manager entry point is added as a
-             placeholder (CLAUDE.md "current scope decision"). -->
+             reads as "Carowinds Operations" the instant it opens, independent of the light/dark
+             surfaces underneath (Phase 13G rename). Associate Passdown is the only workflow this
+             release — no mode selector/nav rail is needed for one item, and no Manager entry point is
+             added as a placeholder (CLAUDE.md "current scope decision"). -->
         <Border DockPanel.Dock="Top" Padding="24,10" Background="{DynamicResource PassdownBrandDarkBrush}"
                 ClipToBounds="True">
             <Grid ColumnDefinitions="Auto,*">
@@ -70,7 +70,7 @@
                     <StackPanel Spacing="1" VerticalAlignment="Center">
                         <TextBlock Text="CAROWINDS" FontSize="15" FontWeight="Bold" LetterSpacing="1.5"
                                    Foreground="{DynamicResource PassdownHeaderForegroundBrush}" />
-                        <TextBlock Text="ADMISSIONS OPERATIONS" FontSize="10.5" FontWeight="Medium" LetterSpacing="1.5"
+                        <TextBlock Text="OPERATIONS" FontSize="10.5" FontWeight="Medium" LetterSpacing="1.5"
                                    Foreground="{DynamicResource PassdownHeaderMutedForegroundBrush}" />
                     </StackPanel>
                 </StackPanel>

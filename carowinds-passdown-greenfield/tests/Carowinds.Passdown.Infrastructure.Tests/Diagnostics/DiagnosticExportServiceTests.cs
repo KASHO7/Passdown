@@ -30,7 +30,7 @@ public class DiagnosticExportServiceTests
     {
         var result = await CreateSut(BuildReport()).BuildZipAsync();
 
-        Assert.Equal("Carowinds-Passdown-Diagnostics-20260822-1405.zip", result.SuggestedFileName);
+        Assert.Equal("Carowinds-Operations-Diagnostics-20260822-1405.zip", result.SuggestedFileName);
         Assert.DoesNotContain(Path.DirectorySeparatorChar, result.SuggestedFileName);
         Assert.DoesNotContain(Path.AltDirectorySeparatorChar, result.SuggestedFileName);
     }

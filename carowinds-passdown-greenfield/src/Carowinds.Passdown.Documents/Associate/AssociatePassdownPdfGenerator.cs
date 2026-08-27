@@ -36,7 +36,7 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
     private const float KeySellingTileGap = 8f;
     private const float PromotionalCardGap = 10f;
 
-    // Carowinds Admissions Operations brand palette (blue/white/red retheme), matching the Desktop
+    // Carowinds Operations brand palette (blue/white/red retheme), matching the Desktop
     // shell's tokens (App.axaml) so the on-screen draft and the printed handoff read as the same
     // product. Applied only to decorative bands/rules/headings — never the sole carrier of meaning
     // (spec §11.1) — and dark enough to stay legible converted to grayscale.
@@ -163,7 +163,7 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
 
                 row.RelativeItem().Column(left =>
                 {
-                    left.Item().Text("CAROWINDS ADMISSIONS OPERATIONS").FontSize(8).Bold()
+                    left.Item().Text("CAROWINDS OPERATIONS").FontSize(8).Bold()
                         .LetterSpacing(0.12f).FontColor(HeaderMutedColor);
 
                     left.Item().PaddingTop(2).Text("Associate Passdown").FontSize(21).Bold().FontColor(Colors.White);

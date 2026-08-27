@@ -21,7 +21,7 @@ internal sealed class FakeFinalizedPassdownPdfRetrievalService : IFinalizedPassd
         var bytes = new byte[] { 0x25, 0x50, 0x44, 0x46 };
         return new FinalizedPassdownPdfRetrievalResult(
             bytes,
-            $"Carowinds-Passdown-{passdownDate:yyyy-MM-dd}.pdf",
+            $"Carowinds-Operations-{passdownDate:yyyy-MM-dd}.pdf",
             Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes)),
             bytes.LongLength);
     }

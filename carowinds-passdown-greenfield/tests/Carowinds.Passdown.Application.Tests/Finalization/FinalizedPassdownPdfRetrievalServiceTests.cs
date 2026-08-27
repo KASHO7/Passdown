@@ -51,6 +51,6 @@ public class FinalizedPassdownPdfRetrievalServiceTests
         Assert.Equal(pdfBytes, result!.PdfBytes);
         Assert.Equal("deadbeef", result.PdfSha256);
         Assert.Equal(pdfBytes.LongLength, result.PdfSizeBytes);
-        Assert.Equal("Carowinds-Passdown-2026-08-25.pdf", result.SuggestedFileName);
+        Assert.Equal("Carowinds-Operations-2026-08-25.pdf", result.SuggestedFileName);
     }
 }

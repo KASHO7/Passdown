@@ -229,7 +229,7 @@ public class PassdownHistoryViewModelTests
         var call = Assert.Single(launcher.Calls);
         Assert.Equal(FakeFinalizedPassdownPdfRetrievalService.Default(DateA).PdfBytes, call.Bytes);
         // 19: suggested filename uses PassdownDate.
-        Assert.Equal("Carowinds-Passdown-2026-08-25.pdf", call.SuggestedFileName);
+        Assert.Equal("Carowinds-Operations-2026-08-25.pdf", call.SuggestedFileName);
         Assert.Null(viewModel.PdfActionMessage);
     }
 
@@ -253,7 +253,7 @@ public class PassdownHistoryViewModelTests
 
         var call = Assert.Single(picker.Calls);
         Assert.Equal(FakeFinalizedPassdownPdfRetrievalService.Default(DateA).PdfBytes, call.Bytes);
-        Assert.Equal("Carowinds-Passdown-2026-08-25.pdf", call.SuggestedFileName);
+        Assert.Equal("Carowinds-Operations-2026-08-25.pdf", call.SuggestedFileName);
         Assert.Equal("PDF saved.", viewModel.PdfActionMessage);
     }
 
@@ -289,7 +289,7 @@ public class PassdownHistoryViewModelTests
         service.Details[DateA] = BuildDetail(DateA);
         var pdfRetrieval = new FakeFinalizedPassdownPdfRetrievalService
         {
-            ResultFactory = date => new FinalizedPassdownPdfRetrievalResult([1, 2, 3], "Carowinds-Passdown-2026-08-25.pdf", "deadbeef", 999),
+            ResultFactory = date => new FinalizedPassdownPdfRetrievalResult([1, 2, 3], "Carowinds-Operations-2026-08-25.pdf", "deadbeef", 999),
         };
         var launcher = new FakeFinalizedPdfLauncher();
         var picker = new FakePdfSaveFilePicker();

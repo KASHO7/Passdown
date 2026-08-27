@@ -5,7 +5,7 @@ namespace Carowinds.Passdown.Application.Finalization;
 /// <summary>
 /// The bytes and metadata a future Passdown History UI needs to save/open one finalized passdown's
 /// frozen PDF (spec Phase 9C Part V). <see cref="SuggestedFileName"/> follows the
-/// <c>Carowinds-Passdown-yyyy-MM-dd.pdf</c> convention.
+/// <c>Carowinds-Operations-yyyy-MM-dd.pdf</c> convention (Phase 13G rename).
 /// </summary>
 public sealed record FinalizedPassdownPdfRetrievalResult(
     byte[] PdfBytes,
@@ -35,7 +35,7 @@ public sealed class FinalizedPassdownPdfRetrievalService(IFinalizedPassdownRepos
             return null;
         }
 
-        var fileName = $"Carowinds-Passdown-{passdownDate:yyyy-MM-dd}.pdf";
+        var fileName = $"Carowinds-Operations-{passdownDate:yyyy-MM-dd}.pdf";
         return new FinalizedPassdownPdfRetrievalResult(finalized.PdfBytes, fileName, finalized.PdfSha256, finalized.PdfSizeBytes.Value);
     }
 }

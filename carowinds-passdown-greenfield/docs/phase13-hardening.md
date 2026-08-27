@@ -2088,3 +2088,228 @@ print the same frozen derived value and are immune to later live-hours changes (
 test). Zero schema/migration changes (DB 11, draft 3, snapshot 1), zero network/refresh-path changes, 22
 new tests, full suite green (1587/1587), build clean (0/0). One local commit follows; 13G is explicitly
 not started.
+
+## Phase 13G — Visible rename to "Carowinds Operations" and branding/icon
+
+Executes against §27–30's rename audit and this phase's own task brief. Purely a branding/rename
+pass: no persistence, retrieval, business-rule, or UI-layout change. The product's visible name
+becomes "Carowinds Operations" everywhere a user actually sees it; every local-data compatibility
+identifier the brief calls out as a hard requirement was left byte-for-byte unchanged.
+
+### Visible rename
+
+Every user-facing "Carowinds Passdown" / "Carowinds Admissions Operations" occurrence became
+"Carowinds Operations": the main window title and brand band (`Views/MainWindow.axaml` — the band's
+second line changed from "ADMISSIONS OPERATIONS" to "OPERATIONS", "CAROWINDS" unchanged), the
+Associate Passdown PDF's small-caps header line (`AssociatePassdownPdfGenerator.ComposeHeader`, was
+"CAROWINDS ADMISSIONS OPERATIONS"), the diagnostic summary's heading line
+(`DiagnosticReportFormatter.BuildSummaryText`), three user-facing suggested export filenames — the
+diagnostics ZIP (`Carowinds-Operations-Diagnostics-yyyyMMdd-HHmm.zip`,
+`DiagnosticExportService.BuildZipAsync`), the "Create PDF" save-dialog filename
+(`Carowinds-Operations-yyyy-MM-dd.pdf`, `AssociateViewModel.ExportPdfCommand`), and the History
+"Save PDF Copy" filename (same convention, `FinalizedPassdownPdfRetrievalService.GetPdfAsync`) — the
+Task Scheduler task's *description* field text (not its name — see below,
+`Install-ScheduledRefresh.ps1`), the two double-click helper scripts' visible console prose
+(`Enable Automatic Refresh.cmd` / `Disable Automatic Refresh.cmd`), and the nontechnical
+`README-portable-release.md` / `TESTER-GUIDE.txt` titles. `App.axaml`'s brand-identity doc comment
+and `Directory.Build.props`' `<Product>` element were updated to match. "Associate Passdown" /
+"Passdown History" / "Create PDF" — the document/workflow terminology, not the app's own name — were
+deliberately left untouched everywhere, per the brief's own explicit instruction; the PDF still
+prints "Associate Passdown" as the document title directly beneath the renamed "CAROWINDS
+OPERATIONS" small-caps line.
+
+### Icon / branding
+
+The user-supplied Phase 13G asset pair (`Assets/logo.ico` — a genuine multi-resolution Windows icon,
+independently verified by parsing its directory entries: 16/24/32/48/64/72/96/128/256 px, all 32bpp
+with alpha, no upstream `identify`/`magick` tool available on this dev host so parsed by hand against
+the ICO file-format spec; `Assets/logo.png`, 1254×1254 source) is now the one canonical branding
+asset, wired everywhere the app previously used the stock Avalonia template icon or nothing at all:
+`Views/MainWindow.axaml`'s `Icon` attribute (was literally `/Assets/avalonia-logo.ico` — the unused
+Avalonia project-template default, never previously replaced), and a new
+`<ApplicationIcon>Assets\logo.ico</ApplicationIcon>` in `Carowinds.Passdown.Desktop.csproj` (there was
+no `ApplicationIcon` property at all before this phase, so the published `.exe` never had its own
+icon resource). The now-fully-unreferenced `Assets/avalonia-logo.ico` (the stock template asset) was
+deleted rather than left as an orphaned second icon, per the brief's "prefer one canonical source
+asset" instruction. The shell's existing small "ascending-track" geometric mark (plain
+`Rectangle`s in the brand band) was left as-is — restrained, already original, not a redesign target
+this phase — no separate logo image was added into the header itself. No logo/icon artwork was
+authored or altered by this phase (brief: "do not redesign the logo").
+
+### Executable icon validation (Windows/manual status)
+
+No Windows host is available this session (same limitation recorded in every prior Phase 7/9/10/12
+rebuild). What *was* verified directly, cross-platform: `dotnet build
+src/Carowinds.Passdown.Desktop/Carowinds.Passdown.Desktop.csproj -c Release -r win-x64
+--self-contained false -p:PlaywrightPlatform=win-x64` succeeds with the new `ApplicationIcon`
+property (0 warnings/errors) and produces a real apphost `Carowinds.Passdown.Desktop.exe`; a direct
+byte-string search of that built `.exe` confirmed a distinctive slice of `Assets/logo.ico`'s own
+bytes is actually embedded inside it (the same "search the actual built binary for real evidence, not
+just trust the build succeeded" method the Phase 12F release manifest used for feature-symbol
+verification); the generated `Carowinds.Passdown.Desktop.AssemblyInfo.cs` for that same win-x64 build
+confirmed `[assembly: AssemblyProductAttribute("Carowinds Operations")]`. Visual confirmation that
+Windows Explorer/the taskbar actually renders the icon correctly at each resolution, and that it
+reads well against both light and dark taskbars, remains **NOT EXECUTED** — deferred to real
+Windows-host validation per `docs/phase-7e-windows-validation-checklist.md`'s existing pattern, same
+as every prior phase's Windows-only gaps.
+
+### Internal names intentionally retained
+
+Per the brief's explicit "internal code/project identity stays Carowinds.Passdown" default: every
+`Carowinds.Passdown.*` namespace, project, and folder name; the
+`Carowinds.Passdown.Desktop.Carowinds.Passdown.Desktop.exe` build output name; the
+`CarowindsPassdown.slnx` solution filename (used as a repo-root marker by multiple tests, including
+the new ones this phase added); the `Passdown*` Avalonia resource keys in `App.axaml`
+(`PassdownBrandDarkBrush`, `PassdownAccentBrush`, etc.); and the OS-temp folder
+`TempFileFinalizedPdfLauncher` uses for launching a History PDF (`%TEMP%\Carowinds Passdown\History`)
+— none of these are ever visible to a normal user, so renaming any of them would be pure internal
+churn for zero user-facing benefit, exactly as §27–30 recommended deferring.
+
+### AppData / database compatibility decision
+
+**No path changed.** `AppPaths.LocalApplicationDataDirectory` still resolves to
+`%LOCALAPPDATA%\Carowinds Passdown` (`AppPaths.cs` — byte-for-byte unchanged), the database filename
+stays `carowinds-passdown.db`, and `scheduled-refresh.lock`/the logs directory are untouched. This is
+the hard compatibility requirement the brief calls "high priority," and it holds structurally, not by
+convention: no code anywhere in this diff constructs a path containing the string "Carowinds
+Operations." A new regression test,
+`Phase13GAppDataRenameCompatibilityTests.ExistingLegacyAppData_DraftHistoryAndDeepRefreshState_AllLoadUnchanged_UnderTheRenamedApp`
+(Infrastructure), seeds a directory literally named `Carowinds Passdown` (standing in for
+`%LOCALAPPDATA%`, never the developer's real one) with a draft, a finalized/History row (with frozen
+PDF bytes), and Deep Refresh status via the real repositories/migrations — exactly the set the brief's
+"drafts / History / Deep Refresh state" list names — then reopens it with a fresh connection factory
+(simulating a relaunch under the renamed build, exactly as `App.axaml.cs` does on every real launch)
+and asserts all three reload correctly, and that no sibling `Carowinds Operations` directory was ever
+created. A second test,
+`AppPaths_LocalApplicationDataDirectory_StillUsesTheLegacyFolderName_NotTheRenamedProductName`, pins
+the exact literal as a named regression against a future careless find-and-replace.
+
+### Task Scheduler naming/migration decision
+
+**Option A — the legacy task name is preserved internally, unchanged: `"Carowinds Passdown Daily
+Refresh"`** (`ScheduledTaskPlan.TaskName`, `ScheduledTaskStatusProvider.TaskName`,
+`Install-ScheduledRefresh.ps1`/`Uninstall-ScheduledRefresh.ps1`'s `$TaskName`). This matches §27–30's
+own prior recommendation and this phase's own brief ("prefer the simpler solution if both are
+functionally equivalent"): the install script's idempotency (`Register-ScheduledTask -Force`) keys
+entirely on this exact name, so an upgrading user's existing task is found and updated in place with
+zero migration code, zero risk of a stray detect-and-rename step either duplicating the task or
+orphaning the old one, and the task name is never shown inside the app itself (only in Windows' own
+Task Scheduler UI, which the product owner is not expected to open). What *did* change: the task's
+*description* field text (`Install-ScheduledRefresh.ps1`'s `$description`, a Task-Scheduler-UI-only
+string, not an identity/matching field) now reads "Runs the Carowinds Operations unattended source
+refresh," and a code comment above `$TaskName` documents the decision explicitly for a future reader.
+No code change was needed in `ScheduledTaskPlan.cs`/`ScheduledTaskStatusProvider.cs` (both are exactly
+the same as pre-13G), so the entire pre-existing `ScheduledTaskPlanTests`/
+`ScheduledTaskStatusProviderTests` suite already constitutes this phase's full task-compatibility
+regression coverage: task-name stability, the explicit
+`Build_DifferentExecutablePaths_ShareTheSameTaskName_...` duplicate-prevention proof, correct
+executable/action/working-directory construction, and (by construction — `ScheduledTaskPlan.Build`
+takes no credential parameter at all) no admin/password behavior. No new task-compatibility test was
+added because nothing on this path changed.
+
+### Script / user-facing wording
+
+`Enable Automatic Refresh.cmd` / `Disable Automatic Refresh.cmd`'s visible console text ("Enabling
+automatic refresh for this copy of Carowinds Operations...", "Carowinds Operations will check for due
+updates each day...", "Keep this file inside the extracted Carowinds Operations folder...") and
+`Install-ScheduledRefresh.ps1`'s Task Scheduler description string were updated; both scripts'
+executable-name checks (`Carowinds.Passdown.Desktop.exe`) and task-name targeting are untouched, per
+the executable-filename and Task-Scheduler decisions above.
+
+### PDF / Associate Passdown terminology
+
+Unchanged, confirmed correct on inspection: the PDF's document title stays "Associate Passdown"
+(`ComposeHeader`, line directly below the renamed small-caps app-name line); the History section, the
+"Create PDF" button, and every "Passdown" reference describing the daily document/workflow (not the
+app) were left alone throughout the audit — the brief's own explicit instruction, and semantically
+correct regardless: the app is Carowinds Operations, the document it produces is still the Associate
+Passdown.
+
+### Repository stale-brand search result
+
+Final `grep -rn "Carowinds Admissions Operations\|Carowinds Passdown"` across `src/`, `tests/`,
+`packaging/`, and `docs/` (excluding `obj/`/`bin/`/gitignored `artifacts/`) classifies every remaining
+hit into exactly three buckets, none left as a stale-branding bug:
+
+1. **Intentional legacy compatibility identifiers** (never renamed, by design this phase):
+   `AppPaths.cs`'s `"Carowinds Passdown"` folder literal; `carowinds-passdown.db`; the Task Scheduler
+   task name (`ScheduledTaskPlan.cs`/`ScheduledTaskStatusProvider.cs`/both PowerShell scripts'
+   `$TaskName`); `TempFileFinalizedPdfLauncher`'s OS-temp subfolder; every literal
+   `%LOCALAPPDATA%\Carowinds Passdown` path string in `docs/scheduled-refresh-task-scheduler.md`,
+   `docs/support-troubleshooting.md`, `README-portable-release.md`, `TESTER-GUIDE.txt`, and
+   `DiagnosticReportFormatter`'s printed summary text; `Carowinds.Passdown.Desktop.exe` and every
+   `Carowinds.Passdown.*` namespace/project reference.
+2. **Legitimate workflow/document terminology** (never in scope for this rename): every "Associate
+   Passdown" / "Passdown History" / "Create PDF" occurrence describing the document or the app's
+   internal type names (`IAssociatePassdownService`, `FinalizedPassdown`, etc.), which are not
+   user-facing product-name text at all.
+3. **Historical record, intentionally not rewritten**: `docs/release-manifest.md` (the Phase 12F
+   release manifest — a dated record of a specific already-shipped ZIP, its exact SHA-256, and the
+   product name as it was at that time; it already forward-references "the app rename to 'Carowinds
+   Operations' is Phase 13 scope"), `docs/release-strategy.md`'s Phase 7–12 narrative sections, and
+   `AGENT_BUILD_SPEC.md`/`CLAUDE.md`'s own titles (governance/spec documents, not a rendered product
+   surface). Rewriting these would misrepresent what was actually true/shipped at each historical
+   point; 13H's own release rebuild is the natural place to add a new, current manifest entry rather
+   than editing history. `docs/architecture.md`'s handful of historical mentions (describing the
+   pre-13G "Carowinds Admissions Operations" retheme and the pre-13G `<Product>` value) were left for
+   the same reason — a developer architecture doc narrating what earlier phases did, not a live
+   product surface.
+
+No occurrence was found that this classification could not place — nothing was silently
+find-and-replaced without inspection, and nothing was left unaudited.
+
+### Schema / data
+
+Confirmed directly in code (`grep` of the three `CurrentSchemaVersion` constants and the migrations
+directory — `Migration0011...` remains the newest file, no new migration file exists): **DB schema
+11 (unchanged). `AssociateDraftPayload` schema 3 (unchanged). `FinalizedPassdownSnapshot` schema 1
+(unchanged).** No migration was needed or added — this phase touched zero persistence code paths
+(only path/filename *constants* used for reading/writing are unaffected — see AppData decision
+above).
+
+### Tests added / final validation
+
+15 new tests: 11 in the new `ProductBrandingTests` (Ui/Release — window title, old-branding-removed,
+stale-"Carowinds Passdown"-removed, "Associate Passdown" workflow label retained, window icon asset
+path + file existence, `ApplicationIcon` csproj property, `Directory.Build.props` `<Product>`, PDF
+header renamed + "Associate Passdown" retained, plus two explicit compatibility guards pinning the
+AppData folder name and Task Scheduler task name as unchanged) and 2 in the new
+`Phase13GAppDataRenameCompatibilityTests` (Infrastructure — the full draft/History/Deep-Refresh
+reload-under-rename proof, and the `AppPaths` literal-name guard); plus 9 existing test literals
+updated to the new suggested-filename conventions (`FinalizedPassdownPdfRetrievalServiceTests`,
+`AssociateViewModelPdfExportTests`, `FakeFinalizedPassdownPdfRetrievalService`,
+`PassdownHistoryViewModelTests` ×3, `FakeDiagnosticExportService`, `DiagnosticExportServiceTests`) and
+1 (`ReleaseVersionTests.DesktopAssembly_ProductNameIsTheUserFacingApplicationName`) updated to assert
+`"Carowinds Operations"` — the "coupled edit required" §27–30 flagged in advance.
+
+Full suite (`dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"`): **1600/1600
+passing** (Domain 105, Application 453, Documents 106, Infrastructure 352, Ui 584) — up from the
+1587/1587 baseline (+13: 2 Infrastructure + 11 Ui; the filename-literal edits above did not add test
+count). `dotnet build CarowindsPassdown.slnx` — **0 warnings, 0 errors.**
+
+### Work deferred to 13H
+
+Per the brief: the final release ZIP (and its `Carowinds-Operations-<version>-win-x64.zip` naming —
+`Build-PortableRelease.ps1`'s `$releaseName` and `Publish-Windows.ps1`'s console prose were
+deliberately left reading "Carowinds Passdown" this phase, since the brief explicitly reserves "final
+release ZIP naming" and "final packaging/release" for 13H; changing the naming variable now without
+also cutting a new manifest/rebuild would leave an inconsistent half-state) was not built. Also
+unchanged from every prior phase's own deferral list: Alerts, the Manager workflow, and real
+Windows-host icon/scale/DPI validation (`docs/phase-7e-windows-validation-checklist.md`).
+
+## Git checkpoint (Phase 13G)
+
+The visible product is now "Carowinds Operations" everywhere a user sees it — window title, brand
+band, PDF header, diagnostic summary, three export-filename conventions, and every nontechnical
+script/doc surface — while "Associate Passdown"/"Passdown History"/"Create PDF" (the actual
+document/workflow) were correctly left alone. The approved Phase 13G icon (`Assets/logo.ico`) is now
+the canonical window icon and the published `.exe`'s embedded icon resource (verified by a direct
+byte-search of a real win-x64 build, since no Windows host is available); the stale unused Avalonia
+template icon was deleted. Every hard local-data compatibility identifier — the `%LOCALAPPDATA%
+\Carowinds Passdown` folder, `carowinds-passdown.db`, `scheduled-refresh.lock`, and the
+`"Carowinds Passdown Daily Refresh"` Task Scheduler task name — was left byte-for-byte unchanged and
+is now covered by an explicit new regression test proving drafts/History/Deep-Refresh all reload
+correctly from a legacy-named data directory under the renamed app, with no second "Carowinds
+Operations" directory ever created. Zero schema/migration changes (DB 11, draft 3, snapshot 1), zero
+persistence/retrieval/business-rule changes, 15 new tests, full suite green (1600/1600), build clean
+(0/0). One local commit follows; 13H (final packaging/release rebuild) is explicitly not started.

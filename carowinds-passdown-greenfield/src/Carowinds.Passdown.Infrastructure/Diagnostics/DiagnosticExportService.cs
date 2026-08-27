@@ -35,7 +35,7 @@ public sealed class DiagnosticExportService(IDiagnosticReportBuilder reportBuild
         // yyyyMMdd-HHmm is digits and dashes only — always a safe file name component, no path
         // separators or characters a destination filesystem could reject (Part S "output filename
         // is safe").
-        var fileName = $"Carowinds-Passdown-Diagnostics-{clock.UtcNow:yyyyMMdd-HHmm}.zip";
+        var fileName = $"Carowinds-Operations-Diagnostics-{clock.UtcNow:yyyyMMdd-HHmm}.zip";
         return new DiagnosticExportResult(memoryStream.ToArray(), fileName);
     }
 
