@@ -79,7 +79,7 @@ internal sealed class FakeOperationsDashboardService : IOperationsDashboardServi
 
         return CheckOnlineResultFactory?.Invoke() ?? new OperationsDashboardCheckOnlineResult(
             DefaultSnapshot(DefaultDate),
-            new RefreshSummary(RefreshJobType.ManualSingleDate, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, OperationsAttempted: 0, Succeeded: 0, Failed: 0, Cancelled: 0, Results: []));
+            new RefreshSummary(RefreshJobType.UserForced, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, OperationsAttempted: 0, Succeeded: 0, Failed: 0, Cancelled: 0, Results: []));
     }
 
     public static OperationsDashboardSnapshot DefaultSnapshot(DateOnly date) => new(

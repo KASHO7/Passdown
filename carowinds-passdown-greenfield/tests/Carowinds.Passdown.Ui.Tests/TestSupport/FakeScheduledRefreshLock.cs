@@ -1,4 +1,4 @@
-using Carowinds.Passdown.Infrastructure.Concurrency;
+using Carowinds.Passdown.Application.Concurrency;
 
 namespace Carowinds.Passdown.Ui.Tests.TestSupport;
 

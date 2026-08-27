@@ -641,6 +641,216 @@ already-documented Phase 6D/12B precedent for this exact class of flake).
   `docs/retrieval/catalog-source-inventory.md` (appended section, 101 insertions / 0 deletions),
   `docs/retrieval/pricing-semantics.md` (new file).
 
+## Phase 13B — Refresh-mode model, UserForced coverage, and startup catch-up hardening
+
+Phase 13B executes against 13A's findings: it makes refresh intent explicit and typed, closes the
+one real gap 13A found (catalog families never force-refreshed by either "Check Online" surface),
+and audits/confirms (rather than redesigns) every invariant 13A already found correct. No parser,
+pricing, or new-source-family work was done here — that remains 13C.
+
+### Refresh-mode model (Part A)
+
+`Carowinds.Passdown.Application.Refresh.RefreshMode` (new): `Scheduled`, `StartupCatchUp`,
+`UserForced`. `IScheduledRefreshRunner.RunAsync` now takes a `RefreshMode` purely so its log line
+names which caller triggered a given run — `ScheduledRefreshHost` passes `Scheduled`,
+`StartupCatchUpRefresh` passes `StartupCatchUp`; both still resolve to the identical due-based
+`IRefreshOrchestrator.RunScheduledRefreshAsync` call (13A already found that sharing correct — not
+redesigned here). Passing `UserForced` to the runner throws `ArgumentOutOfRangeException`: that mode
+never reaches this runner at all — it has its own orchestrator entry point,
+`RunUserForcedRefreshAsync`, called only from `AssociatePassdownService.CheckAssociateDateOnlineAsync`.
+`RefreshJobType.ManualSingleDate` was renamed to `RefreshJobType.UserForced` to match (a mechanical
+rename across every caller/test — no behavior change from the rename itself).
+
+### UserForced semantics (Part B/G) — the actual gap closed
+
+`IRefreshOrchestrator.RunUserForcedRefreshAsync(DateOnly date, ...)` replaces the old
+`RunManualDateRefreshAsync`. It now plans **every** registered source — every `SourceScope.Dated`
+registration against `date`, and every `SourceScope.Catalog` registration once, unconditionally —
+rather than only the dated ones. Freshness is bypassed entirely for both scopes (no
+`IFreshnessPlanner` call at all, matching the previous dated-only behavior extended to catalog).
+Source-state (`source_state`/due-ness bookkeeping) is still never updated by this mode — an explicit
+Check Online must never change when the next scheduled/startup-catch-up job considers a source due —
+but each source's own per-operation persistence (dated results, catalog products, evidence,
+`LastVerifiedAt`) updates exactly as it always has, since that happens inside
+`SourceRegistration.ExecuteAsync` regardless of mode. Bounded concurrency, immediate persistence,
+partial-failure isolation, cancellation safety, and Error-never-becomes-absence are all inherited
+unchanged from the shared `ExecuteJobAsync` — this was an extension of what already ran, not new
+logic (`RefreshOrchestratorTests`: `RunUserForcedRefreshAsync_AlsoForceRefreshesEveryCatalogSource`,
+`_IgnoresFreshness_EvenForJustSucceededSources`, `_PartialFailure_PreservesEachSourceIndependently`,
+`_CallerCancellation_StopsOutstandingWork...`, `_DoesNotTouchSourceState`).
+
+### Source coverage matrix (Part F/Y) — from actual composition-root registrations
+
+| Source family | Source id(s) | Scheduled | StartupCatchUp | UserForced |
+|---|---|---|---|---|
+| Park Hours | `park-hours` (see `ParkHoursSource`) | due | due | **yes, always** |
+| Dated Admission | `DatedAdmissionSource` | due | due | **yes, always** |
+| Dated Fast Lane | `DatedFastLaneSource` | due | due | **yes, always** |
+| Dated Haunted | `DatedHauntedSource` | due | due | **yes, always** |
+| Season Passes | `SeasonPassCatalogSource` | due | due | **yes, always** (was omitted before 13B) |
+| Season Pass Add-Ons | `SeasonPassAddOnsCatalogSource` | due | due | **yes, always** (was omitted before 13B) |
+| General Add-Ons | `GeneralAddOnsCatalogSource` | due | due | **yes, always** (was omitted before 13B) |
+| Promotions | `PromotionsCatalogSource` | due | due | **yes, always** (was omitted before 13B) |
+
+`CompositionRootTests.BuildServiceProvider_SourceRegistrations_CoverEveryExpectedFamily` (new) reads
+the real `IReadOnlyList<SourceRegistration>` DI registration and fails if any of these 4 dated + 4
+catalog families is ever accidentally dropped — this is the "test that fails on omission" Part F asks
+for, built from the actual registration list rather than a hand-maintained parallel table.
+
+### Dashboard / Associate Check Online (Parts C/D/E) — no consolidation needed, confirmed again
+
+Both screens already funnel through one shared Application-layer method —
+`OperationsDashboardService.CheckOnlineAsync` → `AssociatePassdownService.CheckAssociateDateOnlineAsync`
+(Dashboard fixed to Eastern "today"; Associate to `SelectedDate`) — so extending
+`CheckAssociateDateOnlineAsync` to call the new `RunUserForcedRefreshAsync` fixed both surfaces from
+one call-site change; no per-screen source-family list exists anywhere to keep in sync (Part E's
+"avoid duplicate lists" requirement was already satisfied by the existing architecture, confirmed by
+`AssociateCheckOnlineCatalogCoverageTests` — a real `RefreshOrchestrator`, not a fake, proving the
+recomposed workspace actually reflects newly force-refreshed catalog products end to end). No draft
+mutation, no bypassed reconciliation rule, no changed selected date — all unchanged from before.
+
+### Reload Summary — confirmed local-only, unchanged (Part T)
+
+Dashboard's "Reload" (`OperationsDashboardViewModel.ReloadCommand` → `GetTodayAsync` →
+`AssociatePassdownService.LoadAssociateDateAsync`) was not touched by this phase and remains proven
+local-only by the pre-existing `OperationsDashboardServiceTests` assertion that `GetTodayAsync`/`LoadAsync`
+never populate `FakeRefreshOrchestrator.ManualDateRefreshCalls` — still true after the rename (the
+fake's own call-recording property name is unchanged; only the interface method it backs was renamed).
+
+### Startup catch-up policy (Part H/I) — kept as-is, deliberately
+
+Decision: **Option A, unchanged** — `StartupCatchUpRefresh` keeps performing real overdue-source
+network refresh in the background via the shared `IScheduledRefreshRunner`/`RunScheduledRefreshAsync`
+due-based job, now explicitly tagged `RefreshMode.StartupCatchUp` for logging. 13A's evidence showed
+this is already narrow (never reaches beyond due sources, never touches UserForced's new catalog
+capability, never blocks the window, respects the same `IScheduledRefreshLock` a scheduled process
+uses) — narrowing it to "finalization/recovery only" (Option B) would remove real missed-work
+recovery value for no correctness gain, since due-ness gating already prevents it from over-refreshing.
+First-run behavior is the same story: a fresh install's guaranteed-overdue `source_state` still causes
+background network work shortly after the first window opens, exactly as 13A documented — this is
+intended "missed-run catch-up" (spec §6.6), the app is usable immediately regardless, there is no UI
+freeze, and it cannot duplicate work (the shared lock plus due-ness gating both apply). No behavior
+changed; only the `RefreshMode` tag was added so scheduled vs. startup-catch-up runs are
+distinguishable in the log (`StartupCatchUpRefreshTests.RunAsync_LockAvailable_InvokesRunnerWithStartupCatchUpMode`,
+`ScheduledRefreshHostTests.RunAsync_InvokesRunnerWithScheduledMode`).
+
+### Finalization ordering, shared lock, bounded concurrency, immediate persistence, partial failure, cancellation (Parts J/K/M/N/O/P/Q)
+
+All confirmed unchanged and still correct — none of `ScheduledRefreshHost`'s or
+`StartupCatchUpRefresh`'s try/catch/finally structure, lock-acquire-before-migrations ordering, or
+`RefreshOrchestrator.ExecuteJobAsync`'s bounded-`SemaphoreSlim`/per-operation-persistence/
+Error-never-absence logic was touched. Existing Phase 6/9 tests re-run unmodified and green.
+
+### New: UserForced vs. an in-progress scheduled/startup-catch-up refresh (Parts K/L)
+
+The one genuine new lock-related behavior this phase adds: `IScheduledRefreshLock` was relocated
+from `Infrastructure.Concurrency` to `Application.Concurrency` (a pure abstraction move — the
+concrete `FileScheduledRefreshLock` stays in Infrastructure, implementing the relocated interface —
+mirroring the existing repository-port pattern) so `AssociatePassdownService` can depend on it
+directly without Application acquiring an Infrastructure reference.
+`AssociatePassdownService.CheckAssociateDateOnlineAsync` now accepts an optional
+`Func<IScheduledRefreshLock>? refreshLockFactory` (default `null` = no overlap protection, matching
+every pre-13B caller/test exactly, the same optional-factory pattern `ScheduledRefreshHost` already
+established). The Desktop composition root supplies a real factory
+(`() => new FileScheduledRefreshLock(FileScheduledRefreshLock.DefaultPath)`), so a Check Online
+click that would run concurrently with an already-in-progress scheduled refresh or startup catch-up
+(same file lock, same OS-level exclusivity) instead:
+
+1. Never starts a second orchestrator run (`TryAcquire()` fails fast, non-blocking).
+2. Returns a distinct `RefreshSummary.AlreadyInProgress(...)` (`WasSkippedDueToOverlap: true`,
+   `OperationsAttempted: 0`) rather than a raw lock exception.
+3. Still recomposes and returns whatever is currently cached locally (Part L "reload local state
+   when appropriate") — a concurrently-running refresh may already be writing fresher data.
+4. `RefreshMessages.Summary` reads this case as "A refresh is already in progress. Try again in a
+   moment." — never the unrelated "Nothing to check for this date." (zero-operations) message, and
+   never counted as a failure (`Failed`/`Cancelled` both stay `0`).
+
+Because Dashboard and Associate share this one method, this guard also covers the case of a
+Dashboard Check Online and an Associate Check Online being triggered near-simultaneously in the same
+process — proven at the `AssociatePassdownService` layer (the shared call site), not duplicated per
+ViewModel. Tests: `AssociatePassdownServiceTests` (`_NoLockFactory_RunsRefreshWithoutAnyGuard`,
+`_LockAlreadyHeld_ReturnsAlreadyInProgress_AndNeverCallsOrchestrator`,
+`_LockAlreadyHeld_StillReloadsCurrentLocalState`, `_LockAcquired_RunsRefresh_AndReleasesLockAfterward`),
+`RefreshMessagesTests`, `CompositionRootTests.BuildServiceProvider_ResolvesScheduledRefreshLockFactory`.
+
+### Calendar local-only guarantee (Part U)
+
+Untouched by this phase; Phase 12's own `OperationsCalendarServiceTests` (no `IRefreshOrchestrator`
+dependency on `OperationsCalendarService` at all) continue to pass unchanged.
+
+### Startup/first-shell (Parts V/W/X) — no change
+
+Dashboard remains the default startup screen; `App.OnFrameworkInitializationCompleted` still assigns
+`MainWindow` before firing `StartCatchUpRefresh` as a detached, never-awaited task — unchanged. No
+polling, no toast/Alerts infrastructure was added (out of scope, and unnecessary — the existing
+data-health section already reflects whatever a background catch-up wrote, on next reload). The
+Phase 13A `StartupProfilingTests` harness is unchanged and was re-run (see below); its existing
+`UnreachableRefreshOrchestrator` fake is itself the structural proof Part X asks for — every local
+load path throws if it ever reaches the orchestrator, so a passing profiling run already proves no
+local-load path in this harness reaches retrieval, independent of the timing numbers.
+
+### Performance re-check (Part AK)
+
+Re-run on the same dev host, same methodology as 13A (5 iterations, isolated temp-file SQLite,
+never the real per-user database):
+
+| Component | 13A median | 13B median |
+|---|---|---|
+| DI ServiceProvider build | 0.16 ms | 0.19 ms |
+| SQLite cold connection open | 0.16 ms | 0.19 ms |
+| MigrationRunner.Run (10 migrations, empty db) | 5.42 ms | 4.43 ms |
+| 5 child VMs + MainViewModel construction | 0.96 ms | 0.88 ms |
+| OperationsDashboardService.GetTodayAsync (empty db) | 0.17 ms | 0.18 ms |
+
+No regression — differences are within normal run-to-run noise on this dev host, and no startup
+architecture changed. The structural claim ("no new synchronous network/blocking work on normal
+startup") holds because nothing on the synchronous startup path was touched at all this phase.
+
+### Schema (Part AM)
+
+Unchanged: database schema **10**, `AssociateDraftPayload` schema **3**,
+`FinalizedPassdownSnapshot` schema **1**. No migration added — every change in this phase is
+refresh-orchestration/API-contract/DI-wiring, none of it persistence-shape.
+
+### Tests added
+
+19 new tests (1396 → 1415, all passing, `Category!=LiveSmoke`):
+
+- `RefreshOrchestratorTests` (Application): +4 net — `RunUserForcedRefreshAsync_TargetsRequestedDatedWork_EvenOutsideRollingWindow`,
+  `_AlsoForceRefreshesEveryCatalogSource`, `_IgnoresFreshness_EvenForJustSucceededSources`,
+  `_DoesNotTouchSourceState`, `_PartialFailure_PreservesEachSourceIndependently`,
+  `_CallerCancellation_StopsOutstandingWork_WithoutCorruptingCompletedResults` (replacing the 2
+  pre-13B manual-refresh tests whose assertions were specific to the old dated-only behavior).
+- `AssociateCheckOnlineCatalogCoverageTests` (new file, Application): 1 real-orchestrator end-to-end
+  proof of catalog coverage through the shared Check Online path.
+- `AssociatePassdownServiceTests`: +4 — the overlap-lock guard's four states (no factory, held,
+  held-but-reloads-local-state, acquired-and-released).
+- `ScheduledRefreshRunnerTests`: +3 — `RefreshMode.StartupCatchUp` still calls the scheduled path,
+  `RefreshMode.UserForced` throws, the log line names the mode.
+- `ScheduledRefreshHostTests`: +1 — invokes the runner with `RefreshMode.Scheduled`.
+- `StartupCatchUpRefreshTests`: +1 — invokes the runner with `RefreshMode.StartupCatchUp`.
+- `CompositionRootTests`: +2 — the source-coverage matrix guard, and the lock-factory resolves.
+- `RefreshMessagesTests` (new file): +3 — the "already in progress" message is distinct, never reads
+  as a failure, and the ordinary zero-operations message is unaffected.
+
+### Final validation
+
+- **Build**: `dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors.
+- **Tests**: `dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — **1415/1415**
+  passing (Domain 66, Application 412, Documents 96, Infrastructure 317, Ui 524), re-run twice.
+- **Known flake observed once**: an Avalonia-headless XAML-population parallelism race (this run:
+  `AssociateViewTests.AssociateView_EachInternalSection_ConstructsWithoutError(section: Notes)`;
+  previously documented against different tests in 13A/6D/12B) — passed cleanly on immediate re-run
+  of the whole `Ui.Tests` project, unrelated to any 13B change (it is a pre-existing Avalonia
+  headless-runtime parallelism issue, not a regression).
+
+### Exact work deferred to 13C–13G
+
+Unchanged from 13A's own deferral list below (§38) — 13B added no product/parser/pricing scope of
+its own. In particular: BAF Duo, Military/First Responder, per-person/bundle pricing fields, Manual
+Hours/Buyout redesign, ERT semantics, rename/branding, and the final release rebuild all remain
+exactly as 13A scoped them.
+
 ## 38. Exact work deferred to 13B–13G
 
 - Startup architecture changes (moving migrations after first shell, any lazy-loading redesign) —

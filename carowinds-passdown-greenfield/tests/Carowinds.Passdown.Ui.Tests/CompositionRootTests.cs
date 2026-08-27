@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Calendar;
+using Carowinds.Passdown.Application.Concurrency;
 using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.History;
 using Carowinds.Passdown.Application.OperationalNotes;
@@ -6,6 +7,7 @@ using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Desktop;
 using Carowinds.Passdown.Desktop.Services;
 using Carowinds.Passdown.Desktop.ViewModels;
+using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Infrastructure.Storage;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -40,6 +42,51 @@ public class CompositionRootTests
 
         Assert.Equal(8, registrations.Count);
         Assert.Equal(8, registrations.Select(r => r.SourceId).Distinct().Count());
+    }
+
+    /// <summary>
+    /// Phase 13B Part F/Y source-coverage matrix: fails the build if a currently-supported source
+    /// family is ever accidentally dropped from the registration list — the exact list
+    /// <see cref="RefreshOrchestrator.RunUserForcedRefreshAsync"/> force-refreshes end to end,
+    /// since it iterates every registration with no category filtering.
+    /// </summary>
+    [Fact]
+    public void BuildServiceProvider_SourceRegistrations_CoverEveryExpectedFamily()
+    {
+        var provider = App.BuildServiceProvider();
+        var registrations = provider.GetRequiredService<IReadOnlyList<SourceRegistration>>();
+
+        var datedCategories = registrations.Where(r => r.Scope == SourceScope.Dated).Select(r => r.Category).ToHashSet();
+        var catalogCategories = registrations.Where(r => r.Scope == SourceScope.Catalog).Select(r => r.Category).ToList();
+
+        Assert.Equal(
+            new HashSet<SourceCategory>
+            {
+                SourceCategory.ParkHours,
+                SourceCategory.DatedAdmissionTickets,
+                SourceCategory.DatedFastLane,
+                SourceCategory.HauntedAttractions,
+            },
+            datedCategories);
+
+        // AddOns appears twice — season-pass add-ons and general add-ons are independent source ids
+        // sharing one category/freshness policy (spec §6.2) — both registrations must still exist.
+        Assert.Equal(
+            new[] { SourceCategory.Promotions, SourceCategory.SeasonPasses, SourceCategory.AddOns, SourceCategory.AddOns }.OrderBy(c => c),
+            catalogCategories.OrderBy(c => c));
+    }
+
+    /// <summary>Phase 13B Part K: the overlap-lock factory <c>AssociatePassdownService</c> uses to guard <c>RefreshMode.UserForced</c> resolves from the same composition root.</summary>
+    [Fact]
+    public void BuildServiceProvider_ResolvesScheduledRefreshLockFactory()
+    {
+        var provider = App.BuildServiceProvider();
+
+        var factory = provider.GetRequiredService<Func<IScheduledRefreshLock>>();
+
+        Assert.NotNull(factory);
+        using var scheduledLock = factory();
+        Assert.NotNull(scheduledLock);
     }
 
     // Phase 6A Part L #19/#14: the normal launch path still resolves MigrationRunner/MainViewModel

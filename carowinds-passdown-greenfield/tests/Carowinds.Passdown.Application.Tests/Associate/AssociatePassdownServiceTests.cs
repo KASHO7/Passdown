@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.Concurrency;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Retrieval;
@@ -27,7 +28,10 @@ public class AssociatePassdownServiceTests
         IOperationalNotesService OperationalNotes,
         FakeClock Clock);
 
-    private static TestEnvironment CreateEnvironment(FakeClock? clock = null, IOperationalNotesService? operationalNotes = null)
+    private static TestEnvironment CreateEnvironment(
+        FakeClock? clock = null,
+        IOperationalNotesService? operationalNotes = null,
+        Func<IScheduledRefreshLock>? refreshLockFactory = null)
     {
         clock ??= new FakeClock(FixedNow);
         var drafts = new InMemoryAssociateDraftRepository();
@@ -35,7 +39,7 @@ public class AssociatePassdownServiceTests
         var catalogProducts = new InMemoryCatalogProductRepository();
         var refreshOrchestrator = new FakeRefreshOrchestrator();
         operationalNotes ??= new OperationalNotesService(new InMemoryOperationalNoteRepository(), clock);
-        var service = new AssociatePassdownService(drafts, datedResults, catalogProducts, refreshOrchestrator, operationalNotes, clock);
+        var service = new AssociatePassdownService(drafts, datedResults, catalogProducts, refreshOrchestrator, operationalNotes, clock, refreshLockFactory);
         return new TestEnvironment(service, drafts, datedResults, catalogProducts, refreshOrchestrator, operationalNotes, clock);
     }
 
@@ -486,6 +490,65 @@ public class AssociatePassdownServiceTests
         Assert.False(product.IncludeOnPdf);
         Assert.Equal(55m, product.DisplayPriceOverride);
         Assert.Equal(55m, product.EffectiveDisplayPrice);
+    }
+
+    // ===================== Phase 13B: overlap-lock guard =====================
+
+    [Fact]
+    public async Task CheckAssociateDateOnlineAsync_NoLockFactory_RunsRefreshWithoutAnyGuard()
+    {
+        // Every pre-13B caller/test — the default, null factory means no overlap protection at all.
+        var env = CreateEnvironment(refreshLockFactory: null);
+
+        var result = await env.Service.CheckAssociateDateOnlineAsync(Date);
+
+        Assert.Single(env.RefreshOrchestrator.ManualDateRefreshCalls);
+        Assert.False(result.Summary.WasSkippedDueToOverlap);
+    }
+
+    [Fact]
+    public async Task CheckAssociateDateOnlineAsync_LockAlreadyHeld_ReturnsAlreadyInProgress_AndNeverCallsOrchestrator()
+    {
+        var fakeLock = new FakeScheduledRefreshLock { AcquireSucceeds = false };
+        var env = CreateEnvironment(refreshLockFactory: () => fakeLock);
+
+        var result = await env.Service.CheckAssociateDateOnlineAsync(Date);
+
+        Assert.Empty(env.RefreshOrchestrator.ManualDateRefreshCalls); // never a second concurrent orchestrator run
+        Assert.True(result.Summary.WasSkippedDueToOverlap);
+        Assert.Equal(0, result.Summary.OperationsAttempted);
+        Assert.Equal(1, fakeLock.TryAcquireCallCount);
+        Assert.Equal(0, fakeLock.DisposeCallCount); // never acquired, so nothing to release
+    }
+
+    [Fact]
+    public async Task CheckAssociateDateOnlineAsync_LockAlreadyHeld_StillReloadsCurrentLocalState()
+    {
+        var fakeLock = new FakeScheduledRefreshLock { AcquireSucceeds = false };
+        var env = CreateEnvironment(refreshLockFactory: () => fakeLock);
+        await SeedAdmissionAsync(env.DatedResults, Date, FixedNow,
+            new DatedAdmissionProduct("PKG-A", "Date Ticket", 60m, null, null, Date));
+
+        var result = await env.Service.CheckAssociateDateOnlineAsync(Date);
+
+        // Part L "reload local state when appropriate" — whatever a concurrently-running refresh
+        // may already have written locally is still reflected, even though this call didn't run one.
+        var product = Assert.Single(result.Workspace.Products);
+        Assert.Equal(60m, product.OfficialPriceAmount);
+    }
+
+    [Fact]
+    public async Task CheckAssociateDateOnlineAsync_LockAcquired_RunsRefresh_AndReleasesLockAfterward()
+    {
+        var fakeLock = new FakeScheduledRefreshLock { AcquireSucceeds = true };
+        var env = CreateEnvironment(refreshLockFactory: () => fakeLock);
+
+        var result = await env.Service.CheckAssociateDateOnlineAsync(Date);
+
+        Assert.Single(env.RefreshOrchestrator.ManualDateRefreshCalls);
+        Assert.False(result.Summary.WasSkippedDueToOverlap);
+        Assert.Equal(1, fakeLock.TryAcquireCallCount);
+        Assert.Equal(1, fakeLock.DisposeCallCount); // released after the refresh completes
     }
 
     // ===================== Product draft state (23-30) =====================

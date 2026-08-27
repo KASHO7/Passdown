@@ -6,18 +6,23 @@ namespace Carowinds.Passdown.Application.Refresh;
 
 /// <summary>
 /// <see cref="IScheduledRefreshRunner"/> built on <see cref="IRefreshOrchestrator.RunScheduledRefreshAsync"/>
-/// (Phase 6A Part D). Never calls <see cref="IRefreshOrchestrator.RunManualDateRefreshAsync"/> —
-/// unattended execution always runs the due-sources rolling-window job, never a single-date check.
+/// (Phase 6A Part D). Never calls <see cref="IRefreshOrchestrator.RunUserForcedRefreshAsync"/> —
+/// unattended execution always runs the due-sources rolling-window job, never a user-forced check.
 /// </summary>
 public sealed class ScheduledRefreshRunner(
     IRefreshOrchestrator orchestrator,
     IClock clock,
     ILogger<ScheduledRefreshRunner> logger) : IScheduledRefreshRunner
 {
-    public async Task<ScheduledRefreshResult> RunAsync(CancellationToken cancellationToken = default)
+    public async Task<ScheduledRefreshResult> RunAsync(RefreshMode mode, CancellationToken cancellationToken = default)
     {
+        if (mode == RefreshMode.UserForced)
+        {
+            throw new ArgumentOutOfRangeException(nameof(mode), mode, $"{nameof(ScheduledRefreshRunner)} never runs in {nameof(RefreshMode.UserForced)} mode — that mode has its own entry point.");
+        }
+
         var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
-        logger.LogInformation("Scheduled refresh started at {StartedAt} (version {Version}).", clock.UtcNow, version);
+        logger.LogInformation("Scheduled refresh started ({Mode}) at {StartedAt} (version {Version}).", mode, clock.UtcNow, version);
 
         var summary = await orchestrator.RunScheduledRefreshAsync(progress: null, cancellationToken).ConfigureAwait(false);
 

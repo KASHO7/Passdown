@@ -29,7 +29,7 @@ public class Phase11DIntegrationTests
         public Task<RefreshSummary> RunScheduledRefreshAsync(IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("This scenario is entirely local-only.");
 
-        public Task<RefreshSummary> RunManualDateRefreshAsync(DateOnly date, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default) =>
+        public Task<RefreshSummary> RunUserForcedRefreshAsync(DateOnly date, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("This scenario is entirely local-only.");
     }
 

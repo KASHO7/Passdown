@@ -1,6 +1,6 @@
+using Carowinds.Passdown.Application.Concurrency;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Refresh;
-using Carowinds.Passdown.Infrastructure.Concurrency;
 using Carowinds.Passdown.Infrastructure.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -79,7 +79,7 @@ public sealed class ScheduledRefreshHost(
             }
 
             var runner = services.GetRequiredService<IScheduledRefreshRunner>();
-            var result = await runner.RunAsync(cancellationToken).ConfigureAwait(false);
+            var result = await runner.RunAsync(RefreshMode.Scheduled, cancellationToken).ConfigureAwait(false);
 
             return result.Outcome switch
             {

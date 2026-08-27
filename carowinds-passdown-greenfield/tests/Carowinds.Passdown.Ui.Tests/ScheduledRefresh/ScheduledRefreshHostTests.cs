@@ -59,6 +59,27 @@ public class ScheduledRefreshHostTests
         }
     }
 
+    // Phase 13B Part A: the unattended host always identifies itself as RefreshMode.Scheduled to the
+    // runner, never StartupCatchUp or UserForced.
+    [Fact]
+    public async Task RunAsync_InvokesRunnerWithScheduledMode()
+    {
+        var runner = new FakeScheduledRefreshRunner { ResultToReturn = FakeScheduledRefreshRunner.EmptySuccess() };
+        var tempDb = Path.Combine(Path.GetTempPath(), $"carowinds-passdown-6a-{Guid.NewGuid():N}.db");
+        try
+        {
+            var host = new ScheduledRefreshHost(() => BuildMinimalProvider(runner, tempDb));
+
+            await host.RunAsync();
+
+            Assert.Equal([RefreshMode.Scheduled], runner.ModesInvoked);
+        }
+        finally
+        {
+            File.Delete(tempDb);
+        }
+    }
+
     // 9. Partial source failure returns the documented partial-failure exit code.
     [Fact]
     public async Task RunAsync_PartialFailureRefresh_ReturnsPartialFailureExitCode()

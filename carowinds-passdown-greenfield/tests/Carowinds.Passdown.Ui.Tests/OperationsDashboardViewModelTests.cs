@@ -139,7 +139,7 @@ public class OperationsDashboardViewModelTests
     public async Task CheckOnlineCommand_UpdatesSnapshotAndResultMessage()
     {
         var newSnapshot = FakeOperationsDashboardService.DefaultSnapshot(FakeOperationsDashboardService.DefaultDate);
-        var summary = new RefreshSummary(RefreshJobType.ManualSingleDate, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, OperationsAttempted: 1, Succeeded: 1, Failed: 0, Cancelled: 0, Results: []);
+        var summary = new RefreshSummary(RefreshJobType.UserForced, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, OperationsAttempted: 1, Succeeded: 1, Failed: 0, Cancelled: 0, Results: []);
         var service = new FakeOperationsDashboardService
         {
             CheckOnlineResultFactory = () => new OperationsDashboardCheckOnlineResult(newSnapshot, summary),

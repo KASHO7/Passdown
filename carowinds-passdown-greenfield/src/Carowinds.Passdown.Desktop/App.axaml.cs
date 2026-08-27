@@ -4,6 +4,7 @@ using Avalonia.Markup.Xaml;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Calendar;
 using Carowinds.Passdown.Application.Catalog;
+using Carowinds.Passdown.Application.Concurrency;
 using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Diagnostics;
 using Carowinds.Passdown.Application.Finalization;
@@ -131,6 +132,15 @@ public partial class App : global::Avalonia.Application
         // IRefreshOrchestrator/IClock singletons AddRefreshOrchestration already registered above —
         // nothing here is a new storage or retrieval path.
         services.AddSingleton<IAssociateDraftRepository, SqliteAssociateDraftRepository>();
+
+        // Phase 13B Part K/L: AssociatePassdownService.CheckAssociateDateOnlineAsync (the sole
+        // RefreshMode.UserForced entry point, shared by Dashboard and Associate's own Check Online
+        // actions) uses this factory to guard against running concurrently with a scheduled refresh
+        // or startup catch-up already holding the same file lock. A fresh FileScheduledRefreshLock
+        // instance per attempt is deliberate (mirrors ScheduledRefreshHost/StartupCatchUpRefresh's own
+        // pattern) — OS-level exclusive file access is what actually enforces the single-holder
+        // guarantee, not shared C# instance state.
+        services.AddSingleton<Func<IScheduledRefreshLock>>(_ => () => new FileScheduledRefreshLock(FileScheduledRefreshLock.DefaultPath));
         services.AddSingleton<IAssociatePassdownService, AssociatePassdownService>();
 
         // Phase 4F Part I: the Associate PDF export pipeline (Documents project) plus the native

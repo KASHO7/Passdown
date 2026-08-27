@@ -33,6 +33,20 @@ public class StartupCatchUpRefreshTests
         Assert.Equal(1, runner.CallCount);
     }
 
+    // Phase 13B Part A/H: the interactive-startup catch-up always identifies itself as
+    // RefreshMode.StartupCatchUp — never Scheduled or UserForced — so the log can distinguish it
+    // from a real --scheduled-refresh process even though both share this exact runner.
+    [Fact]
+    public async Task RunAsync_LockAvailable_InvokesRunnerWithStartupCatchUpMode()
+    {
+        var runner = new FakeScheduledRefreshRunner();
+        var scheduledLock = new FakeScheduledRefreshLock();
+
+        await StartupCatchUpRefresh.RunAsync(BuildProvider(runner), scheduledLock, NullLogger.Instance);
+
+        Assert.Equal([RefreshMode.StartupCatchUp], runner.ModesInvoked);
+    }
+
     [Fact]
     public async Task RunAsync_LockUnavailable_NeverInvokesRunner()
     {

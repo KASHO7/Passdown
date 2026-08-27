@@ -16,11 +16,14 @@ public interface IRefreshOrchestrator
     Task<RefreshSummary> RunScheduledRefreshAsync(IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Runs "Check this date online" (spec §6.3) for exactly one date: every registered dated
-    /// source is checked for <paramref name="date"/> unconditionally, regardless of due-ness, and
-    /// no catalog source is touched. Never updates scheduled-cadence source state (Part C) —
-    /// running this must never change when the next scheduled rolling-window job considers a
-    /// source due.
+    /// Runs an explicit "Check Online" (spec §6.3, Phase 13B Part B — <see cref="RefreshMode.UserForced"/>):
+    /// every registered dated source is checked for <paramref name="date"/> unconditionally, and
+    /// every registered catalog source (Season Passes, Season Pass/General Add-Ons, Promotions) is
+    /// checked once, also unconditionally — regardless of due-ness. Freshness never prevents any
+    /// source from executing here, unlike <see cref="RunScheduledRefreshAsync"/>. Never updates
+    /// scheduled-cadence source state (Part C/G) — running this must never change when the next
+    /// scheduled rolling-window job considers a source due, and every source's freshness timestamps
+    /// keep updating through the normal per-operation persistence path regardless.
     /// </summary>
-    Task<RefreshSummary> RunManualDateRefreshAsync(DateOnly date, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default);
+    Task<RefreshSummary> RunUserForcedRefreshAsync(DateOnly date, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default);
 }

@@ -782,3 +782,43 @@ deliberately avoided). No schema change — database schema stays 10, `Associate
 stays 3, snapshot schema stays 1. Deferred to 12C+: source-health overlays beyond park hours, denser
 note previews, a History date-preselection seam, a frozen-hours read model for finalized dates,
 Alerts, and the Manager workflow (still out of scope per CLAUDE.md).
+
+## Phase 13B additions — refresh-mode model and explicit-refresh coverage
+
+Full rationale, the source-coverage matrix, and validation live in `docs/phase13-hardening.md`'s own
+Phase 13B section; this entry only records the refresh-orchestration API contract changes, since
+those affect how later phases call into `Carowinds.Passdown.Application.Refresh`/`Concurrency`.
+
+- **`Carowinds.Passdown.Application.Refresh.RefreshMode`** (new enum: `Scheduled`, `StartupCatchUp`,
+  `UserForced`) makes refresh intent explicit at the one place that needed it —
+  `IScheduledRefreshRunner.RunAsync(RefreshMode mode, CancellationToken)` now takes this purely for
+  accurate logging (`ScheduledRefreshHost` passes `Scheduled`; `StartupCatchUpRefresh` passes
+  `StartupCatchUp`; both still call the identical due-based `RunScheduledRefreshAsync` underneath —
+  confirmed correct by Phase 13A, not redesigned). `RunAsync` throws for `UserForced`, since that
+  mode never reaches this runner.
+- **`IRefreshOrchestrator.RunManualDateRefreshAsync` was renamed to `RunUserForcedRefreshAsync`** and
+  extended: it now plans every registered `SourceScope.Catalog` registration (Season Passes, both
+  Add-Ons source ids, Promotions) alongside the previously-covered `SourceScope.Dated` registrations
+  for the requested date, all unconditionally (no freshness gate), still without updating
+  `source_state`. `RefreshJobType.ManualSingleDate` was renamed to `RefreshJobType.UserForced` to
+  match. This is the sole entry point `AssociatePassdownService.CheckAssociateDateOnlineAsync` calls
+  — Dashboard and Associate's own Check Online actions both reach it through that one shared method,
+  so neither screen carries its own source-family list.
+- **`IScheduledRefreshLock` relocated** from `Carowinds.Passdown.Infrastructure.Concurrency` to
+  `Carowinds.Passdown.Application.Concurrency` (interface only — the concrete
+  `Infrastructure.Concurrency.FileScheduledRefreshLock` implementation is unchanged in place),
+  mirroring the existing repository-port pattern, so `AssociatePassdownService` (Application layer)
+  can depend on the abstraction directly. `AssociatePassdownService` gained an optional
+  `Func<IScheduledRefreshLock>? refreshLockFactory = null` constructor parameter (default `null` =
+  no overlap protection, matching every pre-13B caller); when supplied (the Desktop composition root
+  now does), `CheckAssociateDateOnlineAsync` acquires the same file lock a scheduled refresh/startup
+  catch-up would hold, and returns a distinct `RefreshSummary.AlreadyInProgress(...)` result
+  (`WasSkippedDueToOverlap: true`) rather than running a second concurrent orchestrator job if that
+  lock is already held.
+- **`RefreshSummary` gained one additive field**, `bool WasSkippedDueToOverlap = false` (a trailing
+  optional record parameter — every pre-13B positional-constructor call site is unaffected), plus a
+  `RefreshSummary.AlreadyInProgress(DateTimeOffset)` factory.
+
+No schema change (database schema stays 10, `AssociateDraftPayload` schema stays 3, snapshot schema
+stays 1) and no startup-architecture change — `App.OnFrameworkInitializationCompleted`'s
+migration-then-window-then-detached-catch-up ordering is exactly as Phase 6B left it.

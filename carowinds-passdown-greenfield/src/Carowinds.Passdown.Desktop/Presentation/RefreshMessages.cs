@@ -25,6 +25,14 @@ public static class RefreshMessages
     {
         ArgumentNullException.ThrowIfNull(summary);
 
+        // Phase 13B Part L: a scheduled refresh or startup catch-up already held the shared lock —
+        // this attempt never ran at all, so it must read distinctly from "ran and found nothing to
+        // check" (OperationsAttempted == 0 below, a different, legitimate case).
+        if (summary.WasSkippedDueToOverlap)
+        {
+            return "A refresh is already in progress. Try again in a moment.";
+        }
+
         if (summary.OperationsAttempted == 0)
         {
             return "Nothing to check for this date.";

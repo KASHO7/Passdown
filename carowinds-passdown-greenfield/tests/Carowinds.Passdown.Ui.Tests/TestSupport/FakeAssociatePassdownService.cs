@@ -248,12 +248,12 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
         privateBuyoutEnabled: false, null, null);
 
     public static RefreshSummary SuccessSummary(DateOnly date) => new(
-        RefreshJobType.ManualSingleDate, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
+        RefreshJobType.UserForced, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
         OperationsAttempted: 1, Succeeded: 1, Failed: 0, Cancelled: 0,
         Results: [SourceOperationResult.Success("fake-source", SourceCategory.ParkHours, date, RetrievalStatus.Verified, "Verified.")]);
 
     public static RefreshSummary PartialFailureSummary(DateOnly date) => new(
-        RefreshJobType.ManualSingleDate, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
+        RefreshJobType.UserForced, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
         OperationsAttempted: 2, Succeeded: 1, Failed: 1, Cancelled: 0,
         Results:
         [

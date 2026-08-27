@@ -1,7 +1,7 @@
+using Carowinds.Passdown.Application.Concurrency;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Desktop.ScheduledRefresh;
-using Carowinds.Passdown.Infrastructure.Concurrency;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -50,7 +50,7 @@ public static class StartupCatchUpRefresh
                 ScheduledRefreshHost.LogFinalizationSummary(logger, finalizationSummary);
 
                 var runner = services.GetRequiredService<IScheduledRefreshRunner>();
-                await runner.RunAsync(cancellationToken).ConfigureAwait(false);
+                await runner.RunAsync(RefreshMode.StartupCatchUp, cancellationToken).ConfigureAwait(false);
             }
             finally
             {

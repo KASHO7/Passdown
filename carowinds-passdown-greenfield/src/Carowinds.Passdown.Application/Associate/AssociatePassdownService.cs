@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Carowinds.Passdown.Application.Catalog;
+using Carowinds.Passdown.Application.Concurrency;
 using Carowinds.Passdown.Application.Freshness;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
@@ -32,7 +33,8 @@ public sealed class AssociatePassdownService(
     ICatalogProductRepository catalogProductRepository,
     IRefreshOrchestrator refreshOrchestrator,
     IOperationalNotesService operationalNotesService,
-    IClock clock) : IAssociatePassdownService
+    IClock clock,
+    Func<IScheduledRefreshLock>? refreshLockFactory = null) : IAssociatePassdownService
 {
     private static readonly SourceCategory[] CatalogCategories =
     [
@@ -54,12 +56,46 @@ public sealed class AssociatePassdownService(
 
     public async Task<AssociateOnlineCheckResult> CheckAssociateDateOnlineAsync(DateOnly operatingDate, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)
     {
-        var summary = await refreshOrchestrator.RunManualDateRefreshAsync(operatingDate, progress, cancellationToken).ConfigureAwait(false);
+        // Phase 13B Part K/L: the sole "explicit user action" entry point onto RefreshMode.UserForced
+        // (Dashboard's own Check Online reaches this exact method too, via
+        // IOperationsDashboardService.CheckOnlineAsync — one guard covers both screens, never two).
+        // A null factory (every pre-13B test/caller) means no overlap protection at all, matching
+        // ScheduledRefreshHost's own optional-lock-factory default — this never changes behavior for
+        // a caller that doesn't supply one.
+        if (refreshLockFactory is null)
+        {
+            return await RunForcedRefreshAsync(operatingDate, progress, cancellationToken).ConfigureAwait(false);
+        }
+
+        var refreshLock = refreshLockFactory();
+        if (!refreshLock.TryAcquire())
+        {
+            // Never a second concurrent orchestrator run, never a raw lock exception surfaced to the
+            // caller (Part L) — just report "already in progress" and hand back whatever is current
+            // locally, since a scheduled/startup-catch-up refresh already holding the lock may itself
+            // be writing fresher data right now.
+            var currentWorkspace = await ComposeAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+            return new AssociateOnlineCheckResult(currentWorkspace, RefreshSummary.AlreadyInProgress(clock.UtcNow));
+        }
+
+        try
+        {
+            return await RunForcedRefreshAsync(operatingDate, progress, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            refreshLock.Dispose();
+        }
+    }
+
+    private async Task<AssociateOnlineCheckResult> RunForcedRefreshAsync(DateOnly operatingDate, IProgress<RefreshProgress>? progress, CancellationToken cancellationToken)
+    {
+        var summary = await refreshOrchestrator.RunUserForcedRefreshAsync(operatingDate, progress, cancellationToken).ConfigureAwait(false);
 
         // Recomposed unconditionally, whether the refresh above succeeded or failed: on failure,
-        // RunManualDateRefreshAsync's own dated-source registrations already left every prior
-        // last-known-good value untouched (spec §6.7), so this simply re-reads whatever is now the
-        // current cached state either way — no separate success/failure branch is needed here.
+        // RunUserForcedRefreshAsync's own registrations already left every prior last-known-good
+        // value untouched (spec §6.7), so this simply re-reads whatever is now the current cached
+        // state either way — no separate success/failure branch is needed here.
         var workspace = await ComposeAsync(operatingDate, cancellationToken).ConfigureAwait(false);
         return new AssociateOnlineCheckResult(workspace, summary);
     }

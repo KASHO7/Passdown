@@ -25,7 +25,7 @@ internal sealed class FakeRefreshOrchestrator : IRefreshOrchestrator
         return Task.FromResult(ScheduledRefreshSummaryOverride ?? EmptySummary(RefreshJobType.ScheduledRollingWindow));
     }
 
-    public async Task<RefreshSummary> RunManualDateRefreshAsync(DateOnly date, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)
+    public async Task<RefreshSummary> RunUserForcedRefreshAsync(DateOnly date, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         ManualDateRefreshCalls.Add(date);
 
@@ -34,7 +34,7 @@ internal sealed class FakeRefreshOrchestrator : IRefreshOrchestrator
             await OnManualDateRefresh(date, cancellationToken).ConfigureAwait(false);
         }
 
-        return EmptySummary(RefreshJobType.ManualSingleDate);
+        return EmptySummary(RefreshJobType.UserForced);
     }
 
     private static RefreshSummary EmptySummary(RefreshJobType jobType) =>

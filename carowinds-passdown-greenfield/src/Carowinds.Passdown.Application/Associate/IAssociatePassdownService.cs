@@ -28,13 +28,15 @@ public interface IAssociatePassdownService
     Task<AssociateWorkspace> LoadAssociateDateAsync(DateOnly operatingDate, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Explicit "Check this date online" (spec §6.3): runs the existing manual-date refresh for
-    /// <paramref name="operatingDate"/>, then recomposes the view from whatever is cached
-    /// afterward — success or failure. All manual draft fields, product include/exclude, and
-    /// display-price overrides are preserved regardless of outcome (spec §8.3/§6.7).
-    /// <paramref name="progress"/> is forwarded as-is to <see cref="Refresh.IRefreshOrchestrator.RunManualDateRefreshAsync"/>
-    /// (Phase 4B Part F's "checking park hours... 3 of 4 complete") — this method reuses the
-    /// existing refresh abstraction rather than tracking progress itself.
+    /// Explicit "Check Online" (spec §6.3, Phase 13B Part B/K — <see cref="Refresh.RefreshMode.UserForced"/>):
+    /// runs the user-forced refresh (every dated source for <paramref name="operatingDate"/>, every
+    /// catalog source once, all unconditionally) then recomposes the view from whatever is cached
+    /// afterward — success, failure, or already-in-progress alike. All manual draft fields, product
+    /// include/exclude, and display-price overrides are preserved regardless of outcome (spec
+    /// §8.3/§6.7). <paramref name="progress"/> is forwarded as-is to
+    /// <see cref="Refresh.IRefreshOrchestrator.RunUserForcedRefreshAsync"/> (Phase 4B Part F's
+    /// "checking park hours... 3 of 4 complete") — this method reuses the existing refresh
+    /// abstraction rather than tracking progress itself.
     /// </summary>
     Task<AssociateOnlineCheckResult> CheckAssociateDateOnlineAsync(DateOnly operatingDate, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default);
 

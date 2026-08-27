@@ -45,17 +45,21 @@ public sealed class RefreshOrchestrator(
             .ConfigureAwait(false);
     }
 
-    public async Task<RefreshSummary> RunManualDateRefreshAsync(DateOnly date, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)
+    public async Task<RefreshSummary> RunUserForcedRefreshAsync(DateOnly date, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)
     {
-        // Deliberately no freshness gating (spec §6.3: an explicit "Check this date online" always
-        // checks live) and no source-state update (Part C: must never alter when the scheduled job
-        // next considers a source due).
+        // Deliberately no freshness gating (spec §6.3, Phase 13B Part B/G: an explicit "Check
+        // Online" always checks live, for every currently registered source family — dated *and*
+        // catalog) and no source-state update (Part C: must never alter when the scheduled job next
+        // considers a source due). Every registration participates exactly once: a Dated
+        // registration against the requested date, a Catalog registration with no date at all —
+        // the same shape ExecuteJobAsync/SourceRegistration.ExecuteAsync already expect from the
+        // scheduled path, so partial-failure/immediate-persistence/bounded-concurrency all apply
+        // identically here without any new logic.
         var operations = registrations
-            .Where(r => r.Scope == SourceScope.Dated)
-            .Select(r => new PlannedOperation(r, date, Rank: 0))
+            .Select(r => new PlannedOperation(r, r.Scope == SourceScope.Dated ? date : null, Rank: 0))
             .ToList();
 
-        return await ExecuteJobAsync(RefreshJobType.ManualSingleDate, operations, updateSourceState: false, progress, cancellationToken)
+        return await ExecuteJobAsync(RefreshJobType.UserForced, operations, updateSourceState: false, progress, cancellationToken)
             .ConfigureAwait(false);
     }
 

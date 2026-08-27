@@ -169,45 +169,193 @@ public class RefreshOrchestratorTests
         Assert.Equal(1, summary.Succeeded);
     }
 
-    // 7. Manual single-date refresh targets only the requested dated work.
-    // 8. Manual future date outside the rolling window works.
+    // Phase 13B Part B: user-forced refresh targets the requested dated work, even for a date well
+    // outside the scheduled job's own 7-day rolling window (spec §6.3's "check this exact date").
     [Fact]
-    public async Task RunManualDateRefreshAsync_TargetsOnlyRequestedDatedWork_EvenOutsideRollingWindow()
+    public async Task RunUserForcedRefreshAsync_TargetsRequestedDatedWork_EvenOutsideRollingWindow()
     {
         var datedResults = new InMemoryDatedResultRepository();
         var catalogProducts = new InMemoryCatalogProductRepository();
         var reconciliation = CreateReconciliationService(catalogProducts);
         var dated = AlwaysSucceedsDated("park-hours", SourceCategory.ParkHours, datedResults);
-        var catalogSourceCalled = false;
-        var catalog = CatalogRegistration("season-passes", SourceCategory.SeasonPasses, reconciliation, (_, _) =>
-        {
-            catalogSourceCalled = true;
-            return Task.FromResult(SourceResult<CatalogPayload>.Success("season-passes", FakeEvidence.Verified(FixedNow), new CatalogPayload([])));
-        });
+        var catalog = CatalogRegistration("season-passes", SourceCategory.SeasonPasses, reconciliation,
+            (_, _) => Task.FromResult(SourceResult<CatalogPayload>.Success("season-passes", FakeEvidence.Verified(FixedNow), new CatalogPayload([]))));
 
         var env = CreateEnvironment([dated, catalog]);
         var farFutureDate = DateOnly.FromDateTime(FixedNow.DateTime).AddDays(45); // well outside the 7-day rolling window
 
-        var summary = await env.Orchestrator.RunManualDateRefreshAsync(farFutureDate);
+        var summary = await env.Orchestrator.RunUserForcedRefreshAsync(farFutureDate);
 
-        Assert.Equal(1, summary.OperationsAttempted);
-        Assert.Equal(farFutureDate, summary.Results.Single().RequestedDate);
-        Assert.False(catalogSourceCalled);
+        var datedResult = summary.Results.Single(r => r.SourceId == "park-hours");
+        Assert.Equal(farFutureDate, datedResult.RequestedDate);
         var record = await datedResults.GetAsync(new DatedResultKey(SourceCategory.ParkHours, farFutureDate));
         Assert.NotNull(record?.SuccessEvidence);
     }
 
-    // Manual refresh must never alter scheduled-cadence source state (Part C).
+    // Phase 13B Part B/AA: unlike the old dated-only manual refresh, an explicit "Check Online" must
+    // also force-refresh every registered catalog family — Season Passes, both Add-Ons source ids,
+    // and Promotions were previously silently skipped.
     [Fact]
-    public async Task RunManualDateRefreshAsync_DoesNotTouchSourceState()
+    public async Task RunUserForcedRefreshAsync_AlsoForceRefreshesEveryCatalogSource()
     {
         var datedResults = new InMemoryDatedResultRepository();
+        var catalogProducts = new InMemoryCatalogProductRepository();
+        var reconciliation = CreateReconciliationService(catalogProducts);
         var dated = AlwaysSucceedsDated("park-hours", SourceCategory.ParkHours, datedResults);
-        var env = CreateEnvironment([dated]);
 
-        await env.Orchestrator.RunManualDateRefreshAsync(DateOnly.FromDateTime(FixedNow.DateTime).AddDays(2));
+        var catalogSourcesCalled = new List<string>();
+        CatalogSourceRegistration TrackedCatalog(string sourceId, SourceCategory category) =>
+            CatalogRegistration(sourceId, category, reconciliation, (_, _) =>
+            {
+                catalogSourcesCalled.Add(sourceId);
+                return Task.FromResult(SourceResult<CatalogPayload>.Success(sourceId, FakeEvidence.Verified(FixedNow), new CatalogPayload([])));
+            });
+
+        var seasonPasses = TrackedCatalog("season-passes", SourceCategory.SeasonPasses);
+        var seasonPassAddOns = TrackedCatalog("season-pass-add-ons", SourceCategory.AddOns);
+        var generalAddOns = TrackedCatalog("general-add-ons", SourceCategory.AddOns);
+        var promotions = TrackedCatalog("promotions", SourceCategory.Promotions);
+
+        // Every catalog source just succeeded an instant ago (well within its own rolling-interval/
+        // daily cadence), proving the forced refresh runs regardless — freshness never gates a
+        // catalog source here either.
+        var env = CreateEnvironment([dated, seasonPasses, seasonPassAddOns, generalAddOns, promotions]);
+        var catalogSourceCategories = new (string SourceId, SourceCategory Category)[]
+        {
+            ("season-passes", SourceCategory.SeasonPasses),
+            ("season-pass-add-ons", SourceCategory.AddOns),
+            ("general-add-ons", SourceCategory.AddOns),
+            ("promotions", SourceCategory.Promotions),
+        };
+        foreach (var (sourceId, category) in catalogSourceCategories)
+        {
+            await env.SourceStates.SaveAsync(new SourceStateRecord(sourceId, category, env.Clock.UtcNow, env.Clock.UtcNow, null, null, 0));
+        }
+
+        var summary = await env.Orchestrator.RunUserForcedRefreshAsync(DateOnly.FromDateTime(FixedNow.DateTime));
+
+        Assert.Equal(
+            new[] { "season-passes", "season-pass-add-ons", "general-add-ons", "promotions" }.OrderBy(s => s),
+            catalogSourcesCalled.OrderBy(s => s));
+        Assert.Equal(5, summary.OperationsAttempted); // 1 dated + 4 catalog
+        Assert.Equal(5, summary.Succeeded);
+        Assert.All(summary.Results.Where(r => r.Category != SourceCategory.ParkHours), r => Assert.Null(r.RequestedDate));
+    }
+
+    // Phase 13B Part B/G: freshness never prevents a dated or catalog source from running under
+    // RunUserForcedRefreshAsync, even when every source just succeeded moments ago.
+    [Fact]
+    public async Task RunUserForcedRefreshAsync_IgnoresFreshness_EvenForJustSucceededSources()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var catalogProducts = new InMemoryCatalogProductRepository();
+        var reconciliation = CreateReconciliationService(catalogProducts);
+        var dated = AlwaysSucceedsDated("park-hours", SourceCategory.ParkHours, datedResults);
+        var catalogCallCount = 0;
+        var catalog = CatalogRegistration("season-passes", SourceCategory.SeasonPasses, reconciliation, (_, _) =>
+        {
+            catalogCallCount++;
+            return Task.FromResult(SourceResult<CatalogPayload>.Success("season-passes", FakeEvidence.Verified(FixedNow), new CatalogPayload([])));
+        });
+
+        var env = CreateEnvironment([dated, catalog]);
+        var today = DateOnly.FromDateTime(FixedNow.DateTime);
+
+        // Both sources just succeeded an instant ago — under RunScheduledRefreshAsync this would
+        // make season-passes not due for weeks. RunUserForcedRefreshAsync must not care.
+        await env.SourceStates.SaveAsync(new SourceStateRecord("park-hours", SourceCategory.ParkHours, env.Clock.UtcNow, env.Clock.UtcNow, null, null, 0));
+        await env.SourceStates.SaveAsync(new SourceStateRecord("season-passes", SourceCategory.SeasonPasses, env.Clock.UtcNow, env.Clock.UtcNow, null, null, 0));
+
+        var summary = await env.Orchestrator.RunUserForcedRefreshAsync(today);
+
+        Assert.Equal(2, summary.OperationsAttempted);
+        Assert.Equal(1, catalogCallCount);
+    }
+
+    // User-forced refresh must never alter scheduled-cadence source state (Part C/G) — the next
+    // scheduled/startup-catch-up job must still consider these sources due exactly as before.
+    [Fact]
+    public async Task RunUserForcedRefreshAsync_DoesNotTouchSourceState()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var catalogProducts = new InMemoryCatalogProductRepository();
+        var reconciliation = CreateReconciliationService(catalogProducts);
+        var dated = AlwaysSucceedsDated("park-hours", SourceCategory.ParkHours, datedResults);
+        var catalog = CatalogRegistration("season-passes", SourceCategory.SeasonPasses, reconciliation,
+            (_, _) => Task.FromResult(SourceResult<CatalogPayload>.Success("season-passes", FakeEvidence.Verified(FixedNow), new CatalogPayload([]))));
+        var env = CreateEnvironment([dated, catalog]);
+
+        await env.Orchestrator.RunUserForcedRefreshAsync(DateOnly.FromDateTime(FixedNow.DateTime).AddDays(2));
 
         Assert.Null(await env.SourceStates.GetAsync("park-hours"));
+        Assert.Null(await env.SourceStates.GetAsync("season-passes"));
+    }
+
+    // Phase 13B Part O/P/AI: partial failure across a user-forced refresh preserves every
+    // independent source's own outcome — one catalog failure must not suppress a dated success (or
+    // vice versa), and a catalog Error must still never reach reconciliation.
+    [Fact]
+    public async Task RunUserForcedRefreshAsync_PartialFailure_PreservesEachSourceIndependently()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var catalogProducts = new InMemoryCatalogProductRepository();
+        var reconciliation = CreateReconciliationService(catalogProducts);
+
+        var dated = AlwaysSucceedsDated("park-hours", SourceCategory.ParkHours, datedResults);
+        var failingCatalog = CatalogRegistration("promotions", SourceCategory.Promotions, reconciliation,
+            (_, _) => Task.FromResult(SourceResult<CatalogPayload>.WithoutPayload("promotions", FakeEvidence.Error(FixedNow))));
+        var product = FakeProduct(SourceCategory.SeasonPasses, "Gold Pass");
+        var succeedingCatalog = CatalogRegistration("season-passes", SourceCategory.SeasonPasses, reconciliation,
+            (_, _) => Task.FromResult(SourceResult<CatalogPayload>.Success("season-passes", FakeEvidence.Verified(FixedNow), new CatalogPayload([product]))));
+
+        var env = CreateEnvironment([dated, failingCatalog, succeedingCatalog]);
+        var today = DateOnly.FromDateTime(FixedNow.DateTime);
+
+        var summary = await env.Orchestrator.RunUserForcedRefreshAsync(today);
+
+        Assert.Equal(3, summary.OperationsAttempted);
+        Assert.Equal(2, summary.Succeeded);
+        Assert.Equal(1, summary.Failed);
+
+        var parkHoursRecord = await datedResults.GetAsync(new DatedResultKey(SourceCategory.ParkHours, today));
+        Assert.NotNull(parkHoursRecord?.SuccessEvidence);
+        Assert.Empty(await catalogProducts.GetByCategoryAsync(SourceCategory.Promotions)); // Error never reconciled
+        Assert.Single(await catalogProducts.GetByCategoryAsync(SourceCategory.SeasonPasses));
+    }
+
+    // Phase 13B Part Q: caller cancellation during a user-forced refresh stops outstanding work
+    // without corrupting whatever already completed — identical guarantee to the scheduled path,
+    // since both share ExecuteJobAsync.
+    [Fact]
+    public async Task RunUserForcedRefreshAsync_CallerCancellation_StopsOutstandingWork_WithoutCorruptingCompletedResults()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var catalogProducts = new InMemoryCatalogProductRepository();
+        var reconciliation = CreateReconciliationService(catalogProducts);
+        using var cts = new CancellationTokenSource();
+
+        var dated = AlwaysSucceedsDated("park-hours", SourceCategory.ParkHours, datedResults);
+        var hangingCatalog = CatalogRegistration("promotions", SourceCategory.Promotions, reconciliation, async (_, ct) =>
+        {
+            await Task.Delay(Timeout.Infinite, ct);
+            throw new InvalidOperationException("unreachable");
+        });
+
+        var env = CreateEnvironment([dated, hangingCatalog], orchestratorOptions: new RefreshOrchestratorOptions { MaxConcurrency = 2 });
+        var progress = new SyncProgress<RefreshProgress>(p =>
+        {
+            if (p.LastCompleted.SourceId == "park-hours")
+            {
+                cts.Cancel(); // the dated source is done; cancel while promotions is still hanging
+            }
+        });
+
+        var summary = await env.Orchestrator.RunUserForcedRefreshAsync(DateOnly.FromDateTime(FixedNow.DateTime), progress, cts.Token); // must not throw
+
+        Assert.Equal(2, summary.OperationsAttempted);
+        Assert.Equal(1, summary.Succeeded);
+        Assert.Equal(1, summary.Cancelled);
+        Assert.False(summary.WasSkippedDueToOverlap); // this ran (and was cancelled mid-flight), never "skipped"
     }
 
     // 9, 10, 11, 23. One source's failure doesn't cancel independent sources; earlier successes

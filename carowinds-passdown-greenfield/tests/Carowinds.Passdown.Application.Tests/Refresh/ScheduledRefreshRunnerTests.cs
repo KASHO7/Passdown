@@ -25,7 +25,7 @@ public class ScheduledRefreshRunnerTests
         var orchestrator = new FakeRefreshOrchestrator();
         var runner = new ScheduledRefreshRunner(orchestrator, new FakeClock(FixedNow), NullLogger<ScheduledRefreshRunner>.Instance);
 
-        await runner.RunAsync();
+        await runner.RunAsync(RefreshMode.Scheduled);
 
         Assert.Equal(1, orchestrator.ScheduledRefreshCallCount);
     }
@@ -37,7 +37,7 @@ public class ScheduledRefreshRunnerTests
         var orchestrator = new FakeRefreshOrchestrator();
         var runner = new ScheduledRefreshRunner(orchestrator, new FakeClock(FixedNow), NullLogger<ScheduledRefreshRunner>.Instance);
 
-        await runner.RunAsync();
+        await runner.RunAsync(RefreshMode.Scheduled);
 
         Assert.Empty(orchestrator.ManualDateRefreshCalls);
     }
@@ -49,7 +49,7 @@ public class ScheduledRefreshRunnerTests
         var orchestrator = new FakeRefreshOrchestrator { ScheduledRefreshSummaryOverride = Summary(attempted: 3, succeeded: 3, failed: 0, cancelled: 0) };
         var runner = new ScheduledRefreshRunner(orchestrator, new FakeClock(FixedNow), NullLogger<ScheduledRefreshRunner>.Instance);
 
-        var result = await runner.RunAsync();
+        var result = await runner.RunAsync(RefreshMode.Scheduled);
 
         Assert.Equal(ScheduledRefreshOutcome.Success, result.Outcome);
     }
@@ -61,7 +61,7 @@ public class ScheduledRefreshRunnerTests
         var orchestrator = new FakeRefreshOrchestrator { ScheduledRefreshSummaryOverride = Summary(attempted: 3, succeeded: 2, failed: 1, cancelled: 0) };
         var runner = new ScheduledRefreshRunner(orchestrator, new FakeClock(FixedNow), NullLogger<ScheduledRefreshRunner>.Instance);
 
-        var result = await runner.RunAsync();
+        var result = await runner.RunAsync(RefreshMode.Scheduled);
 
         Assert.Equal(ScheduledRefreshOutcome.PartialFailure, result.Outcome);
     }
@@ -76,7 +76,7 @@ public class ScheduledRefreshRunnerTests
         var orchestrator = new FakeRefreshOrchestrator { ScheduledRefreshSummaryOverride = Summary(attempted: 4, succeeded: 4, failed: 0, cancelled: 0) };
         var runner = new ScheduledRefreshRunner(orchestrator, new FakeClock(FixedNow), NullLogger<ScheduledRefreshRunner>.Instance);
 
-        var result = await runner.RunAsync();
+        var result = await runner.RunAsync(RefreshMode.Scheduled);
 
         Assert.Equal(ScheduledRefreshOutcome.Success, result.Outcome);
         Assert.Equal(4, result.Summary.Succeeded);
@@ -92,7 +92,7 @@ public class ScheduledRefreshRunnerTests
         var orchestrator = new FakeRefreshOrchestrator { ScheduledRefreshSummaryOverride = Summary(attempted: 4, succeeded: 0, failed: 4, cancelled: 0) };
         var runner = new ScheduledRefreshRunner(orchestrator, new FakeClock(FixedNow), NullLogger<ScheduledRefreshRunner>.Instance);
 
-        var result = await runner.RunAsync();
+        var result = await runner.RunAsync(RefreshMode.Scheduled);
 
         Assert.Equal(ScheduledRefreshOutcome.PartialFailure, result.Outcome);
     }
@@ -105,9 +105,49 @@ public class ScheduledRefreshRunnerTests
         var recordingLogger = new RecordingLogger();
         var runner = new ScheduledRefreshRunner(orchestrator, new FakeClock(FixedNow), recordingLogger);
 
-        await runner.RunAsync();
+        await runner.RunAsync(RefreshMode.Scheduled);
 
         Assert.Contains(recordingLogger.Messages, m => m.Contains("5") && m.Contains("3") && m.Contains("2") && m.Contains("summary", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // Phase 13B Part A: RefreshMode.StartupCatchUp still resolves to the identical
+    // RunScheduledRefreshAsync call — only the logged mode differs.
+    [Fact]
+    public async Task RunAsync_StartupCatchUpMode_StillInvokesScheduledRefreshExactlyOnce()
+    {
+        var orchestrator = new FakeRefreshOrchestrator();
+        var runner = new ScheduledRefreshRunner(orchestrator, new FakeClock(FixedNow), NullLogger<ScheduledRefreshRunner>.Instance);
+
+        await runner.RunAsync(RefreshMode.StartupCatchUp);
+
+        Assert.Equal(1, orchestrator.ScheduledRefreshCallCount);
+        Assert.Empty(orchestrator.ManualDateRefreshCalls);
+    }
+
+    // Phase 13B Part A: RefreshMode.UserForced never reaches this runner — it has its own entry
+    // point (IRefreshOrchestrator.RunUserForcedRefreshAsync, called directly by AssociatePassdownService).
+    [Fact]
+    public async Task RunAsync_UserForcedMode_Throws()
+    {
+        var orchestrator = new FakeRefreshOrchestrator();
+        var runner = new ScheduledRefreshRunner(orchestrator, new FakeClock(FixedNow), NullLogger<ScheduledRefreshRunner>.Instance);
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => runner.RunAsync(RefreshMode.UserForced));
+        Assert.Equal(0, orchestrator.ScheduledRefreshCallCount);
+    }
+
+    // Phase 13B Part A: the log line records which mode triggered this run, so Scheduled and
+    // StartupCatchUp invocations are distinguishable in the log even though they share one runner.
+    [Fact]
+    public async Task RunAsync_LogsWhichModeTriggeredTheRun()
+    {
+        var orchestrator = new FakeRefreshOrchestrator();
+        var recordingLogger = new RecordingLogger();
+        var runner = new ScheduledRefreshRunner(orchestrator, new FakeClock(FixedNow), recordingLogger);
+
+        await runner.RunAsync(RefreshMode.StartupCatchUp);
+
+        Assert.Contains(recordingLogger.Messages, m => m.Contains(nameof(RefreshMode.StartupCatchUp)));
     }
 
     private sealed class RecordingLogger : Microsoft.Extensions.Logging.ILogger<ScheduledRefreshRunner>
