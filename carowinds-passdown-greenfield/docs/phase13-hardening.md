@@ -2833,5 +2833,5 @@ phase's own instructions, same as Phase 15A).
 
 ## Git checkpoint (Phase 15B)
 
-Pending — see final report for the commit hash once tests/build are confirmed green and this
-documentation is current.
+Committed as `1359bd3` ("Phase 15B: redesign Operations Calendar month grid to a full-width
+7-column layout").
