@@ -3,6 +3,7 @@ using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Documents.Tests.Associate.TestSupport;
+using Carowinds.Passdown.Domain.Hours;
 
 namespace Carowinds.Passdown.Documents.Tests.Associate;
 
@@ -54,6 +55,49 @@ public class FinalizedPassdownSnapshotBuilderTests
         Assert.True(snapshot.EarlyRideTime.Enabled);
         Assert.Contains("8:30 AM", snapshot.EarlyRideTime.Details);
         Assert.Equal(["Fury 325", "Intimidator", "Copperhead Strike"], snapshot.EarlyRideTime.ParticipatingAttractions);
+    }
+
+    // Phase 13F Part T/V: the derived Early Ride Time start is already frozen as
+    // FinalizedParkHoursSnapshot.NorthGateText — no new snapshot field is needed, so
+    // FinalizedPassdownSnapshot.CurrentSchemaVersion correctly stays at 1 (asserted below).
+    [Fact]
+    public void Build_NormalDay_FreezesDerivedNorthGateAsEarlyRideTimeStart()
+    {
+        var snapshot = Builder.Build(AssociateWorkspaceFixtures.NormalDay(), AsOf);
+
+        Assert.Equal("8:30 AM", snapshot.ParkHours.NorthGateText);
+        Assert.Equal(1, FinalizedPassdownSnapshot.CurrentSchemaVersion);
+    }
+
+    // Phase 13F Part G/L: Private Buyout's own opening drives the frozen North Gate/ERT start exactly
+    // like every other effective-opening source — no buyout-specific carve-out.
+    [Fact]
+    public void Build_PrivateBuyoutDay_FreezesDerivedStartFromBuyoutOpening()
+    {
+        var snapshot = Builder.Build(AssociateWorkspaceFixtures.PrivateBuyoutDay(), AsOf);
+
+        Assert.Equal("5:30 PM", snapshot.ParkHours.NorthGateText);
+    }
+
+    // Phase 13F Part T/U: finalizing freezes the derived ERT start computed from the draft's own
+    // effective hours at that moment — a later change to what "live" hours would derive must never
+    // alter the already-built (frozen) snapshot.
+    [Fact]
+    public void Build_LaterHoursChange_DoesNotAlterAnAlreadyBuiltSnapshot()
+    {
+        var workspace = AssociateWorkspaceFixtures.NormalDay(); // official opening 9:00 AM -> derived 8:30 AM
+        var frozenSnapshot = Builder.Build(workspace, AsOf);
+        Assert.Equal("8:30 AM", frozenSnapshot.ParkHours.NorthGateText);
+
+        var effectiveOpening = ParkHoursCalculator.Calculate(false, new TimeOnly(11, 0), new TimeOnly(21, 0), false, null, null, false, null, null);
+        var laterWorkspace = workspace with
+        {
+            ParkHours = workspace.ParkHours with { Effective = effectiveOpening },
+        };
+        var laterSnapshot = Builder.Build(laterWorkspace, AsOf);
+
+        Assert.Equal("10:30 AM", laterSnapshot.ParkHours.NorthGateText);
+        Assert.Equal("8:30 AM", frozenSnapshot.ParkHours.NorthGateText); // unchanged — History is immutable.
     }
 
     [Fact]

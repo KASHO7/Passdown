@@ -101,6 +101,9 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasWorkspace))]
     [NotifyPropertyChangedFor(nameof(ParkHours))]
+    [NotifyPropertyChangedFor(nameof(EarlyRideTimeStartText))]
+    [NotifyPropertyChangedFor(nameof(EarlyRideTimeStartAutomationName))]
+    [NotifyPropertyChangedFor(nameof(EarlyRideTimeCaptionText))]
     [NotifyPropertyChangedFor(nameof(SaveStatus))]
     [NotifyPropertyChangedFor(nameof(SaveStatusText))]
     [NotifyCanExecuteChangedFor(nameof(CreatePdfCommand))]
@@ -187,6 +190,9 @@ public partial class AssociateViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ParkHours))]
+    [NotifyPropertyChangedFor(nameof(EarlyRideTimeStartText))]
+    [NotifyPropertyChangedFor(nameof(EarlyRideTimeStartAutomationName))]
+    [NotifyPropertyChangedFor(nameof(EarlyRideTimeCaptionText))]
     [NotifyPropertyChangedFor(nameof(ManualHoursWarningText))]
     [NotifyPropertyChangedFor(nameof(ManualOpeningTimeError))]
     [NotifyPropertyChangedFor(nameof(ManualClosingTimeError))]
@@ -207,6 +213,9 @@ public partial class AssociateViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ParkHours))]
+    [NotifyPropertyChangedFor(nameof(EarlyRideTimeStartText))]
+    [NotifyPropertyChangedFor(nameof(EarlyRideTimeStartAutomationName))]
+    [NotifyPropertyChangedFor(nameof(EarlyRideTimeCaptionText))]
     [NotifyPropertyChangedFor(nameof(PrivateBuyoutHoursWarningText))]
     [NotifyPropertyChangedFor(nameof(PrivateBuyoutOpeningTimeError))]
     [NotifyPropertyChangedFor(nameof(PrivateBuyoutClosingTimeError))]
@@ -397,9 +406,11 @@ public partial class AssociateViewModel : ViewModelBase
     /// Re-runs <see cref="ParkHoursCalculator.Calculate"/> against the workspace's official inputs
     /// plus whatever override fields are currently in the editable form (spec §8.2's "recalculate
     /// immediately when the manager changes the override") — never a save round-trip, and never a
-    /// second, ViewModel-owned copy of the -30/-45 minute rule.
+    /// second, ViewModel-owned copy of the -30/-45 minute rule. Shared by <see cref="ParkHours"/> and
+    /// the Phase 13F Early Ride Time derived-start properties below, so ERT/North Gate can never
+    /// disagree with the Park Hours panel or with each other.
     /// </summary>
-    public ParkHoursPresentation? ParkHours
+    private AssociateParkHoursView? LiveParkHours
     {
         get
         {
@@ -408,12 +419,71 @@ public partial class AssociateViewModel : ViewModelBase
                 return null;
             }
 
-            var live = RecomputeParkHours(
+            return RecomputeParkHours(
                 workspace.ParkHours,
                 ManualHoursOverrideEnabled, _manualOpeningTime, _manualClosingTime,
                 PrivateBuyoutEnabled, _privateBuyoutOpeningTime, _privateBuyoutClosingTime);
+        }
+    }
 
-            return ParkHoursPresentation.Build(live);
+    public ParkHoursPresentation? ParkHours => LiveParkHours is { } live ? ParkHoursPresentation.Build(live) : null;
+
+    /// <summary>
+    /// Phase 13F: Early Ride Time start is no longer typed by the associate — it is
+    /// <see cref="EffectiveHours.NorthGateOpening"/> (effective park opening minus 30 minutes), the
+    /// exact same value the Park Hours panel prints as "North Gate" (spec Part L: "do not create two
+    /// independently computed times"). Null whenever no effective opening exists yet (Closed,
+    /// NotCheckedYet, NotPublished, or Unavailable) — never a fabricated time.
+    /// </summary>
+    public string? EarlyRideTimeStartText => LiveParkHours?.Effective.NorthGateOpening is { } time
+        ? OperationalTimeFormatter.Format(time)
+        : null;
+
+    /// <summary>
+    /// A plain (non-<c>StringFormat</c>) automation name for <see cref="EarlyRideTimeStartText"/> —
+    /// an unattached/headless container does not reliably realize a <c>StringFormat</c>-bound
+    /// <c>AutomationProperties.Name</c> (see the per-row product template note in
+    /// <c>AssociateViewAccessibilityTests</c>), so this composes the full string in the ViewModel
+    /// instead, matching every other automation name in this view.
+    /// </summary>
+    public string EarlyRideTimeStartAutomationName => EarlyRideTimeStartText is { } start
+        ? $"Early Ride Time derived start: {start}"
+        : "Early Ride Time derived start unavailable";
+
+    /// <summary>
+    /// The short explanatory line under the derived start time (spec Part M/N's compact mockup), or —
+    /// when no start time is available — a concise, non-fabricated reason (spec Parts H/I/J) reusing
+    /// the same <see cref="AssociateVerificationState"/> the Park Hours panel already surfaces, rather
+    /// than inventing a second ERT-specific freshness model (spec Part AD).
+    /// </summary>
+    public string EarlyRideTimeCaptionText
+    {
+        get
+        {
+            if (LiveParkHours is not { } live)
+            {
+                return "ERT time unavailable until park hours are published.";
+            }
+
+            if (live.Effective.NorthGateOpening is not null)
+            {
+                return live.Effective.Opening is { } opening
+                    ? $"Derived from {OperationalTimeFormatter.Format(opening)} park opening."
+                    : "Derived from today's park opening.";
+            }
+
+            if (live.Effective.Status == EffectiveHoursStatus.Closed)
+            {
+                return "Not applicable — the park is closed.";
+            }
+
+            return live.Verification.State switch
+            {
+                AssociateVerificationState.NotPublished => "ERT time unavailable until park hours are published.",
+                AssociateVerificationState.Unavailable or AssociateVerificationState.Error =>
+                    "ERT time unavailable — park hours could not be checked.",
+                _ => "ERT time unavailable — park hours have not been checked yet.",
+            };
         }
     }
 
@@ -872,6 +942,9 @@ public partial class AssociateViewModel : ViewModelBase
         {
             OnPropertyChanged(nameof(ManualOpeningTimeError));
             OnPropertyChanged(nameof(ParkHours));
+            OnPropertyChanged(nameof(EarlyRideTimeStartText));
+            OnPropertyChanged(nameof(EarlyRideTimeStartAutomationName));
+            OnPropertyChanged(nameof(EarlyRideTimeCaptionText));
             OnPropertyChanged(nameof(ManualHoursWarningText));
         });
 
@@ -884,6 +957,9 @@ public partial class AssociateViewModel : ViewModelBase
         {
             OnPropertyChanged(nameof(ManualClosingTimeError));
             OnPropertyChanged(nameof(ParkHours));
+            OnPropertyChanged(nameof(EarlyRideTimeStartText));
+            OnPropertyChanged(nameof(EarlyRideTimeStartAutomationName));
+            OnPropertyChanged(nameof(EarlyRideTimeCaptionText));
             OnPropertyChanged(nameof(ManualHoursWarningText));
         });
 
@@ -896,6 +972,9 @@ public partial class AssociateViewModel : ViewModelBase
         {
             OnPropertyChanged(nameof(PrivateBuyoutOpeningTimeError));
             OnPropertyChanged(nameof(ParkHours));
+            OnPropertyChanged(nameof(EarlyRideTimeStartText));
+            OnPropertyChanged(nameof(EarlyRideTimeStartAutomationName));
+            OnPropertyChanged(nameof(EarlyRideTimeCaptionText));
             OnPropertyChanged(nameof(PrivateBuyoutHoursWarningText));
         });
 
@@ -908,6 +987,9 @@ public partial class AssociateViewModel : ViewModelBase
         {
             OnPropertyChanged(nameof(PrivateBuyoutClosingTimeError));
             OnPropertyChanged(nameof(ParkHours));
+            OnPropertyChanged(nameof(EarlyRideTimeStartText));
+            OnPropertyChanged(nameof(EarlyRideTimeStartAutomationName));
+            OnPropertyChanged(nameof(EarlyRideTimeCaptionText));
             OnPropertyChanged(nameof(PrivateBuyoutHoursWarningText));
         });
 

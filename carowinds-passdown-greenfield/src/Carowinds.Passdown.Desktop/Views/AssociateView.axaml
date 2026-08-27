@@ -515,16 +515,27 @@
 
                     <Rectangle Grid.Column="1" Classes="glanceDivider" />
 
-                    <!-- Early Ride Time -->
+                    <!-- Early Ride Time (Phase 13F: start time is no longer typed — it is derived
+                         read-only from effective park opening minus 30 minutes, the same value the
+                         Park Hours panel shows as "North Gate". The associate manages only rides. -->
                     <StackPanel Grid.Column="2" Spacing="8">
                       <TextBlock Text="EARLY RIDE TIME" Classes="subsectionTitle" />
                       <CheckBox Content="Happening today"
                                 IsChecked="{Binding IsEarlyRideTimeEnabled}"
                                 AutomationProperties.Name="Early Ride Time is happening today" />
                       <StackPanel Spacing="8" IsVisible="{Binding IsEarlyRideTimeEnabled}">
+                        <StackPanel Spacing="0">
+                          <TextBlock Text="Start / North Gate" Classes="fieldLabel" />
+                          <TextBlock Text="{Binding EarlyRideTimeStartText, FallbackValue='—'}"
+                                     FontWeight="Medium"
+                                     AutomationProperties.Name="{Binding EarlyRideTimeStartAutomationName}" />
+                          <TextBlock Text="{Binding EarlyRideTimeCaptionText}"
+                                     Classes="fieldHint" TextWrapping="Wrap"
+                                     AutomationProperties.Name="{Binding EarlyRideTimeCaptionText}" />
+                        </StackPanel>
                         <TextBox Text="{Binding EarlyRideTimeDetailsText}"
-                                 PlaceholderText="e.g. 9:00 AM – 10:00 AM, first two rows only"
-                                 AutomationProperties.Name="Early Ride Time details" />
+                                 PlaceholderText="Additional details (optional)"
+                                 AutomationProperties.Name="Early Ride Time additional details" />
                         <StackPanel Spacing="0">
                           <TextBox Text="{Binding ParticipatingAttractionsText}"
                                    AcceptsReturn="True"

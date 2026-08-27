@@ -3,6 +3,7 @@ using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Documents.Tests.Associate.TestSupport;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Hours;
 
 namespace Carowinds.Passdown.Documents.Tests.Associate;
 
@@ -395,6 +396,42 @@ public sealed class AssociatePassdownPdfGeneratorTests
 
         Assert.True(model.EarlyRideTime.Enabled);
         Assert.Contains("Early Ride Time from 8:30 AM", text);
+    }
+
+    // Phase 13F Part R/S/L: the Early Ride Time box prints the derived start time, and it is the
+    // exact same value the Park Hours box prints as "North Gate" — never a second, independently
+    // computed time.
+    [Fact]
+    public void EarlyRideTimeBox_ShowsDerivedStartTime_MatchingNorthGate()
+    {
+        var model = BuildModel(AssociateWorkspaceFixtures.NormalDay());
+        var text = GenerateText(model);
+
+        Assert.NotNull(model.ParkHours.NorthGateText);
+        Assert.Equal("8:30 AM", model.ParkHours.NorthGateText);
+        Assert.Contains("Start", text);
+        Assert.Contains(model.ParkHours.NorthGateText!, text);
+    }
+
+    // Phase 13F Part H: a Closed date never fabricates a start time, but rides already saved on the
+    // draft still print rather than being silently erased.
+    [Fact]
+    public void EarlyRideTimeBox_ClosedDayWithRidesConfigured_DoesNotFabricateStartTime_ButKeepsRides()
+    {
+        var workspace = AssociateWorkspaceFixtures.NormalDay() with
+        {
+            ParkHours = AssociateWorkspaceFixtures.NormalDay().ParkHours with
+            {
+                Effective = ParkHoursCalculator.Calculate(true, null, null, false, null, null, false, null, null),
+            },
+        };
+        var model = BuildModel(workspace);
+        var text = GenerateText(model);
+
+        Assert.True(model.EarlyRideTime.Enabled);
+        Assert.Equal(PdfParkHoursStatus.Closed, model.ParkHours.Status);
+        Assert.Contains("Fury 325", text); // rides preserved, never silently erased.
+        Assert.Contains("park is closed", text, StringComparison.OrdinalIgnoreCase);
     }
 
     // 9. Participating attractions appear.

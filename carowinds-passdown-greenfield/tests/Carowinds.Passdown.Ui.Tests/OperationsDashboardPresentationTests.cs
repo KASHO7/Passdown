@@ -3,6 +3,7 @@ using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Desktop.Presentation;
+using Carowinds.Passdown.Domain.Hours;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
 
 namespace Carowinds.Passdown.Ui.Tests;
@@ -82,14 +83,35 @@ public class OperationsDashboardPresentationTests
         Assert.Equal("Not set", presentation.EarlyRideTimeText);
     }
 
+    // Phase 13F: the Dashboard's ERT line now prefers the derived start time (the same
+    // ParkHoursPresentation.NorthGateText the Park Hours summary already computes) over the free-text
+    // Details field, which no longer carries a manually-typed time.
     [Fact]
-    public void Build_EarlyRideTimeEnabledWithDetails_ShowsDetails()
+    public void Build_EarlyRideTimeEnabledWithKnownHours_ShowsDerivedStart()
     {
-        var snapshot = DefaultSnapshot() with { EarlyRideTimeEnabled = true, EarlyRideTimeDetails = "9:30 AM, Fury 325" };
+        var effective = ParkHoursCalculator.Calculate(false, new TimeOnly(10, 0), new TimeOnly(22, 0), false, null, null, false, null, null);
+        var hours = new AssociateParkHoursView(effective, new AssociateVerificationInfo(AssociateVerificationState.Verified, DateTimeOffset.UtcNow, null, null), false, new TimeOnly(10, 0), new TimeOnly(22, 0));
+        var snapshot = DefaultSnapshot() with
+        {
+            ParkStatus = new DashboardParkStatusSummary(DashboardParkStatus.Open, hours),
+            EarlyRideTimeEnabled = true,
+            EarlyRideTimeDetails = "First two rows only.",
+        };
 
         var presentation = OperationsDashboardPresentation.Build(snapshot);
 
-        Assert.Equal("9:30 AM, Fury 325", presentation.EarlyRideTimeText);
+        Assert.Equal("Starts 9:30 AM", presentation.EarlyRideTimeText);
+    }
+
+    // Hours not yet known — never fabricate a start time, but still distinguish "enabled" from "Not set".
+    [Fact]
+    public void Build_EarlyRideTimeEnabledWithoutKnownHours_ShowsEnabledFallback()
+    {
+        var snapshot = DefaultSnapshot() with { EarlyRideTimeEnabled = true, EarlyRideTimeDetails = null };
+
+        var presentation = OperationsDashboardPresentation.Build(snapshot);
+
+        Assert.Equal("Enabled", presentation.EarlyRideTimeText);
     }
 
     [Fact]

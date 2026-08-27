@@ -254,6 +254,13 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
             });
         });
 
+    /// <summary>
+    /// Phase 13F: the start time is no longer free-typed into <see cref="PdfEarlyRideTime.Details"/> —
+    /// it is <see cref="PdfParkHours.NorthGateText"/>, the exact same already-derived value the Park
+    /// Hours box prints as "North Gate" (spec Part L: one shared derived value, never two independent
+    /// calculations). Printed again here so a reader glancing only at this box still sees the time
+    /// (spec Part R), never fabricated when no effective opening exists (spec Parts H/I/J).
+    /// </summary>
     private static void ComposeEarlyRideTimeBox(IContainer container, AssociatePassdownDocumentModel model) =>
         ComposePanel(container, "EARLY RIDE TIME", column =>
         {
@@ -261,6 +268,22 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
             {
                 column.Item().Text("Not applicable for this date.").FontSize(9.5f).Italic().FontColor(MutedTextColor);
                 return;
+            }
+
+            // PdfParkHours.NorthGateText is never null (it formats to "-" when there is no time), so
+            // Status — not the formatted string — is what actually distinguishes "has a derived
+            // start" from "nothing to derive from" (Status is only Open when Opening is non-null).
+            if (model.ParkHours.Status == PdfParkHoursStatus.Open)
+            {
+                column.Item().Text(text =>
+                {
+                    text.Span("Start  ").FontSize(9).FontColor(MutedTextColor);
+                    text.Span(model.ParkHours.NorthGateText).FontSize(11).Bold();
+                });
+            }
+            else
+            {
+                column.Item().Text(EarlyRideTimeUnavailableText(model.ParkHours.Status)).FontSize(9).Italic().FontColor(MutedTextColor);
             }
 
             if (model.EarlyRideTime.Details is { } details)
@@ -273,6 +296,12 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
                 column.Item().Text($"Attractions: {string.Join(", ", model.EarlyRideTime.ParticipatingAttractions)}").FontSize(9);
             }
         });
+
+    private static string EarlyRideTimeUnavailableText(PdfParkHoursStatus status) => status switch
+    {
+        PdfParkHoursStatus.Closed => "Start time not applicable — park is closed.",
+        _ => "Start time unavailable — park hours not yet confirmed.",
+    };
 
     /// <summary>
     /// Level 2 (spec Phase 8B Part 3): the Daily Feature gets its own full-width panel, visually

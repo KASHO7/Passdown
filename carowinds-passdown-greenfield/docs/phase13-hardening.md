@@ -1854,3 +1854,237 @@ interaction replacing the stock `TimePicker`, per-field validation distinguishin
 text from the pre-existing non-blocking range warning, unchanged effective-hours precedence and
 autosave debounce, zero schema/migration changes, zero network/refresh-path changes, 57 new tests, full
 suite green (1565/1565), build clean. One local commit follows; 13F is explicitly not started.
+
+## Phase 13F — Early Ride Time (ERT) simplification: derived start, rides-only editing
+
+### 1. Prior ERT behavior (audited directly from post-13E code, not from Phase 13A's own proposal)
+
+There was no structured ERT time field to migrate — Phase 13A's finding still held unconditionally
+after 13B–13E: `EarlyRideTimeDetails(string? Details, IReadOnlyList<string> ParticipatingAttractions)`
+was pure free text; the "Details" `TextBox`'s placeholder literally invited typing a time range
+("e.g. 9:00 AM – 10:00 AM, first two rows only"). "Enabled"/no-ERT was (and remains) a **derived**
+boolean — non-blank `Details` OR a non-empty attractions list — computed independently in three places
+(`AssociateViewModel`, `OperationsDashboardService`, `AssociatePassdownDocumentModelBuilder`).
+`AssociateDraftPayload` schema (version 3) never carried an ERT time field. History/PDF froze ERT as
+`Details`/attractions strings, never a raw time. Dashboard showed only "Enabled"/the raw `Details` text
+or "Not set"; the Operations Calendar never showed ERT at all (day cells are already dense — Part AC
+confirms this is unchanged, deliberately).
+
+### 2. Derivation: no new type — the authoritative value already existed
+
+`EffectiveHours.NorthGateOpening` (`Domain/Hours/EffectiveHours.cs`) already computes exactly
+`Opening.AddMinutes(-30)` for whatever effective opening `ParkHoursCalculator.Calculate` resolved
+(official / manual override / private buyout — spec §8.2's exact precedence), and was already the
+single source every "North Gate" display in the app reads (`ParkHoursPresentation`,
+`AssociatePassdownDocumentModelBuilder`, the Dashboard's reused `ParkHoursPresentation.Build`). Part C
+asked for "one shared derivation helper... contain no UI dependency" — `EffectiveHours.NorthGateOpening`
+already *is* that helper. Introducing a second `EarlyRideTimeCalculator` type would have created a
+second, parallel path to the identical value, directly violating Part L ("do not create two
+independently computed times") and CLAUDE.md's minimalism rule. No Domain code changed in this phase.
+
+### 3. North Gate relationship (Part L)
+
+Early Ride Time start and North Gate opening are, and always were structurally required to be, the
+same value. This phase makes that explicit everywhere ERT is displayed by reading
+`EffectiveHours.NorthGateOpening` (via the existing `ParkHoursPresentation`/`PdfParkHours.NorthGateText`
+projections) rather than a second computation.
+
+### 4. Normal open day (Part E)
+
+Official 10:00 AM opening → derived ERT/North Gate start 9:30 AM. Custom Hours example (9:00 AM open)
+→ 8:30 AM. Verified via `ParkHoursCalculatorTests` (Domain), `AssociateViewModelEarlyRideTimeTests`
+(ViewModel, live), and `FinalizedPassdownSnapshotBuilderTests`/`AssociatePassdownPdfGeneratorTests`
+(frozen/printed).
+
+### 5. Manual Hours behavior (Part F/Y/Z)
+
+`AssociateViewModel.EarlyRideTimeStartText`/`EarlyRideTimeCaptionText` are pure getters over a new
+private `LiveParkHours` property — the exact same live re-run of `ParkHoursCalculator.Calculate` the
+pre-existing `ParkHours` presentation getter already used, factored out so both (and the two new ERT
+properties) share one computation. Every code path that already notified `ParkHours` changed
+(`ManualHoursOverrideEnabled`/`PrivateBuyoutEnabled` property changes, and all four Manual/Buyout
+`*TimeText` commit handlers) now also notifies the two ERT properties — so typing a new Manual Open
+time changes the on-screen derived ERT start immediately, with no save round-trip, and disabling Manual
+Hours reverts it to the official-derived value immediately. Covered by
+`AssociateViewModelEarlyRideTimeTests.ManualHoursOverride_TypedLive_ImmediatelyChangesDerivedStart` and
+`..._Disabled_RevertsToOfficialDerivedStart`.
+
+### 6. Private Buyout decision (Part G) — resolved from the spec's own constraints, not guessed
+
+Audited rather than assumed: `ParkHoursCalculator.Calculate` has never had a buyout-specific carve-out
+for North Gate — an enabled private buyout already, unconditionally, drives `NorthGateOpening` off the
+buyout's own opening time, exactly like every other effective-opening source. Part L then makes the
+decision for ERT non-optional: "the same derived time represents Early Ride Time start [and] North Gate
+opening... do not create two independently computed times." Diverging ERT from North Gate on buyout
+days would violate that constraint outright. **Decision: Private Buyout drives the derived ERT start
+identically to how it already drives North Gate — no special case.** This is a resolution of the
+ambiguity from the spec's own explicit, non-negotiable Part L requirement, not a product guess; it was
+not put to the product owner because CLAUDE.md reserves that channel for decisions the specification
+cannot resolve, and this one the specification does resolve. Tested in
+`ParkHoursCalculatorTests.Calculate_PrivateBuyoutEnabled_OverridesClosed` (explicit `NorthGateOpening`
+assertion), `AssociateViewModelEarlyRideTimeTests.PrivateBuyout_Enabled_DerivesStartFromBuyoutOpening`,
+and `FinalizedPassdownSnapshotBuilderTests.Build_PrivateBuyoutDay_FreezesDerivedStartFromBuyoutOpening`.
+
+### 7. Closed / NotPublished / Unavailable (Parts H/I/J) — never fabricated
+
+`EarlyRideTimeStartText` is `null` whenever `EffectiveHours.NorthGateOpening` is `null` (Closed or
+NotCheckedYet — the latter bucket also covers NotPublished/Unavailable/Error, since none of those ever
+produce a non-null official opening). `EarlyRideTimeCaptionText` then distinguishes the reason using the
+same `AssociateVerificationState` the Park Hours panel already surfaces (never a new ERT-specific
+freshness model, per Part AD): "Not applicable — the park is closed.", "ERT time unavailable until park
+hours are published.", "ERT time unavailable — park hours could not be checked.", or "...have not been
+checked yet." for genuinely NotCheckedYet. The PDF mirrors this with a two-way switch on the print
+model's own `PdfParkHoursStatus` (Closed vs. everything else — the print model, unlike the live
+ViewModel, never had access to `AssociateVerificationState`'s finer NotPublished/Unavailable split, so
+it keeps the same terse "not yet confirmed" wording it already used elsewhere for that bucket). A Closed
+date with rides already saved on the draft keeps printing/showing those rides (Part H's "do not silently
+erase") — only the fabricated-time risk is removed. Stale/last-known-good hours are still an *effective*
+opening (the same LKG payload the Park Hours panel already renders from), so ERT derives from them with
+no special-casing, inheriting the existing stale-note presentation next to it rather than a second
+staleness indicator (Part AD/J).
+
+**Implementation-bug caught during this phase's own build-and-test pass:** the PDF's
+`PdfParkHours.NorthGateText` was never actually `null` — it formats to the literal string `"-"` when
+there is no time (`FormatTime(TimeOnly?) => ... ?? "-"`). An initial `if (NorthGateText is { } start)`
+check in `ComposeEarlyRideTimeBox` therefore always matched, printing a fabricated "Start  -" line even
+on a Closed date. Caught by `EarlyRideTimeBox_ClosedDayWithRidesConfigured_DoesNotFabricateStartTime_ButKeepsRides`
+failing on first run; fixed by switching the check to `model.ParkHours.Status == PdfParkHoursStatus.Open`
+(Status is only ever `Open` when `Opening`, and therefore `NorthGateOpening`, is non-null).
+
+### 8. Waterpark independence (Part K)
+
+Unchanged and re-verified: `AssociateParkHoursView.WaterparkOpening`/`WaterparkClosing` are read
+straight from `ParkHoursPayload` and never reach `ParkHoursCalculator.Calculate` at all — there is no
+code path from Carolina Harbor hours into `EffectiveHours`/`NorthGateOpening`. Regression test:
+`AssociateViewModelEarlyRideTimeTests.WaterparkHoursPublished_MainGateNotChecked_NeverDerivesStartTime`
+(waterpark published, main gate NotCheckedYet → still no derived ERT start).
+
+### 9. Associate UI simplification (Parts M/N/O/AG/AH)
+
+The ERT "Details" `TextBox` and its time-inviting placeholder are gone from the mockup's inviting role;
+the field itself is kept (unchanged storage, unchanged persistence — Part Q) but relabeled
+"Additional details (optional)" since old drafts may still hold free text in it and Part Q forbids
+parsing/erasing that. Above it, a new read-only block shows "Start / North Gate" +
+`EarlyRideTimeStartText` (a plain `TextBlock`, never a disabled `TextBox`, per Part N) with a one-line
+caption underneath (`EarlyRideTimeCaptionText`) explaining the derivation or the unavailable reason.
+Rides (`ParticipatingAttractionsText`) are completely untouched — same binding, same autosave, same PDF
+inclusion. The derived start's accessible name is a dedicated ViewModel property
+(`EarlyRideTimeStartAutomationName`, composed as plain text rather than an inline `StringFormat`
+binding) so it is distinguishable from editable fields via automation tooling (Part AG); rides/details
+keep their existing static automation names.
+
+### 10. PDF behavior (Parts R/S)
+
+The Early Ride Time PDF box now prints a "Start  h:mm tt" line — reading `model.ParkHours.NorthGateText`
+directly (the exact same already-computed string the Park Hours box prints), never a second
+calculation — followed by the unchanged Details/attractions lines. When no valid derived time exists,
+a concise italic fallback line replaces it ("Start time not applicable — park is closed." /
+"...not yet confirmed."); nothing is ever fabricated. This is intentionally still printed once more next
+to the rides even though North Gate already appears in the adjacent Park Hours box in the same PDF row —
+both panels read the identical source string, so it is a convenience duplication of one shared value,
+not a second independent one, and lets a reader glancing only at the ERT box still see the time (Part
+S's exception clause: "unless operationally useful"). `AssociatePassdownPreflight`'s one-page line
+budget was bumped by exactly one line for this box; the real `RealisticWorkspaces_RenderExactlyOnePage`
+QuestPDF-render regression tests (NormalDay, DenseDay) both still pass — confirmed by an actual test run,
+not merely the estimate.
+
+### 11. North Gate on PDF (Part S)
+
+Already shown separately in the Park Hours box (unchanged, pre-existing) — both it and the new ERT-box
+line use `PdfParkHours.NorthGateText` verbatim, so they can never disagree.
+
+### 12. Finalization / History immutability (Parts T/U/V)
+
+No new snapshot field. `FinalizedParkHoursSnapshot.NorthGateText` already froze the derived value at
+finalization time (it always has, since Phase 9) — the PDF/ERT-box printer and the finalized-snapshot
+mapper both read it from the one `AssociatePassdownDocumentModel` built once per finalization
+(`FinalizedPassdownSnapshotBuilder.BuildProjection`), so the frozen PDF and the frozen snapshot can never
+disagree, and neither can be affected by a later live-hours change (records are immutable; there is no
+update path). Proven directly by the new
+`FinalizedPassdownSnapshotBuilderTests.Build_LaterHoursChange_DoesNotAlterAnAlreadyBuiltSnapshot`: build
+a snapshot from 9:00 AM official hours (frozen North Gate/ERT 8:30 AM), build a second snapshot from an
+`Effective` hours record changed to 11:00 AM (10:30 AM), and assert the first snapshot's
+`NorthGateText` is still exactly "8:30 AM".
+
+### 13. Schema confirmation (Parts V/W/X/AP)
+
+**Database schema: 11 (unchanged — no migration file added).** **`AssociateDraftPayload` schema: 3
+(unchanged — zero fields added/removed).** **`FinalizedPassdownSnapshot` schema: 1 (unchanged —
+`FinalizedEarlyRideTimeSnapshot` untouched; the frozen derived time already lived in the pre-existing
+`FinalizedParkHoursSnapshot.NorthGateText`).** Confirmed directly in code (`grep` of the three
+`CurrentSchemaVersion` constants and the migrations directory — `Migration0011...` remains the newest
+file).
+
+### 14. Dashboard (Part AC)
+
+The Dashboard's one-line ERT summary now prefers the derived start ("Starts 9:30 AM") over the
+free-text `Details` field, reusing the `ParkHoursPresentation.NorthGateText` the Dashboard already
+builds for its own Park Hours summary (`OperationsDashboardPresentation.Build`) — never a second
+subtraction. Falls back to "Enabled" when no effective opening exists yet, "Not set" when ERT itself is
+off. The Operations Calendar still never shows ERT (day cells are already dense) — unchanged,
+deliberately, per Part AC.
+
+### 15. Accessibility / layout (Parts AG/AH)
+
+New automation names added: `EarlyRideTimeStartAutomationName` for the derived start (guarded via a
+markup-source assertion, `ProductRowAndCustomItemTemplates_DeclareAccessibleNamePatterns` — a
+`StringFormat`/data-bound `AutomationProperties.Name` is not reliably realized by this project's
+unattached headless test container, the exact same limitation already documented for per-row
+product/custom-item templates), plus the pre-existing "Early Ride Time is happening today",
+"Participating attractions", and the relabeled "Early Ride Time additional details". No new card/panel
+was added — the derived-start block replaces the old Details-as-time convention inside the existing
+"Today at a Glance" ERT column, so 1280×860/960×640 layout budgets are unaffected (unchanged grid
+structure, one additional two-line `StackPanel`, verified via the existing
+`AssociateViewOperationalTimeLayoutTests`-style construction path staying green). Windows-scaling status
+unchanged from 13E (no new control type introduced — plain `TextBlock`s inherit normal DPI-aware
+layout).
+
+### 16. Tests added / final validation
+
+22 new/changed tests: 6 in `ParkHoursCalculatorTests` (Domain — buyout `NorthGateOpening` assertion +
+5-case midnight-crossing `Theory`), 10 in the new `AssociateViewModelEarlyRideTimeTests` (Ui —
+normal/Manual live/Manual cleared/buyout/Closed/NotPublished/Unavailable/NotCheckedYet/stale-LKG/
+waterpark-independence/no-network), 2 in `AssociatePassdownPdfGeneratorTests` (Documents — derived-start
+line, Closed-day fabrication guard), 3 in `FinalizedPassdownSnapshotBuilderTests` (Documents — frozen
+North Gate/ERT value, buyout-derived value, later-hours-change immutability), 2 replacing 1 in
+`OperationsDashboardPresentationTests` (Ui — known-hours derived text, unknown-hours fallback), plus
+markup/automation-name updates in `AssociateViewAccessibilityTests`. Backward compatibility: no
+`AssociateDraftPayload`/serializer code was touched at all, so the pre-existing
+`AssociateViewModelDraftEditingTests` round-trips of free-typed `EarlyRideTimeDetailsText` (including
+legacy strings that happen to embed a time, e.g. `"9:00 AM – 10:00 AM, first two rows only"`) already
+prove old drafts keep loading/saving unchanged — no new fixture was needed because nothing in the
+persisted shape changed.
+
+Full suite (`dotnet test CarowindsPassdown.slnx --filter Category!=LiveSmoke`), re-run three times
+consecutively: **1587/1587 passing** (Domain 105, Application 453, Documents 106, Infrastructure 350,
+Ui 573) — up from the 1565/1565 baseline (+22). `dotnet build CarowindsPassdown.slnx` — **0 warnings, 0
+errors.** One known pre-existing Avalonia-headless flake was observed during full-suite runs
+(`DashboardViewTests` — `AvaloniaPropertyDictionaryPool` "Stack empty" under parallel XAML population, a
+different test/parameter case each time), the same documented parallelism race recorded in Phase
+6D/12B/13A/13B/13D/13E against other views; `DashboardView.axaml` was not touched by this phase, the
+same 3 test classes most relevant to this phase's own changes
+(`AssociateViewModelEarlyRideTimeTests`/`AssociateViewAccessibilityTests`/
+`OperationsDashboardPresentationTests`) passed cleanly and reliably in isolation across 3 consecutive
+runs, and two immediately-following full-suite re-runs were both fully green (573/573 Ui). 1280×860 and
+960×640: no new automated DPI test exists in this codebase (unchanged from every prior phase); the ERT
+change adds no new control type and stays inside the existing grid, so no separate Windows-VM check is
+flagged. Windows scaling status: unchanged/DEFERRED BY DESIGN, same as every prior phase (real
+Windows-host validation remains manual, per `docs/phase-7e-windows-validation-checklist.md`).
+
+### 17. Work deferred to 13G–13H
+
+Unchanged from every prior phase's own deferral list: rename/branding, Alerts, Manager workflow, the
+final release rebuild, and real Windows-host scale/DPI validation.
+
+## Git checkpoint (Phase 13F)
+
+Early Ride Time simplified end to end: the supervisor no longer types a start time — it derives from
+`EffectiveHours.NorthGateOpening` (effective park opening − 30 minutes), the same value already used for
+"North Gate" everywhere in the app (no new Domain type). Manual Hours changes it live with no save
+round-trip; Private Buyout drives it identically to North Gate (resolved from spec Part L's own
+constraint, not guessed); Closed/NotPublished/Unavailable never fabricate a time; Carolina Harbor never
+drives it. Rides remain fully editable, autosaved, and printed exactly as before. PDF/finalized History
+print the same frozen derived value and are immune to later live-hours changes (explicit regression
+test). Zero schema/migration changes (DB 11, draft 3, snapshot 1), zero network/refresh-path changes, 22
+new tests, full suite green (1587/1587), build clean (0/0). One local commit follows; 13G is explicitly
+not started.

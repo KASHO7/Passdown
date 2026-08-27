@@ -244,7 +244,11 @@ fixes):
   `IClock`, and the PDF export/save-file abstractions below; it never touches
   a repository, HTTP, Playwright, or SQL directly, and never re-derives the
   North Gate (-30 min)/Avenue (-45 min) offset math itself (always re-runs
-  `ParkHoursCalculator.Calculate`). Adds debounced autosave (serialized by a
+  `ParkHoursCalculator.Calculate`). Early Ride Time's start (Phase 13F) is the
+  same `EffectiveHours.NorthGateOpening` value, never a second calculation —
+  the supervisor manages only ERT rides; the start time is read-only and
+  derived live from whatever Manual Hours/Private Buyout state is currently
+  in the editable form. Adds debounced autosave (serialized by a
   semaphore so an in-flight save and a newer edit can never race), explicit
   flush points before a date switch/Check Online/Create PDF, editable
   product sections and custom-product rows, and the blue/white/red

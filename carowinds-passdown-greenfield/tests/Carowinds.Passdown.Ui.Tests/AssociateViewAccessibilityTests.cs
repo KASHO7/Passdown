@@ -96,6 +96,16 @@ public class AssociateViewAccessibilityTests
         Assert.Contains("Private Buyout Open", names);
         Assert.Contains("Private Buyout Close", names);
 
+        // Phase 13F Part AG: the still-editable rides/details fields carry static accessible names,
+        // realized fine here; the derived (read-only) start's own accessible name is a data-bound
+        // ViewModel property (EarlyRideTimeStartAutomationName) and, like the per-row product/custom-
+        // item template names above, is not reliably realized by this unattached headless container —
+        // guarded directly against the markup instead, see
+        // <see cref="ProductRowAndCustomItemTemplates_DeclareAccessibleNamePatterns"/>.
+        Assert.Contains("Early Ride Time is happening today", names);
+        Assert.Contains("Early Ride Time additional details", names);
+        Assert.Contains("Participating attractions", names);
+
         // Phase 11D Part AS: the two persistent-note section headings are always present, regardless
         // of whether any note is currently included/available.
         Assert.Contains("Included persistent operational notes", names);
@@ -217,6 +227,11 @@ public class AssociateViewAccessibilityTests
         Assert.Contains("StringFormat='Remove {0} from this passdown'", markup);
         Assert.Contains("StringFormat='Replace {0} with current version'", markup);
         Assert.Contains("StringFormat='Add note {0}'", markup);
+
+        // Phase 13F: the derived Early Ride Time start's accessible name (a plain, non-StringFormat
+        // ViewModel property bind — StringFormat itself was even less reliable here, see the
+        // EarlyRideTimeStartAutomationName doc comment on AssociateViewModel).
+        Assert.Contains("AutomationProperties.Name=\"{Binding EarlyRideTimeStartAutomationName}\"", markup);
     }
 
     private static string FindRepoFile(string relativePath)

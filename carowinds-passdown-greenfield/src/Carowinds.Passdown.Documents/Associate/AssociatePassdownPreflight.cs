@@ -114,7 +114,9 @@ public sealed class AssociatePassdownPreflightService : IAssociatePassdownPrefli
         lines += 2; // "Attendance" heading + combined projected/pre-sold line
 
         lines += model.EarlyRideTime.Enabled
-            ? 1 + Math.Max(1, EstimateWrappedLines(model.EarlyRideTime.Details, WrapCharsPerLine))
+            ? 1 // heading
+                + 1 // Phase 13F: derived start time / unavailable line, always printed when enabled
+                + Math.Max(1, EstimateWrappedLines(model.EarlyRideTime.Details, WrapCharsPerLine))
                 + (model.EarlyRideTime.ParticipatingAttractions.Count > 0
                     ? EstimateWrappedLines(string.Join(", ", model.EarlyRideTime.ParticipatingAttractions), WrapCharsPerLine)
                     : 0)

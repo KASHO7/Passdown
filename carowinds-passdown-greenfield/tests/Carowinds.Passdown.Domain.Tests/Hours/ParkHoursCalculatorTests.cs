@@ -86,6 +86,11 @@ public class ParkHoursCalculatorTests
         Assert.Equal(buyoutClosing, result.Closing);
         Assert.True(result.IsPrivateBuyoutApplied);
         Assert.False(result.IsManualOverrideApplied);
+
+        // Phase 13F Part G/L: North Gate — and therefore the derived Early Ride Time start — is
+        // computed uniformly off whatever effective opening won, buyout included; there is no
+        // buyout-specific carve-out anywhere in ParkHoursCalculator, so ERT must not invent one either.
+        Assert.Equal(new TimeOnly(17, 30), result.NorthGateOpening);
     }
 
     [Fact]
@@ -113,5 +118,26 @@ public class ParkHoursCalculatorTests
 
         Assert.Equal(EffectiveHoursStatus.NotCheckedYet, result.Status);
         Assert.Null(result.Opening);
+    }
+
+    // Phase 13F Part AE/AI: North Gate / Early Ride Time derivation is plain TimeOnly arithmetic
+    // (no date component), so a midnight-crossing opening wraps to the previous wall-clock time
+    // rather than needing any DateTime/timezone handling.
+    [Theory]
+    [InlineData(10, 0, 9, 30)]
+    [InlineData(12, 0, 11, 30)] // noon
+    [InlineData(12, 30, 12, 0)]
+    [InlineData(0, 0, 23, 30)] // midnight opening wraps to 11:30 PM the "wall-clock" previous half-hour
+    [InlineData(0, 15, 23, 45)]
+    public void Calculate_DerivesNorthGateOpening_ForVariousOpeningTimes(int openHour, int openMinute, int expectedGateHour, int expectedGateMinute)
+    {
+        var opening = new TimeOnly(openHour, openMinute);
+
+        var result = ParkHoursCalculator.Calculate(
+            officialIsClosed: false, opening, new TimeOnly(22, 0),
+            manualOverrideEnabled: false, null, null,
+            privateBuyoutEnabled: false, null, null);
+
+        Assert.Equal(new TimeOnly(expectedGateHour, expectedGateMinute), result.NorthGateOpening);
     }
 }

@@ -71,9 +71,12 @@ public sealed record OperationsDashboardPresentation(
         };
 
         // "Not set" mirrors DailyFeatureTypeOption's own wording for an unset choice (Phase 10B Part H)
-        // rather than inventing a second "off" label.
+        // rather than inventing a second "off" label. Phase 13F: prefer the derived start time
+        // (reusing the same ParkHours.NorthGateText already built above — never a second
+        // subtraction) over the free-text Details field, which no longer carries a manually-typed
+        // time. Falls back to "Enabled" when no effective opening exists yet.
         var earlyRideTimeText = snapshot.EarlyRideTimeEnabled
-            ? (string.IsNullOrWhiteSpace(snapshot.EarlyRideTimeDetails) ? "Enabled" : snapshot.EarlyRideTimeDetails)
+            ? (parkHours.NorthGateText is { } startText ? $"Starts {startText}" : "Enabled")
             : "Not set";
 
         var dailyFeatureLabel = DailyFeatureTypeOption.For(snapshot.DailyFeatureType).Label;
