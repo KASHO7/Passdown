@@ -59,6 +59,14 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     [ObservableProperty]
     public partial IReadOnlyList<OperationsCalendarDayViewModel> Days { get; set; } = [];
 
+    /// <summary>
+    /// Phase 15B: <see cref="Days"/> chunked into Sunday-through-Saturday rows of 7 for the view's
+    /// per-week <c>Grid</c> layout (spec Part 1) — a pure presentation grouping over the same list,
+    /// never a second load or reordering.
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<OperationsCalendarWeekViewModel> Weeks { get; set; } = [];
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmptyOrErrorState))]
     public partial bool IsLoading { get; set; }
@@ -136,6 +144,7 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     {
         Presentation = value is null ? null : OperationsCalendarPresentation.Build(value);
         Days = value?.Days.Select(day => new OperationsCalendarDayViewModel(day, day.Date == value.SelectedDate, SelectDate)).ToList() ?? [];
+        Weeks = Days.Chunk(7).Select(week => new OperationsCalendarWeekViewModel(week)).ToList();
     }
 
     /// <summary>

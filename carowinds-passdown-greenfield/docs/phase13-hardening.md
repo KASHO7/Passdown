@@ -2657,5 +2657,181 @@ still deferred); rebuilding the release ZIP (explicitly deferred by this phase's
 
 ## Git checkpoint (Phase 15A)
 
+Committed as `a2725ea` ("Phase 15A: fix Associate/PDF product-section duplication and discover
+anonymous ordinary Bring-A-Friend dated pricing").
+
+## Phase 15B — Operations Calendar month grid: full-width redesign
+
+Phase 15B is visual/compositional only: the Calendar's underlying data, selection, navigation, and
+routing behavior are all unchanged (spec's own "keep all current Calendar behavior" instruction). The
+problem was that Phase 13D's equal-height fix (`Height="132"`, `MinHeight` removed) was functionally
+correct — it made every cell's *height* uniform regardless of content — but never addressed *width*,
+where the month still rendered as narrow, content-sized vertical strips with large unused horizontal
+gaps between them.
+
+### 1. Root cause of the narrow-strip appearance — found empirically, not guessed
+
+`docs/phase13-hardening.md`'s own Phase 13D "test-harness honesty note" recorded that a plain
+`view.Measure()`/`Arrange()` pass never realizes `ItemsControl`-generated day-cell containers in this
+headless test harness, so per-cell pixel bounds were never previously provable here. This phase found
+the missing piece: this test assembly's headless platform (`Avalonia.Headless`'s `UseHeadless`, see
+`HeadlessTestSetup.cs`) *does* support a real, off-screen `Window` — constructing one, setting
+`Content`, calling `Show()`, and pumping `Dispatcher.UIThread.RunJobs()` fully realizes every generated
+container with real, trustworthy `Bounds`. Using that technique directly against the pre-15B view
+(before any fix), against a real 1280×860 window:
+
+- **Off-month day cells** (bare day number only) rendered **40px wide**.
+- **In-month day cells** (day number + a few text lines) rendered **~94px wide**.
+- Both numbers are far narrower than the ~124–183px a genuinely stretched 7-column grid should
+  produce at that width — confirming the reported "narrow vertical strip"/"detached sliver" symptom
+  directly, in pixels, not by inference.
+
+Two independent, compounding causes were isolated by testing each in controlled isolation:
+
+1. **Avalonia's `FluentTheme` gives `Button` a non-`Stretch` default `HorizontalAlignment`.** A
+   freshly-constructed `Button` object reports `HorizontalAlignment.Stretch` at the CLR-default level
+   (confirmed via reflection), but once realized inside the running app's themed visual tree, its
+   *effective* `HorizontalAlignment` is not `Stretch` — every day-cell `Button` sized itself to its own
+   content instead of filling its column. `Button.calendarDay` never overrode this (it only set
+   `HorizontalContentAlignment`, a different property, governing content placement *inside* an
+   already-sized button, not the button's own size).
+2. **`UniformGrid`'s own column width is not "available width ÷ columns."** Even after fixing (1) in
+   isolation, `UniformGrid`-hosted cells still didn't reliably stretch to a true 1/7 share of the row —
+   consistent with Phase 13D's own prior finding that `UniformGrid`'s cell size is driven by content
+   (there, height; here, width), not by the panel's own arranged size. A real `Grid` with explicit
+   `ColumnDefinitions="*,*,*,*,*,*,*"` was verified, in the same real-window harness, to *always*
+   distribute available width evenly regardless of any child's content — the structural guarantee
+   `UniformGrid` cannot make.
+
+A third, more subtle mechanical fact was also confirmed empirically before shipping the fix: `Grid.Row`/
+`Grid.Column` set directly on an `ItemsControl` `DataTemplate`'s root element (e.g. the day-cell
+`Button`) has **no effect** on layout — the actual panel child Avalonia inserts is a `ContentPresenter`
+wrapper, and it is *that* object's `Grid.Column` which must be set. The working, verified mechanism is
+an `ItemsControl.Styles` `Style` targeting `ContentPresenter` with a `Setter` bound to the item's own
+data (see §2 below) — a well-established but easy-to-get-wrong Avalonia idiom, verified here against
+the real Avalonia 12.1.1 runtime rather than assumed from general WPF/Avalonia knowledge.
+
+### 2. New layout structure — one real `Grid` per week, never `UniformGrid`
+
+- `Button.calendarDay` gained an explicit `HorizontalAlignment="Stretch"` setter — the direct, minimal
+  fix for cause (1) above.
+- The month grid no longer binds a flat `Days` list into a single `UniformGrid Columns="7"`. Instead:
+  - `OperationsCalendarDayViewModel` gained `ColumnIndex` (`(int)Date.DayOfWeek`, Sunday=0..Saturday=6
+    — matching the existing Sun..Sat weekday-header order).
+  - A new, presentation-only `OperationsCalendarWeekViewModel` (`Days`: 7-element slice) groups the
+    already-loaded `Days` list into Sunday-through-Saturday rows — `OperationsCalendarViewModel.Weeks`
+    is computed via `Days.Chunk(7)` in the existing `OnSnapshotChanged` handler, never a second query or
+    reordering.
+  - The view's XAML now binds an outer `ItemsControl` over `Weeks` (`ItemsPanel`: a plain vertical
+    `StackPanel`, one item per week), whose `DataTemplate` is itself an inner `ItemsControl` over that
+    week's `Days`, whose `ItemsPanel` is a real `Grid ColumnDefinitions="*,*,*,*,*,*,*"`. Each inner
+    `ItemsControl` carries one `ItemsControl.Styles` `Style` (`Selector="ContentPresenter"`,
+    `x:DataType="vm:OperationsCalendarDayViewModel"`) setting `Grid.Column="{Binding ColumnIndex}"` —
+    the verified mechanism from §1 above.
+- Because each week is its own independent 7-column `Grid` (rather than one `Grid` spanning the whole
+  month with computed row indices), no dynamic `RowDefinitions` construction was needed at all — row
+  stacking is just the outer `StackPanel`'s normal vertical layout, and each week's row height is
+  already bounded by every day cell inside it sharing the same fixed `Height="132"` style.
+
+### 3. Row-height strategy — unchanged mechanism, still bounded
+
+Phase 13D's fixed `Height="132"` + `ClipToBounds="True"` mechanism (spec Part 3's "content must never
+make one date taller than neighbors") is preserved exactly — this phase does not reopen that decision.
+Only the *padding* changed (`Padding="6,4"` → `"8,6"`) to give the now much-wider cells a little more
+breathing room, and `TextBlock.dayHoursLine` (the strongest line after the date, spec Part 4) grew from
+10.5px Medium to 11.5px SemiBold, since full-width columns now leave room for it without crowding.
+
+### 4. Content hierarchy, Closed days, waterpark, notes, Draft/Finalized — unchanged by design
+
+None of these needed to change: the existing content-budget priority (day number → operating
+state/hours → Carolina Harbor line → stale label → passdown status → notes summary,
+`OperationsCalendarDayViewModel`/the view's per-cell `StackPanel`) already matches spec Part 4's
+required hierarchy, Closed days already render compactly (`"CLOSED"` + hours-line omission +
+`"No Draft"`, no filler), waterpark/notes were already compact single lines/counts (never full note
+text), and Draft/Finalized labels were already concise (`OperationsCalendarPassdownPresentation`). This
+phase's redesign only had to stop suppressing that content's real column width — it did not need to
+rewrite what the content says.
+
+### 5. Off-month dates
+
+Unchanged behavior, now with the geometry to back it up: `Button.calendarDay.outOfMonth` still applies
+`Opacity="0.4"` over the identical `calendarDay` base style (same `Height`, same `Margin`, same
+`HorizontalAlignment="Stretch"`) — off-month cells sit in exactly the same `Grid` columns as in-month
+cells, so they now share the same real column width instead of collapsing to a "sliver" (§1's 40px
+measurement, pre-fix, was overwhelmingly an off-month-cell number).
+
+### 6. Selected date / Today
+
+Unchanged: `Button.calendarDay.selected`/`.today`/`.today.selected` still apply only
+`Background`/`BorderBrush`/`BorderThickness` — no size-affecting property in any of the three, so
+selecting a date (or it being Today) cannot change that cell's dimensions relative to its neighbors, a
+fact this phase now has direct pixel evidence for (§7 below) rather than only "by construction."
+
+### 7. Tests added — real-window layout evidence (`OperationsCalendarViewTests.cs`)
+
+All new tests construct a real, off-screen headless `Window` (not just `view.Measure()`/`Arrange()`)
+and extract plain geometry data (`DayCellGeometry`/`CalendarLayoutSnapshot` records) — the first tests
+in this codebase to do so for Calendar. Because this test assembly has no `Avalonia.Headless.XUnit`
+package (xunit v2/v3 version conflict, per `HeadlessTestSetup`'s own doc comment), there is no running
+Avalonia dispatcher loop for a `Window`-based test to marshal onto from a different thread —
+`Dispatcher.UIThread.Invoke` from a different thread was confirmed empirically to deadlock here (no
+loop pumps its queue). The fix: a new `tests/Carowinds.Passdown.Ui.Tests/AssemblyInfo.cs` with
+`[assembly: CollectionBehavior(DisableTestParallelization = true)]`, which keeps every test in this one
+assembly on the single OS thread `HeadlessTestSetup`'s module initializer ran on. This is assembly-wide
+(affects all ~595 Ui.Tests, not only Calendar's), but the measured cost was small (full `Ui.Tests` run:
+~6s for 595 tests) against the benefit of real, provable pixel-geometry regression coverage that was
+previously structurally impossible in this harness.
+
+- `OperationsCalendarView_MonthGrid_AllDayCellsShareOneUniformWidthAndHeight` (Theory, 1280×860 and
+  960×640): every realized day-cell button — in-month and off-month together — shares one width and
+  one height (within 1px, to tolerate normal `Grid` star-column sub-pixel rounding at widths not evenly
+  divisible by 7); asserts the shared width is meaningfully larger than the pre-15B narrow-strip regime
+  (>60px); asserts cell count is a real 35- or 42-day grid with none dropped/duplicated. Covers spec
+  Part 17 #1/#2/#8/#9/#10.
+- `OperationsCalendarView_MonthGrid_WeekRowsAlignIntoSevenColumnRows`: groups realized cells by their
+  absolute row Y and asserts exactly as many distinct rows as weeks in the grid, 7 cells per row.
+  Covers Part 17 #3.
+- `OperationsCalendarView_DenseOutlierDay_SelectedBusyWaterparkNotesCellsShareUniformGeometry` (Theory,
+  both viewports): reuses Phase 13D's own `DenseSingleOutlierDaySnapshot` (custom hours + waterpark +
+  stale + many Important notes on one date, Today+Selected both present, off-month cells alongside) and
+  asserts the same one-shared-width/height property holds — proving the busy/selected/today/waterpark/
+  notes-heavy cell never grew relative to its sparse siblings. Covers Part 17 #4/#5/#6/#7.
+- `OperationsCalendarView_MonthGrid_NoDayCellClipsHorizontally` (Theory, both viewports): every cell's
+  absolute right edge stays within the window's client width. Covers Part 17 #12.
+- `OperationsCalendarView_SelectedDatePanel_FitsWithinWindow` (Theory, both viewports): the selected-date
+  panel's absolute right edge stays within the window's client width alongside the redesigned grid.
+  Covers Part 17 #13.
+
+Combined with the existing `CalendarDayStyle_UsesFixedHeight_NotMinHeight` (Phase 13D, unchanged) and
+the existing construction/dense-month/mixed-state tests (all still passing unmodified), Part 17's list
+is covered except items #9–#11 as literal separate "dense/sparse × both sizes" test names — those are
+covered by the existing dense/mixed-state tests (unchanged) combined with the new geometry tests already
+running at both viewports, rather than duplicated as additional named tests.
+
+### 8. Windows DPI scaling (100/125/150%) — NOT EXECUTED
+
+No Windows host is available in this environment (dev host is Fedora/macOS per CLAUDE.md's own
+platform section; target is Windows 11 x64). The redesign avoids the specific anti-pattern that would
+make DPI scaling worse — no hardcoded pixel widths for the grid itself (`*` star columns, not fixed
+`Width`s) — but this is a structural argument, not a substitute for real on-device validation. Reported
+honestly as **NOT EXECUTED**, matching this doc's own established convention (e.g. Phase 13D Part 37's
+identical disclosure for Windows-only concerns).
+
+### 9. Validation
+
+`dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors. `dotnet test CarowindsPassdown.slnx
+--filter "Category!=LiveSmoke"` — **1654/1654 passing** (baseline 1645 + 9 new Calendar layout tests),
+confirmed on a clean full run. Database schema 11, `AssociateDraftPayload` schema 3,
+`FinalizedPassdownSnapshot` schema 1 — all unchanged (this phase touches only Desktop presentation
+code, one new Desktop view model, and tests).
+
+### 10. Deferred to 15C+
+
+No further Calendar work was scoped for 15B beyond this redesign. Real Windows-host DPI validation
+(§8) remains outstanding, as does rebuilding the Windows release ZIP (explicitly deferred by this
+phase's own instructions, same as Phase 15A).
+
+## Git checkpoint (Phase 15B)
+
 Pending — see final report for the commit hash once tests/build are confirmed green and this
 documentation is current.

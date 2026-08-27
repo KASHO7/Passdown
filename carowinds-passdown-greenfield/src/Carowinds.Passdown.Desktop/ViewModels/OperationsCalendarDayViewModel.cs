@@ -22,6 +22,16 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
 
     public int DayNumber => Date.Day;
 
+    /// <summary>
+    /// Phase 15B: this date's Sunday(0)–Saturday(6) column within its week row — matches the
+    /// Sun..Sat weekday-header order the grid has always used. Bound onto each generated day-cell
+    /// container's <c>Grid.Column</c> attached property (see <c>OperationsCalendarView.axaml</c>'s
+    /// per-week <see cref="OperationsCalendarWeekViewModel"/> row), which is what makes the real
+    /// 7-column <c>Grid</c> row layout place each day in its correct column — never inferred from
+    /// list position alone.
+    /// </summary>
+    public int ColumnIndex => (int)Date.DayOfWeek;
+
     public bool IsInDisplayedMonth { get; }
 
     public bool IsToday { get; }

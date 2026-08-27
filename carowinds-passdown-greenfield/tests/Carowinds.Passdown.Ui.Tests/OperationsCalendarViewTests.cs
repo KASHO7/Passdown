@@ -3,6 +3,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.LogicalTree;
+using Avalonia.VisualTree;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Calendar;
 using Carowinds.Passdown.Desktop.ViewModels;
@@ -436,5 +437,180 @@ public class OperationsCalendarViewTests
 
         Assert.Contains(viewModel.Days, d => !d.IsInDisplayedMonth);
         Assert.Same(viewModel, view.DataContext);
+    }
+
+    // ==================================================================================
+    // Phase 15B — full-width 7-column month grid: real-window layout evidence
+    // ==================================================================================
+    //
+    // Phase 13D's own test-harness honesty note recorded that a plain view.Measure()/Arrange() pass
+    // (no window) never realizes ItemsControl-generated day-cell containers. This phase's redesign
+    // work found the missing piece: this test assembly's headless platform (HeadlessTestSetup, backed
+    // by Avalonia.Headless's UseHeadless) DOES support a real, off-screen Window — constructing one,
+    // setting Content, calling Show(), and pumping Dispatcher.UIThread.RunJobs() realizes every
+    // generated container and produces real, trustworthy Bounds. That real-window technique is what
+    // both empirically diagnosed Phase 15B's root cause (confirmed: every day-cell Button rendered at
+    // its own content-driven width — as narrow as ~14% of its column for a bare off-month day number —
+    // instead of stretching to its column) and is what proves the fix below, not just that construction
+    // doesn't throw. This is still not a pixel/bitmap renderer (no screenshot comparison is possible in
+    // this environment), so layout geometry (Bounds) is the evidence, not rendered pixels.
+
+    /// <summary>
+    /// Asserts every value is within 1px of every other — a real <c>Grid</c> with star columns
+    /// distributes leftover sub-pixel width across columns when the window width doesn't divide
+    /// evenly by 7 (e.g. 960px ÷ 7 columns), so two cells can legitimately differ by a single pixel;
+    /// this is the actual "one shared column width" proof (never a whole narrow-strip/sliver outlier),
+    /// not a demand for floating-point-exact equality.
+    /// </summary>
+    private static void AssertUniformWithinRounding(IReadOnlyList<double> values, string label)
+    {
+        Assert.NotEmpty(values);
+        var spread = values.Max() - values.Min();
+        Assert.True(spread <= 1.0, $"{label} spread {spread}px exceeds normal Grid star-column rounding (values: {string.Join(", ", values)}).");
+    }
+
+    private sealed record DayCellGeometry(double Width, double Height, Rect AbsoluteBounds, bool IsOutOfMonth, bool IsSelected, bool IsToday);
+
+    private sealed record CalendarLayoutSnapshot(IReadOnlyList<DayCellGeometry> Cells, Rect SelectedDatePanelAbsoluteBounds, Size WindowClientSize);
+
+    /// <summary>
+    /// Realizes the view inside a real (off-screen headless) <see cref="Window"/> and extracts plain
+    /// geometry data. This test assembly has no <c>Avalonia.Headless.XUnit</c> package (see
+    /// <see cref="HeadlessTestSetup"/>'s own doc comment), so there is no running Avalonia dispatcher
+    /// loop to marshal onto (<c>Dispatcher.UIThread.Invoke</c> from another thread deadlocks here —
+    /// confirmed empirically — since nothing pumps its queue) — every <see cref="Window"/>-touching
+    /// test in this file must therefore execute on the exact same OS thread the assembly's
+    /// <see cref="HeadlessTestSetup"/> module initializer ran on. <c>Ui.Tests.csproj</c>'s
+    /// <c>[assembly: CollectionBehavior(DisableTestParallelization = true)]</c> (see
+    /// <c>AssemblyInfo.cs</c>) is what guarantees that in practice: with no competing parallel test
+    /// collection, xUnit v2 reuses one thread-pool thread across the whole serial run.
+    /// </summary>
+    private static async Task<CalendarLayoutSnapshot> RealizeCalendarLayoutAsync(IOperationsCalendarService service, double width, double height)
+    {
+        var viewModel = new OperationsCalendarViewModel(service, CreateClock());
+        await viewModel.PendingLoad;
+
+        var view = new OperationsCalendarView { DataContext = viewModel };
+        var window = new Window { Width = width, Height = height, Content = view };
+        window.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var buttons = window.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("calendarDay")).ToList();
+        var cells = buttons.Select(b => new DayCellGeometry(
+            Math.Round(b.Bounds.Width, 1),
+            Math.Round(b.Bounds.Height, 1),
+            new Rect(b.TranslatePoint(new Point(0, 0), window) ?? default, b.Bounds.Size),
+            b.Classes.Contains("outOfMonth"),
+            b.Classes.Contains("selected"),
+            b.Classes.Contains("today"))).ToList();
+
+        var selectedPanel = window.GetVisualDescendants().OfType<Border>()
+            .Single(b => Avalonia.Automation.AutomationProperties.GetName(b) == "Selected date summary");
+        var panelBounds = new Rect(selectedPanel.TranslatePoint(new Point(0, 0), window) ?? default, selectedPanel.Bounds.Size);
+
+        var clientSize = window.ClientSize;
+        window.Close();
+
+        return new CalendarLayoutSnapshot(cells, panelBounds, clientSize);
+    }
+
+    // Part 17 #1/#2/#8: seven equal columns, day containers stretch to their column, off-month cells
+    // use the exact same geometry as in-month cells — proven together, since "equal geometry
+    // everywhere" is the one fact that also implies "not one narrow content-sized outlier."
+    [Theory]
+    [InlineData(1280, 860)]
+    [InlineData(960, 640)]
+    public async Task OperationsCalendarView_MonthGrid_AllDayCellsShareOneUniformWidthAndHeight(double width, double height)
+    {
+        var viewModel = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), CreateClock());
+        await viewModel.PendingLoad;
+        var expectedDayCount = viewModel.Days.Count;
+
+        var snapshot = await RealizeCalendarLayoutAsync(new FakeOperationsCalendarService(), width, height);
+
+        Assert.Equal(expectedDayCount, snapshot.Cells.Count); // Part 17 #9/#10 basis: every grid date got a realized cell, none dropped/duplicated.
+        Assert.True(snapshot.Cells.Count is 35 or 42); // complete Sunday..Saturday weeks only — never a fabricated 6th row.
+        var widths = snapshot.Cells.Select(c => c.Width).ToList();
+        var heights = snapshot.Cells.Select(c => c.Height).ToList();
+        AssertUniformWithinRounding(widths, "day cell width"); // Part 17 #1/#2: one shared column width — real stretch, not content-driven sizing.
+        AssertUniformWithinRounding(heights, "day cell height"); // Part 17 #5 basis: bounded row height, uniform regardless of content.
+        Assert.True(widths.Min() > 60, $"day cells must be meaningfully wider than the pre-15B narrow-strip regime (got {widths.Min()}px).");
+        Assert.Contains(snapshot.Cells, c => c.IsOutOfMonth); // off-month cells are present in this dataset...
+        Assert.Contains(snapshot.Cells, c => !c.IsOutOfMonth); // ...alongside in-month cells...
+        // ...and both already went into the one shared widths/heights set asserted above (Part 17 #8).
+    }
+
+    // Part 17 #3: week rows align — every week's 7 cells share one row Y, and there are exactly as
+    // many distinct row Y values as there are weeks in the grid.
+    [Fact]
+    public async Task OperationsCalendarView_MonthGrid_WeekRowsAlignIntoSevenColumnRows()
+    {
+        var viewModel = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), CreateClock());
+        await viewModel.PendingLoad;
+        var expectedWeekCount = viewModel.Days.Count / 7;
+
+        var snapshot = await RealizeCalendarLayoutAsync(new FakeOperationsCalendarService(), 1280, 860);
+
+        var rows = snapshot.Cells
+            .Select(c => Math.Round(c.AbsoluteBounds.Y, 0))
+            .GroupBy(y => y)
+            .ToList();
+
+        Assert.Equal(expectedWeekCount, rows.Count);
+        Assert.All(rows, row => Assert.Equal(7, row.Count()));
+    }
+
+    // Part 17 #4/#5/#6/#7: selected/busy/waterpark/notes cells must not change dimensions — the
+    // densest realistic single-outlier scenario (custom hours + waterpark + stale + many Important
+    // notes on one date, sparse siblings, off-month cells present) already defined for Phase 13D's own
+    // regression coverage, reused here rather than re-authored.
+    [Theory]
+    [InlineData(1280, 860)]
+    [InlineData(960, 640)]
+    public async Task OperationsCalendarView_DenseOutlierDay_SelectedBusyWaterparkNotesCellsShareUniformGeometry(double width, double height)
+    {
+        var service = new FakeOperationsCalendarService { SnapshotFactory = DenseSingleOutlierDaySnapshot };
+
+        var snapshot = await RealizeCalendarLayoutAsync(service, width, height);
+
+        var widths = snapshot.Cells.Select(c => c.Width).ToList();
+        var heights = snapshot.Cells.Select(c => c.Height).ToList();
+
+        AssertUniformWithinRounding(widths, "day cell width");
+        AssertUniformWithinRounding(heights, "day cell height");
+        Assert.Contains(snapshot.Cells, c => c.IsSelected); // selected cell present...
+        Assert.Contains(snapshot.Cells, c => c.IsToday); // ...and today's cell present...
+        // ...both already covered by the single shared widths/heights set asserted above — neither
+        // changed the busy outlier date's cell (or any other cell's) dimensions.
+    }
+
+    // Part 17 #12: no horizontal clipping — every realized day cell's right edge stays within the
+    // window's own client width at both target viewports.
+    [Theory]
+    [InlineData(1280, 860)]
+    [InlineData(960, 640)]
+    public async Task OperationsCalendarView_MonthGrid_NoDayCellClipsHorizontally(double width, double height)
+    {
+        var snapshot = await RealizeCalendarLayoutAsync(new FakeOperationsCalendarService(), width, height);
+
+        Assert.All(snapshot.Cells, c =>
+        {
+            Assert.True(c.AbsoluteBounds.X >= 0, $"cell left edge {c.AbsoluteBounds.X} is off the left of the window.");
+            Assert.True(c.AbsoluteBounds.Right <= snapshot.WindowClientSize.Width + 0.5, $"cell right edge {c.AbsoluteBounds.Right} exceeds window width {snapshot.WindowClientSize.Width}.");
+        });
+    }
+
+    // Part 17 #13: the selected-date panel still fits fully inside the window alongside the
+    // redesigned full-width grid, at both target viewports.
+    [Theory]
+    [InlineData(1280, 860)]
+    [InlineData(960, 640)]
+    public async Task OperationsCalendarView_SelectedDatePanel_FitsWithinWindow(double width, double height)
+    {
+        var snapshot = await RealizeCalendarLayoutAsync(new FakeOperationsCalendarService(), width, height);
+
+        Assert.True(snapshot.SelectedDatePanelAbsoluteBounds.Right <= snapshot.WindowClientSize.Width + 0.5,
+            $"selected-date panel right edge {snapshot.SelectedDatePanelAbsoluteBounds.Right} exceeds window width {snapshot.WindowClientSize.Width}.");
+        Assert.True(snapshot.SelectedDatePanelAbsoluteBounds.Width > 0 && snapshot.SelectedDatePanelAbsoluteBounds.Height > 0);
     }
 }

@@ -127,15 +127,27 @@
          date has (notes, Important notes, waterpark hours, staleness) — combined with ClipToBounds and
          single-line/trimmed content below, this is what makes "one date's content must never expand
          only that date's cell" actually structurally impossible rather than merely usually true. -->
+    <!-- Phase 15B Part 1/2: root cause of the pre-15B "narrow vertical strip" appearance —
+         FluentTheme's default Button ControlTheme sets HorizontalAlignment to a non-Stretch value
+         (confirmed empirically via a real headless-windowed layout pass: freshly-constructed Button
+         instances report HorizontalAlignment=Stretch at the CLR-default level, but once styled by the
+         running app's FluentTheme, the realized value is non-Stretch) — so every day cell sized to its
+         own content instead of its UniformGrid column, and content-sparse off-month cells (bare day
+         number only) collapsed to a "sliver" while content-heavy in-month cells stayed only somewhat
+         wider, leaving the column's remaining width as unused gap. HorizontalAlignment="Stretch" below
+         is the actual fix; it only takes effect once paired with the view's real 7-column Grid-per-week
+         layout (never UniformGrid — see the month grid below), since a Grid's star columns are the
+         part that guarantees "the available column width" exists to stretch into in the first place. -->
     <Style Selector="Button.calendarDay">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="Margin" Value="2" />
-      <Setter Property="Padding" Value="6,4" />
+      <Setter Property="Padding" Value="8,6" />
       <Setter Property="Height" Value="132" />
       <Setter Property="ClipToBounds" Value="True" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
       <Setter Property="HorizontalContentAlignment" Value="Left" />
       <Setter Property="VerticalContentAlignment" Value="Top" />
     </Style>
@@ -177,9 +189,13 @@
       <Setter Property="TextWrapping" Value="NoWrap" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
+    <!-- Phase 15B Part 4: the strongest line in the cell after the date itself (spec "main park
+         hours/status should be visually strongest after the date") — bumped from the pre-15B 10.5px
+         now that full-width columns leave room for it, without needing a second font weight/color
+         convention. -->
     <Style Selector="TextBlock.dayHoursLine">
-      <Setter Property="FontSize" Value="10.5" />
-      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="TextWrapping" Value="NoWrap" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
@@ -246,42 +262,73 @@
               <TextBlock Grid.Column="6" Text="Sat" Classes="weekdayHeader" />
             </Grid>
 
-            <ItemsControl ItemsSource="{Binding Days}" AutomationProperties.Name="Calendar month grid">
+            <!-- Phase 15B Part 1: one real Grid per week (never UniformGrid — see the
+                 Button.calendarDay style comment above for why) so the month reads as a true
+                 full-width 7-column grid: ColumnDefinitions="*,*,*,*,*,*,*" guarantees each week row's
+                 7 columns divide the available width evenly regardless of any day's content, which is
+                 what a content-sized panel (UniformGrid, or an ItemsControl whose containers don't
+                 stretch) cannot guarantee. The outer ItemsControl (Weeks) only stacks a variable
+                 number of week rows (5 or 6, spec's own "no fabricated cells" rule) — each row is
+                 itself an inner ItemsControl over that week's 7 days, whose ItemsPanel IS the 7-column
+                 Grid. ContentPresenter is the actual container Avalonia generates per item (confirmed
+                 empirically), so Grid.Column must be set on it directly — not on the templated Button
+                 — via the ItemsControl.Styles setter below, bound to
+                 OperationsCalendarDayViewModel.ColumnIndex (Sunday=0 .. Saturday=6, matching the
+                 weekday header above). -->
+            <ItemsControl ItemsSource="{Binding Weeks}" AutomationProperties.Name="Calendar month grid">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
-                  <UniformGrid Columns="7" />
+                  <StackPanel Orientation="Vertical" Spacing="4" />
                 </ItemsPanelTemplate>
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:OperationsCalendarDayViewModel">
-                  <Button Classes="calendarDay" Classes.today="{Binding IsToday}" Classes.selected="{Binding IsSelected}"
-                          Classes.outOfMonth="{Binding !IsInDisplayedMonth}"
-                          Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AutomationName}">
-                    <StackPanel Spacing="2">
-                      <TextBlock Text="{Binding DayNumber}" FontWeight="SemiBold" FontSize="13" />
+                <DataTemplate x:DataType="vm:OperationsCalendarWeekViewModel">
+                  <ItemsControl ItemsSource="{Binding Days}" HorizontalAlignment="Stretch"
+                                AutomationProperties.Name="Calendar week row">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <Grid ColumnDefinitions="*,*,*,*,*,*,*" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.Styles>
+                      <Style Selector="ContentPresenter" x:DataType="vm:OperationsCalendarDayViewModel">
+                        <Setter Property="Grid.Column" Value="{Binding ColumnIndex}" />
+                      </Style>
+                    </ItemsControl.Styles>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:OperationsCalendarDayViewModel">
+                        <Button Classes="calendarDay" Classes.today="{Binding IsToday}" Classes.selected="{Binding IsSelected}"
+                                Classes.outOfMonth="{Binding !IsInDisplayedMonth}"
+                                Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AutomationName}">
+                          <StackPanel Spacing="3">
+                            <TextBlock Text="{Binding DayNumber}" FontWeight="SemiBold" FontSize="14" />
 
-                      <!-- Operating-state/hours/passdown-status/notes overlay (spec Phase 12B Part
-                           C/D/E/F/G/H/I; Phase 12C Part G/H/I): hidden as one unit for out-of-month
-                           cells to avoid clutter (Part I — "day number only" preserved from 12A/12B),
-                           even though those dates still carry real data. Content-budget priority
-                           (Part H) top to bottom: day number (outside this block), operating
-                           state/hours, passdown status, operational-notes summary. -->
-                      <StackPanel Spacing="1" IsVisible="{Binding IsInDisplayedMonth}">
-                        <TextBlock Text="{Binding OperatingStateLabel}" Classes="dayStateLabel" IsVisible="{Binding HasOperatingStateLabel}" />
-                        <TextBlock Text="{Binding EffectiveHoursLine}" Classes="dayHoursLine" IsVisible="{Binding HasEffectiveHoursLine}" />
-                        <!-- Phase 13D Part F: same cell as main park hours, never a separate badge. -->
-                        <TextBlock Text="{Binding WaterparkLine}" Classes="dayWaterparkLine" IsVisible="{Binding HasWaterparkLine}" />
-                        <TextBlock Text="Stale" Classes="dayStaleLabel" IsVisible="{Binding IsHoursStale}" />
-                        <TextBlock Text="{Binding PassdownStatusLabel}" Classes="dayIndicator" />
-                        <!-- Phase 12E Part H: the "Important" clause reuses the app's one established
-                             restrained-accent convention (never a red/alarm badge) — see
-                             TextBlock.priorityText.important above. -->
-                        <TextBlock Text="{Binding NotesSummaryText}" Classes="dayIndicator priorityText"
-                                   Classes.important="{Binding HasImportantOperationalNotes}"
-                                   IsVisible="{Binding HasOperationalNotes}" />
-                      </StackPanel>
-                    </StackPanel>
-                  </Button>
+                            <!-- Operating-state/hours/passdown-status/notes overlay (spec Phase 12B
+                                 Part C/D/E/F/G/H/I; Phase 12C Part G/H/I): hidden as one unit for
+                                 out-of-month cells to avoid clutter (Part I — "day number only"
+                                 preserved from 12A/12B), even though those dates still carry real
+                                 data. Content-budget priority (Part H; reaffirmed Phase 15B Part 4)
+                                 top to bottom: day number (outside this block), operating
+                                 state/hours, passdown status, operational-notes summary. -->
+                            <StackPanel Spacing="2" IsVisible="{Binding IsInDisplayedMonth}">
+                              <TextBlock Text="{Binding OperatingStateLabel}" Classes="dayStateLabel" IsVisible="{Binding HasOperatingStateLabel}" />
+                              <TextBlock Text="{Binding EffectiveHoursLine}" Classes="dayHoursLine" IsVisible="{Binding HasEffectiveHoursLine}" />
+                              <!-- Phase 13D Part F: same cell as main park hours, never a separate badge. -->
+                              <TextBlock Text="{Binding WaterparkLine}" Classes="dayWaterparkLine" IsVisible="{Binding HasWaterparkLine}" />
+                              <TextBlock Text="Stale" Classes="dayStaleLabel" IsVisible="{Binding IsHoursStale}" />
+                              <TextBlock Text="{Binding PassdownStatusLabel}" Classes="dayIndicator" />
+                              <!-- Phase 12E Part H: the "Important" clause reuses the app's one
+                                   established restrained-accent convention (never a red/alarm badge)
+                                   — see TextBlock.priorityText.important above. -->
+                              <TextBlock Text="{Binding NotesSummaryText}" Classes="dayIndicator priorityText"
+                                         Classes.important="{Binding HasImportantOperationalNotes}"
+                                         IsVisible="{Binding HasOperationalNotes}" />
+                            </StackPanel>
+                          </StackPanel>
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
