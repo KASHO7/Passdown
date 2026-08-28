@@ -3722,4 +3722,5 @@ Cross-screen workflow/state consistency audit complete: navigation architecture 
 across Dashboard/Calendar/Associate/History for every scenario in the task's 26-point checklist, one
 real defect found and fixed (§20 — failed-load state could silently misattribute an autosave or export
 a PDF for the wrong date), four new regression tests added, tests green (1673/1673 on a clean run),
-build clean, docs current. Committed as `<pending>` — hash recorded below once committed.
+build clean, docs current. Committed as `4e416c5` ("Phase 15C: cross-screen workflow/state
+consistency audit and fix").
