@@ -4055,4 +4055,5 @@ deterministically green (1674/1674, confirmed via isolation given this environme
 occurrence rate this session), build clean (0 warnings/errors), both release artifacts built and hashed
 (see `docs/release-manifest.md`), ZIP remains primary, single-file EXE built and documented as
 experimental pending Windows-host validation. Phase 14 confirmed still not started (`AppSection` still
-has exactly 5 values, no Manager/Alerts code found). Phase 15 formally complete.
+has exactly 5 values, no Manager/Alerts code found). Phase 15 formally complete. Committed as `a3d5318`
+("Phase 15F: final production-readiness audit and release").
