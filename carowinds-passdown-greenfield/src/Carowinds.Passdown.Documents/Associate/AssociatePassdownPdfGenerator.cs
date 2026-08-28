@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Reflection;
+using QuestPDF.Drawing;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -58,6 +60,31 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
         // QuestPDF requires this to be set once before any document is generated (library
         // requirement, not application state we vary) — see spec Part L's licensing note.
         QuestPDF.Settings.License = LicenseType.Community;
+        RegisterEmbeddedLatoFont();
+    }
+
+    /// <summary>
+    /// Phase 15F: registers the same "Lato" font files QuestPDF would otherwise auto-discover from
+    /// a physical LatoFont folder next to the running executable, but from this assembly's embedded
+    /// copy instead (Carowinds.Passdown.Documents.csproj). No document anywhere calls
+    /// .FontFamily(...), so this reproduces the exact font selection every PDF has always used —
+    /// only the discovery mechanism changes, from a disk scan to an embedded resource, which is what
+    /// makes a single-file publish (no loose files next to the .exe) viable for PDF generation. See
+    /// docs/release-strategy.md "Single-file publish" for the full investigation.
+    /// </summary>
+    private static void RegisterEmbeddedLatoFont()
+    {
+        var assembly = typeof(AssociatePassdownPdfGenerator).Assembly;
+        var fontResourceNames = assembly.GetManifestResourceNames()
+            .Where(name => name.StartsWith("LatoFont.", StringComparison.Ordinal)
+                && name.EndsWith(".ttf", StringComparison.OrdinalIgnoreCase));
+
+        foreach (var resourceName in fontResourceNames)
+        {
+            using var fontStream = assembly.GetManifestResourceStream(resourceName)
+                ?? throw new InvalidOperationException($"Embedded font resource '{resourceName}' not found in assembly '{assembly.FullName}'.");
+            FontManager.RegisterFont(fontStream);
+        }
     }
 
     public AssociatePassdownPdfGenerator(IAssociatePassdownPreflightService? preflightService = null)

@@ -2873,3 +2873,106 @@ BAF passholder-pricing gap from Phase 13C. Phase 14 (Alerts/Data Confidence/noti
 and Phase 15 are both confirmed **not started**. `0.1.0-dev` remains an explicit pre-release development
 version, not a production 1.0 release.
 
+## Phase 15F — single-file publish investigation and final release decision
+
+Phase 15F evaluated a true single-file win-x64 publish as a possible primary release form (the
+"Single-file / trimming / AOT" table above records Phase 7A's original rejection; the reasoning there
+is unchanged as *general* guidance — this section documents a specific, deliberate re-evaluation, not
+a reversal of that reasoning by default). Full investigation narrative, including the exact two
+physical-file dependencies found and fixed, is in `docs/phase13-hardening.md`'s Phase 15F section; this
+section records the resulting packaging facts and the final primary/fallback decision.
+
+### What changed to make single-file viable
+
+Two things this app's own code (not the SDK's single-file mechanism) previously depended on a
+physical file living next to the running executable, both fixed this phase with no behavior change
+(verified by the existing, unchanged-assertion test suite):
+
+- **`appsettings.json`**: now an `EmbeddedResource` in `Carowinds.Passdown.Desktop.csproj`, read via
+  `Assembly.GetManifestResourceStream` + `ConfigurationBuilder.AddJsonStream` instead of
+  `AddJsonFile(..., optional: false)` against `AppContext.BaseDirectory`. The prior approach would have
+  hard-crashed at startup under a single-file publish that force-extracts content
+  (`IncludeAllContentForSelfExtract=true`, itself avoided — see below) — extraction lands in a
+  `%TEMP%/.net/...` cache directory, not the `.exe`'s own directory.
+- **QuestPDF's "Lato" fallback font**: previously auto-discovered by QuestPDF itself via a physical
+  directory scan for a `LatoFont/` folder near the executable (confirmed by inspecting `QuestPDF.dll`
+  directly — a method named `ContainsLatoFontFolder` exists and is called from
+  `RegisterLibraryDefaultFonts`). `Carowinds.Passdown.Documents.csproj` now embeds the same 18 `.ttf`
+  files QuestPDF itself ships (referenced from the NuGet package cache, no duplicate copy committed to
+  this repo) and `AssociatePassdownPdfGenerator`'s static constructor registers them explicitly via
+  QuestPDF's own documented `FontManager.RegisterFont(Stream)` API — same bytes, same resulting font
+  selection, no disk dependency. The now-redundant loose `.ttf` copy QuestPDF's own package targets
+  would otherwise still add to the publish output is filtered out via a `ResolvedFileToPublish`
+  target in `Carowinds.Passdown.Desktop.csproj` (the actually-published project — a same-project
+  removal in `Documents.csproj` does not reach items injected this late by a referenced project's
+  package targets, confirmed empirically). `LatoFont/OFL.txt` — the license notice, not font content —
+  is deliberately still shipped as a loose file in both release forms.
+
+**`IncludeAllContentForSelfExtract` was evaluated and rejected**, not merely left unset: Microsoft's
+own documentation describes it as "not recommended: it's a .NET Core 3.1 compatibility mode and might
+be removed in a future release," and it would have papered over exactly the `appsettings.json` bug
+above rather than fixing it (both files would extract to the same `%TEMP%` cache, still separate from
+where `AppContext.BaseDirectory` looks). `IncludeNativeLibrariesForSelfExtract=true` — the property
+Microsoft's docs actually recommend for this exact "one output file" goal — is used instead, folding
+SkiaSharp/HarfBuzzSharp/e_sqlite3/qpdf/ANGLE into the single file for extraction to the runtime's own
+temp cache at first launch (a mechanism entirely internal to the .NET runtime's native-library loader,
+not something this app's own code depends on a specific directory for).
+
+### Resulting single-file publish command
+
+```bash
+dotnet publish src/Carowinds.Passdown.Desktop/Carowinds.Passdown.Desktop.csproj \
+    -c Release \
+    -r win-x64 \
+    --self-contained true \
+    -p:PublishSingleFile=true \
+    -p:PublishReadyToRun=true \
+    -p:PublishTrimmed=false \
+    -p:IncludeNativeLibrariesForSelfExtract=true \
+    -p:PlaywrightPlatform=win-x64 \
+    -o artifacts/publish/win-x64-singlefile
+```
+
+Deliberately **not** baked into `Carowinds.Passdown.Desktop.csproj` as an unconditional property (unlike
+`PublishReadyToRun`, which has zero effect without a RuntimeIdentifier and so is safe to set
+unconditionally) — `PublishSingleFile` changes what a plain `dotnet publish -r win-x64` produces, and
+this phase's decision (below) keeps the multi-file form as the default/primary. A future phase that
+promotes single-file to primary can flip this the same way `PublishReadyToRun` was added in Phase 15D.
+
+Publish output after the existing `.pdb`-removal convention: **two files** —
+`Carowinds.Passdown.Desktop.exe` (176 MiB) and `LatoFont/OFL.txt` (a license notice, ~1.6 KB) — down
+from a ~270-file multi-file directory. `appsettings.json` and every loose `.ttf` file are confirmed
+absent. This was inspected directly (`find`, `file`, byte-search for expected symbols in the bundle),
+not assumed from a successful publish exit code.
+
+### Primary-release decision: multi-file ZIP remains primary
+
+Per this repo's own explicit decision rule (docs/phase13-hardening.md Phase 15F §15): single-file
+publish is genuinely, verifiably improved this phase — both physical-file blockers this investigation
+found are fixed, not merely worked around — but **no Windows host was available this session** to
+actually launch either release form, the same limitation every rebuild since Phase 7A has carried. A
+successful publish plus a clean file-list inspection is real evidence the packaging is now *correct*;
+it is not evidence the packaged app *launches* on Windows. The single-file candidate is built, hashed,
+and recorded in `docs/release-manifest.md` as an **experimental / deferred** release form — a strong
+candidate for primary status once a future phase can validate an actual Windows launch, not a
+regression from where Phase 7A left single-file.
+
+**PRIMARY**: `Carowinds-Operations-0.1.0-dev-win-x64.zip` (multi-file, self-contained, R2R,
+unchanged delivery model — extract and run, no installer).
+**EXPERIMENTAL / DEFERRED**: `Carowinds-Operations-0.1.0-dev-win-x64.exe` (single-file, R2R,
+self-contained) — see `docs/release-manifest.md` for its hash/size and the exact validation gate that
+remains before it could become primary.
+
+### Task Scheduler / automatic refresh with a single-file artifact
+
+`ScheduledTaskPlan.Build`/`Install-ScheduledRefresh.ps1` already accept an arbitrary absolute executable
+path and filename (re-confirmed by reading both — the PowerShell script only emits a non-blocking
+warning if the name doesn't match `Carowinds.Passdown.Desktop.exe`; the C# plan type never inspects the
+filename at all) — no code change was needed for a version-named single-file executable to work with
+the existing scheduled-refresh infrastructure. A true single EXE cannot carry the `.cmd` helpers or
+`tools\*.ps1` scripts next to itself the way the ZIP does, so automatic-refresh setup remains a
+ZIP-only convenience for now: a single-file user who wants it runs
+`tools\Install-ScheduledRefresh.ps1 -ExecutablePath <path to the saved single EXE>` from an extracted
+ZIP (no new script or in-app feature was built for this, per the brief's explicit "no new feature work"
+scope for 15F).
+

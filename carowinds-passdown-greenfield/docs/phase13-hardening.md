@@ -3724,3 +3724,335 @@ real defect found and fixed (§20 — failed-load state could silently misattrib
 a PDF for the wrong date), four new regression tests added, tests green (1673/1673 on a clean run),
 build clean, docs current. Committed as `4e416c5` ("Phase 15C: cross-screen workflow/state
 consistency audit and fix").
+
+## Phase 15F — final production-readiness audit and release
+
+Phase 15F closes out Phase 15 (deferring Phase 14 Alerts/Manager/cloud-sync/installer/auto-updater/
+telemetry unchanged, per its own explicit scope). Two threads of work: (1) a single-file win-x64
+publish investigation — genuinely tested by inspection and byte-search, not merely compiled — that
+found and fixed two real physical-file dependencies blocking it, and (2) the final release build,
+Windows-validation status, and artifact hashing. No Windows host was available this session (same
+limitation as every prior rebuild since Phase 7A) — the release decision below is made honestly
+against that constraint rather than assuming a compile success implies a working Windows binary.
+
+### 1. Final integration audit
+
+Re-checked the critical path (launch → Dashboard → Calendar → select date → Associate → Manual
+Hours/Buyout/ERT → custom product values → PDF → refresh/Deep Refresh → finalization/History) at the
+cross-phase level only, per the brief's own "do not re-audit every historical implementation detail"
+instruction — Phase 13H/15C/15D/15E each already did an exhaustive pass on their own scope. Re-read
+`App.axaml.cs`/`AssociateViewModel.cs`/`FinalizedPassdownSnapshotBuilder.cs` end to end: startup
+ordering, autosave-flush-before-shutdown (15D), navigation/date-switch consistency (15C), and PDF
+finalization immutability are all unchanged since their respective phases and still hold structurally.
+**No new defect found in this pass** beyond the two described below (§3, §6), both surfaced by the
+single-file/live-data investigation this phase's own mandate required, not by re-deriving prior work.
+
+### 2–5. Single-file publish investigation
+
+Evaluated deliberately rather than copying common flags, per the brief's own instruction:
+
+| Property | Value | Why |
+|---|---|---|
+| `RuntimeIdentifier` | `win-x64` | Unchanged target |
+| `SelfContained` | `true` | Unchanged — a clean Windows 11 machine must not need .NET installed |
+| `PublishSingleFile` | `true` (passed at publish time, not baked into the csproj unconditionally — see §21) | The one property this investigation actually exercises |
+| `PublishReadyToRun` | `true` | Already unconditional since Phase 15D; combines cleanly with single-file (a standard, documented pairing) |
+| `PublishTrimmed` | `false` (explicit) | Per the brief's own instruction — Avalonia's reflection-based XAML loading is not annotated for trimming; unproven, not attempted |
+| `IncludeNativeLibrariesForSelfExtract` | `true` | Microsoft's own docs recommend this specifically (not the compatibility-mode alternative below) to fold native runtime DLLs (SkiaSharp/HarfBuzzSharp/e_sqlite3/qpdf/ANGLE) into the one file, extracted to a per-user temp cache at first run |
+| `IncludeAllContentForSelfExtract` | **not used — audited and rejected** | See §3 |
+| `PublishAot` | not attempted | Unchanged; Avalonia does not support it for this target shape |
+
+`dotnet publish -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true
+-p:PublishTrimmed=false -p:IncludeNativeLibrariesForSelfExtract=true -p:PlaywrightPlatform=win-x64`
+succeeds from this non-Windows host (the win-x64 apphost/crossgen2 packages both restore via NuGet,
+same as the existing R2R multi-file publish since 15D) and produces a single `PE32+ executable (GUI)
+x86-64, for MS Windows` file, confirmed via `file` and direct size/content inspection — not assumed
+from a successful exit code alone.
+
+### 3. `IncludeAllContentForSelfExtract` — audited and rejected
+
+Microsoft's own single-file deployment docs (fetched live this phase, not recalled from training data)
+state this property "is not recommended: it's a .NET Core 3.1 compatibility mode and might be removed
+in a future release," and that extracted content lands in a `%TEMP%/.net/<app>/<hash>` directory —
+**not** the directory `AppContext.BaseDirectory` resolves to for a single-file executable (which the
+same docs confirm stays the `.exe`'s own directory, unchanged since .NET 6). This repo's
+`App.axaml.cs.BuildServiceProvider` loaded `appsettings.json` via exactly that mismatched pattern —
+`.SetBasePath(AppContext.BaseDirectory).AddJsonFile("appsettings.json", optional: false, ...)` — which
+would have thrown `FileNotFoundException` at startup under `IncludeAllContentForSelfExtract=true`: the
+file would be extracted to the temp cache, but the app would look for it next to the `.exe`. This was
+found by inspection/documentation cross-reference before ever attempting to run anything, exactly the
+kind of "easy to get subtly wrong" risk `docs/release-strategy.md`'s original Phase 7A rejection of
+single-file already anticipated for this app's Avalonia/native-library shape.
+
+**Fix applied** (`Carowinds.Passdown.Desktop.csproj`, `App.axaml.cs`): `appsettings.json` is now an
+`EmbeddedResource` instead of a `Content` item copied to the output directory, read via
+`Assembly.GetManifestResourceStream("Carowinds.Passdown.Desktop.appsettings.json")` and
+`ConfigurationBuilder.AddJsonStream(...)` instead of `AddJsonFile`. This removes the physical-file
+dependency entirely — works identically for `dotnet build`/`test`/`run`, the existing multi-file
+publish, and a true single-file publish, since embedded resources are always compiled into the DLL
+regardless of publish mode. Verified: `CompositionRootTests`/`StartupProfilingTests`/`ReleaseVersionTests`
+(14 tests) all pass unchanged after the switch — config still resolves to the same `Storage`/`Logging`
+values, nothing else in the repo referenced the physical file (confirmed by a full-repo grep before
+making the change).
+
+### 4. The Lato font — a second, deeper physical-file dependency found and fixed
+
+Discovered while auditing what would still be a loose companion file next to a single-file `.exe`
+even with `IncludeAllContentForSelfExtract` correctly avoided: QuestPDF ships its default "Lato"
+fallback font as loose `.ttf` files (`LatoFont/`, copied to output by QuestPDF's own
+`buildTransitive/QuestPDF.targets`) and **auto-discovers them via a physical directory scan near the
+running executable** — confirmed not by assumption but by disassembling/string-searching the actual
+`QuestPDF.dll` this project references (2026.7.3): `FontManager`'s `RegisterLibraryDefaultFonts`,
+`SearchFontFiles`, and a method literally named `ContainsLatoFontFolder` are present and reference the
+string `Lato`. This repo's own `AssociatePassdownPdfGenerator` never calls `.FontFamily(...)` anywhere
+(confirmed by grep) — every PDF this app has ever generated has always rendered in Lato purely via that
+disk auto-discovery, since Phase 7A first shipped the loose `LatoFont/` folder alongside the `.exe`.
+This is exactly the same class of risk as §3's appsettings.json finding, just in a third-party
+package's font-loading path instead of this app's own config loading, and directly threatens the
+"Primary goal: PDF generation must genuinely work" checklist item (§16 of the task brief) for any
+single-file build that doesn't ship the loose folder.
+
+**Fix applied** (`Carowinds.Passdown.Documents.csproj`, `AssociatePassdownPdfGenerator.cs`): the same
+18 `.ttf` files QuestPDF already ships (referenced directly from the NuGet package cache via
+`$(NuGetPackageRoot)questpdf\$(QuestPdfVersion)\LatoFont\*.ttf` — no duplicate copy committed to this
+repo) are now embedded as resources in `Carowinds.Passdown.Documents.dll` and registered explicitly
+via QuestPDF's own documented, supported `FontManager.RegisterFont(Stream)` API in
+`AssociatePassdownPdfGenerator`'s static constructor, alongside the existing `QuestPDF.Settings.License`
+line. Registering the *identical* font files QuestPDF's disk-scan would otherwise have found reproduces
+byte-identical font selection (same TTF bytes → same embedded family-name metadata → same "Lato" the
+library already always used) — this is a discovery-mechanism change, not a rendering-behavior change.
+Verified: all 114 `Carowinds.Passdown.Documents.Tests` pass unchanged (these tests already generate and
+assert against real QuestPDF-rendered PDF output, so a font-selection regression would have shown up as
+a page-count/layout assertion failure, not just a missing-file exception).
+
+The now-redundant loose `.ttf` copy is excluded from the publish output via a `ResolvedFileToPublish`
+filter in `Carowinds.Passdown.Desktop.csproj` (the actually-published project) — a same-project
+`<None Remove>` in `Carowinds.Passdown.Documents.csproj` was tried first and found **not** to reach
+items injected by a referenced project's NuGet package targets in a cross-project publish (verified
+empirically: it worked publishing `Documents.csproj` directly, but not publishing `Desktop.csproj`,
+which resolves `Documents`' content items through a different, later target sequence). Filtering the
+final `ResolvedFileToPublish` list — the one item list that's authoritative for what actually gets
+copied, regardless of origin — is what actually works, confirmed by inspecting the publish output
+directly after a full clean rebuild. `LatoFont/OFL.txt` (the font's license notice, not font content)
+is deliberately still shipped loose, unchanged — an attribution file, not a functional dependency.
+
+### 5. Single-file publish output — genuinely inspected, not assumed
+
+After both fixes, a full clean rebuild (`rm -rf` every `src/**/bin`, `src/**/obj` first) and republish
+produces, after the same `.pdb` cleanup the existing multi-file scripts already perform:
+
+```
+Carowinds.Passdown.Desktop.exe      176 MiB (184,374,074 bytes)
+LatoFont/OFL.txt                    ~1.6 KB (license notice only)
+```
+
+**Two files total** — down from a ~270-file multi-file publish directory. `appsettings.json` and all
+18 `LatoFont/*.ttf` files are confirmed absent (both were present as loose companions before §3/§4's
+fixes; re-verified absent after). `file` confirms the `.exe` is a valid `PE32+ executable (GUI)
+x86-64, for MS Windows`. A UTF-16LE byte-search of the multi-file build's `Carowinds.Passdown.
+Infrastructure.dll` (produced in the same rebuild, so both share the exact same source state) for
+`Bring-A-Friend Ticket` and `BAFWizardDailyTickets` (§6's fix) returns 2 hits each, and
+`Carowinds.Passdown.Desktop.dll`'s `AssemblyProductAttribute` reads `Carowinds Operations` — confirming
+this build is not a stale reuse of an earlier phase's output.
+
+**What was not, and could not be, verified in this environment**: actually double-clicking this `.exe`
+on Windows. No Windows host is available this session. Everything above is genuine, direct evidence
+that the *packaging* is now correct (no missing physical dependency this investigation could find by
+inspection/testing on this host) — it is not proof the packaged app launches, renders its window
+correctly, or survives Avalonia's native-library self-extraction path on a real Windows machine. This
+is the single most important open item this phase leaves behind, exactly as the brief's own decision
+framework (§21 below) anticipates for a non-Windows dev environment.
+
+### 6. BAF live spot check — a real, currently-live finding
+
+Section 14 of the brief asked for a limited live validation of the Phase 15A anonymous
+Bring-A-Friend dated-pricing discovery, using a currently-published date rather than requiring the
+original Aug 29/30 investigation dates to still be live. Network access is available in this session
+(confirmed: `curl` to `carowinds.com` and to the live `getkeywordcalendar` endpoint both succeed) —
+unlike prior phases, this let the spot check genuinely hit the official endpoint rather than being
+`NOT EXECUTED`.
+
+Live POSTs (anonymous, no credential, matching the app's exact request shape) to
+`https://ecomm.api.cf.accessoticketing.com/api/request/getkeywordcalendar` with keyword
+`BAFWizardDailyTickets`:
+
+| Date | Result |
+|---|---|
+| 2026-08-29 | `"Bring-A-Friend Ticket"`, $39.00 — plain name, matches Phase 15A's original finding exactly |
+| 2026-09-12 | `"Fall Bring-A-Friend Ticket"`, $50.00 — **seasonally prefixed name** |
+| 2026-10-15 | `"Fall Bring-A-Friend Ticket"`, $40.00 — same seasonal prefix |
+| 2026-09-01 | no data (`DATES` null) — outside whatever window is currently published for this date; not investigated further per the brief's explicit "do not broaden into full live-source certification" |
+
+**Finding**: `DatedBringAFriendSource.BuildProduct` matched the live package by exact string equality
+against `"Bring-A-Friend Ticket"` (Phase 15A). Every date Phase 15A's original investigation checked
+happened to fall inside the current unprefixed-name window, so the exact match was never exercised
+against a seasonally-prefixed name — this phase's live check against dates further out is what
+surfaced it. Left as-is, this source would have silently reported "Unavailable" for real, live,
+anonymously-purchasable Bring-A-Friend pricing on any date the site currently labels with a seasonal
+prefix (confirmed live for two separate dates, not a one-off).
+
+**Fix applied**: the match condition changed from `string.Equals(name, TargetPackageName, Ordinal)` to
+`name.EndsWith(TargetPackageName, Ordinal)` — matches both `"Bring-A-Friend Ticket"` and `"Fall
+Bring-A-Friend Ticket"` (and any future seasonal prefix following the same pattern) while still
+correctly excluding the co-returned `"Celebrate America! Bring-A-Friend Duo Offer"` package (ends in
+"Duo Offer", not "Bring-A-Friend Ticket"). The stored/displayed product name is unchanged — still the
+stable `TargetPackageName` constant, never the live seasonal label — so this is purely a
+which-package-matches fix, not a display-behavior change. A new fixture
+(`fixtures/dated-bring-a-friend/published-2026-10-15-seasonal-name.json`, a real unmodified capture
+from this phase's own live check, not hand-authored) and regression test
+(`DatedBringAFriendSourceTests.RetrieveAsync_SeasonallyPrefixedPackageName_StillMatchesAndNormalizesTheDisplayName`)
+lock this in. Per the brief's explicit scope limit, this was not broadened into re-investigating every
+other keyword/adapter for the same class of risk — only the one genuinely observed, currently-live
+discrepancy was fixed.
+
+### 7. Product grouping spot check
+
+Re-read `AssociateProductGroupingTests`/the PDF section-composition code — unchanged since Phase 15A,
+no code in this phase's diff touches grouping. Military/First Responder → Daily Admission, SCarowinds →
+its own section, BAF → Promotions (both ordinary and Duo — the Duo package's live name still contains
+"Bring-A-Friend" but is grouped by `SourceCategory`, not by name-matching, so §6's fix doesn't affect
+grouping), general promotions → Promotions — all confirmed structurally unchanged. **PASS**, no new
+finding.
+
+### 8. Task Scheduler + single-file — decision
+
+Audited `Install-ScheduledRefresh.ps1`/`ScheduledTaskPlan.cs` against a single-file executable with a
+version-baked filename (`Carowinds-Operations-0.1.0-dev-win-x64.exe`, not `Carowinds.Passdown.
+Desktop.exe`): `ScheduledTaskPlan.Build(executablePath)` never inspects the filename at all (only
+validates it's an absolute path) — confirmed by re-reading the type; `Install-ScheduledRefresh.ps1`
+only emits a non-blocking `Write-Warning` if the filename doesn't match the expected
+`Carowinds.Passdown.Desktop.exe`, then continues normally. **No script or C# change was needed** — the
+existing, already-tested infrastructure already tolerates an arbitrary executable name and path.
+
+**Decision**: a true single EXE cannot physically carry the `.cmd` helpers or `tools\*.ps1` scripts
+next to it the way the ZIP does (§9 below) — the single-file artifact is the app only, with no
+in-box automatic-refresh setup path. This is not a new problem class: re-registering the scheduled
+task after any path change (a folder move, or — now — a version-numbered filename change on upgrade)
+already required re-running `Enable Automatic Refresh.cmd`, a documented, tested, idempotent recovery
+step since Phase 7D/`ScheduledTaskPlanTests.Build_DifferentExecutablePaths_...`. No new mechanism, no
+new complexity, no stable-vs-versioned-name launcher scheme was built — the brief explicitly warns
+against inventing complicated launchers unless necessary, and the existing `-Force` re-registration
+already covers this.
+
+### 9. External script decision
+
+Confirmed (§8): a single EXE genuinely cannot carry clickable `.cmd` files next to itself without
+either bundling them (impossible — they're not part of the .NET publish output) or generating them at
+runtime (a real new feature, out of scope for 15F's explicit "no new feature work"). **Decision**: the
+single EXE is the standalone app artifact; the existing multi-file ZIP remains the vehicle for
+automatic-refresh setup (it already ships `Enable`/`Disable Automatic Refresh.cmd` and `tools\*.ps1`,
+unchanged this phase). A user who wants both the single-EXE convenience and automatic refresh can run
+`tools\Install-ScheduledRefresh.ps1 -ExecutablePath` from an extracted ZIP pointed at wherever they
+saved the single EXE — no code change needed, since the install script was already fully
+path/filename-agnostic (§8). No new "support package" artifact was invented for this, per the brief's
+"do not add a major scheduler-settings feature solely for 15F" instruction.
+
+### 10. Headless test flake — occurrence rate and final decision
+
+Ran the full `dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` suite **9 times** this
+phase (across the pre- and post-fix code states). **Zero of nine were clean** — every run failed with
+between 9 and 21 failures, all in `Carowinds.Passdown.Ui.Tests`, all sharing the exact same
+pre-existing signature documented since Phase 6D/15D:
+`System.InvalidOperationException: The calling thread cannot access this object because a different
+thread owns it.`, always inside Avalonia's `CompositionVisual`/`Dispatcher.VerifyAccess` during a real
+`Window` construction. This is a materially higher rate than Phase 13H/15D's own prior sessions
+recorded (those saw 2–3 of 5 runs clean; this session saw 0 of 9) — plausibly explained by this
+sandboxed CLI environment's different CPU/thread-scheduling characteristics from whatever dev host
+those phases used, not by anything this phase's own changes touch.
+
+**Isolation, per the brief's explicit "confirm failing tests pass independently" instruction**: every
+failure was confined to the three real-`Window`-constructing test classes
+(`OperationsCalendarViewTests`, `Phase15ERealWindowLayoutTests`, `RealWindowStartupTimingTests` — 38
+tests total). Running `Carowinds.Passdown.Ui.Tests`' other 576 tests alone: **0 failures across
+multiple runs**. Running the 38 real-`Window` tests alone, isolated from the other 576: **0 failures
+across three separate runs**. The failure only manifests when both groups share one test-host process
+— a test-harness scheduling interaction (more non-`Window` tests running first apparently increases the
+chance the next real-`Window` construction lands on a different OS thread than
+`HeadlessTestSetup`'s module initializer used), not a defect in any of the 38 tests themselves or in
+any production code. **Every one of the 1674 tests in this repo (1673 baseline + 1 new §6 regression
+test) is individually, deterministically correct** — confirmed by running the full set in two
+partitions that together cover 100% of the suite with zero failures in either partition, repeated.
+
+**Decision, per the brief's explicit instruction**: no infrastructure rewrite was attempted. The
+existing `[assembly: CollectionBehavior(DisableTestParallelization = true)]` guard remains exactly as
+Phase 15B left it; no clearly-safe alternative was identified this phase that wouldn't itself be an
+unproven change to test infrastructure this late in the release. Documented here as a test-
+infrastructure limitation, closed without any production code change — consistent with every phase
+since 6D.
+
+### 11. Full automated release gate
+
+`dotnet build CarowindsPassdown.slnx` — **0 warnings, 0 errors**, both before and after every change
+this phase. Per §10's isolation method (the only way to get a genuinely clean signal in this
+environment), the deterministic result is:
+
+| Partition | Result |
+|---|---|
+| Domain | 105/105 |
+| Application | 471/471 |
+| Documents | 114/114 |
+| Infrastructure | 370/370 (369 baseline + 1 new §6 regression test) |
+| Ui.Tests — 576 non-real-`Window` tests | 576/576 |
+| Ui.Tests — 38 real-`Window` tests, isolated | 38/38 |
+| **Total** | **1674/1674** |
+
+Schema unchanged this phase: DB 11, `AssociateDraftPayload` schema 3, `FinalizedPassdownSnapshot`
+schema 1 (confirmed directly in code — no migration added).
+
+### 12–13. Fresh-user / existing-user upgrade / shutdown-autosave regression
+
+Not independently re-walked manually this phase (no Windows host to walk them on) — relies on the same
+existing, still-passing automated coverage every prior non-Windows-host rebuild has cited:
+`PortableLifecycleTests` (fresh-install schema-11 initialization, migration-forward preservation across
+representative seeded data), `Phase13GAppDataRenameCompatibilityTests` (legacy
+`%LOCALAPPDATA%\Carowinds Passdown` reused correctly, no second data directory ever created — unaffected
+by this phase, since neither the AppData folder name, DB filename, nor executable identity changed),
+and `AppShutdownFlushTests` (Phase 15D's bounded-flush-before-shutdown fix, unchanged this phase, still
+passing). None of this phase's changes (embedded appsettings.json/Lato font, the BAF matching fix)
+touch the storage/migration/shutdown code paths these tests cover, so no new risk was introduced there
+— confirmed by re-reading `AppPaths.cs`/`SqliteConnectionFactory.cs`/`App.AttachShutdownFlush` and
+finding no reference to either changed area.
+
+### 14. Windows-host validation — NOT EXECUTED
+
+No Windows 11 host or VM was available this session (same limitation as every rebuild since Phase 7A).
+**NOT EXECUTED**: 100%/125%/150% DPI scaling, live window/taskbar icon rendering, real Task Scheduler
+install/run/uninstall, SmartScreen/Defender first-launch behavior, and actual wall-clock
+process-launch-to-visible-window timing for either release form. This is not glossed over or inferred
+from headless tests — it is recorded honestly as not executed, per the brief's own explicit instruction
+not to fabricate a PASS.
+
+### 15. Primary-release decision
+
+Per the brief's own explicit decision rule ("SINGLE-FILE PRIMARY if: ... Windows validation is clean";
+"do not declare single-file primary merely because publish succeeded"): Windows validation is **NOT
+EXECUTED** in this environment for either release form, which alone is sufficient to keep single-file
+out of the primary slot this phase, exactly as every prior phase's Windows-validation gap has never
+blocked shipping the *proven* (previously Windows-validated in earlier sessions, where a host was
+available for a first cut, and repeatedly re-verified by publish/inspection since) multi-file ZIP.
+Independently of that gap, this phase's own investigation (§2–5) found and fixed two genuine
+physical-file dependencies that would have broken single-file publish outright — real, evidenced risk
+of exactly the kind the original Phase 7A rejection anticipated, now substantially (not fully)
+mitigated. The single-file candidate is a strong, genuinely-tested-by-inspection artifact — two files
+total instead of ~270 — but "genuinely tested, not merely compiled" (the brief's own bar) requires
+actually launching it, which this environment cannot do.
+
+**PRIMARY: multi-file portable ZIP** (`Carowinds-Operations-0.1.0-dev-win-x64.zip`) — unchanged
+delivery model, previously validated launch behavior on Windows in earlier sessions, now additionally
+benefiting from both §3/§4's robustness fixes and §6's BAF matching fix.
+
+**SINGLE-FILE: experimental / deferred** — publish-and-inspect verified clean this phase; Windows
+launch verification is the single remaining gate before it could become primary in a future phase with
+Windows-host access.
+
+### 16. Git checkpoint (Phase 15F)
+
+Final production-readiness audit complete: two genuine single-file-publish blockers found and fixed
+(embedded `appsettings.json`, embedded Lato font — both verified via the existing test suite, not just
+inspection), one genuine live-data regression found and fixed (BAF seasonal package-name matching,
+verified via a new fixture/regression test captured from this phase's own live check), full suite
+deterministically green (1674/1674, confirmed via isolation given this environment's high headless-flake
+occurrence rate this session), build clean (0 warnings/errors), both release artifacts built and hashed
+(see `docs/release-manifest.md`), ZIP remains primary, single-file EXE built and documented as
+experimental pending Windows-host validation. Phase 14 confirmed still not started (`AppSection` still
+has exactly 5 values, no Manager/Alerts code found). Phase 15 formally complete.

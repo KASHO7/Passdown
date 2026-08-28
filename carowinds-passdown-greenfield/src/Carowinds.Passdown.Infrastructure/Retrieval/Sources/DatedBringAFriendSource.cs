@@ -235,6 +235,16 @@ public sealed class DatedBringAFriendSource(IRetrievalHttpClient httpClient, ICl
     /// Bring-A-Friend Duo Offer" package alongside it (Phase 15A investigation), which this adapter
     /// deliberately ignores; that offer is already owned by <see cref="DatedBringAFriendDuoSource"/>.
     /// Never reads the date-level <c>lowest_price</c> aggregate field (spec §5.4).
+    ///
+    /// Phase 15F live spot check found the official site prefixes this same package with a seasonal
+    /// label for dates outside the immediate near-term window (observed live: "Fall Bring-A-Friend
+    /// Ticket", $40.00, 2026-10-15 — vs. plain "Bring-A-Friend Ticket" for 2026-08-29) — Phase 15A's
+    /// original investigation only ever observed the unprefixed name, so its exact match silently
+    /// reported "Unavailable" for every seasonally-labeled date even though real pricing exists.
+    /// Matching by suffix instead of exact equality tolerates any such prefix while still excluding
+    /// the Duo Offer package (which ends in "Duo Offer", not "Bring-A-Friend Ticket") — the stored
+    /// product name stays the stable <see cref="TargetPackageName"/> constant either way (unchanged
+    /// design; this fix only widens which live package qualifies as a match, not what gets displayed).
     /// </summary>
     private static DatedBringAFriendProduct? BuildProduct(
         IReadOnlyList<AccessoKeywordCalendarPackage> packages,
@@ -242,7 +252,7 @@ public sealed class DatedBringAFriendSource(IRetrievalHttpClient httpClient, ICl
     {
         foreach (var package in packages)
         {
-            if (string.IsNullOrWhiteSpace(package.Name) || !string.Equals(package.Name.Trim(), TargetPackageName, StringComparison.Ordinal))
+            if (string.IsNullOrWhiteSpace(package.Name) || !package.Name.Trim().EndsWith(TargetPackageName, StringComparison.Ordinal))
             {
                 continue;
             }

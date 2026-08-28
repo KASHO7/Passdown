@@ -79,6 +79,26 @@ public class DatedBringAFriendSourceTests
     }
 
     [Fact]
+    public async Task RetrieveAsync_SeasonallyPrefixedPackageName_StillMatchesAndNormalizesTheDisplayName()
+    {
+        // Phase 15F live spot check (2026-08-28): the official site prefixes this same package with
+        // a seasonal label for dates outside the immediate near-term window — observed live for
+        // 2026-10-15 as "Fall Bring-A-Friend Ticket", $40.00 (docs/phase13-hardening.md Phase 15F
+        // section). Real, unmodified capture, not hand-authored.
+        var requestedDate = new DateOnly(2026, 10, 15);
+        var source = BuildSource(JsonResponse("published-2026-10-15-seasonal-name.json"), out _);
+
+        var result = await source.RetrieveAsync(Request(requestedDate), CancellationToken.None);
+
+        Assert.Equal(RetrievalStatus.Verified, result.Evidence.Status);
+        var product = Assert.Single(result.Payload!.Products);
+        Assert.Equal("10098264", product.PackageId);
+        Assert.Equal("Bring-A-Friend Ticket", product.DisplayName); // normalized, not the live "Fall ..." label
+        Assert.Equal(40.00m, product.Price);
+        Assert.Equal(requestedDate, product.ApplicableDate);
+    }
+
+    [Fact]
     public async Task RetrieveAsync_IgnoresTheCoReturnedBringAFriendDuoPackage()
     {
         // Both fixtures carry a "Celebrate America! Bring-A-Friend Duo Offer" package alongside the

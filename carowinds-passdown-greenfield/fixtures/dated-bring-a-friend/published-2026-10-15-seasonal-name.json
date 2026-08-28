@@ -1,0 +1,30 @@
+{
+  "SERVICE": {
+    "keyword_image": "",
+    "request_type": "GetKeywordCalendar",
+    "session_id": "hrxc.001044.871",
+    "status": "OK",
+    "DATES": {
+      "D": {
+        "bookings_sold_out": "null",
+        "date": "2026-10-15",
+        "lowest_price": "0.00",
+        "lowest_price_customer_type": "",
+        "lowest_price_package": "",
+        "lowest_price_savings": "",
+        "PS": {
+          "P": {
+            "available": "6",
+            "capacity": "6",
+            "event_id": "10048997",
+            "id": "10098264",
+            "name": "Fall Bring-A-Friend Ticket",
+            "CT": { "fee_amount": "0", "id": "390", "retail_amount": "40.00", "tax_amount": "2.65" }
+          }
+        }
+      }
+    },
+    "request_token": "17DA76F0B29B4A748FC9AA85F7CE5BE8",
+    "_client_ip": "159.26.102.43"
+  }
+}

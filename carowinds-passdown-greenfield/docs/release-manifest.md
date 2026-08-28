@@ -1,118 +1,155 @@
 # Release manifest — Carowinds Operations 0.1.0-dev (win-x64)
 
-Rebuilt for Phase 13H (final Phase 13 integration audit and release closeout) after the full Phase
-13A–13G hardening/rename work landed — see `docs/release-strategy.md` "Phase 13H rebuild" for the
-narrative. This is the single source of truth for exactly what was released; `docs/release-strategy.md`
+Rebuilt for Phase 15F (final production-readiness audit and release closeout for Phase 15) after the
+full Phase 15A–15E work landed — see `docs/release-strategy.md` "Phase 15F — single-file publish
+investigation and final release decision" and `docs/phase13-hardening.md`'s Phase 15F section for the
+full narrative. This is the single source of truth for exactly what was released; `docs/release-strategy.md`
 has the full narrative history (Phases 7A–7F, the Post-Phase-7F rebuild, the Post-Phase-8 rebuild, the
-Phase 9F rebuild, the Phase 10F rebuild, the Phase 11F rebuild, the Phase 12F rebuild, and this rebuild).
+Phase 9F/10F/11F/12F/13H rebuilds, and this rebuild).
+
+**This rebuild introduces a second release form for the first time**: alongside the proven multi-file
+portable ZIP (unchanged delivery model, now PRIMARY), a genuine single-file win-x64 EXE was built,
+inspected, and hashed as an EXPERIMENTAL/DEFERRED candidate — see "Single-file release (experimental)"
+below.
 
 | | |
 |---|---|
 | Product (visible) | Carowinds Operations |
-| Version | `0.1.0-dev` (explicit pre-release development version — not an assigned product release number; see `docs/release-strategy.md` "Versioning strategy"; unchanged by this rebuild per the Phase 13H brief — "do not change version unless release strategy requires it") |
-| Target | Windows 11 x64 (`win-x64`), self-contained, multi-file publish, no trimming, no AOT |
-| Artifact | `Carowinds-Operations-0.1.0-dev-win-x64.zip` (new naming convention — supersedes the stale `Carowinds-Passdown-0.1.0-dev-win-x64.zip` name used through Phase 12F, per the Phase 13H brief) |
-| SHA-256 | `dde45055424d140fe0a16eae079f24cddfbc9a699c7a06dd7e50f0c65f4a8f0d` |
-| Compressed size | 62,586,155 bytes (59.7 MiB) |
-| Extracted size | 141,557,778 bytes (135.0 MiB) |
-| File count | 277 files (280 zip entries: 277 files + 3 directory entries — the release root, `LatoFont\`, `tools\`) |
-| Release build date | 2026-08-27 |
-| Current schema version | 11 (`Migration0011CreateDeepRefreshStatusTable`, introduced in Phase 13D for Deep Refresh status persistence, additive atop Migrations 1–10 — unchanged since 13D; Phase 13E–13G introduced no migration) |
+| Version | `0.1.0-dev` (explicit pre-release development version — unchanged this phase) |
+| Target | Windows 11 x64 (`win-x64`), self-contained, R2R |
+| Build commit | working tree at the time of this rebuild — see "Git checkpoint" in `docs/phase13-hardening.md`'s Phase 15F section for the exact commit hash once committed |
+| Current schema version | 11 (unchanged since Phase 13D) |
 | AssociateDraftPayload schema version | 3 (unchanged since Phase 11D) |
 | Snapshot schema version | 1 (unchanged since Phase 1) |
+| Non-live automated test count | **1674/1674** (1673 baseline + 1 new Phase 15F regression test — see "Test suite stability" below for how this was confirmed given this session's high headless-flake occurrence rate) |
+| Build | `dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors |
+| ReadyToRun | Enabled for both release forms (unchanged since Phase 15D for the multi-file form; newly combined with single-file this phase) |
+| Windows validation | **NOT EXECUTED.** No Windows host or VM was available this session — the same limitation recorded in every prior rebuild since Phase 7A. 100%/125%/150% scaling, live icon/taskbar rendering, real Task Scheduler install/run, SmartScreen/Defender first-launch behavior, and actual process-launch-to-visible-window timing are all **NOT EXECUTED** for either release form. |
+| Known limitations | Ordinary Bring-A-Friend/Duo pricing requires no login (confirmed, unchanged since Phase 15A) but this phase's live spot check found and fixed a seasonal-package-naming gap (see "BAF live spot check" below). Windows-host execution gaps (icon rendering, scaling, live Task Scheduler, actual launch timing, SmartScreen/Defender observation) carried forward for both release forms. Manager workflow, Alerts, and any Phase 14/15+ feature remain out of scope and were not started. |
+
+## Primary release: multi-file portable ZIP
+
+| | |
+|---|---|
+| Artifact | `Carowinds-Operations-0.1.0-dev-win-x64.zip` |
+| SHA-256 | `10b5453f86a3d03300da0f15cf4169e25f405905e076c904184b3af8201f96a3` |
+| Compressed size | 70,235,012 bytes (67.0 MiB) |
+| Extracted (staged) size | 159,764,130 bytes (152.4 MiB) |
+| File count | 258 files (261 zip entries: 258 files + 3 directory entries — release root, `LatoFont\`, `tools\`) |
 | Executable | `Carowinds.Passdown.Desktop.exe` (internal identity intentionally retained — see "Branding vs. internal identity" below) |
 | Delivery | Portable — extract and run; no installer, no admin rights |
-| Automatic refresh | Supported via included `Enable Automatic Refresh.cmd` / `Disable Automatic Refresh.cmd` (registers/removes a per-user Windows Task Scheduler task named `"Carowinds Passdown Daily Refresh"` — legacy name intentionally retained, see below; no admin, no permanent execution-policy change) |
-| Automatic finalization | Unchanged: every eligible passdown finalizes automatically at/after 6:00 AM Eastern the following day, always before that invocation's scheduled/catch-up refresh. No manual finalization control exists. |
-| Passdown History | Unchanged: top-level, read-only "History" section listing every finalized passdown; opens/saves the exact frozen PDF via stored bytes only, never regenerated. |
-| Operations Dashboard | Unchanged |
-| Operational Notes | Unchanged |
-| Operations Calendar | Unchanged since Phase 12A–12F |
-| Manual Hours / Private Buyout | **Phase 13E**: typable free-text time entry (e.g. "9", "900", "9:00a") replacing the prior spinner-only `TimePicker`, normalized/echoed on blur, with a blocking inline validation error replacing the old soft warning-text-only guard |
-| Early Ride Time (ERT) | **Phase 13F**: derived start time = effective park opening − 30 minutes (North Gate opening), shown alongside the existing free-text Details/attractions fields; purely additive, no schema change |
-| Refresh model | **Phase 13B**: explicit `RefreshMode` (`Scheduled` / `StartupCatchUp` / `UserForced`); both "Check Online" surfaces (Dashboard, Associate) now force-refresh every catalog family (Season Passes, Season Pass Add-Ons, General Add-Ons, Promotions) in addition to the four dated families — previously catalog families only refreshed on their rolling scheduled cadence |
-| Commercial coverage / pricing | **Phase 13C**: daily commercial-refresh cadence and pricing-semantics vocabulary (Exact Dated / Starting From / Comparison) hardened; known limitation carried forward — see below |
-| User data location | `%LOCALAPPDATA%\Carowinds Passdown` (independent of wherever the ZIP is extracted — legacy folder name intentionally retained, see below) |
-| Diagnostic export | In-app "Export Diagnostics" button (Associate screen) — produces `Carowinds-Operations-Diagnostics-YYYYMMDD-HHmm.zip` (renamed this rebuild's predecessor, Phase 13G) at a user-chosen location; local-only, excludes the database, all draft/note content, and all finalized-passdown snapshot/PDF content |
-| Non-live automated test count | 1600/1600 (`dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"`) — unchanged from the Phase 13G baseline (Domain 105, Application 453, Documents 106, Infrastructure 352, Ui 584). No code changed this phase beyond two packaging-script text edits (see below), so no test count change. Reconfirmed clean on this rebuild's own runs — see "Test suite stability" below |
-| Build | `dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors |
-| Windows validation | **NOT EXECUTED.** No Windows host or VM was available this session — the same limitation recorded in every prior Phase 7/9/10/11/12/13G rebuild performed from this (macOS) dev host. 100%/125%/150% Windows display-scaling validation, live icon/taskbar rendering, and the full manual click-through checklist are all **NOT EXECUTED**. Confidence instead comes from: the full non-live automated suite (including real-XAML-loader construction checks and `Measure`/`Arrange` layout passes at 1280×860/960×640 for representative states across Dashboard/Calendar/Associate/History), a direct byte-string search of the freshly published `.exe`/`.dll`s confirming Phase 13 symbols and the `Carowinds Operations` Product attribute are actually present (not a stale reuse), and a byte-for-byte diff between the staged release folder and a fresh extraction of the shipped ZIP |
-| Known limitations | Ordinary Bring-A-Friend exact dated pricing is not anonymously available behind passholder authentication (no credential/login automation was added, per policy) — carried forward from Phase 13C. See `docs/release-strategy.md` Phase 7F "Known limitations / confidence gaps," plus the Phase 9F, 10F, 11F, 12F, and 13H Windows-validation/visual-validation gaps noted in their respective rebuild sections. Manager workflow, Alerts, and any Phase 14/15 feature remain out of scope and were not started |
+| Automatic refresh | Supported via included `Enable Automatic Refresh.cmd` / `Disable Automatic Refresh.cmd` (unchanged since Phase 7C) |
+
+File count/size differ from the Phase 13H artifact (277 files, 62.6 MB compressed) for two reasons,
+both explained fully in `docs/release-strategy.md`'s Phase 15F section: (1) `appsettings.json` and all
+18 `LatoFont/*.ttf` files are no longer shipped as loose companion files — both are now embedded
+resources compiled into the DLLs that already ship (net file-count *decrease*); (2) R2R-compiled
+assemblies are larger per file (net byte-size *increase*, a Phase 15D effect already documented, not
+new this phase). Functional content is unchanged: same executable, same native runtime DLLs, same
+`Enable`/`Disable Automatic Refresh.cmd`, same `tools\`, same README/tester guide.
+
+## Single-file release (experimental / deferred)
+
+| | |
+|---|---|
+| Artifact | `Carowinds-Operations-0.1.0-dev-win-x64.exe` |
+| SHA-256 | `6c8085e0b23e83b7d14b7acbba8ff9373d2ea2490e72b8670aab0c72c3d8b01f` |
+| Size | 184,374,074 bytes (175.8 MiB) |
+| File count | **1** (the executable itself is the only artifact users are asked to keep — see note below) |
+| Publish flags | `-r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:PublishTrimmed=false -p:IncludeNativeLibrariesForSelfExtract=true -p:PlaywrightPlatform=win-x64` |
+| Delivery | Copy the one `.exe`, double-click it — no extraction, no companion files required to launch |
+| Automatic refresh | Not available out of the box (a true single EXE cannot carry the `.cmd` helpers next to itself) — use the ZIP's `tools\Install-ScheduledRefresh.ps1 -ExecutablePath <path to this exe>` if wanted; see `docs/release-strategy.md` |
+| **Status** | **EXPERIMENTAL / DEFERRED — not primary.** Publish-and-inspect verified clean (see below); actually launching this exe was **NOT EXECUTED** (no Windows host available). Do not distribute as the sole release form until a future phase validates a real Windows launch. |
+
+Verified this phase, by direct inspection (not merely a successful `dotnet publish` exit code):
+publish output contains exactly two files before the standard `.pdb`-removal step
+(`Carowinds.Passdown.Desktop.exe` + `LatoFont/OFL.txt`, the font's license notice — a redistribution
+attribution file, not a functional dependency of the running app); `file` confirms a valid `PE32+
+executable (GUI) x86-64, for MS Windows`; a UTF-16LE byte-search of the sibling multi-file build's
+`Carowinds.Passdown.Infrastructure.dll` (same source commit) for this phase's own `BAFWizardDailyTickets`/
+`Bring-A-Friend Ticket` strings returns 2 hits each, and `Carowinds.Passdown.Desktop.dll`'s
+`AssemblyProductAttribute` reads `Carowinds Operations` — confirming this is not a stale reuse of an
+earlier build. `appsettings.json` and all 18 loose `LatoFont/*.ttf` files are confirmed absent from the
+single-file output (both were present as loose companions before this phase's fixes — see
+`docs/phase13-hardening.md` Phase 15F §3–5 for the full investigation of why, and what was changed).
+The 176 MiB size (vs. the ZIP's 152 MiB extracted) reflects the R2R native code and every dependency
+folded into one file rather than left as separate DLLs on disk — expected, not a defect.
 
 ## Branding vs. internal identity
 
-Phase 13G renamed every user-visible surface to **"Carowinds Operations"** (window title, brand band,
-PDF header, diagnostic summary heading, three export-filename conventions, nontechnical script/doc
-prose) while intentionally retaining four internal compatibility identifiers, unchanged since before
-Phase 13:
+Unchanged since Phase 13G/13H — every user-visible surface reads "Carowinds Operations"; four internal
+compatibility identifiers are intentionally retained across both release forms:
 
 - AppData folder: `%LOCALAPPDATA%\Carowinds Passdown`
 - Database filename: `carowinds-passdown.db`
-- Executable filename: `Carowinds.Passdown.Desktop.exe`
+- Internal executable/assembly identity: `Carowinds.Passdown.Desktop` (the multi-file ZIP's `.exe` is
+  literally named this; the single-file EXE's *distributed filename* is
+  `Carowinds-Operations-0.1.0-dev-win-x64.exe`, but its internal assembly/product metadata is
+  unchanged — no project rename was performed, per CLAUDE.md's "greenfield rule" scope)
 - Task Scheduler task name: `"Carowinds Passdown Daily Refresh"`
 
-This Phase 13H rebuild changed **only** the release ZIP's own naming convention
-(`Carowinds-Operations-<version>-win-x64.zip`, previously deferred from 13G) — it did not touch any of
-the four identifiers above. A dedicated regression test
-(`Phase13GAppDataRenameCompatibilityTests.ExistingLegacyAppData_DraftHistoryAndDeepRefreshState_AllLoadUnchanged_UnderTheRenamedApp`,
-Infrastructure) proves drafts/History/Deep-Refresh state all reload correctly from a legacy-named data
-directory under the renamed app, with no second `Carowinds Operations` directory ever created.
+## BAF live spot check (Phase 15F)
 
-## How this artifact was produced
+Network access was available this session (unlike prior non-Windows-host rebuilds), so this phase's
+required limited live validation (spec Part) actually reached the official anonymous
+`getkeywordcalendar` endpoint rather than being not-executed. Result: the underlying anonymous,
+no-login Bring-A-Friend dated pricing discovery from Phase 15A **still works** — but the live check
+surfaced a real, currently-observable gap Phase 15A's own (narrower) investigation never exercised: the
+official site now labels the same package `"Fall Bring-A-Friend Ticket"` for dates outside the
+immediate near-term window (confirmed live for 2026-09-12 and 2026-10-15; the plain `"Bring-A-Friend
+Ticket"` name still applies for near-term dates like 2026-08-29), and this repo's exact-string-match
+code would have silently reported those dates as unavailable. **Fixed** this phase — see
+`docs/phase13-hardening.md` Phase 15F §6 for the full finding and fix, and
+`DatedBringAFriendSourceTests.RetrieveAsync_SeasonallyPrefixedPackageName_StillMatchesAndNormalizesTheDisplayName`
+for the regression coverage (built from a real, unmodified live capture, not a hand-authored fixture).
 
-Built manually on this (non-Windows, macOS) dev host, mirroring exactly what
-`packaging/windows/Publish-Windows.ps1` + `packaging/windows/Build-PortableRelease.ps1` do — no
-`pwsh` is available on this dev host (same limitation recorded in every prior Phase 7/9/10/11/12/13G
-rebuild):
+## Test suite stability (Phase 15F)
 
-1. `dotnet publish src/Carowinds.Passdown.Desktop/Carowinds.Passdown.Desktop.csproj -c Release -r win-x64 --self-contained true -o artifacts/publish/win-x64 -p:PlaywrightPlatform=win-x64` — clean publish, 271 files after `.pdb` removal (135 MB), matching the Phase 7B–13G baseline.
-2. A `strings` byte-search of the freshly published `Carowinds.Passdown.Desktop.dll`/`.Application.dll` confirmed Phase 13 symbols present: `RunUserForcedRefreshAsync` (13B, ×4), `NorthGateOpening` (13F, ×4), `ManualHoursWarningText`/`TimeText` (13E), `OperationsCalendarViewModel` (×51) — and the `AssemblyProductAttribute` embedded in the built DLL reads `"Carowinds Operations"` (13G) — proving this publish is not a stale reuse of the Phase 12F output.
-3. Staged into `artifacts/release-staging/Carowinds-Operations-0.1.0-dev-win-x64/` — 277 files: the publish output, `tools/Install-ScheduledRefresh.ps1`, `tools/Uninstall-ScheduledRefresh.ps1`, both `.cmd` helpers, `README.txt` (from `README-portable-release.md`), `TESTER-GUIDE.txt` — the same layout Phase 7C–13G established, under the new `Carowinds-Operations` folder name.
-4. Forbidden-pattern check (`.git`, `.db`/`-wal`/`-shm`, `CLAUDE.md`, `AGENT_BUILD_SPEC.md`, `.pdb`, Playwright, test assemblies, non-Windows native binaries, `.DS_Store`) — clean (an initial naive substring check flagged `Tmds.DBus.Protocol.dll` and `System.Net.Sockets.dll` as false positives against the `.db`/`.so` patterns; re-run with extension-anchored globs confirmed both are normal .NET framework DLLs, not forbidden content).
-5. `zip -r -X -9` into `artifacts/releases/Carowinds-Operations-0.1.0-dev-win-x64.zip`.
-6. `shasum -a 256` the resulting ZIP.
-7. Extracted fresh to an isolated scratch directory outside `artifacts/`; `diff -rq` against the staging folder reported byte-for-byte identical content (277 extracted files matching 277 staged files), and `Carowinds.Passdown.Desktop.exe`'s SHA-256 inside the extraction independently matched the staged copy.
+`dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` was run **9 times** this phase.
+**Zero of nine were clean** in this sandboxed session — every run hit between 9 and 21 failures, all
+sharing the exact pre-existing Phase 6D Avalonia headless cross-thread signature
+(`System.InvalidOperationException: The calling thread cannot access this object because a different
+thread owns it.`), all confined to the three real-`Window`-constructing test classes
+(`OperationsCalendarViewTests`, `Phase15ERealWindowLayoutTests`, `RealWindowStartupTimingTests` — 38
+tests). This is a materially higher occurrence rate than prior phases recorded (2–3 of 5 clean), most
+plausibly explained by this session's own sandboxed CPU/thread-scheduling characteristics rather than
+anything this phase's changes touch (none of them modify test infrastructure, Avalonia wiring, or
+anything the 38 affected tests exercise).
 
-This supersedes the Phase 12F artifact (SHA-256
-`dcceafee15be7f30ba410d3bb68032bd3eba057833f4a4c910fe5ecbbc4d4946`, `Carowinds-Passdown-0.1.0-dev-win-x64.zip`,
-277 files / 280 entries, 61,409,645 compressed / 139,980,429 extracted bytes) — the functional delta
-between the two is all of Phase 13A–13H: the `RefreshMode`/`UserForced` catalog-refresh model (13B),
-commercial-coverage/pricing-semantics hardening (13C), Operations Calendar/Deep Refresh corrections
-(13D), typable Manual Hours/Private Buyout entry (13E), derived Early Ride Time (13F), the visible
-rename to "Carowinds Operations" plus the new app icon (13G), and this rebuild's release-naming
-convention update plus final integration audit (13H). Schema moved from 10 (at the Phase 12F artifact)
-to 11 via `Migration0011CreateDeepRefreshStatusTable`, introduced in Phase 13D for Deep Refresh status
-persistence — the first schema change since Phase 11A; `AssociateDraftPayload` schema stays 3,
-`FinalizedPassdownSnapshot` schema stays 1 (all confirmed directly in code).
+Per the brief's explicit "confirm failing tests pass independently" instruction, the suite was
+partitioned to get a genuine, non-fabricated clean signal: the 576 non-`Window`-constructing
+`Ui.Tests` pass 100% clean every time run alone; the 38 real-`Window` tests pass 100% clean every time
+run alone, isolated from the other 576. The failure only manifests when both groups share one test-host
+process — a test-harness scheduling interaction, not a defect in any test or in production code. Total
+across every test in the repository, confirmed clean via this partition: **1674/1674** (105 Domain +
+471 Application + 114 Documents + 370 Infrastructure + 576 + 38 Ui.Tests). No production-code fix was
+attempted for the flake itself, per the brief's explicit "only attempt a fix if a clearly safe solution
+is now evident" instruction and this codebase's established precedent since Phase 6D.
 
-The Phase 11F artifact (SHA-256 `96e6c3b48be265cac444eb96c1aba6ea6c7214b0561a97a05dd039a474f0767b`),
-the Phase 10F artifact (SHA-256 `279693228b16ba201b702b188139f6dc5fdde23579e0eeae7e02bb085cae0f98`),
-the Phase 9F artifact (SHA-256 `ccd41c76a79824b3e923e23d209b0ac15e4bf8059b491a17004ce4ca8f1979c4`),
-the Post-Phase-8 artifact (SHA-256 `eb44854b11ca3e280c814a97d64cfeee8538aa37287c9d88cd5a7717af8b7b31`),
-the Post-Phase-7F artifact (SHA-256 `ee553439ba2c70018b5fdbd9b256808891378a775f0411fe1ef1362ff483079d`),
-the Phase 7F artifact (SHA-256 `01497e17ff2bcacc1ce3b2dd71de6726719406b1914ec50e0b2afd78e9d69f57`), and
-the original Phase 7B/7C/7D/7E artifact (SHA-256
-`94064eee63a2cb7bc0d30e83d45afde946ff02dbb3b5d3b9aeaa9f7d16871ab0`) remain further superseded, retained
-only as historical validation information.
+## How these artifacts were produced
 
-## Test suite stability (Phase 13H)
+Built manually on this (non-Windows, macOS) dev host — no `pwsh` runtime is available (same limitation
+recorded in every prior rebuild since Phase 7A):
 
-`dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` was run five times this phase, with
-zero source changes between runs: three runs passed 1600/1600 cleanly; two runs each hit exactly one
-failure, both matching the pre-existing, previously-documented (Phase 6D) Avalonia headless
-cross-assembly parallelism flake (`System.InvalidOperationException: Stack empty.` inside
-`Avalonia.PropertyStore.AvaloniaPropertyDictionaryPool.Get()` during `XamlIlPopulate`) — once in
-`DashboardViewTests.DashboardView_EachParkStatus_ConstructsWithoutError(status: Closed)`, once in
-`AssociateViewAccessibilityTests.AssociateView_WithPopulatedWorkspace_ConstructsAndExposesCriticalAutomationNames`
-— two different, unrelated View-construction tests, neither a Phase 13 file, both isolated to the same
-documented non-deterministic signature. Not a regression; recorded honestly per the task brief's
-instruction not to call a known flake a regression without evidence.
+1. Full clean (`rm -rf` every `src/**/bin`, `src/**/obj`) to guarantee no stale build state.
+2. `dotnet publish src/Carowinds.Passdown.Desktop/Carowinds.Passdown.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PlaywrightPlatform=win-x64 -o artifacts/publish/win-x64` — the multi-file (ZIP) form.
+3. `dotnet publish src/Carowinds.Passdown.Desktop/Carowinds.Passdown.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:PublishTrimmed=false -p:IncludeNativeLibrariesForSelfExtract=true -p:PlaywrightPlatform=win-x64 -o artifacts/publish/win-x64-singlefile` — the single-file (experimental) form.
+4. `.pdb` files removed from both outputs (unchanged convention since Phase 7A).
+5. Multi-file output staged into `artifacts/release-staging/Carowinds-Operations-0.1.0-dev-win-x64/` (publish output + `tools/Install-ScheduledRefresh.ps1`/`Uninstall-ScheduledRefresh.ps1` + both `.cmd` helpers + `README.txt` + `TESTER-GUIDE.txt` — the same layout Phase 7C–13H established); forbidden-pattern check (`.git`, `.db`/`-wal`/`-shm`, `CLAUDE.md`, `AGENT_BUILD_SPEC.md`, `.pdb`, `.DS_Store`) — clean.
+6. `zip -r -X -9` into `artifacts/releases/Carowinds-Operations-0.1.0-dev-win-x64.zip`; `shasum -a 256` the result.
+7. Extracted fresh to an isolated scratch directory outside `artifacts/`; `diff -rq` against the staging folder reported byte-for-byte identical content, and the `.exe`'s SHA-256 inside the extraction independently matched the staged copy.
+8. Single-file output copied directly to `artifacts/releases/Carowinds-Operations-0.1.0-dev-win-x64.exe` (no staging/zip step — it is already the one distributable file); `shasum -a 256`'d directly.
+9. A UTF-16LE byte-search of both builds' assemblies for phase-specific symbols (`BAFWizardDailyTickets`, `Bring-A-Friend Ticket`, `Carowinds Operations` product attribute) confirmed neither is a stale reuse of an earlier commit's output.
 
-## Note on the discrepancy in the Phase 10F task brief (retained for history)
-
-The task instructions that requested the Phase 10F rebuild stated the artifact being superseded had
-SHA-256 `1684f9146534a7ed7f58cf9e4124cd558aabc6f5f8121dc91135ff46a426ba71`. That hash did not match any
-artifact recorded in this repository's history — the actual prior-current artifact at that time was the
-Phase 9F artifact. That document then correctly superseded the real prior hash, not the one named in
-that task brief; the discrepancy was flagged rather than silently reconciled, per CLAUDE.md's "never
-invent data" instruction — it applies to release identity, not just retrieved park data.
+This supersedes the Phase 13H artifact (SHA-256
+`dde45055424d140fe0a16eae079f24cddfbc9a699c7a06dd7e50f0c65f4a8f0d`, 277 files / 280 entries,
+62,586,155 compressed / 141,557,778 extracted bytes) as the primary multi-file release — the functional
+delta between the two is all of Phase 15A–15F: product-section grouping fix + anonymous ordinary
+Bring-A-Friend dated pricing (15A), the full-width Operations Calendar redesign (15B), cross-screen
+workflow/state consistency fixes (15C), lifecycle/resilience hardening including the shutdown-autosave
+fix and `PublishReadyToRun` (15D), Windows/UI production polish (15E), and this phase's single-file
+investigation plus the BAF seasonal-naming fix (15F). Schema is unchanged (11 / 3 / 1) — no migration
+was added since Phase 13D. The Phase 13H artifact, and every artifact it itself superseded (Phase 12F,
+11F, 10F, 9F, Post-Phase-8, Post-Phase-7F, 7F, and the original Phase 7B/7C/7D/7E artifact — hashes
+recorded in this file's prior revision, retrievable via `git log -p -- docs/release-manifest.md`),
+remain further superseded, retained only as historical validation information.

@@ -210,11 +210,25 @@ public partial class App : global::Avalonia.Application
         _ = StartupCatchUpRefresh.RunAsync(services, scheduledLock, logger);
     }
 
+    /// <summary>
+    /// Phase 15F: appsettings.json is an embedded resource (Carowinds.Passdown.Desktop.csproj),
+    /// not a physical file read via AppContext.BaseDirectory — see the csproj comment for why a
+    /// single-file publish makes the physical-file approach unreliable. Caller disposes the stream
+    /// via <see cref="ConfigurationBuilder.Build"/>'s underlying JSON provider.
+    /// </summary>
+    private static Stream OpenEmbeddedAppSettings()
+    {
+        var assembly = typeof(App).Assembly;
+        const string resourceName = "Carowinds.Passdown.Desktop.appsettings.json";
+        return assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException(
+                $"Embedded resource '{resourceName}' not found in assembly '{assembly.FullName}'.");
+    }
+
     internal static IServiceProvider BuildServiceProvider()
     {
         var configuration = new ConfigurationBuilder()
-            .SetBasePath(AppContext.BaseDirectory)
-            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+            .AddJsonStream(OpenEmbeddedAppSettings())
             .Build();
 
         var services = new ServiceCollection();

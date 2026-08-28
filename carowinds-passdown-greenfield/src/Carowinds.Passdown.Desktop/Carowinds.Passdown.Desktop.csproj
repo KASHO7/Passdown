@@ -43,10 +43,20 @@
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
 
+  <!--
+    Phase 15F: embedded resource rather than a physical Content file copied next to the .exe.
+    App.axaml.cs.BuildServiceProvider reads it via Assembly.GetManifestResourceStream, which works
+    identically for dotnet build/test/run, the existing multi-file publish, and a true single-file
+    publish — a physical-file lookup via AppContext.BaseDirectory would silently miss the file for a
+    single-file publish that bundles content via IncludeAllContentForSelfExtract (files are
+    extracted to a %TEMP%/.net staging directory, not the directory AppContext.BaseDirectory
+    resolves to for the executable itself — see docs/release-strategy.md "Single-file publish").
+    Since Storage/Logging are the only two settings this file carries and neither is
+    secret/machine-specific, embedding is a strict robustness improvement with no configurability
+    lost - it's still an editable JSON file, just compiled into the DLL instead of copied loose.
+  -->
   <ItemGroup>
-    <Content Include="appsettings.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    <EmbeddedResource Include="appsettings.json" />
   </ItemGroup>
 
   <ItemGroup>
@@ -73,4 +83,25 @@
     <ProjectReference Include="..\Carowinds.Passdown.Infrastructure\Carowinds.Passdown.Infrastructure.csproj" />
     <ProjectReference Include="..\Carowinds.Passdown.Documents\Carowinds.Passdown.Documents.csproj" />
   </ItemGroup>
+
+  <!--
+    Phase 15F: Carowinds.Passdown.Documents.csproj now embeds QuestPDF's "Lato" font files as
+    resources instead of relying on QuestPDF's own physical-directory auto-discovery (see that
+    project's comment), but QuestPDF's buildTransitive/QuestPDF.targets still unconditionally adds
+    the original loose *.ttf files as CopyToOutputDirectory content — they're transitively pulled
+    into this project's publish output via the Documents ProjectReference regardless, since a
+    same-project exclusion in Documents.csproj can't reach items resolved this late in a
+    cross-project publish. Filtering the final ResolvedFileToPublish list here (the one place that's
+    authoritative for what actually gets copied, no matter which project or package originated an
+    item) is what makes this project's publish output — multi-file and single-file alike — not ship
+    a now-fully-redundant duplicate of font bytes that already live inside Carowinds.Passdown.Documents.dll.
+    OFL.txt (the font's license notice) is deliberately kept - it's not font content, just a
+    required third-party attribution file, and Compress/Publish scripts already expect to find and
+    ship it.
+  -->
+  <Target Name="RemoveRedundantLatoFontTtfFromPublish" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(ResolvedFileToPublish.Extension)' == '.ttf' and $([System.String]::Copy('%(ResolvedFileToPublish.Identity)').Contains('LatoFont'))" />
+    </ItemGroup>
+  </Target>
 </Project>

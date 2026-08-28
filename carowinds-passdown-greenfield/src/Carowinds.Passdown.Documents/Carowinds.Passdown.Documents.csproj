@@ -1,7 +1,48 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Single source for the QuestPDF version, shared with the LatoFont embedding below so the
+         two can never silently drift apart on a version bump. -->
+    <QuestPdfVersion>2026.7.3</QuestPdfVersion>
+  </PropertyGroup>
+
   <ItemGroup>
-    <PackageReference Include="QuestPDF" Version="2026.7.3" />
+    <PackageReference Include="QuestPDF" Version="$(QuestPdfVersion)" />
   </ItemGroup>
+
+  <!--
+    Phase 15F: QuestPDF ships its default "Lato" fallback font as loose .ttf files
+    (questpdf/$(QuestPdfVersion)/LatoFont/*.ttf, copied to output by QuestPDF's own
+    buildTransitive/QuestPDF.targets) and auto-discovers them via a physical directory scan near
+    the running executable (confirmed by inspecting QuestPDF.dll: FontManager's
+    RegisterLibraryDefaultFonts/ContainsLatoFontFolder/SearchFontFiles). That disk-scan is exactly
+    the class of thing a true single-file publish breaks — the loose folder either isn't there at
+    all, or (if force-extracted) lands in a different directory than the scan expects. Since our own
+    code never previously called .FontFamily(...) anywhere, every existing PDF already renders with
+    this same "Lato" font purely via that disk discovery, so registering the identical files
+    ourselves reproduces byte-identical font selection with no visual change, while removing the
+    physical-file dependency entirely (see AssociatePassdownPdfGenerator's static constructor).
+    <None Remove> drops the now-redundant loose .ttf copy from every publish output (multi-file and
+    single-file alike) - only the OFL.txt license notice is still shipped loose, unchanged, since
+    the font content itself now travels inside the assembly instead.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="$(NuGetPackageRoot)questpdf\$(QuestPdfVersion)\LatoFont\*.ttf">
+      <LogicalName>LatoFont.%(Filename)%(Extension)</LogicalName>
+      <Link>LatoFont\%(Filename)%(Extension)</Link>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!--
+    The redundant loose *.ttf copy QuestPDF's own buildTransitive/QuestPDF.targets still adds is
+    removed at publish time in Carowinds.Passdown.Desktop.csproj (the project that actually
+    publishes), not here — a same-project <None Remove>/target hook can't reliably reach items a
+    referenced project's package targets inject once this project is consumed via ProjectReference
+    from another project's publish (verified empirically: it works for `dotnet build`/`publish` run
+    directly against this project, but not for Desktop's publish, which resolves this project's
+    content items through a different, later cross-project target sequence). See
+    Carowinds.Passdown.Desktop.csproj's ResolvedFileToPublish filter for the actual removal.
+  -->
+
   <ItemGroup>
     <ProjectReference Include="..\Carowinds.Passdown.Application\Carowinds.Passdown.Application.csproj" />
     <ProjectReference Include="..\Carowinds.Passdown.Domain\Carowinds.Passdown.Domain.csproj" />
