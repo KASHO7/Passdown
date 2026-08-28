@@ -116,12 +116,17 @@
 
     <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceTintBrush}"
             BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
-      <Grid ColumnDefinitions="Auto,*,Auto">
+      <!-- Phase 15E: the title column is "*" (not Auto) so the Refresh action group (a fixed Auto
+           column) always stays fully visible and reachable at the 960×640 minimum window size — a long
+           real operating-day label ("Wednesday, September 30, 2026") previously could push the Refresh
+           button/timestamp partially off the window since two Auto columns cannot both shrink to fit. -->
+      <Grid ColumnDefinitions="*,Auto">
         <StackPanel Grid.Column="0" Spacing="2">
           <TextBlock Text="TODAY" Classes="sectionTitle" Margin="0" />
-          <TextBlock Text="{Binding Presentation.OperatingDayLabel}" Classes="pageTitle" />
+          <TextBlock Text="{Binding Presentation.OperatingDayLabel}" Classes="pageTitle"
+                     TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
         </StackPanel>
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
           <TextBlock Text="{Binding Presentation.GeneratedAtText}" Classes="muted" VerticalAlignment="Center"
                      IsVisible="{Binding HasSnapshot}" />
           <Button Content="Refresh" Classes="secondaryAction" Command="{Binding ReloadCommand}"

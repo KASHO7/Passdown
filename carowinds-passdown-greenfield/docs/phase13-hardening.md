@@ -2835,3 +2835,185 @@ phase's own instructions, same as Phase 15A).
 
 Committed as `1359bd3` ("Phase 15B: redesign Operations Calendar month grid to a full-width
 7-column layout").
+
+## Phase 15E — Windows/UI production polish
+
+Phase 15E audited every major screen for production-readiness at the app's two documented desktop
+targets (1280×860, 960×640) and fixed the concrete defects that audit found. No Windows 11 host was
+available in this environment (dev host is Fedora/macOS per CLAUDE.md), so DPI scaling itself is
+**NOT EXECUTED** — the same honest disclosure convention Phase 15B (§8) and Phase 13D (Part 37) already
+established. Everything else below is real-window/layout evidence, not speculation.
+
+### 1. Method — real-window audit, not visual inspection
+
+No screenshot/pixel renderer exists in this environment. Rather than re-guessing at layout risk from
+reading XAML, this phase extended Phase 15B's own real-window technique (a genuine off-screen headless
+`Window`, `Show()`+`Dispatcher.UIThread.RunJobs()`, then reading realized `Bounds`) to the app shell and
+every other major page, and used it to find defects empirically before fixing anything. Three real,
+confirmed-by-measurement defects were found this way — all three are the same underlying pattern (a
+horizontal row of `Auto`-sized controls with no reflow fallback, sized to fit only at the 1280px design
+width) and all three were invisible from reading the XAML alone:
+
+1. **App-shell section strip clips at 960×640** (`MainWindow.axaml`): five section buttons in a plain
+   `StackPanel` need ~1127px; at 960px, "History" was realized at `X=996` — starting *past* the window's
+   own 960px client width. The control was fully unreachable, not merely visually tight.
+2. **Associate action bar clips at 960×640** (`AssociateView.axaml`): six items (◀/date-picker/▶/Check
+   Online/Export Diagnostics/Create PDF) in one `Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*"`
+   need more than 960px combined. Measured: `Export Diagnostics` right edge at 988px (8px into the
+   scrollbar-free clipped zone), and `Create PDF` — the trailing star column — realized at **zero
+   width**, positioned at `X=996`. Create PDF was completely unreachable at the documented minimum
+   window size.
+3. **Dashboard header clips at 960×640** (`DashboardView.axaml`): the header `Grid` used
+   `ColumnDefinitions="Auto,*,Auto"` with the title in the first `Auto` column. `OperatingDayLabel` is
+   produced by the same production formatter real data uses (`"dddd, MMMM d, yyyy"`, e.g. "Wednesday,
+   September 30, 2026") — an ordinary date, not stress-test data. At 960px, the `Refresh` button was
+   realized with its right edge at 997px, 37px past the window's own 960px client width.
+
+Each defect was reproduced with a purpose-built diagnostic test (real `Window`, real production
+formatters/fakes, printed `Bounds`) before any fix was written, and re-measured after the fix to confirm
+the control now sits fully inside the window. The Associate/Dashboard/nav-strip fixes below are the
+direct output of that empirical loop, not a stylistic guess.
+
+### 2. Fixes made
+
+- **`MainWindow.axaml`** — the section strip's `StackPanel` became a `WrapPanel`. At 960×640, "History"
+  now wraps to a second line at `(266, 90)`, fully inside the window, instead of being pushed off it.
+- **`AssociateView.axaml`** — the action-bar `Grid` became a `WrapPanel`; the `HorizontalAlignment="Right"`
+  hacks on Export Diagnostics/Create PDF (which only worked when the star column had positive width) were
+  removed since a `WrapPanel` doesn't need them. At 960×640, Export Diagnostics and Create PDF now wrap to
+  a second line, both fully inside the window (verified: `Export Diagnostics` at `(40,90)`→width 288,
+  `Create PDF` at `(336,90)`→width 176, both well short of the 960px edge).
+- **`DashboardView.axaml`** — the header `Grid` changed from `Auto,*,Auto` to `*,Auto`: the title column
+  is now the flexible one (with `TextWrapping="NoWrap"`/`TextTrimming="CharacterEllipsis"` added to the
+  title `TextBlock` so a title that doesn't fit truncates with an ellipsis instead of forcing overflow),
+  and the Refresh action group is the fixed `Auto` column that can never be squeezed. Re-measured: Refresh
+  now sits at `(806,18)`→width 130, right edge 936px, inside the 960px window.
+- **Button padding consistency** (§13 of the spec): `AssociateView.axaml` and `HistoryView.axaml`'s
+  `primaryAction`/`secondaryAction` styles used `Padding="16,8"` while Dashboard/Calendar/Notes all used
+  `Padding="14,7"` — a real, if minor, cross-page inconsistency in button height (each view keeps its own
+  local copy of these styles by established convention, so the values had silently drifted). Standardized
+  Associate and History to the majority convention (`14,7`); no other button property changed, nothing
+  was globally enlarged.
+
+None of these fixes touch business/retrieval/persistence logic, navigation semantics, or any bound
+property — they are pure `Panel`/`Grid` structural and cosmetic changes.
+
+### 3. Calendar re-validation (Phase 15B)
+
+Re-run against the current app: all Phase 15B real-window geometry tests (seven equal columns, week-row
+alignment, dense-outlier-day uniform geometry, no horizontal clipping, selected-date panel fit) still
+pass unmodified. No defect was found in Calendar during this phase's audit; per this phase's own
+instruction ("do not redesign Calendar again unless actual validation exposes a defect"), it was not
+touched.
+
+### 4. Other pages audited, no defect found
+
+Associate Products/Notes sections, Operational Notes (editor + filter/list), and History (populated
+detail with a long promotional product name, a comparison price, and a "Starting From" qualifier as
+stress content) were each driven through the same real-window technique at both target viewports and
+found not to clip. Accessibility spot-checks (`AutomationProperties.Name` on Manual Hours/Private Buyout
+fields, the derived Early Ride Time value, Run Deep Refresh, View Date Pricing, the PDF multi-page
+warning, and every Calendar day cell) were already present from prior phases (13D/13E/12E) — no gaps
+found requiring a fix. Warning/status text (multi-page PDF warning, invalid Manual Hours, Check
+Online/Deep Refresh busy and result messages) was already text-first, never color-only, per the existing
+established convention — no change needed.
+
+### 5. Real-window test coverage added (Part 17)
+
+New file `Phase15ERealWindowLayoutTests.cs` (10 tests, extending Phase 15B's technique rather than
+duplicating it):
+
+- `MainWindow_SectionStrip_EveryButtonReachableWithinWindowBounds` (both viewports) — regression test for
+  fix #1.
+- `AssociateView_ActionBar_EveryActionReachableWithinWindowBounds` (both viewports) — regression test for
+  fix #2, using the same Manual Hours/Private Buyout-enabled state as the existing
+  `AssociateViewOperationalTimeLayoutTests`.
+- `DashboardView_Header_RefreshActionStaysWithinWindowBoundsWithARealisticLongDateLabel` (both
+  viewports) — regression test for fix #3, deliberately using the default fixture's production-formatted
+  date label rather than a synthetic long string.
+- `OperationalNotesView_EditorOpen_NoControlClipsHorizontallyAt960x640`,
+  `HistoryView_WithSelectedDetail_NoControlClipsHorizontallyAt960x640` (using a long promotional product
+  name, a comparison price, and a "Starting From" qualifier as representative stress content per Part 18),
+  `AssociateView_ProductsSection_NoControlClipsHorizontally` (both viewports) — a general, reusable
+  `AssertNoControlClipsHorizontally` sweep (every realized `Button`/`TextBox`'s right edge must stay
+  within the window's client width, 1px tolerance) rather than duplicating per-control assertions.
+
+### 6. Real-window test harness — flake investigated, not silently hidden
+
+While adding the above, a full-solution run (`dotnet test CarowindsPassdown.slnx`) intermittently failed
+a cluster of real-`Window` tests with `Dispatcher.VerifyAccess()` → "the calling thread cannot access
+this object because a different thread owns it." Before assuming this was caused by this phase's new
+tests, it was isolated with a `git stash` A/B comparison against the pre-15E baseline: **the identical
+race reproduces on the untouched Phase 15B code**, confirming this is a pre-existing, known limitation
+(consistent with the one flake Phase 13G already logged for `DashboardViewTests`), not a regression this
+phase introduced. Root cause: `AssemblyInfo.cs`'s own doc comment assumed disabling xUnit's cross-collection
+parallelization keeps every test on "the one thread the module initializer ran on" — that assumption does
+not hold under this assembly's actual xUnit v3 runner; the module initializer runs on whichever thread
+first touches the assembly, and sequential test *execution* is not guaranteed to reuse that same OS
+thread.
+
+A proper fix was attempted (a dedicated, explicitly-owned background thread that all real-`Window` work
+would marshal onto, replacing the incidental-thread-reuse assumption) and **reverted** — it deadlocked
+outright: blocking the `[ModuleInitializer]` method on that thread's own setup conflicts with the CLR's
+loader lock, which is held across module initialization while the new thread tries to JIT/load Avalonia's
+types. A hang is strictly worse than an occasional fast test failure, so `HeadlessTestSetup.cs` and
+`OperationsCalendarViewTests.cs` are back to their original, direct, synchronous form (see both files'
+own updated doc comments for the full account). The flake remains a known, pre-existing, occasionally
+reproducing race — re-running clears it every time observed in this session; a genuine fix would need
+either the `Avalonia.Headless.XUnit` package (blocked by this project's existing xUnit v2/v3 conflict,
+per `HeadlessTestSetup`'s original doc comment) or a deeper test-harness redesign, both out of scope for
+a UI-polish phase.
+
+### 7. Validation
+
+`dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors. Test counts, confirmed on clean runs (the
+known §6 flake was retried until clean, per this phase's own instruction to distinguish a known race from
+a deterministic regression):
+
+- **1664/1664** passing (baseline 1654 + 10 new Phase 15E tests): Domain 105, Application 471, Documents
+  114, Infrastructure 369, Ui 605.
+- Re-run 3× as `dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"`; one run was clean on
+  the first attempt, matching §6's finding that the flake is intermittent, not deterministic.
+
+Database schema 11, `AssociateDraftPayload` schema 3, `FinalizedPassdownSnapshot` schema 1 — all
+unchanged; this phase touches only Desktop presentation XAML and test-only files.
+
+### 8. Windows validation — NOT EXECUTED, manual checklist for 15F
+
+No Windows 11 host was available in this environment. `docs/phase-7e-windows-validation-checklist.md`
+already has a filled-in, PASSED display-scaling section (Part E), but that run was against an old
+`0.1.0-dev` release artifact predating Phases 8 through 15 — it is not current evidence for today's app
+and is not treated as satisfying this phase's own DPI requirement. A concise, current, 15E-scoped
+addendum for 15F:
+
+- [ ] Launch the current (not 0.1.0-dev) extracted app on Windows 11
+- [ ] Titlebar/taskbar icon is the approved `logo.ico`, not a stock Avalonia icon
+- [ ] 100% scaling: Dashboard, Calendar, Associate (Overview/Products/Notes), Operational Notes, History
+      — no clipped text, no unreachable buttons
+- [ ] 125% scaling: same pages, plus typed Manual Hours/Private Buyout fields remain usable and their
+      labels don't clip
+- [ ] 150% scaling: same pages again
+- [ ] Resize the window down to 960×640 (the documented minimum) at each of the above scales — confirm
+      the app-shell section strip, the Associate action bar, and the Dashboard header each wrap to a
+      second line cleanly (this phase's three fixes) rather than clipping
+- [ ] Trigger a PDF >1-page warning and confirm it's readable at each scale
+- [ ] Run Deep Refresh and confirm the busy/status text stays legible and doesn't get clipped
+- [ ] Keyboard-only pass: Tab through Associate Overview and Products, confirm visible focus rings and
+      that tab order matches visual order (including through the new WrapPanel action rows)
+
+Do not fabricate a PASS for any of the above — mark NOT EXECUTED if it wasn't actually run on Windows.
+
+### 9. Deferred to 15F / out of scope
+
+- Real Windows-host DPI validation (§8 above).
+- Rebuilding the Windows release ZIP (explicitly out of scope for 15E, same as 15A/15B).
+- A structural fix for the §6 headless-test-harness thread-affinity flake (would need either the
+  `Avalonia.Headless.XUnit` package or a deeper harness redesign — test-infrastructure work, not UI
+  polish).
+- Phase 15C, 15D, and any further Manager-workflow scope (unchanged CLAUDE.md "current scope decision").
+
+## Git checkpoint (Phase 15E)
+
+Committed as `<pending>` ("Phase 15E: Windows/UI production polish — fix real off-window clipping in
+the app shell, Associate action bar, and Dashboard header; standardize button padding; extend real-window
+layout test coverage").

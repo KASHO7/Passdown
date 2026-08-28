@@ -484,6 +484,13 @@ public class OperationsCalendarViewTests
     /// <c>[assembly: CollectionBehavior(DisableTestParallelization = true)]</c> (see
     /// <c>AssemblyInfo.cs</c>) is what guarantees that in practice: with no competing parallel test
     /// collection, xUnit v2 reuses one thread-pool thread across the whole serial run.
+    ///
+    /// Phase 15E note: this thread-affinity requirement is occasionally violated in practice — a
+    /// dedicated-thread fix was attempted and reverted because it deadlocked outright (a CLR loader-lock
+    /// conflict between the module initializer and the new thread's own type loading); see
+    /// <see cref="HeadlessTestSetup"/>'s doc comment and the hardening doc's Phase 15E section for the
+    /// full investigation. The intermittent failure this causes is a known, pre-existing race — isolate
+    /// and re-run rather than treating a single flaky run as a deterministic regression.
     /// </summary>
     private static async Task<CalendarLayoutSnapshot> RealizeCalendarLayoutAsync(IOperationsCalendarService service, double width, double height)
     {

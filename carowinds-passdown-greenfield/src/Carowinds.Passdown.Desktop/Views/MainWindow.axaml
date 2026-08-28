@@ -89,7 +89,12 @@
              bound separately here. -->
         <Border DockPanel.Dock="Top" Background="{DynamicResource PassdownSurfaceTintBrush}"
                 BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
-            <StackPanel Orientation="Horizontal">
+            <!-- Phase 15E: WrapPanel, not a fixed-width StackPanel — at the documented 960×640 minimum
+                 window size, five section labels plus padding exceed 960px and a plain StackPanel would
+                 push "History" fully off the visible window with no way to reach it. Wrapping to a
+                 second line keeps every section reachable at any supported width instead of silently
+                 clipping the least-recently-added item. -->
+            <WrapPanel Orientation="Horizontal">
                 <Button Classes="appSectionItem" Classes.active="{Binding IsDashboardSectionSelected}"
                         Content="Dashboard" Command="{Binding ShowDashboardSectionCommand}"
                         AutomationProperties.Name="Dashboard section" />
@@ -105,7 +110,7 @@
                 <Button Classes="appSectionItem" Classes.active="{Binding IsHistorySectionSelected}"
                         Content="History" Command="{Binding ShowHistorySectionCommand}"
                         AutomationProperties.Name="History section" />
-            </StackPanel>
+            </WrapPanel>
         </Border>
 
         <!-- All five sections are constructed once and stay alive for the app's lifetime (spec Part

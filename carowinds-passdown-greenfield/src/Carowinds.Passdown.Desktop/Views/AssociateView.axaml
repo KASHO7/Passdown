@@ -134,7 +134,7 @@
       <Setter Property="Foreground" Value="{DynamicResource PassdownHeaderForegroundBrush}" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="CornerRadius" Value="5" />
-      <Setter Property="Padding" Value="16,8" />
+      <Setter Property="Padding" Value="14,7" />
     </Style>
     <Style Selector="Button.secondaryAction">
       <Setter Property="Background" Value="Transparent" />
@@ -143,7 +143,7 @@
       <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="CornerRadius" Value="5" />
-      <Setter Property="Padding" Value="16,8" />
+      <Setter Property="Padding" Value="14,7" />
     </Style>
     <Style Selector="Button.secondaryAction:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
@@ -255,8 +255,13 @@
           </StackPanel>
         </Grid>
 
-        <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*">
-          <Button Grid.Column="0" Content="◀" Width="34"
+        <!-- Phase 15E: WrapPanel, not a fixed Auto,Auto,Auto,Auto,Auto,* Grid — at the documented
+             960×640 minimum window size, the six items (date-nav + three actions) no longer all fit on
+             one row; the previous Grid layout let the trailing star column start past the window's
+             right edge, making Create PDF a zero-width, unreachable control and clipping Export
+             Diagnostics. Wrapping to a second line keeps every action reachable at any supported width. -->
+        <WrapPanel Orientation="Horizontal">
+          <Button Content="◀" Width="34" Margin="0,0,0,6"
                   Command="{Binding PreviousDayCommand}"
                   AutomationProperties.Name="Previous day"
                   ToolTip.Tip="Previous day" />
@@ -267,41 +272,41 @@
                navigation inside the flyout both work natively; selecting a date here never
                triggers online retrieval (spec §6.3) — it goes through the same SelectedDate
                setter as Previous/Next day. -->
-          <CalendarDatePicker Grid.Column="1" SelectedDate="{Binding SelectedDateForPicker}"
+          <CalendarDatePicker SelectedDate="{Binding SelectedDateForPicker}"
                                SelectedDateFormat="Custom"
                                CustomDateFormatString="dddd, MMMM d, yyyy"
                                MinWidth="230"
-                               Margin="8,0,0,0"
+                               Margin="8,0,0,6"
                                AutomationProperties.Name="Operating date"
                                ToolTip.Tip="Choose the operating date" />
 
-          <Button Grid.Column="2" Content="▶" Width="34"
-                  Margin="8,0,0,0"
+          <Button Content="▶" Width="34"
+                  Margin="8,0,0,6"
                   Command="{Binding NextDayCommand}"
                   AutomationProperties.Name="Next day"
                   ToolTip.Tip="Next day" />
 
-          <Button Grid.Column="3" Content="Check Online"
-                  Margin="16,0,0,0"
+          <Button Content="Check Online"
+                  Margin="16,0,0,6"
                   Command="{Binding CheckOnlineCommand}"
                   Classes="primaryAction"
                   AutomationProperties.Name="Check this date online"
                   AutomationProperties.HelpText="Checks official Carowinds sources for this date. Does not run automatically." />
 
-          <Button Grid.Column="4" Content="Export Diagnostics" HorizontalAlignment="Right"
-                  Margin="16,0,0,0"
+          <Button Content="Export Diagnostics"
+                  Margin="16,0,0,6"
                   Command="{Binding ExportDiagnosticsCommand}"
                   Classes="secondaryAction"
                   AutomationProperties.Name="Export Diagnostics"
                   AutomationProperties.HelpText="Saves a support diagnostic ZIP with version, source status, and recent log information. Contains no drafts or personal data." />
 
-          <Button Grid.Column="5" Content="Create PDF" HorizontalAlignment="Right"
-                  Margin="8,0,0,0"
+          <Button Content="Create PDF"
+                  Margin="8,0,0,6"
                   Command="{Binding CreatePdfCommand}"
                   Classes="secondaryAction"
                   AutomationProperties.Name="Create PDF"
                   AutomationProperties.HelpText="Builds today's Associate Passdown PDF and lets you choose where to save it." />
-        </Grid>
+        </WrapPanel>
 
         <ProgressBar IsIndeterminate="True" Height="3"
                      IsVisible="{Binding IsBusy}" />
