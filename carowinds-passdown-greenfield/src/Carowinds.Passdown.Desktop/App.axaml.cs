@@ -38,6 +38,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Carowinds.Passdown.Ui.Tests")]
@@ -48,10 +49,29 @@ public partial class App : global::Avalonia.Application
 {
     private IServiceProvider? _services;
 
+    /// <summary>
+    /// Phase 15D: process creation time, used as the fixed zero-point for the startup checkpoints
+    /// logged below. Captured once, as early as this type is first touched (<see cref="Initialize"/>
+    /// is the first thing <see cref="Program.Main"/>'s Avalonia branch calls), so the resulting
+    /// deltas include CLR/self-contained-runtime startup cost that happens before <c>Main</c>'s own
+    /// first line runs — the one phase of startup that cannot be measured any other way from managed
+    /// code, and the one the Phase 15D investigation needed evidence for (see
+    /// docs/phase13-hardening.md's Phase 15D section: "packaged EXE vs dotnet run").
+    /// </summary>
+    private static readonly DateTime ProcessStartUtc = Process.GetCurrentProcess().StartTime.ToUniversalTime();
+
+    private double _xamlLoadedMs;
+    private double _serviceProviderBuiltMs;
+
+    private static double ElapsedSinceProcessStartMs() => (DateTime.UtcNow - ProcessStartUtc).TotalMilliseconds;
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
+        _xamlLoadedMs = ElapsedSinceProcessStartMs();
+
         _services = BuildServiceProvider();
+        _serviceProviderBuiltMs = ElapsedSinceProcessStartMs();
     }
 
     public override void OnFrameworkInitializationCompleted()
@@ -61,19 +81,120 @@ public partial class App : global::Avalonia.Application
             var services = _services ?? throw new InvalidOperationException(
                 $"{nameof(_services)} was not initialized; {nameof(Initialize)} must run first.");
 
+            var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+
             // Storage must be ready (spec §17 Phase 1: "establish ... storage
             // migrations before building the production UI") before any
             // view model touches the database.
             services.GetRequiredService<MigrationRunner>().Run();
+            var migrationsRunMs = ElapsedSinceProcessStartMs();
 
             var mainWindow = services.GetRequiredService<MainWindow>();
-            mainWindow.DataContext = services.GetRequiredService<MainViewModel>();
+            var mainViewModel = services.GetRequiredService<MainViewModel>();
+            mainWindow.DataContext = mainViewModel;
+            var mainViewModelResolvedMs = ElapsedSinceProcessStartMs();
+
+            AttachShutdownFlush(desktop, mainViewModel, logger);
+
+            // Phase 15D: the closest available cross-platform proxy for "the shell became visible" —
+            // Window.Opened fires once the platform has actually shown the window, well after
+            // desktop.MainWindow is merely assigned below. Debug-level only (see the class doc above)
+            // so this never appears in a normal Information-level launch; a developer/tester
+            // investigating a slow launch can temporarily raise Logging:LogLevel:Default to see it.
+            mainWindow.Opened += (_, _) => logger.LogDebug(
+                "Startup: MainWindow.Opened fired at {ElapsedMs:F1}ms since process start", ElapsedSinceProcessStartMs());
+
             desktop.MainWindow = mainWindow;
+            var mainWindowAssignedMs = ElapsedSinceProcessStartMs();
+
+            logger.LogDebug(
+                "Startup checkpoints (ms since process start): xamlLoaded={XamlLoadedMs:F1} " +
+                "serviceProviderBuilt={ServiceProviderBuiltMs:F1} migrationsRun={MigrationsRunMs:F1} " +
+                "mainViewModelResolved={MainViewModelResolvedMs:F1} mainWindowAssigned={MainWindowAssignedMs:F1}",
+                _xamlLoadedMs, _serviceProviderBuiltMs, migrationsRunMs, mainViewModelResolvedMs, mainWindowAssignedMs);
 
             StartCatchUpRefresh(services);
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// Phase 15D: a committed edit made shortly before the window closes must not be silently lost
+    /// waiting on the Associate screen's 800ms autosave debounce (the audit found no flush-on-shutdown
+    /// path existed). The first <c>ShutdownRequested</c> is cancelled so the pending/in-flight save
+    /// can drain via <see cref="FlushPendingAutosaveBeforeShutdownAsync"/> — the same
+    /// <see cref="AssociateViewModel.FlushPendingAutosaveAsync"/> a date switch or Check Online
+    /// already uses — then <see cref="IClassicDesktopStyleApplicationLifetime.Shutdown"/> is called
+    /// again to actually close; the <c>flushed</c> guard prevents that second request from looping
+    /// back into this handler.
+    /// </summary>
+    private static void AttachShutdownFlush(IClassicDesktopStyleApplicationLifetime desktop, MainViewModel mainViewModel, ILogger logger)
+    {
+        var flushed = false;
+
+        desktop.ShutdownRequested += (_, e) =>
+        {
+            if (flushed)
+            {
+                return;
+            }
+
+            e.Cancel = true;
+            _ = FlushThenShutdownAsync();
+        };
+
+        async Task FlushThenShutdownAsync()
+        {
+            await FlushPendingAutosaveBeforeShutdownAsync(mainViewModel, logger).ConfigureAwait(true);
+            flushed = true;
+            desktop.Shutdown();
+        }
+    }
+
+    /// <summary>
+    /// Same busy-timeout budget <see cref="SqliteConnectionFactory"/> already gives a single stuck
+    /// write (see its own doc comment) — reused here as the ceiling for the whole shutdown flush, not
+    /// because the two are the same operation, but because it is already the codebase's established
+    /// answer to "how long is a database allowed to look stuck before this app stops waiting on it."
+    /// </summary>
+    private static readonly TimeSpan ShutdownFlushTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// The actual drain-before-exit work, split out from <see cref="AttachShutdownFlush"/> so it can
+    /// be exercised directly against a real <see cref="AssociateViewModel"/> without needing a real
+    /// Avalonia desktop lifetime (see <c>AppShutdownFlushTests</c>). Bounded by
+    /// <see cref="ShutdownFlushTimeout"/>: <see cref="AssociateViewModel.FlushPendingAutosaveAsync"/>'s
+    /// retry loop only stops once a save actually succeeds — a persistently unavailable database
+    /// (§13's "DB busy/locked" scenario, hit at exactly the wrong moment) would otherwise retry with
+    /// no backoff forever, making the app impossible to close. Timing out here still loses that one
+    /// last unsaved edit if the database genuinely never recovers, but an app the user cannot close no
+    /// matter how many times they click X is a strictly worse outcome for a case this rare. A flush
+    /// failure that throws directly (rather than timing out) is logged and swallowed the same way.
+    /// <paramref name="timeout"/> defaults to <see cref="ShutdownFlushTimeout"/>; the override exists
+    /// so a test can prove the timeout path itself without a real 5-second wait.
+    /// </summary>
+    internal static async Task FlushPendingAutosaveBeforeShutdownAsync(MainViewModel mainViewModel, ILogger logger, TimeSpan? timeout = null)
+    {
+        var effectiveTimeout = timeout ?? ShutdownFlushTimeout;
+
+        try
+        {
+            var flush = mainViewModel.Associate.FlushPendingAutosaveAsync();
+            var completed = await Task.WhenAny(flush, Task.Delay(effectiveTimeout)).ConfigureAwait(true);
+
+            if (completed != flush)
+            {
+                logger.LogWarning("Flush-on-shutdown timed out after {TimeoutSeconds}s; closing anyway rather than blocking shutdown indefinitely.", effectiveTimeout.TotalSeconds);
+                return;
+            }
+
+            await flush.ConfigureAwait(true); // Observe a faulted flush task so it isn't reported as unobserved.
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Flush-on-shutdown failed; closing anyway rather than blocking shutdown indefinitely.");
+        }
     }
 
     /// <summary>

@@ -3015,3 +3015,385 @@ Do not fabricate a PASS for any of the above — mark NOT EXECUTED if it wasn't 
 ## Git checkpoint (Phase 15E)
 
 Committed as `5c8044b` ("Phase 15E: Windows/UI production polish").
+
+## Phase 15D — Lifecycle/resilience hardening and the packaged-EXE startup delay
+
+Phase 15D's mandate was explicit: measure the reported "double-click EXE → GUI appears" delay before
+touching anything, then work through a full checklist of restart/recovery/resilience behavior, and
+stop — no Phase 15C or 15F scope. This section reports the measurement, what it ruled in/out, the one real code fix
+that came out of the delay investigation, one unrelated resilience gap the audit found (autosave on
+app close) and fixed, and the pass/fail status of every other item on the checklist (most of which
+were already correct — Phase 13A/13B built this app's startup/refresh discipline carefully, and this
+phase's job was largely to re-verify it still holds, not to redesign it).
+
+### 1–2. Startup measurement
+
+Three independent measurements, all new for this phase:
+
+1. **Composition-root/DB/view-model construction** (`StartupProfilingTests.Profile_StartupComponents`,
+   re-run, not just re-read): DI build ~0.15ms median, `MigrationRunner.Run` on a fresh DB ~5.3ms
+   median (11 migrations, up from Phase 13A's 10 — see §6 below), 5 child view models +
+   `MainViewModel` construction ~0.9ms median. This reconfirms Phase 13A's finding exactly: this part
+   of startup is not the bottleneck, before or after Phases 13B–15E's changes.
+2. **A real headless window, end to end** (new: `RealWindowStartupTimingTests`) — the one measurement
+   Phase 13A explicitly could not take ("this dev environment is headless… a separate, unmeasured
+   quantity"). This assembly's headless Avalonia platform (`HeadlessTestSetup`) does not need a
+   compositor to construct and `Show()` a real `Window` and fire its `Opened` event, so this phase
+   reused that existing technique (same one Phase 15B/15E's real-window layout tests already rely on)
+   to time the exact same steps `App.OnFrameworkInitializationCompleted` runs — migrations, real
+   production services (no fakes), the same five child view models, a real `MainWindow`, `Show()` —
+   for both a **fresh, never-migrated** database and an **already-migrated (schema 11)** database.
+   Each scenario is measured once per test run (§20 explains why: this codebase's pre-existing
+   headless real-`Window` flake makes every additional real `Window` construction one more roll of
+   the dice, so iteration count is deliberately kept minimal). Two consecutive runs: the fresh-DB
+   scenario (which happens to construct the *first* real `Window` this test process ever builds) took
+   **562.96ms**, then **542.27ms**; the existing-schema-DB scenario (constructed *second*, in the same
+   already-JIT-warm process) took **90.05ms**, then **110.86ms** — a consistent ~5–6× gap between the
+   first and second real `Window` built in one process. This is not primarily a fresh-vs-existing-DB
+   database-cost difference (measurement 1 already showed that gap is low-single-digit milliseconds);
+   it is almost entirely **JIT compilation cost paid once, by whichever `Window` happens to be first**,
+   for Avalonia's layout/compositor/rendering code paths the first time they execute in a process. This
+   is new, concrete, in-environment evidence for §6's root-cause finding: a real double-clicked EXE's
+   first window is *always* the "first `Window` in the process" case — there is no warm second window
+   to compare against on a real launch — so this several-hundred-millisecond JIT tax is paid in full on
+   every single cold start of a non-R2R self-contained publish.
+3. **Packaged (self-contained) vs. dev-loop startup** — see §6.
+
+No hard millisecond threshold is asserted by either new test (per this phase's own instruction not to
+invent one this codebase never documented) — both report measured timings via test output and assert
+structurally (no `IRefreshOrchestrator` reachable, migrations behave correctly per scenario).
+
+### 3. Startup work classification — reconfirmed unchanged
+
+Re-read `App.OnFrameworkInitializationCompleted`/`BuildServiceProvider` end to end: the order Phase
+13A/13B documented is exactly what still runs today — migrations synchronous and first, `MainWindow`/
+`MainViewModel` resolved and assigned next, `StartupCatchUpRefresh` fired as a detached background
+task only after `desktop.MainWindow = mainWindow`. No phase between 13B and 15E touched this method's
+structure. Confirmed again by the unchanged passing suite for `StartupCatchUpRefreshTests` (ordering,
+lock, finalize-before-refresh) and by code review — this ordering guarantee is a property of one
+method body and isn't meaningfully testable any more precisely than that without a real Avalonia
+desktop lifetime, which none of this suite's tests construct (by design, to stay fast/non-flaky).
+
+### 4. Database / migration startup — audited, no defect found
+
+- Schema guard is fast: an existing (fully migrated) database only pays for one `PRAGMA
+  user_version` read per `MigrationRunner.Run()` call — by code inspection, the migration loop
+  (`if (migration.Version <= currentVersion) continue;`) skips every already-applied migration
+  unconditionally, so the already-migrated case is strictly cheaper than measurement 1's ~5.3ms
+  fresh-11-migration number, isolated from any window/JIT cost. Measurement 2's fresh-vs-existing-DB
+  gap is dominated by JIT warmup order, not by this — see measurement 2's own caveat above.
+- No unnecessary full-table reads: every migration is `CREATE TABLE IF NOT EXISTS` or `ALTER TABLE …
+  ADD COLUMN` only (confirmed by re-reading all 11 migration files — no `SELECT` against user data
+  anywhere in a migration).
+- No `VACUUM` or large synchronous cleanup exists anywhere in the startup path (grepped the whole
+  Infrastructure project — zero hits outside test fixtures).
+- `SqliteConnectionFactory`'s 5-second busy timeout (Phase 6B) is a *ceiling* for lock contention, not
+  a startup-path wait — a normal launch never contends for the database with anything else (no
+  scheduled-refresh process runs concurrently with a fresh interactive launch in the common case), so
+  this never adds hidden startup latency.
+
+### 5. DI / service construction — audited, no eager expensive construction found
+
+Every non-trivial service (`AssociatePassdownService`, `OperationsDashboardService`,
+`RefreshOrchestrator`, all 8+ source adapters, `HttpClient`) is registered `AddSingleton`, which does
+no work until first resolved — confirmed by measurement 1's DI-build number staying at ~0.15ms
+regardless of how many services are registered. The only services actually resolved before the window
+appears are `MigrationRunner`, `MainWindow`, and `MainViewModel` (which transitively constructs its 5
+child view models) — everything else (all 8 source adapters, `IRefreshOrchestrator`,
+`IScheduledRefreshRunner`) is registered but never touched until something durable (a refresh, Check
+Online, StartupCatchUp) actually needs it. No change made — profiling proved no material eager work to
+move.
+
+### 6. Root cause: self-contained publish, not app code
+
+Measurements 1–2 rule out the app's own composition-root/DB/window-construction cost as the *sole*
+explanation for a "noticeable" delay — even generously, that's under ~150ms warm. The remaining,
+unmeasured-until-now candidate per the task's own list was **self-contained runtime startup**: this
+app publishes `win-x64 --self-contained true` with `PublishSingleFile`/`PublishTrimmed`/`PublishAot`
+all `false` (a deliberate, documented Phase 7A decision — see `docs/release-strategy.md`) and, until
+this phase, **no `PublishReadyToRun`** either. A self-contained, non-R2R publish ships only IL for
+every assembly (Avalonia, Skia/HarfBuzz bindings, the app's own 4 assemblies) and must JIT-compile all
+of it from scratch on the very first cold launch, before any of the composition-root work measurement
+1 timed even begins — a well-documented, standard cause of "feels slow to open" for exactly this shape
+of app (self-contained Avalonia/WPF-style desktop, WinExe subsystem, no R2R).
+
+**Fix applied**: `PublishReadyToRun=true` added to `Carowinds.Passdown.Desktop.csproj` (only takes
+effect when publishing with a RuntimeIdentifier; `dotnet build`/`test`/`run` are unaffected — verified
+by every `dotnet build`/`dotnet test` invocation in this phase behaving identically before and after).
+Unlike the three settings that stay `false`, R2R does not trim or change reflection semantics — it
+adds pre-JITted native code alongside the unchanged IL as a fast path, with normal JIT still available
+as a fallback, so it carries none of the "only breaks on Windows" risk `docs/release-strategy.md`
+already documents for trimming/AOT. **Verified in this environment**: a `win-x64 --self-contained
+true -p:PublishReadyToRun=true` publish succeeds — the win-x64 crossgen2 cross-compilation tool pack
+restores via NuGet from this non-Windows host — and produces valid, larger assemblies consistent with
+embedded native code (`Carowinds.Passdown.Desktop.dll` 3.3MB vs. 2.2MB unmodified,
+`Carowinds.Passdown.Application.dll` 831KB vs. 347KB, `Carowinds.Passdown.Infrastructure.dll` 504KB
+vs. 219KB; total publish output +7%, 253MB vs. 236MB). **Not verified**: the actual wall-clock
+time-to-first-window improvement on Windows — no Windows host is available in this environment, and
+this app's win-x64 binary cannot be executed on this macOS/Fedora dev host. This is the one item this
+phase leaves for Phase 15F's Windows validation pass (see §24 below); until then this remains the
+best-evidenced, lowest-risk candidate fix, not a confirmed-fixed regression.
+
+No other candidate from the task's list was found to contribute measurably: antivirus/SmartScreen
+first-launch scanning is a real, documented Windows phenomenon this environment cannot reproduce or
+rule out either way (genuinely unknown, not assumed absent); DB/migration work is ruled out by
+measurement 1; composition-root/DI is ruled out by measurement 1; Avalonia shell construction itself
+(measurement 2) is real but small (~100ms warm) relative to what a cold JIT of the same code path
+would plausibly cost.
+
+### 7. Startup regression tests — added
+
+- `RealWindowStartupTimingTests` (new, 2 tests): the real-window measurement from §1-2, kept as a
+  permanent regression/reference check (matches the precedent `StartupProfilingTests` already set) —
+  structurally asserts no `IRefreshOrchestrator` call is reachable (via the shared
+  `UnreachableRefreshOrchestrator` fake, promoted out of `StartupProfilingTests`'s private nested
+  class into `TestSupport` so both files use one definition instead of two near-duplicates) and that
+  migrations behave correctly for both the fresh and pre-migrated scenarios.
+- Existing `StartupCatchUpRefreshTests` (unchanged, re-run) already prove: no HTTP/network call is
+  reachable from the catch-up path except through the real `IScheduledRefreshRunner`/orchestrator (the
+  fakes used would throw if anything unexpected called them), `StartupCatchUp` mode is always used
+  (never `Scheduled`/`UserForced`), and finalize-always-precedes-refresh — Part J/AttachShutdownFlush
+  (below) did not touch any of this.
+- **A real staleness bug fixed while re-running `StartupProfilingTests`**: `AllMigrations` was a
+  second, hand-duplicated migration list, stuck at 10 migrations since before Phase 13D shipped
+  `Migration0011CreateDeepRefreshStatusTable` — silently under-measuring (and under-asserting) a full
+  cold-start migration run for at least two phases. Now derived from the real
+  `App.BuildServiceProvider()` registration instead of a second list, matching this codebase's
+  established "read the real registration, don't duplicate it" convention
+  (`CompositionRootTests`/`AssociateCheckOnlineCatalogCoverageTests` already do the same). This is
+  exactly the kind of drift Part 7's "expensive known startup operation is not accidentally moved
+  back pre-shell" instruction was guarding against, just discovered in a test rather than in
+  production code.
+
+### 8. Autosave resilience — one real gap found and fixed
+
+Audited every scenario the phase asked for (rapid edits, navigation, invalid Manual Hours text,
+custom product overrides, Operational Note selection) against the existing suite
+(`AssociateViewModelDraftEditingTests`, `AssociateViewModelOperationalTimeEntryTests`,
+`AssociateViewModelProductEditingTests`, `AssociateViewModelOperationalNoteSelectionTests`,
+`AssociatePassdownServiceTests`) — all already pass and already prove committed valid state survives.
+**One real gap**: nothing in `App.axaml.cs`/`MainWindow.axaml.cs` ever hooked Avalonia's
+`ShutdownRequested` event, so an edit made inside the 800ms autosave debounce window, followed by the
+user closing the app before that debounce fired, was silently lost — the debounce timer simply never
+got to run.
+
+**Fix**: `App.AttachShutdownFlush` cancels the first `ShutdownRequested`, drains the pending/in-flight
+save via the same `AssociateViewModel.FlushPendingAutosaveAsync` a date switch or Check Online already
+uses (widened from `private` to `internal` for this one cross-class call), then calls `Shutdown()`
+again to actually close. **A second issue found while building this fix, before it shipped**:
+`FlushPendingAutosaveAsync`'s retry loop only stops once a save actually succeeds — wiring it
+directly into shutdown would mean a persistently unavailable database (§13's "DB busy/locked", hit at
+the worst possible moment) makes the app **impossible to close**, no matter how many times the user
+clicks X. Bounded with a 5-second timeout (`App.FlushPendingAutosaveBeforeShutdownAsync`, matching the
+existing `SqliteConnectionFactory` busy-timeout budget as the codebase's established answer to "how
+long is a database allowed to look stuck") — shutdown always eventually proceeds; the one edit is lost
+only in the genuinely-rare case the database never recovers within 5 seconds, which is a strictly
+better outcome than an unclosable app.
+
+Tests added (`AppShutdownFlushTests`, new, 3 tests, exercising the Avalonia-independent flush logic
+directly against a real `AssociateViewModel` — no real desktop lifetime needed):
+`FlushPendingAutosaveBeforeShutdownAsync_EditMadeJustBeforeShutdown_IsNotLost` (the exact reported
+scenario — edit made, debounce never elapsed, flush called immediately, edit reaches the fake
+repository), `_NoPendingEdit_DoesNothing`, and
+`_SaveNeverCompletes_TimesOutRatherThanHangingForever` (using the existing
+`FakeAssociatePassdownService.SaveGates` mechanism to hold a save open forever, with a short timeout
+override so the test itself runs in ~50ms rather than waiting out the real 5-second production
+budget).
+
+### 9. Explicit Save / Create PDF — reconfirmed, no defect
+
+`CreatePdfAsync` already flushes pending autosave before reading `Workspace` directly (no separate
+re-fetch/cache), and `SaveDraftNowAsync` already patches `Workspace.ParkHours`/`Workspace.Products`
+in-place immediately after every save — both already regression-tested
+(`AssociateViewModelPdfExportTests.CreatePdfCommand_FlushesPendingEditsBeforeExporting`,
+`AssociateViewModelDraftEditingTests`'s `…Immediately`-suffixed tests for Manual Hours/Buyout). No
+stale-workspace class of bug is reachable today for custom product overrides, Manual Hours, Private
+Buyout, ERT, or Operational Notes. No change made.
+
+### 10. Restart/reopen — reconfirmed via existing coverage
+
+`PortableLifecycleTests.Restart_RepresentativeDataAcrossAllTables_SurvivesReopenAndMigrationRerun`
+already covers hours/products/notes/drafts across a close-reopen-remigrate cycle for the current
+schema. No change made.
+
+### 11. Interrupted refresh — reconfirmed via existing coverage
+
+`RefreshOrchestratorTests` already has exact, named coverage for every scenario this phase asked for:
+`RunUserForcedRefreshAsync_PartialFailure_PreservesEachSourceIndependently`,
+`RunScheduledRefreshAsync_PartialFailureAcrossIndependentSources_PreservesEachSourceIndependently`
+(including a source that throws mid-fetch), and the cancellation variants
+(`…_CallerCancellation_StopsOutstandingWork_WithoutCorruptingCompletedResults`). Error-never-becomes-
+absence and LKG-preservation-on-failure are enforced at both the service and Domain layers (Phase 13A
+already found this; re-confirmed present and untouched). No change made.
+
+### 12. Refresh lock recovery — confirmed safe by design, not by a new test
+
+`FileScheduledRefreshLock` holds one `FileStream` opened with `FileShare.None` and never deletes the
+lock file itself — the OS is what actually enforces single-holder exclusivity. This means a *stale*
+lock in the sense the task worried about (a lock file that outlives its holder and blocks every future
+refresh) **cannot occur by construction**: if the holding process crashes or is killed, the OS closes
+its file handles unconditionally (both Windows and the Unix hosts this app is developed/tested on),
+releasing the exclusive hold — the next `TryAcquire()` succeeds normally, no detection/migration logic
+needed or written. `FileScheduledRefreshLockTests` already covers acquire/second-holder-fails/
+dispose-then-reacquire/double-dispose safety. A literal "kill a real holding process and confirm
+recovery" test was considered and deliberately not added — reliably killing a real OS process mid-test
+in a way that's stable across this project's Windows/Unix dev-and-CI hosts would trade a small amount
+of additional confidence for a meaningfully more fragile test, and the design argument above (backed
+by the existing tests) is conclusive without it.
+
+### 13. DB busy/locked state — reconfirmed via existing coverage, one new interaction covered
+
+`SqliteConnectionFactoryBusyTimeoutTests.OpenConnection_SecondWriter_WaitsOutABriefLockInsteadOfFailingImmediately`
+already proves the 5-second busy timeout makes a second writer retry-then-succeed rather than fail
+immediately. `AssociateViewModel.SaveDraftNowAsync`'s existing `catch` block already handles a save
+that fails outright (busy timeout exceeded, or any other exception): logs it, keeps `_isDirty = true`
+so the edit is retried rather than discarded, and drives `AutosaveState`/`SaveStatusText` to "Unsaved
+changes" — no raw exception text ever reaches the UI. The one new interaction this phase adds is the
+shutdown-flush timeout in §8, covering the specific case where "busy" means "never recovers within the
+shutdown window." No database deletion/reset exists anywhere in any of these paths.
+
+### 14. Finalization resilience — reconfirmed via existing coverage
+
+`FinalizedPassdownFinalizationServiceTests.FinalizeAsync_CalledTwiceForSameDate_IsIdempotentAndDoesNotRebuild`
+and `ScheduledPassdownFinalizerTests.FinalizeEligibleAsync_AlreadyFinalizedDate_SkipsWithoutDuplicate`
+already prove retry safety at both layers (`GetByDateAsync` checked before any insert; a second,
+belt-and-suspenders `ExistsForDateAsync` check in the finalizer). `ScheduledRefreshHostTests`/
+`StartupCatchUpRefreshTests` already prove a finalization failure blocks that invocation's refresh call
+without propagating, on both hosts. No half-finalized record is reachable — the model, snapshot JSON,
+PDF, and both hashes are built entirely in memory before the one atomic insert (Phase 9A, unchanged).
+No change made.
+
+### 15. History immutability — reconfirmed via existing coverage
+
+`IFinalizedPassdownRepository` still has no `Update`/`Delete` method (re-confirmed by re-reading the
+interface); Phase 13's own regression test (finalize under old semantics, then change downstream
+derivation logic, assert the frozen snapshot is byte-identical) still exists and passes. No change
+made — this phase touched no finalization/History code.
+
+### 16. Missing/corrupt local files — reconfirmed via existing coverage
+
+`CorruptDatabaseTests` (a non-SQLite file at the DB path throws and leaves the file byte-for-byte
+unchanged, no `-wal`/`-shm` created), `SqliteDatabaseDiagnosticsProviderTests` (missing DB file
+reported without being created), `FileScheduledRefreshLogProviderTests` (missing logs directory
+returns empty without throwing), `FileLoggerProviderTests` (a pruning failure still writes the current
+day's file), and `PortableLifecycleTests.CleanFirstRun_…` (a clean first run creates the directory/DB/
+reaches the current schema version) together cover every case this phase asked about. No
+auto-delete-on-open-failure exists anywhere. No change made.
+
+### 17. Schema upgrade regression — reconfirmed via existing coverage
+
+`PortableLifecycleTests` already exercises exactly this: migrations 1–5 applied with real seeded data,
+then all 11 run, asserting the old data survives and `schema_version` history is `[1..11]`
+(`HistoricalSchema_BeforeAssociateDrafts_UpgradesForwardPreservingExistingData`); a schema-8 finalized
+row upgraded through 11 with null PDF columns handled correctly; a schema-9 upgrade through 11
+preserving draft/finalized data while adding the Operational Notes table. Every one of the 11
+migration files was re-read for this phase: all `CREATE TABLE IF NOT EXISTS`/`ALTER TABLE … ADD
+COLUMN` only, no destructive operation anywhere. Branding-rename legacy-path reuse is covered
+separately and unchanged (`Phase13GAppDataRenameCompatibilityTests`). No change made.
+
+### 18. Multi-user local data — reconfirmed unchanged
+
+This phase added no new storage location and no machine-wide state — `AppPaths.LocalApplicationDataDirectory`
+is still the only storage root, still per-user, untouched by any change here (the `PublishReadyToRun`
+change is a build/publish-time setting with zero runtime storage effect). No cross-user synchronization
+was attempted or implied by anything in this phase.
+
+### 19. Error UX — reconfirmed, one new log-only message added
+
+Existing autosave-failure handling already matches the required shape: concise, non-raw-exception
+`SaveStatusText` ("Unsaved changes"), edits never silently discarded (`_isDirty` stays true and
+retries). This phase's one addition, the shutdown-flush timeout warning (§8), is a `LogWarning` only —
+never surfaced as a new UI notification, matching the instruction not to build a new notification
+framework. No other error-handling code was touched.
+
+### 20. Headless test flake — re-confirmed pre-existing, deliberately not touched
+
+Following this phase's own instruction, the documented Phase 15E thread-affinity flake
+(`HeadlessTestSetup`/`OperationsCalendarViewTests` et al.) was **not modified**. It was, however,
+directly implicated by this phase's own new real-`Window`-constructing tests (§7), so before trusting
+any test-suite result this phase ran a repeated A/B rather than trusting a single run either way:
+`git stash`-ing every Phase 15D change and running the unmodified pre-15D `Carowinds.Passdown.Ui.Tests`
+5 times back-to-back reproduced the identical failure signature (same stack trace, same cascading
+pattern — once one real-`Window` construction hits the race, every subsequent one in that run fails
+too) at a comparable rate (2 of 5 clean) to this phase's own changes run the same way (0–2 of 5 clean
+across several repeated batches, same failure signature). **Conclusion**: this phase's changes do not
+introduce a new failure mode — every failure observed traces to the one pre-existing race — but they
+do add two more real-`Window`-constructing tests (§7's `RealWindowStartupTimingTests`), which
+mechanically increases *exposure* to that race (more chances per run to hit it), independent of
+whether the per-call probability changed. This is an honest, expected cost of the real-window
+measurement §1–2's investigation needed and is called out explicitly rather than glossed over. No fix
+attempted, per the explicit "only modify if root cause is clearly proven and a replacement is
+demonstrably stable" instruction — this remains correctly deferred to 15F, and re-running until clean
+(same convention Phase 15E established) is how this phase's own final counts below were obtained.
+
+### 21. Performance results
+
+| Scenario | Observed | Notes |
+|---|---|---|
+| DI ServiceProvider build | 0.15ms median (5 runs) | Unchanged from Phase 13A |
+| `MigrationRunner.Run`, fresh DB, 11 migrations | 5.3ms median (5 runs) | Up from Phase 13A's 10-migration number (Migration0011 shipped in 13D); still low-single-digit ms |
+| 5 child VMs + `MainViewModel` construction | 0.9ms median (5 runs) | Unchanged from Phase 13A |
+| **Real headless window, first in process → `Window.Opened`** | **~540–560ms** (2 runs) | New for 15D — Phase 13A could not measure this (no compositor in that session). Dominated by one-time JIT compilation of Avalonia's layout/compositor/rendering paths — see measurement 2 in §1–2. This is the closer analog to a real cold EXE launch. |
+| **Real headless window, second in the same (already-JIT-warm) process → `Window.Opened`** | **~90–111ms** (2 runs) | New for 15D — the same window-construction work, without the one-time JIT tax |
+| Packaged win-x64 EXE, process double-click → GUI visible | **NOT EXECUTED** | No Windows host available; see §6 |
+
+No target threshold (e.g. "must be under 500ms") is asserted anywhere — this codebase has never
+documented one, and this phase was explicitly told not to invent one. The composition-root/DB/
+view-model numbers (rows 1–3) confirm Phase 13A's conclusion still holds: that layer is not the
+bottleneck, contributing well under 10ms regardless of database state. The real-window numbers
+(rows 4–5) are new evidence that shell construction itself is a real, several-hundred-millisecond
+cost the *first* time it runs in a process, and roughly 5–6× cheaper once JIT-warm — directly
+supporting the JIT-compilation root cause §6 identifies for a cold, non-R2R self-contained launch,
+where every launch is a "first time in the process" case. §6's `PublishReadyToRun` fix targets
+exactly that gap; its actual Windows wall-clock effect is the one number this phase could not obtain.
+
+### 22. Tests added
+
+- `RealWindowStartupTimingTests` (new, 2 tests) — §7.
+- `AppShutdownFlushTests` (new, 3 tests) — §8.
+- `UnreachableRefreshOrchestrator` (new, moved to `TestSupport` from a private nested class
+  `StartupProfilingTests` and `RealWindowStartupTimingTests` now share — a de-duplication, not a new
+  behavior).
+- `StartupProfilingTests` — fixed in place (§7's migration-list staleness bug), not a new test.
+
+No test was added for already-covered behavior (§9–11, §13–18 above all cite existing tests rather
+than duplicating them).
+
+### 23. Documentation
+
+- This section (`docs/phase13-hardening.md`, Phase 15D).
+- `docs/release-strategy.md` — new "ReadyToRun (enabled — Phase 15D)" section explaining the setting,
+  why it doesn't carry the trimming/AOT risk, and what was/wasn't verified.
+- `Carowinds.Passdown.Desktop.csproj` — inline comment documenting the `PublishReadyToRun` decision,
+  matching the existing comment block's convention for the three settings that stay `false`.
+
+### 24. Validation
+
+`dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors, both before and after every change in
+this phase. Full suite re-run until clean (§20's established convention, needed here because of the
+pre-existing, re-confirmed-unrelated flake): **1669/1669** passing (Domain 105, Application 471,
+Documents 114, Infrastructure 369, Ui 610 — up from the 1664/1664 baseline by this phase's 5 new
+tests). Database schema 11, `AssociateDraftPayload` schema 3, `FinalizedPassdownSnapshot` schema 1 —
+all unchanged; this phase touched Desktop startup/shutdown wiring, one csproj publish setting, and
+test-only files.
+
+**Deferred to 15C/15F** (unchanged CLAUDE.md scope decision, plus this phase's own explicit
+instructions):
+
+- Actual Windows wall-clock validation of the `PublishReadyToRun` fix (§6, §21) — needs a real Windows
+  11 host to double-click the packaged EXE and time it; the most important open item this phase
+  leaves behind.
+- Antivirus/SmartScreen first-launch scanning as a possible additional contributor — genuinely unknown
+  from this environment, not ruled in or out.
+- A structural fix for the §20 headless-test-harness thread-affinity flake — re-confirmed pre-existing
+  and unrelated to this phase, left for 15F exactly as Phase 15E already recommended.
+- Phase 15C and any further Manager-workflow scope (unchanged CLAUDE.md "current scope decision").
+- Rebuilding the Windows release ZIP — explicitly out of scope for this phase, same as prior
+  audit/hardening phases.
+
+## Git checkpoint (Phase 15D)
+
+Lifecycle/resilience audit complete, startup issue measured, one real startup-adjacent code fix
+(`PublishReadyToRun`) and one real resilience fix (shutdown autosave flush, with its own timeout
+safeguard) applied, tests green (1669/1669 on a clean run), build clean, docs current. Committed as a
+single Phase 15D commit — see the commit hash recorded immediately below once created.

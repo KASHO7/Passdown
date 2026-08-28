@@ -1340,8 +1340,12 @@ public partial class AssociateViewModel : ViewModelBase
     /// Part H/I) before the caller replaces it — a date switch or a Check Online recompose. Cancels
     /// the debounce timer itself (no need to wait 800ms for something about to be flushed anyway)
     /// and saves directly instead.
+    ///
+    /// Phase 15D: also called from App.axaml.cs's shutdown handler, so an edit made shortly before
+    /// the window closes is never silently lost waiting on the 800ms debounce — internal (not
+    /// private) purely for that cross-class call within this assembly.
     /// </summary>
-    private async Task FlushPendingAutosaveAsync()
+    internal async Task FlushPendingAutosaveAsync()
     {
         _debounceCts?.Cancel();
 

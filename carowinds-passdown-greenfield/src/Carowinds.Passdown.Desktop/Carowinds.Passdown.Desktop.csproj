@@ -16,7 +16,27 @@
     correctness risk for no proven benefit, and a normal publish directory is easier to
     troubleshoot on a nontechnical user's machine. See docs/release-strategy.md for the full
     rationale and the exact publish command (packaging/windows/Publish-Windows.ps1).
+
+    Phase 15D: PublishReadyToRun=true is set unconditionally but only takes effect when publishing
+    with a RuntimeIdentifier (dotnet build/test/run are unaffected — confirmed no RID is set for
+    any of those). Unlike PublishTrimmed/PublishAot, R2R keeps full IL/metadata and reflection
+    working exactly as today (it only adds pre-JITted native code alongside the IL as a fast path,
+    with normal JIT as the fallback) — it does not carry the trimming risk the paragraph above
+    documents. This targets a real, measured cause of "packaged EXE feels slow to open": a
+    self-contained, non-R2R publish must JIT Avalonia/Skia/HarfBuzz/the app's own assemblies from
+    IL on every cold start, before any composition-root/DB work (which Phase 13A/15D profiling
+    both measured at low-single-digit milliseconds) even begins. Verified in this environment: a
+    self-contained win-x64 publish with this flag set succeeds (the win-x64 crossgen2
+    cross-compilation tool pack restores via NuGet from a non-Windows host) and produces valid
+    win-x64 assemblies (~7% larger publish output — Desktop.dll 3.3MB vs 2.2MB unmodified). Actual
+    wall-clock time-to-first-window improvement on Windows is NOT verified in this environment (no
+    Windows host available) — see docs/phase13-hardening.md's Phase 15D
+    section for the full measurement/reasoning and the 15F Windows validation item this leaves
+    behind.
   -->
+  <PropertyGroup>
+    <PublishReadyToRun>true</PublishReadyToRun>
+  </PropertyGroup>
 
   <ItemGroup>
     <Folder Include="Models\" />

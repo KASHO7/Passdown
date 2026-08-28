@@ -39,6 +39,21 @@ None of these were disabled because they're hard — they were evaluated and rej
 risk (a broken release only discoverable on Windows) outweighs the benefit (smaller download) for
 an internal, nontechnical-audience tool. Revisit only with a concrete, tested reason.
 
+## ReadyToRun (enabled — Phase 15D)
+
+`PublishReadyToRun` is set to `true` (unconditionally in the csproj, but it only takes effect when
+publishing with a RuntimeIdentifier — `dotnet build`/`test`/`run` are unaffected). Unlike the three
+settings above, R2R keeps full IL and reflection support (it adds pre-JITted native code as a fast
+path alongside the unchanged IL, with normal JIT still available as a fallback), so it does not
+carry the same "only breaks on Windows" risk. It targets a real, measured cause of "packaged EXE
+feels slow to open": a self-contained, non-R2R publish must JIT Avalonia/Skia/HarfBuzz/the app's
+own assemblies from IL on every cold start, ahead of the composition-root/DB work that Phase
+13A/15D profiling both measured at low-single-digit milliseconds. Verified in this environment: the
+win-x64 crossgen2 cross-compilation pack restores and publishes cleanly from a non-Windows host
+(~7% larger output). Actual wall-clock improvement on Windows is unverified — no Windows host was
+available; see `docs/phase13-hardening.md`'s Phase 15D section and the Phase 15F Windows-validation
+checklist item this leaves behind.
+
 These decisions are recorded, not merely implied by leaving properties unset: see the comment
 block in [`Carowinds.Passdown.Desktop.csproj`](../src/Carowinds.Passdown.Desktop/Carowinds.Passdown.Desktop.csproj).
 

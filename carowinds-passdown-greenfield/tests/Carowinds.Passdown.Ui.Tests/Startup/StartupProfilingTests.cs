@@ -5,7 +5,6 @@ using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.History;
 using Carowinds.Passdown.Application.OperationalNotes;
-using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop;
 using Carowinds.Passdown.Desktop.ViewModels;
@@ -14,6 +13,7 @@ using Carowinds.Passdown.Infrastructure.Storage.Migrations;
 using Carowinds.Passdown.Infrastructure.Storage.Repositories;
 using Carowinds.Passdown.Infrastructure.Time;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit.Abstractions;
 
@@ -32,6 +32,14 @@ namespace Carowinds.Passdown.Ui.Tests.Startup;
 /// startup/refresh/business-logic code — it only measures what already runs. Safe to delete once
 /// Phase 13A's findings are acted on; harmless to keep (it is a fast, fully local, non-flaky test) if
 /// a later phase wants to re-run it as a regression check.
+///
+/// Phase 15D: re-run as part of the lifecycle/startup-delay investigation (see
+/// docs/phase13-hardening.md's Phase 15D section) — the composition-root/DB/view-model portion of
+/// startup this test measures still sums to low-single-digit milliseconds, confirming the reported
+/// packaged-EXE launch delay is not explained here. Also fixed a real staleness bug found during that
+/// re-run: <see cref="AllMigrations"/> was a hand-duplicated list stuck at 10 migrations (missing
+/// Phase 13D's <c>Migration0011CreateDeepRefreshStatusTable</c>), silently under-measuring a full
+/// cold-start migration run for several phases; it now reads the real registration instead.
 /// </summary>
 public class StartupProfilingTests
 {
@@ -42,32 +50,27 @@ public class StartupProfilingTests
         _output = output;
     }
 
-    /// <summary>Startup never calls <see cref="IRefreshOrchestrator"/> (Associate/Dashboard/Calendar local loads only read persisted state) — a call here would mean this harness accidentally measured something startup doesn't actually do.</summary>
-    private sealed class UnreachableRefreshOrchestrator : IRefreshOrchestrator
+    // Phase 15D: derived from the real composition root (Carowinds.Passdown.Desktop.App) rather than
+    // a second hand-maintained list — the prior hardcoded copy here had silently drifted behind the
+    // real registration (stuck at 10 migrations after Phase 13D's Migration0011 shipped), which
+    // would have quietly under-measured a full-migration cold start. Registering a migration does no
+    // I/O by itself, so resolving this from a throwaway BuildServiceProvider() call is safe and
+    // matches CompositionRootTests' own "read the real registration, don't duplicate it" convention.
+    private static IReadOnlyList<IMigration> AllMigrations
     {
-        public Task<RefreshSummary> RunScheduledRefreshAsync(IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("Startup profiling never triggers retrieval.");
-
-        public Task<RefreshSummary> RunUserForcedRefreshAsync(DateOnly date, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("Startup profiling never triggers retrieval.");
-
-        public Task<RefreshSummary> RunDeepRefreshAsync(bool bypassFreshness, DateOnly? focusDate = null, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("Startup profiling never triggers retrieval.");
+        get
+        {
+            var provider = App.BuildServiceProvider();
+            try
+            {
+                return provider.GetRequiredService<IReadOnlyList<IMigration>>();
+            }
+            finally
+            {
+                (provider as IDisposable)?.Dispose();
+            }
+        }
     }
-
-    private static IReadOnlyList<IMigration> AllMigrations =>
-    [
-        new Migration0001CreateSchemaVersionTable(),
-        new Migration0002CreateSourceStateTable(),
-        new Migration0003CreateDatedResultsTable(),
-        new Migration0004CreateCatalogProductsTable(),
-        new Migration0005CreateProductHistoryTable(),
-        new Migration0006CreateAssociateDraftsTable(),
-        new Migration0007CreateManagerDraftsTable(),
-        new Migration0008CreateFinalizedPassdownsTable(),
-        new Migration0009AddFinalizedPassdownPdfColumns(),
-        new Migration0010CreateOperationalNotesTable(),
-    ];
 
     private static string NewTempDb() => Path.Combine(Path.GetTempPath(), $"carowinds-passdown-13a-{Guid.NewGuid():N}.db");
 
@@ -75,6 +78,8 @@ public class StartupProfilingTests
     public async Task Profile_StartupComponents()
     {
         const int Iterations = 5;
+        var allMigrations = AllMigrations;
+        var expectedFinalVersion = allMigrations.Max(m => m.Version);
 
         var diBuildMs = new List<double>();
         var sqliteOpenMs = new List<double>();
@@ -108,12 +113,12 @@ public class StartupProfilingTests
                 }
                 sqliteOpenMs.Add(openSw.Elapsed.TotalMilliseconds);
 
-                // 3) MigrationRunner.Run() applying all 10 migrations from empty.
-                var migrationRunner = new MigrationRunner(connectionFactory, AllMigrations, NullLogger<MigrationRunner>.Instance);
+                // 3) MigrationRunner.Run() applying every registered migration from empty.
+                var migrationRunner = new MigrationRunner(connectionFactory, allMigrations, NullLogger<MigrationRunner>.Instance);
                 var migrationSw = Stopwatch.StartNew();
                 var finalVersion = migrationRunner.Run();
                 migrationSw.Stop();
-                Assert.Equal(10, finalVersion);
+                Assert.Equal(expectedFinalVersion, finalVersion);
                 migrationRunMs.Add(migrationSw.Elapsed.TotalMilliseconds);
 
                 // 4) The real production service graph (same concrete types the composition root
@@ -173,7 +178,7 @@ public class StartupProfilingTests
 
         Report("DI ServiceProvider build (config load + logging setup + registrations)", diBuildMs);
         Report("SQLite cold connection open (fresh temp db)", sqliteOpenMs);
-        Report("MigrationRunner.Run (10 migrations, empty db)", migrationRunMs);
+        Report($"MigrationRunner.Run ({allMigrations.Count} migrations, empty db)", migrationRunMs);
         Report("5 child view models + MainViewModel construction (fire-and-forget loads not awaited)", viewModelConstructionMs);
         Report("OperationsDashboardService.GetTodayAsync (empty db)", dashboardLoadMs);
     }
