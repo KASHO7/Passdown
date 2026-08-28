@@ -3395,5 +3395,5 @@ instructions):
 
 Lifecycle/resilience audit complete, startup issue measured, one real startup-adjacent code fix
 (`PublishReadyToRun`) and one real resilience fix (shutdown autosave flush, with its own timeout
-safeguard) applied, tests green (1669/1669 on a clean run), build clean, docs current. Committed as a
-single Phase 15D commit — see the commit hash recorded immediately below once created.
+safeguard) applied, tests green (1669/1669 on a clean run), build clean, docs current. Committed as
+`5f33e00` ("Phase 15D: lifecycle/resilience hardening and startup-delay investigation").
