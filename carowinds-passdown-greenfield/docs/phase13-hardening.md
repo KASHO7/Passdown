@@ -3014,6 +3014,4 @@ Do not fabricate a PASS for any of the above — mark NOT EXECUTED if it wasn't 
 
 ## Git checkpoint (Phase 15E)
 
-Committed as `<pending>` ("Phase 15E: Windows/UI production polish — fix real off-window clipping in
-the app shell, Associate action bar, and Dashboard header; standardize button padding; extend real-window
-layout test coverage").
+Committed as `5c8044b` ("Phase 15E: Windows/UI production polish").
