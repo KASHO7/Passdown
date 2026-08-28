@@ -383,4 +383,62 @@ public class AssociateViewModelProductEditingTests
             service.SaveCalls,
             call => call.OperatingDate == Today && call.Draft.ProductOverrides[product.ProductIdentity].IncludeOnPdf == false);
     }
+
+    // Phase 15C: high-priority regression (spec §12) — a product's include/price override is
+    // date-specific. Switching to another date must never show that override, and returning to the
+    // original date must reload it exactly as saved — mirroring the existing
+    // ManualHoursOverride_SurvivesDateSwitchAndReload/DateSwitch_ReturningToThePreviousDate_RestoresItsEdits
+    // coverage this same regression already has for Manual Hours and manual Operational Notes text.
+    // The custom WorkspaceFactory recomposes each date's product list from whatever was actually
+    // saved for it via SaveDraftAsync, the same way the real AssociatePassdownService applies
+    // Draft.ProductOverrides onto AssociateProduct before handing the workspace back.
+    [Fact]
+    public async Task ProductOverride_DoesNotLeakAcrossDates_AndReloadsCorrectlyOnReturn()
+    {
+        var product = SampleProduct();
+
+        // Constructed (and WorkspaceFactory assigned) before AssociateViewModel, so the
+        // constructor's own synchronous initial load can safely call back into service.SaveCalls
+        // (already an initialized empty list at that point, never null).
+        var service = new FakeAssociatePassdownService();
+        AssociateProduct BuildEffectiveProduct(DateOnly date)
+        {
+            var saved = service.SaveCalls.LastOrDefault(call => call.OperatingDate == date);
+            var draftOverride = saved.Draft?.ProductOverrides.GetValueOrDefault(product.ProductIdentity, ProductDraftOverride.Default)
+                ?? ProductDraftOverride.Default;
+
+            return product with
+            {
+                IncludeOnPdf = draftOverride.IncludeOnPdf,
+                DisplayPriceOverride = draftOverride.DisplayPriceOverride,
+            };
+        }
+
+        service.WorkspaceFactory = date => FakeAssociatePassdownService.DefaultWorkspace(date) with { Products = [BuildEffectiveProduct(date)] };
+        var scheduler = new ManualDebounceScheduler();
+        var viewModel = new AssociateViewModel(service, new FakeClock(FixedNow), autosaveDelay: scheduler.Delay);
+        await viewModel.PendingLoad;
+
+        var row = viewModel.ProductSections.Single().Products.Single();
+        row.IncludeOnPdf = false;
+        row.DisplayPriceOverrideText = "45.00";
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var otherDate = Today.AddDays(1);
+        viewModel.SelectedDate = otherDate;
+        await viewModel.PendingLoad;
+
+        var otherRow = viewModel.ProductSections.Single().Products.Single();
+        Assert.False(otherRow.HasOverride); // Today's override must never leak onto otherDate.
+        Assert.True(otherRow.IncludeOnPdf);
+        Assert.Equal("$60.00", otherRow.EffectivePriceText); // official price, not the overridden one.
+
+        viewModel.SelectedDate = Today;
+        await viewModel.PendingLoad;
+
+        var reloadedRow = viewModel.ProductSections.Single().Products.Single();
+        Assert.True(reloadedRow.HasOverride);
+        Assert.False(reloadedRow.IncludeOnPdf);
+        Assert.Equal("$45.00", reloadedRow.EffectivePriceText);
+    }
 }

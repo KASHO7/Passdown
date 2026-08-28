@@ -606,6 +606,19 @@ public partial class AssociateViewModel : ViewModelBase
             if (version == _loadVersion)
             {
                 LoadErrorMessage = "This date could not be loaded from your saved information. Try selecting it again.";
+
+                // Phase 15C: a failed load must not leave the previous date's workspace looking
+                // "current" for SelectedDate. Two concrete risks this closes: (1) ScheduleAutosave
+                // reads _draftDateInEdit, not SelectedDate, to decide where an edit is saved — left
+                // pointing at the old date, a keystroke made after this failure would silently
+                // autosave onto the wrong date's record; clearing it makes ScheduleAutosave a no-op
+                // (still marks AutosaveState Unsaved so the associate can see nothing is being
+                // saved) until a load actually succeeds. (2) CanCreatePdf/CreatePdfAsync read
+                // Workspace directly — left non-null, "Create PDF" would silently stay enabled and
+                // generate a PDF for the stale prior date instead of the one currently selected.
+                Workspace = null;
+                _draftDateInEdit = null;
+                _isDirty = false;
             }
         }
         finally

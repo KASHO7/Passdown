@@ -3397,3 +3397,329 @@ Lifecycle/resilience audit complete, startup issue measured, one real startup-ad
 (`PublishReadyToRun`) and one real resilience fix (shutdown autosave flush, with its own timeout
 safeguard) applied, tests green (1669/1669 on a clean run), build clean, docs current. Committed as
 `5f33e00` ("Phase 15D: lifecycle/resilience hardening and startup-delay investigation").
+
+## Phase 15C — cross-screen workflow/state consistency
+
+Phase 15C audited every navigation path between Dashboard, Operations Calendar, Associate
+(Overview/Products/Notes), and History for selected-date propagation, section/navigation state,
+draft/save-state consistency, refresh-result propagation, and implicit-network/duplicate-load risk.
+This was **not** a redesign: no view was restyled, and `AppSection`/`AssociateSection` are unchanged.
+The audit found the navigation architecture already very mature — Phases 9D–13D incrementally built
+exactly the guarantees this phase was asked to re-prove, each already backed by its own regression
+test (`MainViewModelNavigationTests`, `AssociateViewModelDraftEditingTests`,
+`AssociateViewModelOperationalNoteSelectionTests`, `OperationsCalendarViewModelTests`). One real
+defect was found and fixed (§20 below); everything else below is confirmation plus four new
+regression tests for scenarios that were structurally already correct but had no direct test.
+
+### 1. Selected-date ownership (audit)
+
+There is **no single shared "selected date" object** — each screen owns its own, by design, and the
+Calendar/Dashboard split is deliberate, not an oversight:
+
+| Owner | Property | Independent of |
+|---|---|---|
+| `AssociateViewModel` | `SelectedDate` (`AssociateViewModel.cs:131`) | Calendar's own `SelectedDate`; never read by Dashboard/History |
+| `OperationsCalendarViewModel` | `SelectedDate`/`DisplayedMonth` (`OperationsCalendarViewModel.cs:40,47`) | Associate's `SelectedDate` — "nothing in this type ever reads or writes that property" (class doc comment) |
+| `OperationsDashboardViewModel` | none — always Eastern "today" (`GetTodayAsync`) | both of the above |
+| `PassdownHistoryViewModel` | `SelectedItem` (a finalized-record selection, not a bare `DateOnly`) | Associate's `SelectedDate` (class doc: "nothing here ever touches `AssociateViewModel`") |
+
+`MainViewModel` is the **one** place that ever bridges two of these: Calendar's "Open Passdown" and
+"View Date Pricing" explicitly assign `Associate.SelectedDate = date` (`MainViewModel.cs:80,107`);
+Calendar's "Open History" explicitly calls `History.SelectByDateAsync(date)` (`MainViewModel.cs:96`).
+Every other cross-section navigation (Dashboard's deep links, plain top-level section switches)
+deliberately does **not** touch another screen's date/selection — confirmed by dedicated tests
+(`DashboardDeepLinks_NeverChangeAssociateSelectedDate`,
+`SwitchingToCalendar_NeverChangesAssociateSelectedDate`). This is the existing navigation service the
+spec asked to reuse rather than replace — no global-state framework was introduced.
+
+### 2/3. Calendar → Products (View Date Pricing) behavior
+
+`OperationsCalendarViewModel.ViewDatePricingRequested` → `MainViewModel` sets
+`Associate.SelectedDate = date; Associate.SelectedSection = AssociateSection.Products;` then switches
+`AppSection` (`MainViewModel.cs:105-110`). `AssociateViewModel.SelectedDate`'s setter always routes
+through `SwitchDateAsync` → `LoadDateAsync`, which only ever calls
+`IAssociatePassdownService.LoadAssociateDateAsync` — never `CheckAssociateDateOnlineAsync` — so this
+is local-only by construction, not by convention. **PASS**, re-proven by
+`CalendarViewDatePricingCommand_RoutesToAssociateProductsWithCalendarSelectedDate` and
+`CalendarViewDatePricingCommand_NeverChangesCalendarSelectedDate` (both pre-existing).
+
+### 4. Associate section state (Overview/Products/Notes)
+
+`AssociateSection` switches (`ShowOverviewSection`/`ShowProductsSection`/`ShowNotesSection`,
+`AssociateViewModel.cs:150-157`) are plain property sets with **no** side effects — no load, no save,
+no field reset. `ChangingSelectedSection_NeverChangesSelectedDateOrTriggersLoad` (pre-existing) proves
+no load fires; because the section switch touches none of the `_isDirty`/`_draftDateInEdit`/autosave
+machinery, any in-progress edit and any pending debounce continue running unaffected regardless of
+which internal section is currently shown — the product/notes/overview fields are three views over
+one shared `AssociateViewModel` instance, not three separate load states. **PASS**.
+
+### 5. Dashboard → Associate behavior
+
+Dashboard has no `SelectedDate` of its own — it is always "today" by design (class doc:
+"it always represents 'today' … and never reads/writes `AssociateViewModel.SelectedDate`"). Its two
+deep links (`OpenAssociateOverviewRequested`/`OpenAssociateNotesRequested`) route only the
+**section**, deliberately leaving `Associate.SelectedDate` untouched — confirmed intentional by
+`DashboardDeepLinks_NeverChangeAssociateSelectedDate` and documented at `MainViewModel.cs:52-54`
+("never resets Associate's in-progress edits/autosave state, and it never touches
+`AssociateViewModel.SelectedDate`"). **This is "Dashboard always means today" by design, now
+re-confirmed and documented rather than assumed** — an associate mid-edit on another date opening
+"Open Passdown"/"Open Notes" from Dashboard lands on whatever date Associate already had selected,
+not silently reset to today.
+
+### 6. Associate date switching
+
+`SwitchDateAsync` (`AssociateViewModel.cs:581-585`) is unconditionally flush-then-load: any pending
+debounced autosave for the outgoing date is flushed synchronously (`FlushPendingAutosaveAsync`)
+before `LoadDateAsync` composes the new date's workspace. `ApplyWorkspaceToFields` fully repopulates
+every editable field, every product row, every selected/available Operational Note, and Manual
+Hours/Buyout state from the freshly loaded workspace — there is no partial/incremental field update
+that could leave a prior date's value mixed with a new date's value. A `_loadVersion` counter
+discards a stale in-flight load if a second date change arrives before the first finishes composing
+(`LoadDateAsync`'s `if (version != _loadVersion) return;`), so a rapid double date-change can never
+apply the older response after the newer one. **PASS.**
+
+### 7. Back/return context (decision)
+
+**No back-button/history-stack exists, and none was added.** The app's navigation model is "each
+screen keeps its own state alive for the app's lifetime because all five top-level view models are
+constructed once and never recreated" (`MainViewModel.cs:38-50` — switching `SelectedSection` "only
+toggles which one is visible … it never recreates `Associate`'s in-progress edits/autosave state").
+Returning to any screen therefore already shows exactly what was last there, with no explicit "back"
+concept needed — re-proven for Calendar (`NavigatingAwayFromCalendarAndBack_PreservesItsOwnDisplayedMonthAndSelectedDate`)
+and History (`NavigatingHistoryThenDashboardThenHistory_PreservesHistorySelection`), both pre-existing.
+**DEFERRED BY DESIGN** — inventing a back-stack was explicitly out of scope for 15C.
+
+### 8. History navigation
+
+`PassdownHistoryViewModel` has **no dependency at all** capable of touching the Associate draft or
+catalog tables — its constructor takes only `IPassdownHistoryService`/`IFinalizedPassdownPdfRetrievalService`/
+PDF pickers (`PassdownHistoryViewModel.cs:75-92`), and every value it shows comes from
+`FinalizedPassdown.SnapshotJson`, never live composition. Selecting a History record never writes
+anywhere (`OnSelectedItemChanged` only triggers a read, `LoadDetailAsync`). Calendar's date-specific
+"Open History" (`SelectByDateAsync`) and Dashboard/generic "Open History" (plain section switch,
+preserving whatever was already selected) are two intentionally different behaviors — re-proven by
+`CalendarOpenHistoryCommand_WhenFinalized_RoutesAndSelectsMatchingHistoryRecord` vs.
+`GenericHistoryNavigation_PreservesExistingSelection_EvenAfterVisitingCalendar`. **PASS.**
+
+### 9. Finalized-date behavior (documented, not changed)
+
+Grepping `Carowinds.Passdown.Application/Associate/*.cs` for any `Finalized*` reference returns
+nothing — `AssociateViewModel`/`AssociatePassdownService` have **zero awareness of finalization**.
+This means: **Associate can still open a finalized date, and it behaves exactly like any other
+date** — the live draft loads and remains editable, following the same current product/pricing rules
+as any date, entirely independent of the frozen `FinalizedPassdown` row for that date. Editing (and
+autosaving) a finalized date's live draft **never** touches the finalized snapshot — `FinalizedPassdown`
+has no `Update`/`Delete` (Phase 9 invariant, re-confirmed unchanged this phase) and lives in a
+completely separate table from the draft. This was already the intended design (a finalized date is
+frozen in *History*, not frozen out of the live workflow) — Phase 15C's contribution is writing it
+down explicitly, per the spec's "document current intended behavior if Associate can still open a
+finalized date. Do not guess." **PASS — documented, not changed.**
+
+### 10. Custom product-value isolation (re-proven + one new regression test)
+
+Custom products already round-trip save/load/Check-Online correctly (pre-existing
+`CustomProduct_SurvivesSaveLoadRoundTrip`, `CustomProduct_SurvivesCheckOnline`). The spec flagged
+**official-product** include/price overrides specifically as the "high-priority regression" to
+re-prove end to end (switch away through Products→Notes→Overview, switch to a second date, confirm no
+leak, return, confirm reload) — no such test existed before this phase (the existing
+`DateSwitch_FlushesPendingProductEdits` only proved the flush-on-switch-away half). Added
+`ProductOverride_DoesNotLeakAcrossDates_AndReloadsCorrectlyOnReturn`
+(`AssociateViewModelProductEditingTests.cs`), which drives a `WorkspaceFactory` that recomposes each
+date's product list from whatever was actually saved for it (mirroring how the real
+`AssociatePassdownService` applies `Draft.ProductOverrides` onto `AssociateProduct`), then proves: (1)
+Date A's override is saved, (2) Date B shows the official price/no override, (3) returning to Date A
+reloads the saved override exactly. **PASS — structurally already correct** (per-date
+`ApplyWorkspaceToFields`/`BuildProductSections` full rebuild, §6), **now with direct regression
+coverage**.
+
+### 11. Manual Hours/Buyout isolation, and 12. ERT consistency
+
+Already fully covered by pre-existing tests: `ManualHoursOverride_SurvivesDateSwitchAndReload` and
+`PrivateBuyout_SurvivesDateSwitchAndReload` (`AssociateViewModelDraftEditingTests.cs`) prove both the
+no-leak-onto-a-different-date half and the reload-restores-it-exactly half in one test each. ERT has
+no independent state of its own to leak — `EarlyRideTimeStartText`/`EarlyRideTimeCaptionText` are pure
+derived getters off `LiveParkHours` (itself derived from `Workspace.ParkHours` + the current Manual/
+Buyout override fields, `AssociateViewModel.cs:413-488`), so ERT consistency is inherited directly
+from Manual Hours/Buyout isolation — there is no second, independently-stored ERT time that could
+drift. **PASS, no new code needed** — no gap found beyond what was already tested.
+
+### 13. Operational Notes isolation
+
+Already fully covered: `SwitchingDate_ShowsOnlyThatDatesSelectionsAndSuggestions` proves no leak in
+either direction (a Today selection doesn't appear on `OtherDate`, and `OtherDate`'s own suggestions
+are shown instead), and `Add_SurvivesDateSwitchAwayAndBack` proves the reload-restores-it half.
+Persistent notes remain suggestions only — `AssociateViewModel` has no
+`IOperationalNotesService` dependency at all (`AssociateViewModel_HasNoOperationalNotesServiceDependency`,
+constructor-reflection test), so nothing in the navigation path can auto-include or mutate a
+persistent note's lifecycle. **PASS.**
+
+### 14. Today vs. selected-date behavior (audit)
+
+Four independent "current date" concepts exist and were confirmed never to collide:
+
+- **Today** — `EasternTimeZone.ConvertFromUtc(clock.UtcNow)`, computed fresh wherever needed (Associate's
+  constructor, Calendar's `TodayEastern()`, Dashboard's always-today service call) — never cached
+  or shared as a mutable field.
+- **Calendar's selected date** — independent of Associate's (§1).
+- **Associate's active date** — only ever changed by the user (date picker/prev-next-day) or an
+  explicit Calendar/Dashboard deep link that sets it deliberately.
+- **History's selection** — independent of both (§1/§8).
+
+Dashboard's Reload/Check Online only ever re-fetch **today's own** snapshot
+(`OperationsDashboardService.GetTodayAsync`/`CheckOnlineAsync` — no date parameter exists on either);
+there is no code path by which a Dashboard action could overwrite Calendar's or Associate's own
+selected date. **PASS.**
+
+### 15. Off-month navigation (re-proven with two new cross-screen tests)
+
+Off-month clamping/day-preservation *within* Calendar was already thoroughly tested
+(`SelectDateCommand_OffMonthDate_MovesDisplayedMonthToMatch` and the month-navigation clamp tests in
+`OperationsCalendarViewModelTests`), but no existing test drove an off-month selection **into**
+Associate to prove the exact date (not the 1st, not clamped) survives the hop. Added
+`CalendarOffMonthSelection_OpenAssociate_PreservesExactSelectedDate` and
+`CalendarOffMonthSelection_ViewDatePricing_PreservesExactSelectedDate`
+(`MainViewModelNavigationTests.cs`), each selecting a date in a different month than Calendar started
+on (one after, one before, neither the 1st) and asserting `Associate.SelectedDate` equals it exactly
+after routing. **PASS AFTER FIX — coverage gap closed, no code change needed** (`SelectDate`/
+`SetDisplayedMonthAndSelectedDate` never clamped the day; only `DisplayedMonth` re-anchors).
+
+### 16. Refresh-result propagation
+
+Every screen re-queries its own service on the next load — there is no cached/pushed value anywhere
+that could go stale independent of what's on disk. Dashboard: `ReloadCommand_ReloadsFromService` and
+`ReloadCommand_PicksUpNewlyFinalizedMetadata` (pre-existing) already prove a plain reload reflects
+newly persisted state with no restart needed. Calendar: every `SelectedDate`/`DisplayedMonth` change
+(including simply returning to Calendar after visiting it) calls `LoadAsync` fresh against
+`IOperationsCalendarService` — never a cached snapshot. Associate's own Check Online result flows into
+its own screen immediately (`ApplyWorkspaceToFields(result.Workspace)`,
+`CheckOnlineAsync`). Cross-*screen* propagation (an Associate Check Online updating what Calendar
+shows for the same date) was already proven at the service layer, one level below these view models —
+`AssociateCheckOnlineCatalogCoverageTests` (Application.Tests) exercises a **real**
+`RefreshOrchestrator` and proves the recomposed workspace reflects newly force-refreshed catalog
+products end to end. Since Calendar/Dashboard/Associate/History each independently re-query the same
+underlying persistence through their own read models (never through each other), and no view model
+here caches a snapshot across its own reloads, this is **PASS by architecture** — re-confirmed by
+reading, not duplicated with a second heavyweight cross-view-model integration test (per CLAUDE.md
+"prefer existing reload/read-model mechanisms" and "do not create cross-screen direct object
+coupling").
+
+### 17. Save/autosave consistency
+
+`AssociateAutosaveState` (Saving/Unsaved/Saved) is one shared piece of state for the whole Associate
+screen, not per-section — so "Overview says Saved while Products still shows a stale unsaved value" is
+structurally impossible; there's only one `AutosaveState` for all three internal sections to read.
+`SwitchDateAsync`'s flush-before-load ordering (§6) means a debounce pending at the moment of a date
+switch is always resolved (saved) before the new date's fields are ever populated — the "old edit
+appears under new date" scenario the spec worried about cannot occur because the old edit is written
+to disk under the *old* date first, and the new date's fields come from a fresh
+`LoadAssociateDateAsync` call, never from whatever was still in the text boxes. Phase 15D's shutdown
+flush hardening is the same guarantee applied to app close. **PASS**, re-confirmed via
+`DateSwitch_FlushesPreviousDate_BeforeLoadingTheNewDate` and
+`CalendarOpenAssociateCommand_FlushesDirtyAssociateAutosaveBeforeSwitchingDate` (both pre-existing).
+
+### 18. Duplicate-load audit
+
+Every navigation-triggering property change in this codebase already follows one consistent pattern:
+a `_suppressAutoLoad`/version-guard flag so a compound state change (e.g. Calendar's month+day
+together) resolves to exactly one `LoadAsync` call, never one per property
+(`OperationsCalendarViewModel.SetDisplayedMonthAndSelectedDate`, `AssociateViewModel`'s single
+`SelectedDate` setter). This is already directly tested with explicit counters in Calendar
+(`NextMonthCommand_TriggersExactlyOneLoad`, `SelectDateCommand_InMonthDate_TriggersExactlyOneLoad`,
+`NextDayCommand_CrossingMonthBoundary_TriggersExactlyOneLoad`) and implicitly in Associate
+(`SelectedDateChange_CallsLoadAssociateDateAsync_AndNeverCallsCheckOnline` asserts
+`service.LoadCalls` equals a single-element list). No new duplicate-load risk was found in any of the
+navigation paths audited this phase (Calendar→Associate, Dashboard→Associate, Calendar→History).
+**PASS.**
+
+### 19. No-implicit-network proof
+
+Every screen-to-screen and date-change navigation path was traced and confirmed local-only:
+`AssociateViewModel.SwitchDateAsync`/`LoadDateAsync` call only
+`IAssociatePassdownService.LoadAssociateDateAsync` (never `CheckAssociateDateOnlineAsync`);
+`OperationsCalendarViewModel.LoadAsync` calls only `IOperationsCalendarService.LoadAsync`; every
+`MainViewModel` navigation handler (§1) only assigns `SelectedDate`/`SelectedSection`/calls the same
+local load paths — none calls a refresh method. This is re-proven directly by
+`SelectedDateChange_CallsLoadAssociateDateAsync_AndNeverCallsCheckOnline` and
+`DateSwitch_FlushesPreviousDate_BeforeLoadingTheNewDate`'s `Assert.Empty(service.CheckOnlineCalls)`.
+**PASS, no gap found.**
+
+### 20. Failed-load behavior — one real defect found and fixed
+
+`AssociateViewModel.LoadDateAsync`'s catch block set `LoadErrorMessage` but left `Workspace` and the
+internal "date currently in edit" (`_draftDateInEdit`) pointed at the *previous* successfully-loaded
+date. Two concrete, silent consequences followed from that, neither guarded by any existing test:
+
+1. **Misattributed autosave.** `ScheduleAutosave` keys off `_draftDateInEdit`, not `SelectedDate`. An
+   edit typed right after a failed load (e.g. a corrupt/locked local database for the newly selected
+   date) would silently autosave onto the *previous* date's record — the associate would believe they
+   were editing the date shown in the picker, but the save would land somewhere else entirely.
+2. **Wrong-date PDF export.** `CanCreatePdf`/`CreatePdfAsync` read `Workspace` directly; left non-null
+   and stale, "Create PDF" would stay enabled and silently generate/export a PDF for the previous date
+   instead of the one currently selected.
+
+**Fix** (`AssociateViewModel.cs`, `LoadDateAsync`'s catch block): on a local load failure, in addition
+to setting `LoadErrorMessage`, now also clears `Workspace = null`, `_draftDateInEdit = null`, and
+`_isDirty = false`. This disables `CanCreatePdf` (via `HasWorkspace`) and makes `ScheduleAutosave` a
+safe no-op (still marks `AutosaveState` `Unsaved` so the associate can see something is wrong) until a
+subsequent load actually succeeds — never a raw exception, never a silent write to the wrong date.
+Scalar text fields (Manual Hours, Attendance, etc.) are deliberately left showing the previous date's
+values rather than blanked — a full field-clear was judged out of scope for a rare local-I/O-failure
+corner case (CLAUDE.md: "small UI changes if needed to clarify a real defect," not a form redesign);
+the `LoadErrorMessage` banner is the signal that those values are not confirmed-current for the newly
+selected date. New regression test:
+`SelectedDateChange_LoadFailure_ClearsStaleWorkspaceAndNeverAutosavesOntoThePreviousDate`
+(`AssociateViewModelTests.cs`) — simulates a `LoadAssociateDateAsync` failure via `WorkspaceFactory`
+throwing, then asserts `Workspace` is null, `CreatePdfCommand.CanExecute` is false, and an edit made
+afterward schedules **no** autosave at all (`PendingAutosave.IsCompletedSuccessfully`,
+`service.SaveCalls` stays empty). **PASS AFTER FIX.**
+
+### 21. Workflow tests added (4 new)
+
+1. `AssociateViewModelProductEditingTests.ProductOverride_DoesNotLeakAcrossDates_AndReloadsCorrectlyOnReturn` (§10)
+2. `MainViewModelNavigationTests.CalendarOffMonthSelection_OpenAssociate_PreservesExactSelectedDate` (§15)
+3. `MainViewModelNavigationTests.CalendarOffMonthSelection_ViewDatePricing_PreservesExactSelectedDate` (§15)
+4. `AssociateViewModelTests.SelectedDateChange_LoadFailure_ClearsStaleWorkspaceAndNeverAutosavesOntoThePreviousDate` (§20)
+
+Every other scenario in the spec's 15-item test list (§21 of the task) already had direct, pre-existing
+coverage, cited by name throughout §1–19 above rather than duplicated.
+
+### 22. Schema
+
+Unchanged: DB 11 / `AssociateDraftPayload` (Draft) 3 / `FinalizedPassdownSnapshot` 1. This phase
+touched only `AssociateViewModel.cs` (the §20 fix) and four test files — no persistence/migration
+work was needed or done.
+
+### 23. Headless flake
+
+Hit during full-suite runs this phase (a non-deterministic subset of `OperationsCalendarViewTests`/
+`Phase15ERealWindowLayoutTests`/`RealWindowStartupTimingTests` real-`Window` construction tests,
+different tests failing each run with `InvalidOperationException: The calling thread cannot access
+this object because a different thread owns it` inside Avalonia's `Compositor`) — the same
+pre-existing, previously-documented (Phase 6D onward) Avalonia headless cross-assembly parallelism
+race. Re-run until clean per the established convention (§26). Not touched, per this phase's explicit
+instruction to leave it for 15F.
+
+### 24. Validation
+
+`dotnet build CarowindsPassdown.slnx` — 0 warnings, 0 errors. Full suite re-run until clean (§23):
+**1673/1673** passing (Domain 105, Application 471, Documents 114, Infrastructure 369, Ui 614 — up
+from the 1669/1669 baseline by this phase's 4 new tests).
+
+### 25. Deferred to 15F
+
+- The §23 headless-test-harness thread-affinity flake (unchanged — every prior phase back to 6D has
+  deferred this the same way).
+- Any Manager-workflow scope (unchanged CLAUDE.md "current scope decision").
+- A back/history-navigation stack (§7 — deliberately not invented; the current "everything stays
+  alive" model already satisfies every consistency guarantee this phase re-proved).
+- Blanking Associate's scalar draft fields on a failed load (§20's fix stops the two silent-corruption
+  risks; fully clearing the visible form on a rare local-I/O failure was judged a larger UX change than
+  this phase's scope, and is left as a documented, low-severity, and now clearly-signposted gap).
+
+## Git checkpoint (Phase 15C)
+
+Cross-screen workflow/state consistency audit complete: navigation architecture re-confirmed correct
+across Dashboard/Calendar/Associate/History for every scenario in the task's 26-point checklist, one
+real defect found and fixed (§20 — failed-load state could silently misattribute an autosave or export
+a PDF for the wrong date), four new regression tests added, tests green (1673/1673 on a clean run),
+build clean, docs current. Committed as `<pending>` — hash recorded below once committed.

@@ -696,4 +696,50 @@ public class MainViewModelNavigationTests
         Assert.Equal(monthBefore, calendar.DisplayedMonth);
         Assert.Equal(selectedBefore, calendar.SelectedDate);
     }
+
+    // ==================================================================================
+    // Phase 15C — cross-screen workflow/state consistency
+    // ==================================================================================
+
+    // Spec §17: an off-month selection (a different month than whatever Calendar started
+    // displaying, and not the 1st, so a clamp-to-month-start bug would be caught) must reach
+    // Associate exactly as selected — SelectDate/SetDisplayedMonthAndSelectedDate never clamp the
+    // day itself, only re-anchor DisplayedMonth to match it (Phase 12D Part B).
+    [Fact]
+    public async Task CalendarOffMonthSelection_OpenAssociate_PreservesExactSelectedDate()
+    {
+        var main = CreateMainViewModel(out _, out var calendar, out var associate, out _, out _);
+        await calendar.PendingLoad;
+        Assert.Equal(new DateOnly(2026, 8, 1), calendar.DisplayedMonth);
+
+        var offMonthDate = new DateOnly(2026, 9, 15); // a different month than the one Calendar started on.
+        calendar.SelectDateCommand.Execute(offMonthDate);
+        await calendar.PendingLoad;
+        Assert.Equal(new DateOnly(2026, 9, 1), calendar.DisplayedMonth); // Calendar re-anchored itself.
+
+        calendar.OpenAssociateCommand.Execute(null);
+        await associate.PendingLoad;
+
+        Assert.Equal(AppSection.AssociatePassdown, main.SelectedSection);
+        Assert.Equal(offMonthDate, associate.SelectedDate); // the exact date, not clamped to the 1st.
+    }
+
+    // Same proof for "View Date Pricing" (Products), the other Calendar -> Associate route.
+    [Fact]
+    public async Task CalendarOffMonthSelection_ViewDatePricing_PreservesExactSelectedDate()
+    {
+        var main = CreateMainViewModel(out _, out var calendar, out var associate, out _, out _);
+        await calendar.PendingLoad;
+
+        var offMonthDate = new DateOnly(2026, 7, 3); // a different month, before the one Calendar started on.
+        calendar.SelectDateCommand.Execute(offMonthDate);
+        await calendar.PendingLoad;
+
+        calendar.ViewDatePricingCommand.Execute(null);
+        await associate.PendingLoad;
+
+        Assert.Equal(AppSection.AssociatePassdown, main.SelectedSection);
+        Assert.Equal(AssociateSection.Products, associate.SelectedSection);
+        Assert.Equal(offMonthDate, associate.SelectedDate);
+    }
 }
