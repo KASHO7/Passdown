@@ -25,4 +25,16 @@ public static class SyncEntityIdentity
 
     public static bool TryParseNoteId(string entityId, out Guid noteId) =>
         Guid.TryParseExact(entityId, "D", out noteId);
+
+    /// <summary>
+    /// A finalized passdown's sync identity is its existing surrogate <c>Id</c> Guid (Phase 16A §B, Phase
+    /// 16E §2) — never its <c>PassdownDate</c>. Two independently-finalized records for the same date
+    /// (Phase 16E §14) are two distinct sync entities with two distinct ids; the date alone is never
+    /// unique enough across devices to serve as identity, even though it is unique on any one device's
+    /// own <c>finalized_passdowns</c> table today.
+    /// </summary>
+    public static string ForFinalizedPassdown(Guid id) => id.ToString("D", CultureInfo.InvariantCulture);
+
+    public static bool TryParseFinalizedPassdownId(string entityId, out Guid id) =>
+        Guid.TryParseExact(entityId, "D", out id);
 }

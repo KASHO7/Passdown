@@ -208,4 +208,61 @@ public class SqliteFinalizedPassdownRepositoryTests : IDisposable
         Assert.False(legacySummary.HasFrozenPdf);
         Assert.Null(legacySummary.PdfSizeBytes);
     }
+
+    // Phase 16E §2/§11: GetByIdAsync is Personal Sync's own lookup — the surrogate id, not the date, is
+    // the sync identity, and it must tell "no record with this id" apart from "a record exists under a
+    // different id for this date" (the dual-finalization case).
+    [Fact]
+    public async Task GetByIdAsync_MissingId_ReturnsNull()
+    {
+        var repository = CreateRepository();
+
+        Assert.Null(await repository.GetByIdAsync(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task AddAsync_ThenGetByIdAsync_RoundTripsRecord()
+    {
+        var repository = CreateRepository();
+        var record = Sample();
+
+        await repository.AddAsync(record);
+        var loaded = await repository.GetByIdAsync(record.Id);
+
+        Assert.Equal(record, loaded);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_DoesNotMatchADifferentRecordsIdEvenOnTheSameDate()
+    {
+        var repository = CreateRepository();
+        var record = Sample();
+        await repository.AddAsync(record);
+
+        Assert.Null(await repository.GetByIdAsync(Guid.NewGuid()));
+    }
+
+    // Phase 16E §4/§23: ListForSyncAsync is the cheap per-pass enumeration Personal Sync's export loop
+    // walks — id/date/content-hash only, never the snapshot text or PDF blob.
+    [Fact]
+    public async Task ListForSyncAsync_NoRecords_ReturnsEmpty()
+    {
+        var repository = CreateRepository();
+
+        Assert.Empty(await repository.ListForSyncAsync());
+    }
+
+    [Fact]
+    public async Task ListForSyncAsync_ReturnsIdDateAndContentHash_ForEveryRecord()
+    {
+        var repository = CreateRepository();
+        var record = SampleWithPdf();
+        await repository.AddAsync(record);
+
+        var metadata = Assert.Single(await repository.ListForSyncAsync());
+
+        Assert.Equal(record.Id, metadata.Id);
+        Assert.Equal(record.PassdownDate, metadata.PassdownDate);
+        Assert.Equal(record.ContentHash, metadata.ContentHash);
+    }
 }

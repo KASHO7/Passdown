@@ -374,6 +374,11 @@ public partial class App : global::Avalonia.Application
         // nothing else needs to change at those registrations.
         services.AddSingleton<ISyncEntityStateRepository, SqliteSyncEntityStateRepository>();
         services.AddSingleton<ISyncChangeTracker, SyncChangeTracker>();
+        // Phase 16E: finalized History/PDF sync. PersonalSyncService's constructor now also takes
+        // IFinalizedPassdownRepository — already registered above (Phase 9A) — resolved automatically;
+        // no separate finalization-to-sync hook was added (spec §22: export dirtiness is decided by
+        // content-hash comparison during enumeration, so a never-synced finalized passdown is picked up
+        // on the very next "Sync Now" without any change to FinalizedPassdownFinalizationService).
         services.AddSingleton<IPersonalSyncService, PersonalSyncService>();
 
         // Phase 16D: explicit conflict resolution and deletion/tombstone propagation. ISyncConflictRepository

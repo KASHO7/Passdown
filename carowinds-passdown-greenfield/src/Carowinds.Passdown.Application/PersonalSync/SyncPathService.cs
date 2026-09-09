@@ -46,11 +46,55 @@ public static class SyncPathService
     public static string GetOperationalNoteFilePath(string selectedRootPath, Guid noteId) =>
         Path.Combine(GetNotesDirectoryPath(selectedRootPath), $"{FormatGuid(noteId)}.json");
 
-    public static string GetHistoryJsonFilePath(string selectedRootPath, DateOnly passdownDate) =>
-        Path.Combine(GetSyncFolderPath(selectedRootPath), HistoryFolderName, $"{FormatDate(passdownDate)}.json");
+    /// <summary>The <c>history/</c> directory itself (Phase 16E §5) — mirrors <see cref="GetDraftsDirectoryPath"/>/<see cref="GetNotesDirectoryPath"/>; never scanned recursively, never assumed to contain only canonical filenames.</summary>
+    public static string GetHistoryDirectoryPath(string selectedRootPath) =>
+        Path.Combine(GetSyncFolderPath(selectedRootPath), HistoryFolderName);
 
-    public static string GetHistoryPdfFilePath(string selectedRootPath, DateOnly passdownDate) =>
-        Path.Combine(GetSyncFolderPath(selectedRootPath), HistoryFolderName, $"{FormatDate(passdownDate)}.pdf");
+    /// <summary>
+    /// A finalized passdown's identity is its Guid, not its date (Phase 16A §B, Phase 16E §2) — the
+    /// filename includes both because two independent devices can each finalize the same
+    /// <paramref name="passdownDate"/> with a different <paramref name="id"/> (Phase 16E §6/§14:
+    /// "audit whether operating date alone is guaranteed unique... if not, use a naming scheme that
+    /// cannot collide"). The date-only naming Phase 16A §E originally illustrated could not survive that
+    /// case — two devices' independent finalizations for the same date would silently overwrite each
+    /// other's file. Filenames stay inspectable (date is still the leading, human-readable segment) and
+    /// deterministic (same input always maps to the same name).
+    /// </summary>
+    public static string GetHistoryJsonFilePath(string selectedRootPath, DateOnly passdownDate, Guid id) =>
+        Path.Combine(GetHistoryDirectoryPath(selectedRootPath), $"{FormatHistoryFileStem(passdownDate, id)}.json");
+
+    public static string GetHistoryPdfFilePath(string selectedRootPath, DateOnly passdownDate, Guid id) =>
+        Path.Combine(GetHistoryDirectoryPath(selectedRootPath), $"{FormatHistoryFileStem(passdownDate, id)}.pdf");
+
+    /// <summary>
+    /// The inverse of <see cref="GetHistoryJsonFilePath"/>/<see cref="GetHistoryPdfFilePath"/>'s naming
+    /// (Phase 16E §5/§6) — a canonical history filename is always exactly <c>yyyy-MM-dd-&lt;guid-D&gt;</c>
+    /// (10 + 1 + 36 = 47 characters). Anything else (an OneDrive conflict-copy name, a stray file, a
+    /// pre-16E date-only name from an unreleased build) fails to parse and must be left untouched by the
+    /// caller (Phase 16C §28's "unexpected filename ignored" rule, extended to History).
+    /// </summary>
+    public static bool TryParseHistoryFileName(string fileNameWithoutExtension, out DateOnly passdownDate, out Guid id)
+    {
+        passdownDate = default;
+        id = Guid.Empty;
+
+        const int expectedLength = DateLength + 1 + GuidLength;
+        if (fileNameWithoutExtension is not { Length: expectedLength } stem || stem[DateLength] != '-')
+        {
+            return false;
+        }
+
+        var datePart = stem[..DateLength];
+        var guidPart = stem[(DateLength + 1)..];
+
+        return DateOnly.TryParseExact(datePart, DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out passdownDate)
+            && Guid.TryParseExact(guidPart, "D", out id);
+    }
+
+    private const int DateLength = 10; // "yyyy-MM-dd"
+    private const int GuidLength = 36; // Guid.ToString("D") length
+
+    private static string FormatHistoryFileStem(DateOnly passdownDate, Guid id) => $"{FormatDate(passdownDate)}-{FormatGuid(id)}";
 
     private static string FormatDate(DateOnly date) => date.ToString(DateFormat, CultureInfo.InvariantCulture);
 

@@ -10,6 +10,9 @@ internal sealed class InMemoryFinalizedPassdownRepository : IFinalizedPassdownRe
     public Task<FinalizedPassdown?> GetByDateAsync(DateOnly passdownDate, CancellationToken cancellationToken = default) =>
         Task.FromResult(_records.GetValueOrDefault(passdownDate));
 
+    public Task<FinalizedPassdown?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
+        Task.FromResult(_records.Values.FirstOrDefault(r => r.Id == id));
+
     public Task<bool> ExistsForDateAsync(DateOnly passdownDate, CancellationToken cancellationToken = default) =>
         Task.FromResult(_records.ContainsKey(passdownDate));
 
@@ -31,5 +34,14 @@ internal sealed class InMemoryFinalizedPassdownRepository : IFinalizedPassdownRe
             .ToList();
 
         return Task.FromResult(summaries);
+    }
+
+    public Task<IReadOnlyList<FinalizedPassdownSyncMetadata>> ListForSyncAsync(CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<FinalizedPassdownSyncMetadata> metadata = _records.Values
+            .Select(r => new FinalizedPassdownSyncMetadata(r.Id, r.PassdownDate, r.ContentHash))
+            .ToList();
+
+        return Task.FromResult(metadata);
     }
 }

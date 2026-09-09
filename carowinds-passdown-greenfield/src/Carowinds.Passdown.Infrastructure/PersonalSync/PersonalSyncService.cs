@@ -1,28 +1,37 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Time;
+using Microsoft.Data.Sqlite;
 
 namespace Carowinds.Passdown.Infrastructure.PersonalSync;
 
 /// <summary>
-/// <see cref="IPersonalSyncService"/> — the one Phase 16C/16D sync pass: import every valid Associate
-/// draft/Operational Note file (including tombstones, Phase 16D §11-§18), detect (never auto-resolve)
-/// conflicts — persisting the full conflicting remote envelope so 16D's resolution UI can act on it
-/// after a restart (§2) — then export local pending/bootstrap changes, including any pending local
-/// deletion (§13). Reuses <see cref="IPersonalSyncSettingsService"/> for readiness/folder/manifest
-/// checks rather than re-implementing that logic (spec §1 "identical to Phase 15/16B" when sync is off
-/// or not ready). All conflict/idempotence/deletion decisions are delegated to the pure
-/// <see cref="SyncReconciliation.Decide"/> function; this type only does filesystem enumeration/I-O and
-/// repository calls around it.
+/// <see cref="IPersonalSyncService"/> — the one Phase 16C/16D/16E sync pass: import every valid
+/// Associate draft/Operational Note file (including tombstones, Phase 16D §11-§18) and every valid
+/// finalized History/PDF pair (Phase 16E §11-§19), detect (never auto-resolve) conflicts — persisting
+/// the full conflicting remote envelope so resolution UI can act on it after a restart (§2) — then
+/// export local pending/bootstrap changes, including any pending local deletion (§13) and any
+/// never-synced finalized passdown (§10/§22). Reuses <see cref="IPersonalSyncSettingsService"/> for
+/// readiness/folder/manifest checks rather than re-implementing that logic (spec §1 "identical to Phase
+/// 15/16B" when sync is off or not ready). Draft/note conflict/idempotence/deletion decisions are
+/// delegated to <see cref="SyncReconciliation.Decide"/>; finalized-passdown decisions to the simpler,
+/// insert-only <see cref="FinalizedPassdownSyncReconciliation.Decide"/> (Phase 16E §12 — a different
+/// conflict model, not reused verbatim from drafts/notes). This type only does filesystem
+/// enumeration/I-O and repository calls around those pure decisions. A failure isolated to one History
+/// record (malformed JSON, missing/corrupt PDF, an integrity conflict) never blocks drafts/notes sync,
+/// and vice versa (Phase 16E §23).
 /// </summary>
 public sealed class PersonalSyncService(
     IPersonalSyncSettingsService settingsService,
     IDeviceIdProvider deviceIdProvider,
     IAssociateDraftRepository draftRepository,
     IOperationalNoteRepository noteRepository,
+    IFinalizedPassdownRepository finalizedPassdownRepository,
     ISyncEntityStateRepository stateRepository,
     ISyncConflictRepository conflictRepository,
     IClock clock) : IPersonalSyncService
@@ -64,8 +73,10 @@ public sealed class PersonalSyncService(
 
             await ImportDraftsAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
             await ImportNotesAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
+            await ImportHistoryAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
             await ExportDraftsAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
             await ExportNotesAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
+            await ExportHistoryAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
 
             return counters.ToResult();
         }
@@ -616,6 +627,332 @@ public sealed class PersonalSyncService(
         await ExportPendingTombstonesAsync(root, deviceId, now, liveEntityIds, SyncEntityType.OperationalNote, counters, cancellationToken).ConfigureAwait(false);
     }
 
+    // ----- History: import (Phase 16E §11-§19) -----
+
+    /// <summary>
+    /// Scans <c>history/</c> for canonical <c>&lt;yyyy-MM-dd&gt;-&lt;guid&gt;.json</c> files (Phase 16E
+    /// §5/§6) and processes each valid one. An unexpected filename (an OneDrive conflict copy, a stray
+    /// file, anything that doesn't match the exact naming <see cref="SyncPathService.TryParseHistoryFileName"/>
+    /// expects — including an orphan <c>.pdf</c> with no JSON, which this loop never even looks for,
+    /// §18) is silently left untouched, mirroring drafts/notes' own §28 rule.
+    /// </summary>
+    private async Task ImportHistoryAsync(string root, Guid deviceId, DateTimeOffset now, Counters counters, CancellationToken cancellationToken)
+    {
+        var directory = SyncPathService.GetHistoryDirectoryPath(root);
+        if (!Directory.Exists(directory))
+        {
+            return;
+        }
+
+        foreach (var file in Directory.GetFiles(directory, "*.json"))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!SyncPathService.TryParseHistoryFileName(Path.GetFileNameWithoutExtension(file), out var fileDate, out var fileId))
+            {
+                continue;
+            }
+
+            var readResult = await SyncFileReader.ReadJsonAsync<SyncEnvelope>(
+                file,
+                SyncEnvelopeSerializer.Options,
+                envelope => envelope.SyncSchemaVersion <= SyncEnvelopeSerializer.CurrentSyncSchemaVersion,
+                cancellationToken).ConfigureAwait(false);
+
+            switch (readResult.Status)
+            {
+                case SyncFileReadStatus.Success:
+                    await ProcessHistoryEnvelopeAsync(readResult.Value!, root, fileDate, fileId, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
+                    break;
+
+                case SyncFileReadStatus.Missing:
+                    // Disappeared between the directory listing and the read — never inferred as anything (§19).
+                    break;
+
+                case SyncFileReadStatus.IoError:
+                    counters.IoFailures++;
+                    break;
+
+                default: // Malformed, UnsupportedVersion — never destructive (§19).
+                    counters.Malformed++;
+                    break;
+            }
+        }
+    }
+
+    private async Task ProcessHistoryEnvelopeAsync(
+        SyncEnvelope envelope, string root, DateOnly fileDate, Guid fileId, Guid deviceId, DateTimeOffset now, Counters counters, CancellationToken cancellationToken)
+    {
+        var entityId = SyncEntityIdentity.ForFinalizedPassdown(fileId);
+
+        // Never trust the filename alone — an envelope claiming the wrong entity/type, a tombstone
+        // (History has no deletion model, §20), or missing its content hash is rejected, not guessed at.
+        if (envelope.EntityType != SyncEntityType.FinalizedPassdown
+            || !string.Equals(envelope.EntityId, entityId, StringComparison.Ordinal)
+            || envelope.IsDeleted
+            || string.IsNullOrEmpty(envelope.ContentHash))
+        {
+            counters.Malformed++;
+            return;
+        }
+
+        if (envelope.DeviceId == deviceId)
+        {
+            // Our own previously exported pair, read back during this pass's scan — never a remote change.
+            counters.HistoryUnchanged++;
+            counters.Unchanged++;
+            return;
+        }
+
+        FinalizedPassdownSyncPayload payload;
+        try
+        {
+            payload = FinalizedPassdownSyncPayloadSerializer.Deserialize(envelope.Payload);
+        }
+        catch (JsonException)
+        {
+            counters.Malformed++;
+            return;
+        }
+
+        if (payload.Id != fileId
+            || payload.PassdownDate != fileDate
+            || !string.Equals(payload.ContentHash, envelope.ContentHash, StringComparison.Ordinal))
+        {
+            // Identity/hash mismatch between filename, envelope, and payload — never trusted (§19).
+            counters.Malformed++;
+            return;
+        }
+
+        try
+        {
+            FinalizedPassdownSnapshotSerializer.Deserialize(payload.SnapshotJson);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            counters.Malformed++;
+            return;
+        }
+
+        if (!string.Equals(FinalizedPassdownSnapshotSerializer.ComputeContentHash(payload.SnapshotJson), payload.ContentHash, StringComparison.Ordinal))
+        {
+            // The stored snapshot text and the claimed content hash disagree — corrupt, never trusted (§19).
+            counters.Malformed++;
+            return;
+        }
+
+        var pdfPath = SyncPathService.GetHistoryPdfFilePath(root, fileDate, fileId);
+        if (!File.Exists(pdfPath))
+        {
+            // JSON without its PDF companion yet — never import an incomplete pair (§16). Retried
+            // automatically once the PDF appears; the JSON file itself is left untouched either way.
+            counters.HistoryIncomplete++;
+            return;
+        }
+
+        byte[] pdfBytes;
+        try
+        {
+            pdfBytes = await File.ReadAllBytesAsync(pdfPath, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            counters.IoFailures++;
+            return;
+        }
+
+        var actualPdfHash = Convert.ToHexStringLower(SHA256.HashData(pdfBytes));
+        if (!string.Equals(actualPdfHash, payload.PdfSha256, StringComparison.OrdinalIgnoreCase) || pdfBytes.LongLength != payload.PdfSizeBytes)
+        {
+            // Corrupt/hash-mismatched PDF — never imported, and the local (if any) copy is never
+            // touched (§17). Counted as a conflict: this needs a human to look at it, exactly like the
+            // integrity conditions below.
+            counters.HistoryConflicts++;
+            counters.Conflicts++;
+            return;
+        }
+
+        var localById = await finalizedPassdownRepository.GetByIdAsync(fileId, cancellationToken).ConfigureAwait(false);
+        var localContentHashForSameId = localById?.ContentHash;
+        var localExistsForSameDate = localById is null
+            && await finalizedPassdownRepository.ExistsForDateAsync(fileDate, cancellationToken).ConfigureAwait(false);
+
+        var decision = FinalizedPassdownSyncReconciliation.Decide(deviceId, envelope.DeviceId, envelope.ContentHash, localContentHashForSameId, localExistsForSameDate);
+
+        switch (decision)
+        {
+            case FinalizedPassdownSyncDecision.Ignored:
+                counters.HistoryUnchanged++;
+                counters.Unchanged++;
+                break;
+
+            case FinalizedPassdownSyncDecision.RemoteOnlyImport:
+            {
+                var record = payload.ToDomain(pdfBytes);
+                try
+                {
+                    // A dedicated immutable-import path (Phase 16E §11) — never the normal finalization
+                    // workflow, which would recompute the snapshot/hash from live data and could mutate
+                    // timestamps/content. This inserts the exact frozen bytes as-is, preserving identity.
+                    await finalizedPassdownRepository.AddAsync(record, cancellationToken).ConfigureAwait(false);
+                }
+                catch (SqliteException)
+                {
+                    // Defensive only: a genuine local finalization for this exact date could theoretically
+                    // race this import between the checks above and this insert. Never crashes the pass;
+                    // simply retried (and re-evaluated fresh) next time.
+                    counters.IoFailures++;
+                    return;
+                }
+
+                await stateRepository.UpsertAsync(
+                    SyncEntityState.CreateNew(SyncEntityType.FinalizedPassdown, entityId, now) with
+                    {
+                        SyncedRevision = 1,
+                        SyncedContentHash = envelope.ContentHash,
+                        LastRemoteDeviceId = envelope.DeviceId,
+                        LastRemoteRevision = envelope.Revision,
+                    },
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                counters.HistoryImported++;
+                counters.Imported++;
+                break;
+            }
+
+            case FinalizedPassdownSyncDecision.Converged:
+            {
+                var state = await stateRepository.GetAsync(SyncEntityType.FinalizedPassdown, entityId, cancellationToken).ConfigureAwait(false);
+                await stateRepository.UpsertAsync(
+                    (state ?? SyncEntityState.CreateNew(SyncEntityType.FinalizedPassdown, entityId, now)) with
+                    {
+                        SyncedRevision = 1,
+                        SyncedContentHash = envelope.ContentHash,
+                        LastRemoteDeviceId = envelope.DeviceId,
+                        LastRemoteRevision = envelope.Revision,
+                        UpdatedAtUtc = now,
+                    },
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                counters.HistoryUnchanged++;
+                counters.Unchanged++;
+                break;
+            }
+
+            case FinalizedPassdownSyncDecision.ImmutableConflict:
+            {
+                // Same Guid, different content — never expected in practice (two devices cannot mint the
+                // same finalization id independently), but never silently overwritten either side if it
+                // somehow occurs (Phase 16E §13). Keyed by the shared id, so this local record's own
+                // export is also paused (never re-exported over an unresolved conflict).
+                var state = await stateRepository.GetAsync(SyncEntityType.FinalizedPassdown, entityId, cancellationToken).ConfigureAwait(false);
+                await RecordConflictAsync(SyncEntityType.FinalizedPassdown, entityId, envelope, FinalizedPassdownSyncPayloadSerializer.Serialize(payload), envelope.ContentHash, isDeleted: false, state, now, cancellationToken).ConfigureAwait(false);
+                counters.HistoryConflicts++;
+                counters.Conflicts++;
+                break;
+            }
+
+            case FinalizedPassdownSyncDecision.DualFinalizationConflict:
+            {
+                // Two devices independently finalized the same operating date under different ids (Phase
+                // 16E §14). Deliberately keyed by the REMOTE record's own entity id, not the local
+                // record's — the local finalized passdown is a legitimate, distinct record that must keep
+                // syncing normally; only this specific remote record is flagged as needing review, and
+                // both source artifacts (the local file this device already exported, and the remote file
+                // untouched in the shared folder) are preserved as-is (never mutated, never deleted).
+                var state = await stateRepository.GetAsync(SyncEntityType.FinalizedPassdown, entityId, cancellationToken).ConfigureAwait(false);
+                await RecordConflictAsync(SyncEntityType.FinalizedPassdown, entityId, envelope, FinalizedPassdownSyncPayloadSerializer.Serialize(payload), envelope.ContentHash, isDeleted: false, state, now, cancellationToken).ConfigureAwait(false);
+                counters.HistoryConflicts++;
+                counters.Conflicts++;
+                break;
+            }
+        }
+    }
+
+    // ----- History: export (Phase 16E §8/§9/§10) -----
+
+    /// <summary>
+    /// Walks every local finalized passdown (Phase 16E §10 bootstrap included — a never-synced record
+    /// has no <see cref="SyncEntityState"/> row, so its hash trivially never matches
+    /// <see cref="SyncEntityState.SyncedContentHash"/>) and exports any not already confirmed in sync.
+    /// Since finalized passdowns are immutable, <see cref="FinalizedPassdown.ContentHash"/> for a given
+    /// id never changes — a single equality check against <see cref="SyncEntityState.SyncedContentHash"/>
+    /// is sufficient for both "never exported" and "already exported, nothing to do" (no revision
+    /// bookkeeping needed the way drafts/notes need it). No tombstone export exists for History (Phase
+    /// 16E §20 — there is no delete operation for finalized passdowns at all).
+    /// </summary>
+    private async Task ExportHistoryAsync(string root, Guid deviceId, DateTimeOffset now, Counters counters, CancellationToken cancellationToken)
+    {
+        var metadata = await finalizedPassdownRepository.ListForSyncAsync(cancellationToken).ConfigureAwait(false);
+
+        foreach (var item in metadata)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var entityId = SyncEntityIdentity.ForFinalizedPassdown(item.Id);
+            var state = await stateRepository.GetAsync(SyncEntityType.FinalizedPassdown, entityId, cancellationToken).ConfigureAwait(false);
+            if (state?.ConflictState == SyncConflictState.Conflicting)
+            {
+                // Never export over an unresolved immutable-history conflict (§13/§20).
+                continue;
+            }
+
+            if (state is not null && string.Equals(state.SyncedContentHash, item.ContentHash, StringComparison.Ordinal))
+            {
+                continue; // Already in sync — insert-only content never changes, so this alone is sufficient (§6/§21).
+            }
+
+            var record = await finalizedPassdownRepository.GetByDateAsync(item.PassdownDate, cancellationToken).ConfigureAwait(false);
+            if (record is null || record.Id != item.Id || !record.HasFrozenPdf)
+            {
+                // Defensive: raced with something else since the metadata listing, or a legacy pre-9C
+                // row with no frozen PDF at all — never regenerated (§4), so there is nothing to export.
+                continue;
+            }
+
+            var payload = FinalizedPassdownSyncPayload.FromDomain(record);
+            var envelope = new SyncEnvelope
+            {
+                SyncSchemaVersion = SyncEnvelopeSerializer.CurrentSyncSchemaVersion,
+                EntityType = SyncEntityType.FinalizedPassdown,
+                EntityId = entityId,
+                DeviceId = deviceId,
+                Revision = 1,
+                ModifiedUtc = record.FinalizedAtUtc,
+                IsDeleted = false,
+                PayloadSchemaVersion = FinalizedPassdownSyncPayload.CurrentSchemaVersion,
+                Payload = JsonSerializer.SerializeToElement(payload, FinalizedPassdownSyncPayloadSerializer.Options),
+                ContentHash = record.ContentHash,
+            };
+
+            var jsonPath = SyncPathService.GetHistoryJsonFilePath(root, record.PassdownDate, record.Id);
+            var pdfPath = SyncPathService.GetHistoryPdfFilePath(root, record.PassdownDate, record.Id);
+
+            try
+            {
+                // PDF first, JSON last (§8/§9/§24) — a reader must never observe a JSON envelope whose
+                // PDF companion isn't already fully present; the presence of a valid JSON record means
+                // its PDF is guaranteed complete.
+                await AtomicFileWriter.WriteBytesAsync(pdfPath, record.PdfBytes!, cancellationToken).ConfigureAwait(false);
+                await AtomicFileWriter.WriteTextAsync(jsonPath, SyncEnvelopeSerializer.Serialize(envelope), cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                counters.IoFailures++;
+                continue; // Left dirty (state unchanged) — retried next pass (§9/§34); OneDrive never part of the finalization transaction itself.
+            }
+
+            await stateRepository.UpsertAsync(
+                (state ?? SyncEntityState.CreateNew(SyncEntityType.FinalizedPassdown, entityId, now)) with
+                {
+                    SyncedRevision = 1,
+                    SyncedContentHash = record.ContentHash,
+                    UpdatedAtUtc = now,
+                },
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            counters.HistoryExported++;
+            counters.Exported++;
+        }
+    }
+
     // ----- Tombstone export (shared by drafts and notes) -----
 
     /// <summary>
@@ -763,8 +1100,14 @@ public sealed class PersonalSyncService(
         public int Conflicts;
         public int Malformed;
         public int IoFailures;
+        public int HistoryImported;
+        public int HistoryExported;
+        public int HistoryUnchanged;
+        public int HistoryConflicts;
+        public int HistoryIncomplete;
 
         public PersonalSyncResult ToResult() => new(
-            PersonalSyncOutcome.Completed, Imported, Exported, Unchanged, Conflicts, Malformed, IoFailures, null);
+            PersonalSyncOutcome.Completed, Imported, Exported, Unchanged, Conflicts, Malformed, IoFailures, null,
+            HistoryImported, HistoryExported, HistoryUnchanged, HistoryConflicts, HistoryIncomplete);
     }
 }

@@ -1606,3 +1606,396 @@ entity type's import/export loop against the same `SyncReconciliation.Decide`/`I
 (though History's own insert-only/content-hash dedup rule, per 16A §G, is a different — simpler —
 conflict model than drafts/notes', so 16E will still need its own decision path, not `Decide` reused
 verbatim). No blocking gap identified.
+
+---
+
+# Phase 16E — Personal Sync: Finalized History and Frozen PDFs (Implementation)
+
+Implements the last deferred entity kind: finalized passdowns and their frozen PDFs now move between
+two devices through the shared sync folder, using the insert-only/content-hash-dedup conflict model
+16A §G and 16D's own readiness note called for — deliberately not drafts/notes' revision-tracked,
+resolvable conflict model. History remains immutable and read-only in every respect; sync only ever
+inserts a complete, byte-identical frozen record, never edits or regenerates one.
+
+## 16E.1 Entity type and identity
+
+No new `SyncEntityType` member was needed — `FinalizedPassdown` has existed on the enum since 16B.
+[`SyncEntityIdentity.ForFinalizedPassdown(Guid)`/`TryParseFinalizedPassdownId`](../src/Carowinds.Passdown.Application/PersonalSync/SyncEntityIdentity.cs)
+mirrors `ForNote` exactly (lowercase-hyphenated `"D"` Guid format). **The primary sync `EntityId` is
+`FinalizedPassdown.Id` (the existing surrogate Guid) — never `PassdownDate`.** This was audited, not
+assumed: `PassdownDate` is unique only *within one device's own* `finalized_passdowns` table
+(`ux_finalized_passdowns_passdown_date`); two devices can independently finalize the same date with two
+different `Id`s (§16E.6 below), so date can never serve as cross-device identity. No existing History
+identity was changed to make this work — `Id` was already the app's own surrogate key (16A §B).
+
+## 16E.2 Sync payload
+
+[`FinalizedPassdownSyncPayload`/`FinalizedPassdownSyncPayloadSerializer`](../src/Carowinds.Passdown.Application/PersonalSync/FinalizedPassdownSyncPayload.cs) —
+schema version **1** — carries `Id`, `PassdownDate`, `FinalizedAtUtc`, `SnapshotSchemaVersion`,
+`SnapshotJson` (the exact, already-frozen `FinalizedPassdownSnapshotSerializer` text, reused
+byte-for-byte), `ContentHash`, `Origin`, and `PdfSha256`/`PdfSizeBytes`. The frozen PDF bytes themselves
+are never embedded in this payload (16A §D/§E) — they travel as the sibling `.pdf` file. `FromDomain`
+throws if called on a record with no frozen PDF (`HasFrozenPdf == false`, a legacy pre-9C row) — the
+export loop guards this before ever constructing a payload, so the throw is a defensive invariant, not
+expected reach in practice.
+
+## 16E.3 ContentHash audit result
+
+Audited exactly what `FinalizedPassdown.ContentHash` covers before using it for anything (spec's
+explicit "do not assume"): `FinalizedPassdownSnapshotSerializer.ComputeContentHash` hashes **the
+snapshot JSON only** — it has never covered the PDF. This is authoritative and reused as-is for
+snapshot/record identity comparisons (dedupe, immutable-conflict, dual-finalization detection) —
+no new hash scheme for the snapshot. For the PDF, `FinalizedPassdown.PdfSha256` — already computed by
+`FinalizedPassdownFinalizationService` since Phase 9C for local integrity/diagnostics — is reused as
+the sync layer's PDF integrity check (§7's "if PDF integrity requires a separate binary hash, add one
+cleanly to the sync payload/envelope metadata" — the existing column already *is* that hash; nothing
+new was added to `FinalizedPassdown`'s own schema). `SyncEnvelope.ContentHash` (defined since 16A/16B,
+unused until now) carries the snapshot content hash for every finalized-passdown envelope.
+
+## 16E.4 File naming and path collision fix
+
+**Audited before relying on it (spec §6's explicit instruction), and it failed**: 16A/16B's original
+`GetHistoryJsonFilePath`/`GetHistoryPdfFilePath` design used `<date>.json`/`<date>.pdf` alone (illustrative
+in 16A §E, implemented but never wired to any writer in 16B). Since identity is the Guid, not the date
+(§16E.1), and two devices can independently finalize the same date, that naming would silently let one
+device's export overwrite the other's file for the same date — exactly the collision spec §6 warns
+about. Both methods were changed (never wired to any real writer before this phase, so this was a
+pre-release correction, not a breaking change to a shipped format) to
+[`SyncPathService.GetHistoryJsonFilePath(root, date, id)`/`GetHistoryPdfFilePath(root, date, id)`](../src/Carowinds.Passdown.Application/PersonalSync/SyncPathService.cs),
+producing `history/<yyyy-MM-dd>-<guid-D>.json`/`.pdf` — deterministic, collision-proof (Guid-suffixed),
+and still inspectable (date remains the leading, human-readable segment). `TryParseHistoryFileName`
+is the exact inverse, rejecting anything that isn't precisely `yyyy-MM-dd-<guid>` (47 characters) —
+an OneDrive conflict-copy name, a stray file, or a hypothetical pre-16E date-only name all fail to
+parse and are left untouched, mirroring 16C §28's "unexpected filename ignored" rule. Centralized
+entirely in `SyncPathService`, per spec §6.
+
+## 16E.5 Repository additions
+
+Two additions to [`IFinalizedPassdownRepository`](../src/Carowinds.Passdown.Application/Persistence/FinalizedPassdownPersistence.cs)
+(SQLite implementation:
+[`SqliteFinalizedPassdownRepository`](../src/Carowinds.Passdown.Infrastructure/Storage/Repositories/SqliteFinalizedPassdownRepository.cs)),
+neither requiring a schema change (both are new queries over existing columns):
+
+- `GetByIdAsync(Guid id)` — the import path's own lookup; needed to tell "a local record with this
+  exact remote id already exists" apart from "a local record exists for this date under a different
+  id" (the dual-finalization case). `GetByDateAsync` alone cannot make this distinction.
+- `ListForSyncAsync()` → `FinalizedPassdownSyncMetadata(Id, PassdownDate, ContentHash)` — the cheap
+  per-pass enumeration the export loop walks (mirrors `ListAsync`'s own "never select `pdf_bytes`/
+  `snapshot_json` for a listing" rationale, §4).
+
+## 16E.6 Reconciliation — a dedicated, simpler decision path
+
+[`FinalizedPassdownSyncDecision`/`FinalizedPassdownSyncReconciliation.Decide`](../src/Carowinds.Passdown.Application/PersonalSync/FinalizedPassdownSyncReconciliation.cs) —
+a **separate** pure function from drafts/notes' `SyncReconciliation.Decide`, exactly as 16D's own
+Phase-16E-readiness note anticipated ("a different — simpler — conflict model... not `Decide` reused
+verbatim"). No revision tracking, no safe-update/tombstone branches — insert-only content never
+changes once written, so the entire decision collapses to:
+
+```
+if envelope.DeviceId == our own device                                -> Ignored
+if a local record exists with this exact id
+    same ContentHash                                                  -> Converged (dedupe)
+    different ContentHash                                             -> ImmutableConflict   (§13)
+else if a local record exists for the same PassdownDate (different id) -> DualFinalizationConflict (§14)
+else                                                                    -> RemoteOnlyImport
+```
+
+`PersonalSyncService.ProcessHistoryEnvelopeAsync` supplies the looked-up facts (`GetByIdAsync`, and
+`ExistsForDateAsync` only when `GetByIdAsync` returned nothing — never both lookups on the common
+same-id path) and acts on the decision.
+
+## 16E.7 Import pipeline and integrity gates
+
+Before `Decide` is ever called, `ProcessHistoryEnvelopeAsync` runs a fixed sequence of structural
+checks, each a hard reject (never partially applied, never crashing the pass):
+
+1. Filename parses as canonical `yyyy-MM-dd-<guid>.json` (§16E.4) — else silently skipped (unexpected
+   filename, §28-style).
+2. Envelope `EntityType == FinalizedPassdown`, `EntityId` matches the filename's guid, `IsDeleted ==
+   false` (History has no tombstone model, §20), `ContentHash` present — else `MalformedCount++`.
+3. Self-authored (`envelope.DeviceId == this device`) — counted as `HistoryUnchangedCount`, returns
+   immediately (never even looks for the PDF).
+4. Payload deserializes; its `Id`/`PassdownDate`/`ContentHash` all agree with the filename and envelope
+   — else `MalformedCount++` (never trusts one source over another).
+5. `SnapshotJson` deserializes as a `FinalizedPassdownSnapshot`, and re-hashing it via
+   `FinalizedPassdownSnapshotSerializer.ComputeContentHash` matches the claimed `ContentHash` — else
+   `MalformedCount++` (corrupt/mismatched snapshot text never trusted).
+6. Companion `.pdf` file exists — else `HistoryIncompleteCount++` (§16 — an expected, retried-later
+   race, never a failure or conflict) and the JSON is left completely untouched.
+7. PDF reads without an `IOException`/`UnauthorizedAccessException` — else `IoFailureCount++`.
+8. PDF's actual SHA-256 and byte length match the payload's `PdfSha256`/`PdfSizeBytes` — else
+   `HistoryConflictCount++` (§17 — corrupt/hash-mismatched PDF is treated as needing manual review,
+   same bucket as a genuine content conflict; never imported, never overwrites a local copy, remote
+   files left untouched).
+
+Only after all eight gates pass does `FinalizedPassdownSyncReconciliation.Decide` run.
+
+## 16E.8 Remote-only import — a dedicated immutable path
+
+`RemoteOnlyImport` calls `finalizedPassdownRepository.AddAsync(payload.ToDomain(pdfBytes))` directly —
+**never** `IFinalizedPassdownFinalizationService.FinalizeAsync`, which would recompute a snapshot/hash
+from live `AssociateWorkspace`/catalog/hours data and could mutate timestamps or content (spec §11's
+explicit "do not invoke normal finalization if it would mutate timestamps/content"). `AddAsync` already
+*is* the dedicated immutable-import path 16A/16C established for drafts' `RemoteOnlyImport` case
+too — no new repository method was needed for this, only a new caller supplying pre-validated frozen
+bytes exactly as originally produced. A `SqliteException` from the underlying unique-date constraint
+(a defensive-only race between the pre-checks and the insert) is caught and counted as an I/O failure,
+never crashing the pass — retried fresh next time.
+
+## 16E.9 Export pipeline and ordering
+
+`ExportHistoryAsync` walks `ListForSyncAsync()` every pass (this **is** bootstrap — no separate
+bootstrap code path, §10; a never-synced record has no `SyncEntityState` row, so its hash trivially
+never matches `SyncedContentHash`). For each record not already confirmed in sync and not mid-conflict:
+
+```
+write PDF (AtomicFileWriter.WriteBytesAsync, temp-then-rename)
+    ↓
+write JSON envelope LAST (AtomicFileWriter.WriteTextAsync, temp-then-rename)
+```
+
+matching spec §8/§24 exactly — a reader must never observe a JSON envelope whose PDF isn't already
+fully present; the presence of a valid JSON record means its PDF is guaranteed complete. A record with
+no frozen PDF at all (`HasFrozenPdf == false`, a legacy pre-9C row) is skipped entirely — never
+regenerated from current data (§4/§10's explicit "only if the original frozen PDF is genuinely missing
+and existing product behavior explicitly supports recovery" — no such recovery behavior exists today,
+so the row is simply left perpetually un-exportable, a known, narrow limitation).
+
+Top-level `PersonalSyncService.RunAsync` order (§24, extending 16C/16D's existing drafts→notes
+ordering): **Import drafts → Import notes → Import History → Export drafts → Export notes → Export
+History.** History is placed last in each half deliberately — it is the largest payload (PDF-dominated)
+and the one entity kind with no possibility of a local mutation racing the pass (immutable), so nothing
+is gained by prioritizing it ahead of the smaller, higher-frequency draft/note records.
+
+## 16E.10 Finalization hook — deliberately none added
+
+Per spec §22's explicit "if current generic metadata can infer unsynced History during enumeration,
+avoid adding unnecessary hooks": no change was made to
+[`FinalizedPassdownFinalizationService`](../src/Carowinds.Passdown.Application/Finalization/IFinalizedPassdownFinalizationService.cs)
+or `ISyncChangeTracker`. `ExportHistoryAsync`'s own per-pass enumeration (§16E.9) already discovers a
+newly-finalized record on the very next "Sync Now" — its `SyncEntityState` row (or lack of one)
+naturally reflects "never synced" without any write-time notification. This is a deliberate asymmetry
+from drafts/notes (which *do* have a `MarkLocalChangeAsync` hook, 16C §8) — those are mutable and can
+change many times without a new insert to enumerate against, so their dirtiness needs an explicit nudge;
+History is insert-only, so a full per-pass scan is already exactly as cheap and always current.
+
+## 16E.11 Same-id/different-content — immutable conflict (spec §13)
+
+Never expected in real operation (two devices cannot independently mint the same `Guid.NewGuid()`), but
+handled defensively per spec's explicit instruction not to assume it can't happen. `ImmutableConflict`
+routes through the *same* generic `PersonalSyncService.RecordConflictAsync` helper 16D built for
+drafts/notes (entirely reused, no changes) — keyed by the shared `Id`'s own `EntityId`, which also
+naturally pauses that record's own future export (the existing "never export over
+`SyncConflictState.Conflicting`" gate in `ExportHistoryAsync`, same mechanism as drafts/notes). No
+"Keep This Device"/"Use Other Device" resolution exists for this conflict shape (§16E.14).
+
+## 16E.12 Same-date/different-id — dual-finalization conflict (spec §14)
+
+The realistic conflict case, verified with a dedicated two-device test
+(`History_I_TwoDevicesIndependentlyFinalizeSameDate_...`). Deliberately keyed by the **remote**
+record's own `EntityId`, not the local record's: the local finalized passdown for that date is a
+legitimate, distinct, correctly-identified record and must keep syncing normally (verified: it exports
+in the very same pass the conflict is detected, §16E.9's per-pass export walk is entirely independent
+of the disputed remote entity's `SyncEntityState` row). Only the disputed *remote* record is marked
+conflicting — it is never inserted locally, and the remote device's own files are never touched. Both
+source artifacts survive untouched on their respective devices' exported copies in the shared folder
+(different Guid-suffixed filenames, §16E.4, so they were never at risk of colliding in the first place).
+
+## 16E.13 Persisted conflict model — no new table
+
+Both conflict shapes (§16E.11/§16E.12) reuse the existing 16D `sync_conflicts` table/
+`ISyncConflictRepository` entirely unmodified — `RemoteDeviceId`, `RemoteContentHash`,
+`RemotePayloadJson` (the full `FinalizedPassdownSyncPayload` JSON, carrying the disputed record's own
+`Id`/`PassdownDate`/hash for a future admin view), `DetectedAtUtc`, and the "newer remote activity"
+fields all apply as-is. `RemoteIsDeleted` is always `false` for a History conflict (no tombstone model,
+§16E.15) — the field simply goes unused for this entity type rather than needing a new one. No schema
+migration was needed; DB schema remains **13**.
+
+## 16E.14 No resolution actions for History conflicts (spec §13/§30)
+
+[`PersonalSyncConflictResolutionService`](../src/Carowinds.Passdown.Infrastructure/PersonalSync/PersonalSyncConflictResolutionService.cs)
+explicitly refuses (`ConflictResolutionOutcome.WrongActionForConflict`) all three resolution actions —
+`ResolveKeepLocalAsync`/`ResolveUseRemoteAsync`/`ResolveAcceptDeletionAsync` — when called with
+`SyncEntityType.FinalizedPassdown`, before any of the existing draft/note branching runs (defense in
+depth: that branching has no third case and would otherwise misinterpret a finalized-passdown Guid as
+a note id). `GetConflictsAsync()` — the 16D mutable-entity conflict review list — filters
+`FinalizedPassdown` conflicts out entirely, rather than surfacing an entry with no safe action to offer
+against it. History conflict visibility in 16E is the `PersonalSyncResult.HistoryConflictCount` line in
+the Sync Now result only (§16E.16) — a dedicated admin-facing review/resolution surface is explicitly
+deferred beyond 16E, matching spec §30's "do not build complicated immutable-history resolution UI in
+16E."
+
+## 16E.15 Tombstones/deletion — audited, none exists or was added
+
+Per spec §20's explicit audit instruction: `IFinalizedPassdownRepository` has no delete method, no code
+path resolves/archives a finalized passdown, and no product UI offers deleting one. **No History
+deletion UI or tombstone-export logic was added.** `ExportPendingTombstonesAsync` (16D, shared by
+drafts/notes) is never called for `SyncEntityType.FinalizedPassdown` — History's export path
+(`ExportHistoryAsync`) is a separate method with no tombstone step at all. An incoming envelope with
+`IsDeleted == true` for a `FinalizedPassdown` entity is rejected as malformed (§16E.7 step 2) rather
+than acted on — the generic tombstone machinery exists at the `SyncEntityType` level (16D built it to
+be entity-agnostic) but is never invoked for History, exactly as 16D's own Phase 16E-readiness note
+anticipated.
+
+## 16E.16 `PersonalSyncService`/Sync Now integration
+
+[`PersonalSyncResult`](../src/Carowinds.Passdown.Application/PersonalSync/IPersonalSyncService.cs)
+gained five additive, defaulted fields — `HistoryImportedCount`, `HistoryExportedCount`,
+`HistoryUnchangedCount`, `HistoryConflictCount`, `HistoryIncompleteCount` — alongside the existing
+generic counts (a History event also increments the matching generic counter, e.g. a History import
+counts in both `HistoryImportedCount` and `ImportedCount`, so the top-line "N imported" total stays
+correct without a caller needing to add two numbers). `HistoryIncompleteCount` (§16) is the one bucket
+counted nowhere else — a JSON-without-PDF race is neither a failure nor a conflict.
+[`PersonalSyncResultPresentation.Format`](../src/Carowinds.Passdown.Desktop/Presentation/PersonalSyncResultPresentation.cs)
+appends up to three clauses when relevant: `"N history items synced."`, `"N history conflict(s) —
+requires manual review."`, `"N history items waiting for their PDF."` — omitted entirely when there was
+no History activity, matching spec §30's illustrative example format. One broken History record (a
+malformed file, a corrupt PDF, an integrity/dual-finalization conflict) never blocks draft/note sync in
+the same pass, and vice versa — each entity kind's import/export loop catches and counts its own
+I/O failures independently (verified: `History_M_MalformedJsonAmongValidHistoryRecords_...` and the
+existing drafts/notes isolation tests both still pass unmodified).
+
+## 16E.17 Privacy
+
+Extended the existing standing privacy guard
+(`ExportedSyncFiles_NeverContainMachineNameUsernameOrLocalPaths`) to include a finalized History record
+in the same sync pass it already exercises for drafts/notes — still zero occurrences of
+`Environment.UserName`, `Environment.MachineName`, the local AppData-equivalent path, or
+"Token"/"Password"/"Credential" (case-insensitive) anywhere in the exported JSON. `FinalizedPassdownSnapshot`
+content (park hours, attendance, ERT, Daily Feature, product rows, operational notes text) is exactly
+the same category of already-printed operational content 16A §I cleared for drafts — nothing new.
+`DeviceId` remains the only device identifier, a bare `Guid`.
+
+## 16E.18 Storage measurement
+
+Measured directly (not estimated) from a realistic multi-category snapshot serialized through the real
+`FinalizedPassdownSnapshotSerializer`: compact snapshot JSON ≈ **1.3 KB**; the full indented sync
+envelope wrapping it (`FinalizedPassdownSyncPayload` + `SyncEnvelope` overhead) ≈ **2.9 KB**. Frozen
+PDFs are unchanged by this phase and still measure **57-58 KB** per 16A §J's direct measurement (this
+phase never touches PDF generation). One History sync item ≈ 2.9 KB (JSON) + ~58 KB (PDF) ≈ **~61 KB**
+— materially unchanged from 16A §J's original ~60-65 KB estimate; no update to the multi-year
+projection table is needed.
+
+## 16E.19 Two-device simulation results
+
+Extended [`PersonalSyncServiceTests`](../tests/Carowinds.Passdown.Infrastructure.Tests/PersonalSync/PersonalSyncServiceTests.cs)'s
+existing harness (`TestDevice` now also carries `IFinalizedPassdownRepository`, constructed the same
+way as every other per-device repository). A `BuildFinalizedPassdown` helper builds a real,
+fully-deserializable `FinalizedPassdownSnapshot` through the actual production serializer/hasher, plus
+a small fake PDF with a matching SHA-256 — exactly what finalization would have produced, without
+needing a full `AssociateWorkspace`. No change-tracker call is needed for History (§16E.10 — no hook
+exists), so tests call `AddAsync` directly.
+
+| Scenario | Result |
+|---|---|
+| A. A finalizes → Sync → B imports exact frozen snapshot text and byte-identical PDF | PASS |
+| C. Repeated sync passes → idempotent, no re-export/re-import | PASS |
+| E. First device with existing local History → bootstraps on first sync pass | PASS |
+| F. Both devices already hold the identical finalized record → converges silently, no conflict | PASS |
+| H. Same id, different content hash → immutable conflict; neither side overwritten; export paused | PASS |
+| I. Two devices independently finalize the same date → dual-finalization conflict surfaced; both artifacts preserved; local record still syncs normally | PASS |
+| J. JSON arrives before its PDF → not imported; PDF arrives later → import then succeeds | PASS |
+| K. Orphan PDF with no JSON → ignored, never imported, never deleted | PASS |
+| L. Corrupt/hash-mismatched PDF → rejected, never imported, local never overwritten | PASS |
+| M. Malformed History JSON among valid records → processes the others, reports `MalformedCount` | PASS |
+| Conflict-resolution refusal: Keep Local/Use Remote/Accept Deletion all refused for `FinalizedPassdown`; excluded from the mutable-entity conflict list | PASS |
+
+Scenarios B (byte-identical PDF) and D (offline-then-later-import) are folded into scenario A's own
+assertions (byte-for-byte `PdfBytes` equality; B only ever calls `Sync.RunAsync()` after A has already
+exported, which is exactly "B was offline, A finalized, B later imports" — no separate code path
+distinguishes "offline" from "hasn't synced yet"). Scenario N (sync folder unavailable → local History
+remains usable) is not duplicated for History specifically — `RunAsync`'s early `NotReady`/`Disabled`
+short-circuit (16C, unchanged) returns before any entity-specific import/export method (drafts, notes,
+*or* History) is ever invoked, so the existing `RunAsync_FolderUnavailable_...`/
+`RunAsync_SyncDisabled_...` tests already cover History's share of this guarantee without a duplicate.
+
+## 16E.20 Failure/retry behavior
+
+- Remote import `AddAsync` failure (defensive `SqliteException` catch, §16E.8): counted as an I/O
+  failure, `SyncEntityState` left untouched, retried fresh next pass.
+- PDF write success, JSON write failure (§9): caught, counted, state left dirty — next pass rewrites
+  both (PDF overwrite is safe/atomic) and succeeds.
+- PDF write failure before JSON (§9): the JSON write is never reached (sequential, PDF first) — no
+  partial pair is ever observable remotely.
+- Missing PDF companion, corrupt/hash-mismatched PDF, malformed JSON: none of these ever touch
+  `finalized_passdowns` or `sync_entity_state` — always safely retryable, verified directly (§16E.19
+  scenarios J/L/M).
+- An unrelated draft/note import or export failure never blocks History's own import/export step in
+  the same pass, and vice versa (§16E.16) — each is caught and counted independently.
+
+## 16E.21 Existing-user migration and fresh-DB result
+
+**No SQLite migration was added.** Both new `IFinalizedPassdownRepository` methods
+(`GetByIdAsync`/`ListForSyncAsync`) are new queries over columns that have existed since Migration0008/
+0009; `sync_entity_state`/`sync_conflicts` (12/13) already support `FinalizedPassdown` as a
+`SyncEntityType` value with no schema change. DB schema remains **13**; Draft schema remains **3**;
+Snapshot schema remains **1** — all three phase-completion targets from the spec's baseline are met
+without a bump. Every existing repository/migration test (`PortableLifecycleTests`,
+`Phase13GAppDataRenameCompatibilityTests`, `SqliteRepositoryTestFixture`) continues to pass unmodified,
+confirming a fresh DB and an upgraded DB 12→13 (already tested in 16D) both work correctly with the new
+methods available.
+
+## 16E.22 Tests added (Phase 16E)
+
+- `FinalizedPassdownSyncPayloadTests`, `FinalizedPassdownSyncReconciliationTests` (Application.Tests/
+  PersonalSync) — payload round-trip/invariant and pure decision-logic coverage, no filesystem or
+  database.
+- `SyncEntityIdentityTests`/`SyncPathServiceTests` additions for `ForFinalizedPassdown`/
+  `TryParseFinalizedPassdownId` and the Guid-suffixed History path/filename-parsing round-trip
+  (Application.Tests/PersonalSync).
+- `SqliteFinalizedPassdownRepositoryTests` additions for `GetByIdAsync`/`ListForSyncAsync`
+  (Infrastructure.Tests/Storage/Repositories).
+- `PersonalSyncServiceTests` — 11 new History scenarios (§16E.19) plus an extension of the existing
+  privacy guard to include a finalized record (Infrastructure.Tests/PersonalSync).
+- `PersonalSyncResultPresentationTests` — new file; the History status-line clauses, singular/plural
+  wording, and "omitted when no History activity" case (Ui.Tests/PersonalSync).
+- `InMemoryFinalizedPassdownRepository` and the two `CountingFinalizedPassdownRepository` test doubles
+  (Calendar/Dashboard service tests) updated with the two new interface methods — mechanical, no
+  behavior change to what those tests actually exercise.
+
+## Final test count
+
+1900/1900 deterministic (non-`LiveSmoke`) tests passing, run per-project (`Domain.Tests` 105,
+`Application.Tests` 546, `Infrastructure.Tests` 499 excluding 11 pre-existing `LiveSmoke`-tagged
+retrieval tests — 510 total including them, unchanged in count/behavior by this phase —
+`Documents.Tests` 114, `Ui.Tests` 636). Up from the Phase 16D baseline of 1857/1857 (Application +22,
+Infrastructure +16, Ui.Tests +5). `dotnet build CarowindsPassdown.slnx`: 0 warnings, 0 errors.
+
+The same pre-existing, previously-documented (since Phase 6D) Avalonia headless cross-test parallelism
+flake recurs here when the full `Ui.Tests` project runs with default parallelism — confirmed unrelated
+to this phase's changes: isolating the three real-`Window`-constructing classes
+(`RealWindowStartupTimingTests`/`Phase15ERealWindowLayoutTests`/`OperationsCalendarViewTests`) together
+passes 38/38 repeatably; isolating everything else in `Ui.Tests` passes 598/598 repeatably; 38 + 598 =
+636, the full project total, zero real failures attributable to Phase 16E. Per CLAUDE.md, not fixed —
+out of scope, pre-existing, and explicitly called out as such by the Phase 16E brief itself (spec §35).
+
+## Known limitations
+
+- A legacy pre-9C finalized passdown with no frozen PDF (`HasFrozenPdf == false`) is never exported —
+  there is no recovery/regeneration behavior in the product to build a payload from, matching spec
+  §4/§10's explicit "do not regenerate... unless existing product behavior explicitly supports
+  recovery" (it doesn't). It is simply skipped every pass, forever un-exportable; this is a narrow,
+  pre-existing-data-only limitation, not a regression.
+- No admin-facing review/resolution UI for a `FinalizedPassdown` conflict (immutable-integrity or
+  dual-finalization) — visibility is the `HistoryConflictCount` line in the Sync Now result only
+  (§16E.14/§16E.16), exactly per spec §30's explicit deferral.
+- No automatic/background sync cadence — still "Sync Now" only, unchanged from 16C/16D (16F's job).
+- The real Windows-host OneDrive desktop client interaction remains unverified on this (macOS/Darwin)
+  development host — same limitation carried forward from every prior Personal Sync phase.
+
+## Deferred to 16F
+
+- Automatic/background sync cadence (timer, startup sync, save-triggered sync, filesystem watcher,
+  scheduled sync).
+- Richer sync status UX (last-synced indicator, device list) beyond the minimal counts/conflict-count
+  surface that exists today.
+- Any admin-facing resolution surface for `FinalizedPassdown` conflicts, should product direction ever
+  call for one (not committed to — §16E.14's refusal is a deliberate, not merely temporary, design
+  choice pending an explicit future/admin decision per spec §13).
+
+## Phase 16F readiness
+
+Every entity kind (drafts, notes, History) now has a working, tested manual "Sync Now" pass with its
+own appropriate conflict model. 16F's automatic-cadence work has a single integration point to hook —
+`IPersonalSyncService.RunAsync()` — already proven safe to call repeatedly/idempotently for all three
+entity kinds; no entity-specific readiness gap was identified for 16F.

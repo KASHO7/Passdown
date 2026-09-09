@@ -28,6 +28,11 @@ public enum PersonalSyncOutcome
 /// malformed file or a single failed export never turns the whole pass into a failure; those are
 /// counted, not thrown.
 /// </summary>
+/// <param name="HistoryImportedCount">Finalized History/PDF pairs newly imported this pass (Phase 16E §23) — a subset already included in <paramref name="ImportedCount"/>, broken out for status-line visibility distinct from drafts/notes.</param>
+/// <param name="HistoryExportedCount">Finalized History/PDF pairs newly exported this pass — a subset already included in <paramref name="ExportedCount"/>.</param>
+/// <param name="HistoryUnchangedCount">Finalized History records that converged/were already in sync (self-authored re-scan or identical content-hash dedup, Phase 16E §12) — a subset already included in <paramref name="UnchangedCount"/>.</param>
+/// <param name="HistoryConflictCount">Finalized History integrity/dual-finalization conditions that require manual review (Phase 16E §13/§14/§17) — same-id-different-hash, independent same-date finalizations, and corrupt/hash-mismatched PDFs. A subset already included in <paramref name="ConflictCount"/>; never auto-resolved.</param>
+/// <param name="HistoryIncompleteCount">Finalized History JSON envelopes seen with no PDF companion present yet (Phase 16E §16) — not a failure, not a conflict; expected to resolve on a later pass once the PDF arrives. Never counted anywhere else.</param>
 public sealed record PersonalSyncResult(
     PersonalSyncOutcome Outcome,
     int ImportedCount,
@@ -36,7 +41,12 @@ public sealed record PersonalSyncResult(
     int ConflictCount,
     int MalformedCount,
     int IoFailureCount,
-    string? Message)
+    string? Message,
+    int HistoryImportedCount = 0,
+    int HistoryExportedCount = 0,
+    int HistoryUnchangedCount = 0,
+    int HistoryConflictCount = 0,
+    int HistoryIncompleteCount = 0)
 {
     public static PersonalSyncResult AlreadyRunning() =>
         new(PersonalSyncOutcome.AlreadyRunning, 0, 0, 0, 0, 0, 0, "A Personal Sync pass is already running.");
@@ -59,9 +69,11 @@ public sealed record PersonalSyncResult(
 }
 
 /// <summary>
-/// One full Personal Sync pass over Associate drafts and Operational Notes (Phase 16C §23):
-/// import every valid remote file, detect (never auto-resolve) conflicts, then export local
-/// pending/bootstrap changes. Orchestration only — no ViewModel ever contains this logic (§23).
+/// One full Personal Sync pass over Associate drafts, Operational Notes, and finalized History/PDFs
+/// (Phase 16C §23, Phase 16E §23): import every valid remote file, detect (never auto-resolve)
+/// conflicts, then export local pending/bootstrap changes. Orchestration only — no ViewModel ever
+/// contains this logic (§23). One broken History record never blocks draft/note sync, and vice versa
+/// (Phase 16E §23).
 /// </summary>
 public interface IPersonalSyncService
 {

@@ -26,6 +26,28 @@ public sealed class PersonalSyncConflictResolutionService(
 {
     private static readonly JsonSerializerOptions DraftPayloadWriteOptions = new();
 
+    /// <summary>
+    /// Phase 16E §13/§30: "Keep This Device"/"Use Other Device"/"Accept Deletion" all assume a mutable
+    /// entity that can be safely rewritten — none of that applies to an already-finalized, immutable
+    /// History record. Refusing explicitly here (rather than falling into the draft/note branching
+    /// below, which would misinterpret a finalized-passdown Guid as a note id) is defense-in-depth: no
+    /// UI in this release calls these methods with <see cref="SyncEntityType.FinalizedPassdown"/> (that
+    /// entity type is excluded from <see cref="GetConflictsAsync"/>'s list), but a future caller must
+    /// never be able to mutate finalized History through this seam.
+    /// </summary>
+    private static readonly ConflictResolutionResult FinalizedPassdownResolutionRefused = ConflictResolutionResult.WrongActionForConflict(
+        "Finalized History conflicts cannot be resolved automatically in this release — this requires manual/admin review.");
+
+    /// <summary>
+    /// The mutable-entity (draft/note) conflict review list (Phase 16D §3/§4). Deliberately excludes
+    /// <see cref="SyncEntityType.FinalizedPassdown"/> conflicts (Phase 16E §13/§14/§30): this service's
+    /// draft-vs-note branching below has no third case, and immutable-history conflicts have no "Keep
+    /// This Device"/"Use Other Device" resolution in this release (spec §13/§30 explicitly forbid
+    /// offering those against an already-finalized record) — surfacing one here with no safe action to
+    /// take on it would be actively misleading. History conflict visibility in 16E is the
+    /// <see cref="PersonalSyncResult.HistoryConflictCount"/> line in the Sync Now result only; a
+    /// dedicated admin-facing review surface is deferred beyond 16E.
+    /// </summary>
     public async Task<IReadOnlyList<SyncConflictSummary>> GetConflictsAsync(CancellationToken cancellationToken = default)
     {
         var records = await conflictRepository.ListAsync(cancellationToken).ConfigureAwait(false);
@@ -33,6 +55,11 @@ public sealed class PersonalSyncConflictResolutionService(
 
         foreach (var record in records)
         {
+            if (record.EntityType == SyncEntityType.FinalizedPassdown)
+            {
+                continue;
+            }
+
             summaries.Add(await BuildSummaryAsync(record, cancellationToken).ConfigureAwait(false));
         }
 
@@ -128,6 +155,11 @@ public sealed class PersonalSyncConflictResolutionService(
 
     public async Task<ConflictResolutionResult> ResolveKeepLocalAsync(SyncEntityType entityType, string entityId, CancellationToken cancellationToken = default)
     {
+        if (entityType == SyncEntityType.FinalizedPassdown)
+        {
+            return FinalizedPassdownResolutionRefused;
+        }
+
         var conflict = await conflictRepository.GetAsync(entityType, entityId, cancellationToken).ConfigureAwait(false);
         if (conflict is null)
         {
@@ -280,6 +312,11 @@ public sealed class PersonalSyncConflictResolutionService(
 
     public async Task<ConflictResolutionResult> ResolveUseRemoteAsync(SyncEntityType entityType, string entityId, CancellationToken cancellationToken = default)
     {
+        if (entityType == SyncEntityType.FinalizedPassdown)
+        {
+            return FinalizedPassdownResolutionRefused;
+        }
+
         var conflict = await conflictRepository.GetAsync(entityType, entityId, cancellationToken).ConfigureAwait(false);
         if (conflict is null)
         {
@@ -344,6 +381,11 @@ public sealed class PersonalSyncConflictResolutionService(
 
     public async Task<ConflictResolutionResult> ResolveAcceptDeletionAsync(SyncEntityType entityType, string entityId, CancellationToken cancellationToken = default)
     {
+        if (entityType == SyncEntityType.FinalizedPassdown)
+        {
+            return FinalizedPassdownResolutionRefused;
+        }
+
         var conflict = await conflictRepository.GetAsync(entityType, entityId, cancellationToken).ConfigureAwait(false);
         if (conflict is null)
         {

@@ -38,19 +38,61 @@ public class SyncPathServiceTests
     }
 
     [Fact]
-    public void GetHistoryJsonFilePath_UsesInvariantIsoDateFilename()
+    public void GetHistoryJsonFilePath_UsesInvariantIsoDatePlusGuidFilename()
     {
         var date = new DateOnly(2026, 1, 5);
-        var expected = Path.Combine(Root, "Carowinds Operations Sync", "history", "2026-01-05.json");
-        Assert.Equal(expected, SyncPathService.GetHistoryJsonFilePath(Root, date));
+        var id = Guid.Parse("3fa85f64-5717-4562-b3fc-2c963f66afa6");
+        var expected = Path.Combine(Root, "Carowinds Operations Sync", "history", "2026-01-05-3fa85f64-5717-4562-b3fc-2c963f66afa6.json");
+        Assert.Equal(expected, SyncPathService.GetHistoryJsonFilePath(Root, date, id));
     }
 
     [Fact]
     public void GetHistoryPdfFilePath_IsSameStemAsHistoryJson_DifferentExtension()
     {
         var date = new DateOnly(2026, 1, 5);
-        var expected = Path.Combine(Root, "Carowinds Operations Sync", "history", "2026-01-05.pdf");
-        Assert.Equal(expected, SyncPathService.GetHistoryPdfFilePath(Root, date));
+        var id = Guid.Parse("3fa85f64-5717-4562-b3fc-2c963f66afa6");
+        var expected = Path.Combine(Root, "Carowinds Operations Sync", "history", "2026-01-05-3fa85f64-5717-4562-b3fc-2c963f66afa6.pdf");
+        Assert.Equal(expected, SyncPathService.GetHistoryPdfFilePath(Root, date, id));
+    }
+
+    [Fact]
+    public void GetHistoryDirectoryPath_IsInsideOwnedSubfolder()
+    {
+        var expected = Path.Combine(Root, "Carowinds Operations Sync", "history");
+        Assert.Equal(expected, SyncPathService.GetHistoryDirectoryPath(Root));
+    }
+
+    [Fact]
+    public void HistoryJsonAndPdfPaths_TwoDifferentIdsOnSameDate_NeverCollide()
+    {
+        var date = new DateOnly(2026, 9, 9);
+        var idA = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var idB = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+
+        Assert.NotEqual(SyncPathService.GetHistoryJsonFilePath(Root, date, idA), SyncPathService.GetHistoryJsonFilePath(Root, date, idB));
+        Assert.NotEqual(SyncPathService.GetHistoryPdfFilePath(Root, date, idA), SyncPathService.GetHistoryPdfFilePath(Root, date, idB));
+    }
+
+    [Fact]
+    public void TryParseHistoryFileName_RoundTripsWithGetHistoryPaths()
+    {
+        var date = new DateOnly(2026, 9, 9);
+        var id = Guid.Parse("3fa85f64-5717-4562-b3fc-2c963f66afa6");
+        var stem = Path.GetFileNameWithoutExtension(SyncPathService.GetHistoryJsonFilePath(Root, date, id));
+
+        Assert.True(SyncPathService.TryParseHistoryFileName(stem, out var parsedDate, out var parsedId));
+        Assert.Equal(date, parsedDate);
+        Assert.Equal(id, parsedId);
+    }
+
+    [Theory]
+    [InlineData("2026-09-09")]
+    [InlineData("2026-09-09-3fa85f64-5717-4562-b3fc-2c963f66afa6-DESKTOP1")]
+    [InlineData("not-a-history-filename")]
+    [InlineData("")]
+    public void TryParseHistoryFileName_UnexpectedFilename_ReturnsFalse(string stem)
+    {
+        Assert.False(SyncPathService.TryParseHistoryFileName(stem, out _, out _));
     }
 
     [Fact]

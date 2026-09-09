@@ -1012,6 +1012,9 @@ public class OperationsCalendarServiceTests
             return inner.GetByDateAsync(passdownDate, cancellationToken);
         }
 
+        public Task<FinalizedPassdown?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
+            inner.GetByIdAsync(id, cancellationToken);
+
         public Task<bool> ExistsForDateAsync(DateOnly passdownDate, CancellationToken cancellationToken = default) =>
             inner.ExistsForDateAsync(passdownDate, cancellationToken);
 
@@ -1020,6 +1023,9 @@ public class OperationsCalendarServiceTests
 
         public Task<IReadOnlyList<FinalizedPassdownSummary>> ListAsync(CancellationToken cancellationToken = default) =>
             inner.ListAsync(cancellationToken);
+
+        public Task<IReadOnlyList<FinalizedPassdownSyncMetadata>> ListForSyncAsync(CancellationToken cancellationToken = default) =>
+            inner.ListForSyncAsync(cancellationToken);
     }
 
     /// <summary>Counts <c>GetByCategoryAndDateRangeAsync</c> calls specifically (spec Phase 12B Part N/Z#20), wrapping a real in-memory repository so every other behavior stays authentic.</summary>

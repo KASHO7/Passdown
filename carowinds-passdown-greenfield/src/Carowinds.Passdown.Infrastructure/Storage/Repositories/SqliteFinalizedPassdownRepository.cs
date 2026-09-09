@@ -33,6 +33,22 @@ public sealed class SqliteFinalizedPassdownRepository(SqliteConnectionFactory co
         return Map(reader);
     }
 
+    public async Task<FinalizedPassdown?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT {SelectColumns} FROM finalized_passdowns WHERE id = $id;";
+        command.Parameters.AddWithValue("$id", id.ToString());
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        return Map(reader);
+    }
+
     public async Task<bool> ExistsForDateAsync(DateOnly passdownDate, CancellationToken cancellationToken = default)
     {
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
@@ -92,6 +108,31 @@ public sealed class SqliteFinalizedPassdownRepository(SqliteConnectionFactory co
                 Enum.Parse<FinalizationOrigin>(reader.GetString(2)),
                 HasFrozenPdf: !reader.IsDBNull(3),
                 PdfSizeBytes: reader.IsDBNull(4) ? null : reader.GetInt64(4)));
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Deliberately selects <c>id, passdown_date, content_hash</c> only — never <c>snapshot_json</c> or
+    /// <c>pdf_bytes</c> — so Personal Sync's export loop can walk every finalized passdown each pass
+    /// (including full first-time bootstrap, Phase 16E §10) without materializing every row's snapshot
+    /// text or PDF blob at once, mirroring <see cref="ListAsync"/>'s own rationale (Phase 9C Parts K/R).
+    /// </summary>
+    public async Task<IReadOnlyList<FinalizedPassdownSyncMetadata>> ListForSyncAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, passdown_date, content_hash FROM finalized_passdowns;";
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        var results = new List<FinalizedPassdownSyncMetadata>();
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            results.Add(new FinalizedPassdownSyncMetadata(
+                Guid.Parse(reader.GetString(0)),
+                SqliteConvert.ReadDateOnly(reader, 1),
+                reader.GetString(2)));
         }
 
         return results;

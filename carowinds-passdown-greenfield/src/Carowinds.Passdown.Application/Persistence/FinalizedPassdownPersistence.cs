@@ -49,6 +49,16 @@ public sealed record FinalizedPassdownSummary(
     long? PdfSizeBytes);
 
 /// <summary>
+/// The identity/dirty-check facts Personal Sync's export loop needs to enumerate every local finalized
+/// passdown (Phase 16E §4/§23) without loading every row's <see cref="FinalizedPassdown.SnapshotJson"/>
+/// or <see cref="FinalizedPassdown.PdfBytes"/> blob — mirrors <see cref="FinalizedPassdownSummary"/>'s
+/// own "cheap listing" rationale, but keyed by <see cref="Id"/> (the sync entity id, Phase 16A §B) and
+/// carrying <see cref="ContentHash"/> (the one fact export dirtiness is decided from) rather than
+/// display-oriented fields.
+/// </summary>
+public sealed record FinalizedPassdownSyncMetadata(Guid Id, DateOnly PassdownDate, string ContentHash);
+
+/// <summary>
 /// Narrow, insert-only persistence contract for finalized passdowns (spec Phase 9 Part M). Exposes
 /// no update or delete — the model is immutable by convention; correcting a bad historical row, if
 /// ever necessary, is a support/database concern, not a normal application operation.
@@ -57,6 +67,15 @@ public interface IFinalizedPassdownRepository
 {
     Task<FinalizedPassdown?> GetByDateAsync(DateOnly passdownDate, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Looks up by the surrogate <see cref="FinalizedPassdown.Id"/> rather than
+    /// <see cref="FinalizedPassdown.PassdownDate"/> — needed only by Personal Sync's History import
+    /// path (Phase 16E §2/§11), which must tell "a local record with this exact remote id already
+    /// exists" apart from "a local record exists for this date under a different id" (the
+    /// dual-finalization case, Phase 16E §14).
+    /// </summary>
+    Task<FinalizedPassdown?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
     Task<bool> ExistsForDateAsync(DateOnly passdownDate, CancellationToken cancellationToken = default);
 
     /// <summary>Inserts a new finalized passdown. Throws if <paramref name="finalizedPassdown"/>'s <see cref="FinalizedPassdown.PassdownDate"/> is already finalized (spec Part B's one-record-per-date uniqueness) — callers should check <see cref="ExistsForDateAsync"/> first when idempotent no-op behavior is wanted.</summary>
@@ -64,4 +83,7 @@ public interface IFinalizedPassdownRepository
 
     /// <summary>All finalized passdowns, most recent <see cref="FinalizedPassdown.PassdownDate"/> first (spec Part T's future History UI listing).</summary>
     Task<IReadOnlyList<FinalizedPassdownSummary>> ListAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Every finalized passdown's sync-relevant identity/hash (Phase 16E §4/§23), in no particular guaranteed order — the cheap enumeration Personal Sync's export loop walks each pass, including on first-ever bootstrap (Phase 16E §10).</summary>
+    Task<IReadOnlyList<FinalizedPassdownSyncMetadata>> ListForSyncAsync(CancellationToken cancellationToken = default);
 }

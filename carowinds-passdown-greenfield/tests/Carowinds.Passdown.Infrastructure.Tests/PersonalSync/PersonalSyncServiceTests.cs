@@ -1,5 +1,7 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.PersonalSync;
@@ -47,6 +49,7 @@ public class PersonalSyncServiceTests : IDisposable
         IAssociateDraftRepository Drafts,
         IOperationalNotesService Notes,
         IOperationalNoteRepository NoteRepository,
+        IFinalizedPassdownRepository FinalizedPassdowns,
         ISyncEntityStateRepository States,
         ISyncConflictRepository Conflicts,
         ISyncChangeTracker Tracker,
@@ -80,6 +83,7 @@ public class PersonalSyncServiceTests : IDisposable
 
         var drafts = new SqliteAssociateDraftRepository(connectionFactory);
         var noteRepository = new SqliteOperationalNoteRepository(connectionFactory);
+        var finalizedPassdowns = new SqliteFinalizedPassdownRepository(connectionFactory);
         var states = new SqliteSyncEntityStateRepository(connectionFactory);
         var conflicts = new SqliteSyncConflictRepository(connectionFactory);
         var unitOfWorkFactory = new SqliteUnitOfWorkFactory(connectionFactory);
@@ -94,10 +98,10 @@ public class PersonalSyncServiceTests : IDisposable
             deviceIdProvider,
             clock);
 
-        var sync = new PersonalSyncService(settingsService, deviceIdProvider, drafts, noteRepository, states, conflicts, clock);
+        var sync = new PersonalSyncService(settingsService, deviceIdProvider, drafts, noteRepository, finalizedPassdowns, states, conflicts, clock);
         var resolution = new PersonalSyncConflictResolutionService(settingsService, deviceIdProvider, drafts, noteRepository, states, conflicts, unitOfWorkFactory, clock);
 
-        return new TestDevice(drafts, notes, noteRepository, states, conflicts, tracker, sync, resolution, unitOfWorkFactory, clock, deviceId);
+        return new TestDevice(drafts, notes, noteRepository, finalizedPassdowns, states, conflicts, tracker, sync, resolution, unitOfWorkFactory, clock, deviceId);
     }
 
     private static Task SaveDraftAsync(TestDevice device, DateOnly date, AssociateDraftPayload payload)
@@ -129,6 +133,49 @@ public class PersonalSyncServiceTests : IDisposable
     {
         await device.NoteRepository.DeleteAsync(noteId);
         await device.Tracker.MarkLocalChangeAsync(SyncEntityType.OperationalNote, SyncEntityIdentity.ForNote(noteId));
+    }
+
+    /// <summary>
+    /// Builds a real, fully-deserializable <see cref="FinalizedPassdown"/> — a genuine
+    /// <see cref="FinalizedPassdownSnapshot"/> serialized/hashed through the same
+    /// <see cref="FinalizedPassdownSnapshotSerializer"/> production code uses, plus a small fake PDF
+    /// with a matching SHA-256, exactly what <see cref="Finalization.FinalizedPassdownFinalizationService"/>
+    /// would have produced. No change-tracker hook exists for History (Phase 16E §22 — export
+    /// dirtiness is decided by enumeration/content-hash comparison, not a "mark dirty" call), so tests
+    /// call <see cref="IFinalizedPassdownRepository.AddAsync"/> directly, mirroring what finalization
+    /// does without needing a full <c>AssociateWorkspace</c>.
+    /// </summary>
+    private static FinalizedPassdown BuildFinalizedPassdown(
+        DateOnly date, Guid? id = null, string? dailyFeatureText = null, byte[]? pdfBytes = null, DateTimeOffset? finalizedAt = null)
+    {
+        var snapshot = new FinalizedPassdownSnapshot(
+            FinalizedPassdownSnapshot.CurrentSchemaVersion,
+            date,
+            date.ToString("dddd, MMMM d"),
+            new FinalizedParkHoursSnapshot(FinalizedParkHoursStatus.Open, "Open 10am - 9pm", null, null, null, null, null),
+            new FinalizedAttendanceSnapshot(12000, 500),
+            new FinalizedEarlyRideTimeSnapshot(false, null, []),
+            new FinalizedDailyFeatureSnapshot(dailyFeatureText is null ? null : "Feature", dailyFeatureText),
+            [],
+            [],
+            false,
+            "2026-09-09 06:00");
+        var snapshotJson = FinalizedPassdownSnapshotSerializer.Serialize(snapshot);
+        var contentHash = FinalizedPassdownSnapshotSerializer.ComputeContentHash(snapshotJson);
+        var pdf = pdfBytes ?? [0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34]; // "%PDF-1.4"
+        var pdfHash = Convert.ToHexStringLower(SHA256.HashData(pdf));
+
+        return new FinalizedPassdown(
+            id ?? Guid.NewGuid(),
+            date,
+            finalizedAt ?? BaseNow,
+            FinalizedPassdownSnapshot.CurrentSchemaVersion,
+            snapshotJson,
+            contentHash,
+            FinalizationOrigin.Manual,
+            pdf,
+            pdfHash,
+            pdf.LongLength);
     }
 
     // ------------------------------------------------------------------
@@ -331,7 +378,7 @@ public class PersonalSyncServiceTests : IDisposable
             new FakeOneDriveLocationSuggestionProvider(),
             new FakeDeviceIdProvider(DeviceAId),
             new FakeClock(BaseNow));
-        var sync = new PersonalSyncService(disabledSettings, new FakeDeviceIdProvider(DeviceAId), device.Drafts, device.NoteRepository, device.States, device.Conflicts, new FakeClock(BaseNow));
+        var sync = new PersonalSyncService(disabledSettings, new FakeDeviceIdProvider(DeviceAId), device.Drafts, device.NoteRepository, device.FinalizedPassdowns, device.States, device.Conflicts, new FakeClock(BaseNow));
 
         var result = await sync.RunAsync();
 
@@ -349,7 +396,7 @@ public class PersonalSyncServiceTests : IDisposable
             new FakeOneDriveLocationSuggestionProvider(),
             new FakeDeviceIdProvider(DeviceAId),
             new FakeClock(BaseNow));
-        var sync = new PersonalSyncService(unavailableSettings, new FakeDeviceIdProvider(DeviceAId), device.Drafts, device.NoteRepository, device.States, device.Conflicts, new FakeClock(BaseNow));
+        var sync = new PersonalSyncService(unavailableSettings, new FakeDeviceIdProvider(DeviceAId), device.Drafts, device.NoteRepository, device.FinalizedPassdowns, device.States, device.Conflicts, new FakeClock(BaseNow));
 
         // Local save must succeed regardless of sync folder health (§1).
         await SaveDraftAsync(device, OperatingDate, AssociateDraftPayload.CreateDefault());
@@ -519,6 +566,7 @@ public class PersonalSyncServiceTests : IDisposable
         var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
         await SaveDraftAsync(a, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 100 });
         await a.Notes.CreateAsync(new OperationalNoteDraft("Note", "Body", OperationalNoteCategory.General, OperationalNotePriority.Normal, OperatingDate, null));
+        await a.FinalizedPassdowns.AddAsync(BuildFinalizedPassdown(OperatingDate, dailyFeatureText: "Meet Snoopy at the Boardwalk"));
 
         await a.Sync.RunAsync();
 
@@ -1105,6 +1153,264 @@ public class PersonalSyncServiceTests : IDisposable
         Assert.Equal(ConflictResolutionOutcome.WrongActionForConflict, result.Outcome);
         var bLocal = AssociateDraftPayloadSerializer.Deserialize((await b.Drafts.GetAsync(OperatingDate))!.PayloadJson);
         Assert.Equal(999, bLocal.ProjectedAttendance); // Nothing was changed by the refused call.
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 16E: finalized History/PDF sync.
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public async Task History_A_DeviceAFinalizes_DeviceBImportsExactFrozenSnapshotAndByteIdenticalPdf()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+        var record = BuildFinalizedPassdown(OperatingDate, dailyFeatureText: "Founders Day");
+        await a.FinalizedPassdowns.AddAsync(record);
+
+        var exportResult = await a.Sync.RunAsync();
+        Assert.Equal(1, exportResult.HistoryExportedCount);
+
+        var importResult = await b.Sync.RunAsync();
+
+        Assert.Equal(1, importResult.HistoryImportedCount);
+        Assert.Equal(0, importResult.HistoryConflictCount);
+        var imported = await b.FinalizedPassdowns.GetByIdAsync(record.Id);
+        Assert.NotNull(imported);
+        Assert.Equal(record.Id, imported!.Id);
+        Assert.Equal(record.PassdownDate, imported.PassdownDate);
+        Assert.Equal(record.FinalizedAtUtc, imported.FinalizedAtUtc);
+        Assert.Equal(record.ContentHash, imported.ContentHash);
+        // Phase 16E §27: the exact original frozen snapshot text, never rebuilt from current data.
+        Assert.Equal(record.SnapshotJson, imported.SnapshotJson);
+        // Phase 16E §26: byte-identical frozen PDF, never regenerated.
+        Assert.Equal(record.PdfBytes, imported.PdfBytes);
+        Assert.Equal(record.PdfSha256, imported.PdfSha256);
+        Assert.Equal(record.PdfSizeBytes, imported.PdfSizeBytes);
+    }
+
+    [Fact]
+    public async Task History_C_RepeatedSyncPasses_AreIdempotent()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+        var record = BuildFinalizedPassdown(OperatingDate);
+        await a.FinalizedPassdowns.AddAsync(record);
+
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+
+        // Nothing changed on either side — every subsequent pass must be a clean no-op.
+        var aSecond = await a.Sync.RunAsync();
+        var bSecond = await b.Sync.RunAsync();
+
+        Assert.Equal(0, aSecond.HistoryExportedCount);
+        Assert.Equal(0, aSecond.HistoryImportedCount);
+        Assert.Equal(0, bSecond.HistoryImportedCount);
+        Assert.Equal(0, bSecond.HistoryExportedCount);
+        Assert.Equal(0, aSecond.HistoryConflictCount);
+        Assert.Equal(0, bSecond.HistoryConflictCount);
+    }
+
+    [Fact]
+    public async Task History_E_FirstDeviceWithExistingLocalHistory_BootstrapsOnFirstSyncPass()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        // Simulates a device that already had months of local History before sync was ever enabled —
+        // no prior Sync.RunAsync() call, no SyncEntityState row exists yet for this record.
+        await a.FinalizedPassdowns.AddAsync(BuildFinalizedPassdown(OperatingDate));
+        await a.FinalizedPassdowns.AddAsync(BuildFinalizedPassdown(OperatingDate.AddDays(-1)));
+
+        var result = await a.Sync.RunAsync();
+
+        Assert.Equal(2, result.HistoryExportedCount);
+    }
+
+    [Fact]
+    public async Task History_F_BothDevicesAlreadyHaveIdenticalFinalizedRecord_ConvergesSilently_NoConflict()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+        var sharedId = Guid.NewGuid();
+        var record = BuildFinalizedPassdown(OperatingDate, sharedId);
+        // Both devices already independently have the exact same finalized record (e.g. a shared
+        // pre-16E backup) before sync ever ran — this must converge, never conflict.
+        await a.FinalizedPassdowns.AddAsync(record);
+        await b.FinalizedPassdowns.AddAsync(record);
+
+        await a.Sync.RunAsync();
+        var bResult = await b.Sync.RunAsync();
+
+        Assert.Equal(0, bResult.HistoryConflictCount);
+        Assert.Empty(await b.Resolution.GetConflictsAsync());
+    }
+
+    [Fact]
+    public async Task History_H_SameIdDifferentContentHash_IsImmutableConflict_NeitherSideOverwritten()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+        var sharedId = Guid.NewGuid();
+        var aRecord = BuildFinalizedPassdown(OperatingDate, sharedId, dailyFeatureText: "Version A");
+        // Never expected in real operation (Phase 16E §13) — a hand-crafted defensive scenario: two
+        // records that happen to share a Guid but disagree on content.
+        var bRecord = BuildFinalizedPassdown(OperatingDate, sharedId, dailyFeatureText: "Version B");
+        await a.FinalizedPassdowns.AddAsync(aRecord);
+        await b.FinalizedPassdowns.AddAsync(bRecord);
+
+        await a.Sync.RunAsync();
+        var bResult = await b.Sync.RunAsync();
+
+        Assert.Equal(1, bResult.HistoryConflictCount);
+        var bLocal = await b.FinalizedPassdowns.GetByIdAsync(sharedId);
+        Assert.Equal(bRecord.ContentHash, bLocal!.ContentHash); // B's own record was never overwritten.
+
+        // The conflict must also pause this record's own export — never re-exported over the conflict.
+        var bSecond = await b.Sync.RunAsync();
+        Assert.Equal(0, bSecond.HistoryExportedCount);
+    }
+
+    [Fact]
+    public async Task History_I_TwoDevicesIndependentlyFinalizeSameDate_DualFinalizationConflictSurfaced_BothArtifactsPreserved()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+        var aRecord = BuildFinalizedPassdown(OperatingDate, dailyFeatureText: "Device A's finalization");
+        var bRecord = BuildFinalizedPassdown(OperatingDate, dailyFeatureText: "Device B's finalization");
+        Assert.NotEqual(aRecord.Id, bRecord.Id); // Two genuinely independent finalizations.
+        await a.FinalizedPassdowns.AddAsync(aRecord);
+        await b.FinalizedPassdowns.AddAsync(bRecord);
+
+        await a.Sync.RunAsync(); // A exports its own record.
+        var bResult = await b.Sync.RunAsync(); // B imports A's file, finds its own record for the same date under a different id.
+
+        Assert.Equal(1, bResult.HistoryConflictCount);
+        // B's own record is a distinct entity from the conflict and still exports normally in the very
+        // same pass (import and export both run inside one RunAsync call).
+        Assert.Equal(1, bResult.HistoryExportedCount);
+        // Never silently kept both without surfacing, never silently picked one — B's own record is untouched.
+        var bLocal = await b.FinalizedPassdowns.GetByIdAsync(bRecord.Id);
+        Assert.Equal(bRecord.ContentHash, bLocal!.ContentHash);
+        // The disputed remote record (A's) was never inserted locally on B.
+        Assert.Null(await b.FinalizedPassdowns.GetByIdAsync(aRecord.Id));
+    }
+
+    [Fact]
+    public async Task History_J_JsonArrivesBeforePdf_NotImported_ThenPdfArrivesLater_ImportSucceeds()
+    {
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow));
+        var record = BuildFinalizedPassdown(OperatingDate);
+        var payload = FinalizedPassdownSyncPayload.FromDomain(record);
+        var envelope = new SyncEnvelope
+        {
+            SyncSchemaVersion = SyncEnvelopeSerializer.CurrentSyncSchemaVersion,
+            EntityType = SyncEntityType.FinalizedPassdown,
+            EntityId = SyncEntityIdentity.ForFinalizedPassdown(record.Id),
+            DeviceId = DeviceAId,
+            Revision = 1,
+            ModifiedUtc = record.FinalizedAtUtc,
+            IsDeleted = false,
+            PayloadSchemaVersion = FinalizedPassdownSyncPayload.CurrentSchemaVersion,
+            Payload = JsonSerializer.SerializeToElement(payload, FinalizedPassdownSyncPayloadSerializer.Options),
+            ContentHash = record.ContentHash,
+        };
+        var jsonPath = SyncPathService.GetHistoryJsonFilePath(_sharedRoot, record.PassdownDate, record.Id);
+        Directory.CreateDirectory(Path.GetDirectoryName(jsonPath)!);
+        await File.WriteAllTextAsync(jsonPath, SyncEnvelopeSerializer.Serialize(envelope));
+
+        var firstPass = await b.Sync.RunAsync();
+        Assert.Equal(0, firstPass.HistoryImportedCount);
+        Assert.Equal(1, firstPass.HistoryIncompleteCount);
+        Assert.Null(await b.FinalizedPassdowns.GetByIdAsync(record.Id));
+
+        var pdfPath = SyncPathService.GetHistoryPdfFilePath(_sharedRoot, record.PassdownDate, record.Id);
+        await File.WriteAllBytesAsync(pdfPath, record.PdfBytes!);
+
+        var secondPass = await b.Sync.RunAsync();
+        Assert.Equal(1, secondPass.HistoryImportedCount);
+        Assert.NotNull(await b.FinalizedPassdowns.GetByIdAsync(record.Id));
+    }
+
+    [Fact]
+    public async Task History_K_OrphanPdfWithNoJson_IsIgnored_NeverDeletedNeverImported()
+    {
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow));
+        var record = BuildFinalizedPassdown(OperatingDate);
+        var pdfPath = SyncPathService.GetHistoryPdfFilePath(_sharedRoot, record.PassdownDate, record.Id);
+        Directory.CreateDirectory(Path.GetDirectoryName(pdfPath)!);
+        await File.WriteAllBytesAsync(pdfPath, record.PdfBytes!);
+
+        var result = await b.Sync.RunAsync();
+
+        Assert.Equal(0, result.HistoryImportedCount);
+        Assert.Equal(0, result.MalformedCount);
+        Assert.Null(await b.FinalizedPassdowns.GetByIdAsync(record.Id));
+        Assert.True(File.Exists(pdfPath)); // Never deleted automatically (§18).
+    }
+
+    [Fact]
+    public async Task History_L_CorruptPdfHashMismatch_IsRejected_NeverImportedNeverOverwritesLocal()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+        var record = BuildFinalizedPassdown(OperatingDate);
+        await a.FinalizedPassdowns.AddAsync(record);
+        await a.Sync.RunAsync();
+
+        // Simulate a corrupted/partially-transferred PDF sitting in the shared folder.
+        var pdfPath = SyncPathService.GetHistoryPdfFilePath(_sharedRoot, record.PassdownDate, record.Id);
+        await File.WriteAllBytesAsync(pdfPath, [0x00, 0x01, 0x02]);
+
+        var result = await b.Sync.RunAsync();
+
+        Assert.Equal(0, result.HistoryImportedCount);
+        Assert.Equal(1, result.HistoryConflictCount);
+        Assert.Null(await b.FinalizedPassdowns.GetByIdAsync(record.Id));
+    }
+
+    [Fact]
+    public async Task History_M_MalformedJsonAmongValidHistoryRecords_ProcessesTheOthersAndReportsMalformedCount()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+        var goodRecord = BuildFinalizedPassdown(OperatingDate);
+        await a.FinalizedPassdowns.AddAsync(goodRecord);
+        await a.Sync.RunAsync();
+
+        var malformedId = Guid.NewGuid();
+        var malformedDate = OperatingDate.AddDays(1);
+        var malformedPath = SyncPathService.GetHistoryJsonFilePath(_sharedRoot, malformedDate, malformedId);
+        await File.WriteAllTextAsync(malformedPath, "{ not valid json");
+        var malformedPdfPath = SyncPathService.GetHistoryPdfFilePath(_sharedRoot, malformedDate, malformedId);
+        await File.WriteAllBytesAsync(malformedPdfPath, [0x25, 0x50, 0x44, 0x46]);
+
+        var result = await b.Sync.RunAsync();
+
+        Assert.Equal(1, result.HistoryImportedCount);
+        Assert.Equal(1, result.MalformedCount);
+        Assert.NotNull(await b.FinalizedPassdowns.GetByIdAsync(goodRecord.Id));
+    }
+
+    [Fact]
+    public async Task History_ConflictResolutionActions_AreRefusedForFinalizedPassdown()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+        var sharedId = Guid.NewGuid();
+        await a.FinalizedPassdowns.AddAsync(BuildFinalizedPassdown(OperatingDate, sharedId, dailyFeatureText: "A"));
+        await b.FinalizedPassdowns.AddAsync(BuildFinalizedPassdown(OperatingDate, sharedId, dailyFeatureText: "B"));
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+
+        var entityId = SyncEntityIdentity.ForFinalizedPassdown(sharedId);
+        var keepLocal = await b.Resolution.ResolveKeepLocalAsync(SyncEntityType.FinalizedPassdown, entityId);
+        var useRemote = await b.Resolution.ResolveUseRemoteAsync(SyncEntityType.FinalizedPassdown, entityId);
+        var acceptDeletion = await b.Resolution.ResolveAcceptDeletionAsync(SyncEntityType.FinalizedPassdown, entityId);
+
+        Assert.Equal(ConflictResolutionOutcome.WrongActionForConflict, keepLocal.Outcome);
+        Assert.Equal(ConflictResolutionOutcome.WrongActionForConflict, useRemote.Outcome);
+        Assert.Equal(ConflictResolutionOutcome.WrongActionForConflict, acceptDeletion.Outcome);
+        // The 16D mutable-entity conflict list stays scoped to drafts/notes (Phase 16E §30).
+        Assert.Empty(await b.Resolution.GetConflictsAsync());
     }
 
     private sealed class FakeDeviceIdProvider(Guid fixedId) : IDeviceIdProvider

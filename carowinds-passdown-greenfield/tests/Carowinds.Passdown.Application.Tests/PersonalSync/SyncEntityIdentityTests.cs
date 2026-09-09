@@ -55,4 +55,41 @@ public class SyncEntityIdentityTests
     {
         Assert.False(SyncEntityIdentity.TryParseNoteId(text, out _));
     }
+
+    [Fact]
+    public void ForFinalizedPassdown_UsesLowercaseHyphenatedGuid()
+    {
+        var id = Guid.Parse("3FA85F64-5717-4562-B3FC-2C963F66AFA6");
+
+        Assert.Equal("3fa85f64-5717-4562-b3fc-2c963f66afa6", SyncEntityIdentity.ForFinalizedPassdown(id));
+    }
+
+    [Fact]
+    public void TryParseFinalizedPassdownId_RoundTripsAFormattedId()
+    {
+        var id = Guid.Parse("3fa85f64-5717-4562-b3fc-2c963f66afa6");
+
+        Assert.True(SyncEntityIdentity.TryParseFinalizedPassdownId(SyncEntityIdentity.ForFinalizedPassdown(id), out var parsed));
+        Assert.Equal(id, parsed);
+    }
+
+    [Theory]
+    [InlineData("3fa85f64-5717-4562-b3fc-2c963f66afa6-DESKTOP1")]
+    [InlineData("not-a-guid")]
+    [InlineData("")]
+    public void TryParseFinalizedPassdownId_NonCanonicalText_ReturnsFalse(string text)
+    {
+        Assert.False(SyncEntityIdentity.TryParseFinalizedPassdownId(text, out _));
+    }
+
+    [Fact]
+    public void FinalizedPassdownIdentity_IsIndependentOfDate_TwoDifferentIdsSameDateNeverCollide()
+    {
+        // Phase 16E §2/§14: identity is the Guid, never the date — two independent finalizations for
+        // the same operating date must map to two distinct entity ids, never the same one.
+        var idA = Guid.NewGuid();
+        var idB = Guid.NewGuid();
+
+        Assert.NotEqual(SyncEntityIdentity.ForFinalizedPassdown(idA), SyncEntityIdentity.ForFinalizedPassdown(idB));
+    }
 }

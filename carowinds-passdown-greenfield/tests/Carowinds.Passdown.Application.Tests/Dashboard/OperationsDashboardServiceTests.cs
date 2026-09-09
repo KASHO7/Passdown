@@ -961,6 +961,9 @@ public class OperationsDashboardServiceTests
             return _inner.GetByDateAsync(passdownDate, cancellationToken);
         }
 
+        public Task<FinalizedPassdown?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
+            _inner.GetByIdAsync(id, cancellationToken);
+
         public Task<bool> ExistsForDateAsync(DateOnly passdownDate, CancellationToken cancellationToken = default) =>
             _inner.ExistsForDateAsync(passdownDate, cancellationToken);
 
@@ -969,5 +972,8 @@ public class OperationsDashboardServiceTests
 
         public Task<IReadOnlyList<FinalizedPassdownSummary>> ListAsync(CancellationToken cancellationToken = default) =>
             _inner.ListAsync(cancellationToken);
+
+        public Task<IReadOnlyList<FinalizedPassdownSyncMetadata>> ListForSyncAsync(CancellationToken cancellationToken = default) =>
+            _inner.ListForSyncAsync(cancellationToken);
     }
 }
