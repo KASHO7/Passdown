@@ -1,6 +1,6 @@
 namespace Carowinds.Passdown.Application.PersonalSync;
 
-/// <summary>What a sync pass should do with one incoming remote envelope, given local state (Phase 16C §10-13). Never a "silently pick a winner" outcome.</summary>
+/// <summary>What a sync pass should do with one incoming remote envelope, given local state (Phase 16C §10-13, Phase 16D §11-§18). Never a "silently pick a winner" outcome.</summary>
 public enum SyncImportDecision
 {
     /// <summary>Self-authored (this device's own <see cref="SyncEnvelope.DeviceId"/>) or an already-incorporated remote revision — nothing to do.</summary>
@@ -17,6 +17,27 @@ public enum SyncImportDecision
 
     /// <summary>Local content differs from both the remote content and the last confirmed-shared state — a genuine concurrent edit. Never applied automatically.</summary>
     Conflict,
+
+    /// <summary>
+    /// The remote envelope is a tombstone (Phase 16D §11) and this device already has no local copy of
+    /// the entity (never had one, or already incorporated an earlier deletion) — nothing to apply, just
+    /// record that the remote deletion has been seen so re-scans stay cheap.
+    /// </summary>
+    RemoteDeletionAlreadyAbsent,
+
+    /// <summary>The remote envelope is a tombstone and the local copy has not diverged since the last confirmed-shared state — safe to delete locally (Phase 16D §14 SAFE case).</summary>
+    RemoteDeletionSafeApply,
+
+    /// <summary>The remote envelope is a tombstone but the local copy diverged since the last confirmed-shared state (or no shared baseline ever existed) — a deletion-vs-edit conflict (Phase 16D §14 CONFLICT case). Never applied automatically.</summary>
+    RemoteDeletionConflict,
+
+    /// <summary>
+    /// This device considers the entity locally deleted (a prior local delete or an already-applied
+    /// remote tombstone left no local row), but the incoming envelope carries live, non-deletion
+    /// content — resurrection risk (Phase 16D §17). Never silently resurrected and never silently
+    /// dropped; surfaced as a conflict.
+    /// </summary>
+    LocalDeletionConflict,
 }
 
 /// <summary>
@@ -54,7 +75,44 @@ public static class SyncReconciliation
 
         if (!localEntityExists)
         {
+            if (state is not null)
+            {
+                // This device previously knew this entity and no longer has a local row for it — it is
+                // considered locally deleted/tombstoned (Phase 16D §17/§18), whether that happened via
+                // an explicit local delete or a previously-applied remote tombstone.
+                if (envelope.IsDeleted)
+                {
+                    return SyncImportDecision.RemoteDeletionAlreadyAbsent;
+                }
+
+                // A non-deletion envelope arrived for something this device considers gone — never
+                // silently resurrect it (a stale device's pre-delete copy, §17) and never silently drop
+                // the incoming edit either.
+                return SyncImportDecision.LocalDeletionConflict;
+            }
+
+            if (envelope.IsDeleted)
+            {
+                // Never seen this entity at all — its deletion is moot from this device's perspective.
+                return SyncImportDecision.RemoteDeletionAlreadyAbsent;
+            }
+
             return SyncImportDecision.RemoteOnlyImport;
+        }
+
+        if (envelope.IsDeleted)
+        {
+            var lastSyncedHashForDeletion = state?.SyncedContentHash;
+            if (lastSyncedHashForDeletion is not null && string.Equals(localContentHash, lastSyncedHashForDeletion, StringComparison.Ordinal))
+            {
+                // Local hasn't diverged since the last confirmed-shared state — safe to delete (§14 SAFE case).
+                return SyncImportDecision.RemoteDeletionSafeApply;
+            }
+
+            // Local diverged since the last shared baseline (or there never was one) while the remote
+            // side deleted the entity — a deletion-vs-edit conflict (§14 CONFLICT case). Never applied
+            // automatically, and never inferred from a missing file elsewhere (§18).
+            return SyncImportDecision.RemoteDeletionConflict;
         }
 
         if (string.Equals(localContentHash, remoteContentHash, StringComparison.Ordinal))

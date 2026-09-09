@@ -1054,8 +1054,11 @@ public class OperationsCalendarServiceTests
         public Task<AssociateDraft?> GetAsync(DateOnly operatingDate, CancellationToken cancellationToken = default) =>
             inner.GetAsync(operatingDate, cancellationToken);
 
-        public Task SaveAsync(AssociateDraft draft, CancellationToken cancellationToken = default) =>
-            inner.SaveAsync(draft, cancellationToken);
+        public Task SaveAsync(AssociateDraft draft, IUnitOfWork? unitOfWork = null, CancellationToken cancellationToken = default) =>
+            inner.SaveAsync(draft, unitOfWork, cancellationToken);
+
+        public Task DeleteAsync(DateOnly operatingDate, IUnitOfWork? unitOfWork = null, CancellationToken cancellationToken = default) =>
+            inner.DeleteAsync(operatingDate, unitOfWork, cancellationToken);
 
         public Task<IReadOnlyList<DateOnly>> ListSavedDraftDatesAsync(CancellationToken cancellationToken = default) =>
             inner.ListSavedDraftDatesAsync(cancellationToken);

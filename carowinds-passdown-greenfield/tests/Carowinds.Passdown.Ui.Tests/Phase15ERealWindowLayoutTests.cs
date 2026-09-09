@@ -85,7 +85,7 @@ public class Phase15ERealWindowLayoutTests
             Summaries = [new FinalizedPassdownSummary(FixedDate, DateTimeOffset.UtcNow, FinalizationOrigin.Scheduled, true, 100)],
         };
         var history = new PassdownHistoryViewModel(historyService, new FakeFinalizedPassdownPdfRetrievalService());
-        var settings = new PersonalSyncSettingsViewModel(new FakePersonalSyncSettingsService(), new FakeSyncFolderPicker(), new FakePersonalSyncService());
+        var settings = new PersonalSyncSettingsViewModel(new FakePersonalSyncSettingsService(), new FakeSyncFolderPicker(), new FakePersonalSyncService(), new FakePersonalSyncConflictResolutionService());
         return new MainViewModel(dashboard, calendar, associate, notes, history, settings);
     }
 

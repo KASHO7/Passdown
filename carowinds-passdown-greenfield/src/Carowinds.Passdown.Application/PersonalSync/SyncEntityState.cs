@@ -1,6 +1,17 @@
+using Carowinds.Passdown.Application.Persistence;
+
 namespace Carowinds.Passdown.Application.PersonalSync;
 
-/// <summary>Whether a syncable entity currently has an unresolved concurrent-edit conflict (Phase 16C §13/§14). Resolution UX is 16D's job — this phase only ever sets or clears this flag, never offers a merge.</summary>
+/// <summary>
+/// Whether a syncable entity currently has an unresolved conflict (Phase 16C §13/§14, Phase 16D §3).
+/// Conceptually this is the "Detected" state in Phase 16D's conflict lifecycle (None -&gt; Detected -&gt;
+/// resolved back to None); the enum member keeps its original 16C name (<see cref="Conflicting"/>)
+/// rather than being renamed, to avoid an unnecessary breaking rename of already-shipped, already-tested
+/// 16C code for a purely cosmetic difference. There is no separate persisted "Resolving" state: a
+/// resolution command is one synchronous attempt against this same "Detected" precondition — a failed
+/// attempt (e.g. the sync folder is unavailable) simply leaves the entity Conflicting, safely retryable
+/// by calling the same resolution command again (Phase 16D §7/§21).
+/// </summary>
 public enum SyncConflictState
 {
     None,
@@ -79,5 +90,5 @@ public interface ISyncEntityStateRepository
     Task<IReadOnlyList<SyncEntityState>> ListByTypeAsync(SyncEntityType entityType, CancellationToken cancellationToken = default);
 
     /// <summary>Inserts or fully replaces the state row for (<paramref name="state"/>'s EntityType, EntityId).</summary>
-    Task UpsertAsync(SyncEntityState state, CancellationToken cancellationToken = default);
+    Task UpsertAsync(SyncEntityState state, IUnitOfWork? unitOfWork = null, CancellationToken cancellationToken = default);
 }

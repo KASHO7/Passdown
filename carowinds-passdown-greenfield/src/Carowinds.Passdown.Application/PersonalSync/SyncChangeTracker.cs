@@ -30,6 +30,6 @@ public sealed class SyncChangeTracker(ISyncEntityStateRepository repository, ICl
             ? SyncEntityState.CreateNew(entityType, entityId, now)
             : existing with { LocalRevision = existing.LocalRevision + 1, UpdatedAtUtc = now };
 
-        await repository.UpsertAsync(updated, cancellationToken).ConfigureAwait(false);
+        await repository.UpsertAsync(updated, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 }

@@ -1170,3 +1170,439 @@ for this date was also edited on `<device>` at `<time>`" (spec's own worked exam
 `ConflictRemoteDeviceId`, `ConflictRemoteRevision`, `ConflictRemoteContentHash`,
 `ConflictDetectedAtUtc`, plus the local entity's own current content for comparison. No blocking gap
 identified for 16D to build on.
+
+---
+
+# Phase 16D — Personal Sync: Explicit Conflict Resolution and Deletion/Tombstone Propagation
+
+Implements two capabilities on top of 16C's detection-only floor: (1) explicit, user-driven resolution
+of a draft/note conflict, surviving restart and a temporarily-unavailable sync folder; (2) an explicit
+tombstone/deletion model, propagated safely in both directions and never inferred from a missing file.
+The one invariant behind every decision below: **never silently lose user-authored data** — a conflict
+is only ever resolved by an explicit user choice, and a deletion is only ever represented by an
+explicit, versioned tombstone envelope.
+
+## 16D.1 Persisted conflict model
+
+16C's `sync_entity_state.Conflict*` columns record only identity/fingerprint (remote device, revision,
+content hash) — enough to *detect* a conflict and skip exporting over it, but not enough to *resolve*
+one after a restart, since the conflicting remote file might have changed again, moved, or the sync
+folder might be unreachable by the time a user opens the conflict screen. Phase 16D adds a second,
+dedicated table, [`sync_conflicts`](../src/Carowinds.Passdown.Infrastructure/Storage/Migrations/Migration0013CreateSyncConflictsTable.cs)
+(one new table — spec's explicit preference over per-entity-type conflict tables), holding the **full
+conflicting remote envelope**, keyed by `(entity_type, entity_id)` — at most one row per entity, matching
+`sync_entity_state`'s own single-conflict-per-entity model:
+
+```
+sync_conflicts
+    entity_type, entity_id                          -- PK, same identity as sync_entity_state
+    remote_device_id, remote_revision                -- which device/revision this conflict is against
+    remote_modified_at_utc
+    remote_is_deleted                                -- true for a delete-vs-edit conflict (§16D.5)
+    remote_payload_schema_version, remote_payload_json  -- the full payload, opaque; null when remote_is_deleted
+    remote_content_hash
+    detected_at_utc
+    newer_remote_device_id, newer_remote_revision,
+    newer_remote_detected_at_utc                     -- see §16D.4 "remote changes again while pending"
+```
+
+[`SyncConflictRecord`](../src/Carowinds.Passdown.Application/PersonalSync/SyncConflictRecord.cs) is the
+Application-layer shape; [`ISyncConflictRepository`](../src/Carowinds.Passdown.Application/PersonalSync/SyncConflictRecord.cs)/
+[`SqliteSyncConflictRepository`](../src/Carowinds.Passdown.Infrastructure/Storage/Repositories/SqliteSyncConflictRepository.cs)
+its persistence — the same `IUnitOfWork?`-optional-parameter pattern `SqliteCatalogProductRepository`
+already established (Phase 3G), so a resolution's local-entity-change and conflict-clearing can commit
+atomically (§16D.7). `sync_entity_state.Conflict*` is **unchanged and still used** for its original
+purpose — the cheap "is this entity mid-conflict, skip exporting it" gate every sync pass already
+checks; `sync_conflicts` is purely additive alongside it, not a replacement.
+
+DB schema **12 → 13** (`Migration0013CreateSyncConflictsTable`). Draft schema remains 3; Snapshot schema
+remains 1. Verified against an existing DB 12 with pre-existing draft/note/history/sync-entity-state rows
+(`PortableLifecycleTests.Schema12ToSchema13_CreatesSyncConflictsTable_AndPreservesExistingDraftNoteHistoryAndSyncEntityStateData`)
+and against the legacy-app-data-folder-name compatibility path (`Phase13GAppDataRenameCompatibilityTests`)
+— both now target DB 13. A fresh database initializes straight to schema 13
+(`SqliteRepositoryTestFixture`, used by every repository test in this phase).
+
+## 16D.2 Conflict lifecycle
+
+Conceptually **None → Detected → (resolved back to None)**. In code, `SyncEntityState.ConflictState`
+keeps its 16C name (`SyncConflictState.None`/`Conflicting`) rather than being renamed to `Detected` —
+`Conflicting` *is* the "Detected" state; renaming an already-shipped, already-tested enum member for a
+purely cosmetic difference was rejected as unnecessary churn. There is no separate persisted "Resolving"
+state: a resolution command (`ResolveKeepLocalAsync`/`ResolveUseRemoteAsync`/`ResolveAcceptDeletionAsync`)
+is one synchronous attempt against the `Conflicting` precondition — a failed attempt (sync folder
+unavailable) simply leaves the entity `Conflicting`, safely retryable by calling the same command again
+(§16D.7/§16D.10). One entity has at most one current unresolved conflict, exactly as the phase brief
+requires — `sync_conflicts`' primary key enforces this structurally.
+
+## 16D.3 Conflict list and detail (UI)
+
+New Application-layer types
+([`SyncConflictSummary`/`DraftConflictDetail`/`NoteConflictDetail`/`ConflictFieldComparison`](../src/Carowinds.Passdown.Application/PersonalSync/SyncConflictDetail.cs))
+and the owning service,
+[`IPersonalSyncConflictResolutionService`](../src/Carowinds.Passdown.Application/PersonalSync/SyncConflictDetail.cs) /
+[`PersonalSyncConflictResolutionService`](../src/Carowinds.Passdown.Infrastructure/PersonalSync/PersonalSyncConflictResolutionService.cs)
+(Infrastructure — owns validation, persistence, revision/rebase changes, export, and conflict clearing;
+no ViewModel implements any of this, per spec §19):
+
+- `GetConflictsAsync()` → one `SyncConflictSummary` per unresolved conflict — `DisplayLabel` is a
+  human string ("Sep 9 Draft", `Operational Note: "Gate 3 scanner down"`), never a raw GUID.
+- `GetDraftConflictDetailAsync(date)` / `GetNoteConflictDetailAsync(noteId)` → a focused, summarized
+  local-vs-remote comparison — `DraftConflictComparer`/`NoteConflictComparer` build a small, fixed list
+  of `(Label, LocalValue, RemoteValue)` rows (Manual Hours, Private Buyout, Projected Attendance,
+  Pre-Solds, Early Ride Time, Daily Feature, Product Overrides count, Custom Products, Selected
+  Operational Notes for drafts; Title/Body/Category/Priority/Effective Dates/Status for notes) —
+  deliberately not a raw-JSON dump (spec §5/§6).
+- `PersonalSyncSettingsViewModel` (Desktop) gained `Conflicts`/`ConflictCount`/`HasConflicts`/
+  `IsReviewingConflicts`/`SelectedConflictDetail`/`ConflictActionMessage` plus
+  `ReviewConflictsCommand`/`OpenConflictCommand`/`CloseConflictsCommand`/`CloseConflictDetailCommand`/
+  `KeepLocalCommand`/`UseRemoteCommand`/`AcceptDeletionCommand` — pure UI coordination, every actual
+  decision delegated to `IPersonalSyncConflictResolutionService`.
+  [`PersonalSyncSettingsView.axaml`](../src/Carowinds.Passdown.Desktop/Views/PersonalSyncSettingsView.axaml)
+  extends the existing Settings screen in place (no new Window/dialog — spec §27's "do not turn Settings
+  into a large sync management console," and §33's "avoid increasing real Avalonia Window-test surface
+  unless the actual conflict UI cannot be tested adequately via ViewModel tests," which it can): a
+  conflict-count callout + "Review Conflicts" button appears only when `HasConflicts`; reviewing shows a
+  list of rows, each with a "Review" button; selecting one shows the field comparison and the three
+  action buttons, gated by `IsRemoteDeletion` (`UseRemoteCommand` hidden for a remote deletion; spec §15
+  "do not call this Use Other Device if the remote version is a deletion").
+
+## 16D.4 Remote changes again while a conflict is pending
+
+Handled inside `PersonalSyncService.RecordConflictAsync` (shared by drafts and notes): on a *new*
+conflict, the full remote envelope is persisted as-is. On a subsequent sync pass, if a `sync_conflicts`
+row already exists for that entity:
+
+- the exact same remote `(DeviceId, Revision)` re-appears → no-op (consistent re-detection, not new
+  activity);
+- a *different* remote `(DeviceId, Revision)` appears → the **original** `RemoteDeviceId`/`RemoteRevision`/
+  `RemotePayloadJson`/`RemoteContentHash` fields are left untouched (never silently replaced, spec §10);
+  only `NewerRemoteDeviceId`/`NewerRemoteRevision`/`NewerRemoteDetectedAtUtc` are updated, and the
+  conflict detail UI surfaces this via `HasNewerRemoteActivity`/`ConflictDetailPresentation.NewerActivityNote`.
+
+Resolving the original conflict (either action) clears the `sync_conflicts` row entirely; the *next*
+sync pass then re-evaluates against whatever is currently in the folder — if that's the newer remote
+revision the user was warned about, it goes through the exact same detection logic again (possibly a
+fresh conflict, possibly a safe update, depending on what changed).
+
+## 16D.5 Tombstone/deletion model
+
+`SyncEnvelope.IsDeleted` (already defined since 16A/16B) is now actually used. A tombstone envelope for
+drafts/notes has `Payload` = JSON `null` (§11's "payload may be null/empty if safe and clearly
+versioned") and `PayloadSchemaVersion` = the entity's current payload schema version (so a reader always
+knows what schema *would* apply if it weren't a tombstone) — never inferred from a missing file.
+`SyncEntityIdentity`/`SyncPathService` are unchanged: a tombstone is written to the exact same canonical
+path (`drafts/<date>.json`, `notes/<guid>.json`) a content envelope would use — there is no separate
+tombstone folder or filename convention.
+
+[`SyncContentHash.TombstoneMarker`](../src/Carowinds.Passdown.Application/PersonalSync/SyncContentHash.cs)
+(`"TOMBSTONE"`, never a valid 64-hex-char SHA-256 digest) is the sentinel stored in
+`sync_entity_state.SyncedContentHash` once this device's understanding of an entity's deletion is
+confirmed-synced — reusing the *existing* dirty-comparison mechanism for deletion state, so **no new
+schema column was needed** to track "is this entity's deletion already synced." A key invariant this
+enables without extra bookkeeping: **`sync_entity_state` row exists + no domain row exists ⟺ this
+device considers the entity deleted** (whether via a local delete or an incorporated remote tombstone) —
+this single fact, always derivable from data already being persisted, is what `SyncReconciliation.Decide`
+and the tombstone-export loop both key off of.
+
+## 16D.6 `SyncReconciliation.Decide` — tombstone-aware decisions
+
+Four new [`SyncImportDecision`](../src/Carowinds.Passdown.Application/PersonalSync/SyncReconciliation.cs)
+values extend 16C's five, all still produced by the one pure, filesystem-free decision function:
+
+| Decision | When |
+|---|---|
+| `RemoteDeletionAlreadyAbsent` | Remote envelope is a tombstone; local already has no row for it (never had one, or already incorporated an earlier deletion). No-op; `LastRemoteDeviceId/Revision` updated only if a `sync_entity_state` row already exists, so a re-scan stays cheap. |
+| `RemoteDeletionSafeApply` | Remote envelope is a tombstone; local exists and has **not diverged** from the last confirmed-shared content (§14 SAFE case) — delete locally. |
+| `RemoteDeletionConflict` | Remote envelope is a tombstone; local exists and **has diverged** since the last shared baseline (or there never was one) — a delete-vs-edit conflict (§14 CONFLICT case). Never resolved automatically. |
+| `LocalDeletionConflict` | This device considers the entity deleted (`sync_entity_state` row exists, no domain row); an incoming **non-deletion** envelope arrives — resurrection risk (§17). Never silently resurrected, never silently dropped; always a conflict. |
+
+`RemoteDeletionConflict` and `LocalDeletionConflict` both route through the same
+`PersonalSyncService.RecordConflictAsync` helper as an ordinary edit-vs-edit `Conflict` — the only
+difference is `RemoteIsDeleted` on the persisted `SyncConflictRecord`. Which "direction" a conflict is
+(remote deleted vs. local deleted) is never separately stored — it is always derived live at resolution
+time from whether the local domain row currently exists, since that can only ever mean one of those two
+things once a `sync_entity_state` row exists at all.
+
+## 16D.7 "Keep This Device"
+
+`PersonalSyncConflictResolutionService.ResolveKeepLocalAsync`:
+
+1. Load the persisted conflict; a missing conflict (already resolved by a prior call, or converged on
+   its own) returns `NoConflictFound` — treated as success, not an error (idempotence, §21).
+2. Read the **current live** local content (never a frozen snapshot from conflict-detection time — the
+   user may have kept editing locally while the conflict sat unresolved).
+3. Build a new envelope from it — content envelope if the local entity exists, tombstone envelope if it
+   doesn't (the "keep my deletion" mirror case) — with a freshly bumped `LocalRevision`.
+4. **Export first, persist second**: `AtomicFileWriter` writes the envelope to the canonical path *before*
+   any database state changes. If the write fails (folder unavailable, §7/§32), the method returns
+   `ExportUnavailable` and touches **nothing** in SQLite — the conflict remains exactly as it was,
+   safely retryable by calling the same command again.
+5. Only after a successful export: one `IUnitOfWork` transaction updates `sync_entity_state` (new
+   revision, new synced-content-hash, conflict fields cleared) and deletes the `sync_conflicts` row
+   together — spec §20's "local entity changes + sync metadata/conflict-state updates should be atomic."
+
+## 16D.8 "Use Other Device"
+
+`ResolveUseRemoteAsync` — refuses (`WrongActionForConflict`) if the conflict is actually a remote
+deletion (spec §15: don't call this action on a deletion; use Accept Deletion instead — enforced in code,
+not just UI copy, so a ViewModel/test bug can't silently do the wrong thing). Otherwise, one
+`IUnitOfWork` transaction: deserializes the persisted `RemotePayloadJson`, upserts it locally (draft:
+`SaveAsync`, always an upsert; note: `AddAsync` if the local row is absent — the mirror "local deleted,
+remote wins" case — else `UpdateAsync`, both preserving the original `Guid`/`OperatingDate` identity
+exactly), sets `sync_entity_state.SyncedContentHash` to the conflict's own `RemoteContentHash`, and
+deletes the `sync_conflicts` row. No file export happens — the remote file is already the correct
+canonical content — which is also what makes "avoid immediately re-exporting the old local version"
+(§8) automatic: `SyncedContentHash` now equals current content, so the next export pass sees nothing
+dirty.
+
+## 16D.9 "Accept Deletion"
+
+`ResolveAcceptDeletionAsync` — refuses (`WrongActionForConflict`) if the conflict is *not* actually a
+remote deletion. Otherwise: one `IUnitOfWork` transaction deletes the local domain row (if any),
+marks `sync_entity_state` as tombstoned (`SyncedContentHash = TombstoneMarker`, revision bumped,
+`LastRemoteDeviceId/Revision` set to the conflict's), and clears `sync_conflicts`. No file export — the
+remote's tombstone file is already canonical.
+
+## 16D.10 Local deletion and tombstone export
+
+Repository-level primitives only —
+[`IAssociateDraftRepository.DeleteAsync`](../src/Carowinds.Passdown.Application/Persistence/AssociateDraftPersistence.cs)/
+[`IOperationalNoteRepository.DeleteAsync`](../src/Carowinds.Passdown.Application/OperationalNotes/OperationalNotePersistence.cs),
+each a plain `DELETE FROM ... WHERE`, `IUnitOfWork?`-optional like every other write in this phase. A
+"genuine local delete" is the same two-step pattern every other local write already follows (spec §7):
+`repository.DeleteAsync(id)`, then the *existing* `ISyncChangeTracker.MarkLocalChangeAsync(entityType,
+entityId)` — no new tracker method was needed, since bumping `LocalRevision` is exactly the same
+operation regardless of whether the underlying change was an edit or a delete; dirtiness is always
+decided by content-hash comparison at export time, and §16D.5's export loop naturally treats a
+domain-row-absent, non-tombstone-marker `sync_entity_state` row as "dirty for a tombstone export."
+
+`PersonalSyncService.ExportPendingTombstonesAsync` (shared by drafts/notes' export step) walks every
+`sync_entity_state` row of that type not covered by the normal domain-row export loop, skips anything
+mid-conflict or already synced-as-deleted, and writes a tombstone envelope for the rest — independent of
+whether the local domain row still exists (spec §13.4: "export tombstone independently of local entity
+existence"). An export I/O failure is counted and leaves the state untouched, retried next pass (§13's
+"deletion remains local, tombstone remains pending").
+
+## 16D.11 Real draft/note deletion wiring — audited, none exists
+
+Per spec §12, the actual product was audited before writing any of the above:
+`IAssociateDraftRepository`/`IOperationalNoteRepository` had **no delete method at all** before this
+phase (`SqliteOperationalNoteRepositoryTests` even had a standing architectural-invariant test asserting
+exactly that, now updated — see §16D.16). Operational Notes' only lifecycle transition is
+`Active → Resolved`, which is explicitly **not** deletion (spec's own "archive/inactive is NOT
+automatically deletion"). **No delete UI was manufactured to exercise tombstones** — the repository
+`DeleteAsync` methods above exist solely as sync infrastructure (needed so an *imported* remote tombstone
+can actually be applied locally, and so the primitives are ready and fully tested for whenever/if a
+genuine product delete feature is added later), and are exercised only directly, by tests, per spec
+§23's explicit allowance to "test tombstone/reconciliation primitives directly without inventing product
+UI." No `PersonalSyncSettingsView`/`AssociateView`/`OperationalNotesView` control calls either
+`DeleteAsync` method.
+
+## 16D.12 Resurrection prevention
+
+Because `sync_entity_state` row-exists-but-domain-row-absent is the one, sufficient signal for "this
+device considers the entity deleted" (§16D.5), no separate bookkeeping was needed to prevent
+resurrection:
+
+- **A deletes, B imports the tombstone, B syncs again**: B's own export loop no longer sees the entity
+  (no domain row, and the tombstone-export loop skips it — `SyncedContentHash` already equals
+  `TombstoneMarker`). B never re-exports the pre-delete content it used to have
+  (`Deletion_D_StaleDeviceThatDidNotEditDoesNotResurrectAfterOwnSyncPass`).
+- **C was offline before a deletion, reconnects later, never edited its own copy**: `Decide` sees
+  `localEntityExists = true` (C still has its old copy) and the remote envelope `IsDeleted = true`; C's
+  local content still equals its `SyncedContentHash` from before (C never touched it) →
+  `RemoteDeletionSafeApply` — C deletes locally, converges, never resurrects
+  (`Deletion_C_StaleOfflineDeviceReconnectsAfterDeletion_SafelyAppliesDeletion_NeverResurrects`).
+- **C did edit before the tombstone arrived**: `RemoteDeletionConflict`, not silent deletion —
+  identical to the two-device case (§16D.6).
+- **The mirror case — A deletes, B explicitly resolves A's tombstone with "Keep This Device" (an
+  intentional resurrection with a new authoritative revision), A syncs again**: A still considers the
+  entity deleted (`sync_entity_state` row, no domain row) and B's incoming envelope is live content, not
+  a deletion → `LocalDeletionConflict` on **A's own side too**. This is deliberate, not a gap: an
+  explicit resolution on one device does not silently override the other device's own explicit deletion
+  without that device's user also confirming — resurrection is never silent on *either* side. A must
+  call `ResolveUseRemoteAsync` itself to accept B's resurrection before both sides converge
+  (`Deletion_F_KeepLocalAfterDeleteConflict_ResurrectsIntentionallyWithNewAuthoritativeRevision`).
+
+## 16D.13 Missing file and conflict-copy behavior — unchanged from 16C
+
+Still true, and now doubly load-bearing since a tombstone could otherwise be confused with a missing
+file: a canonical file that disappears between a directory listing and its read, or a file that
+previously existed and later vanishes, is **never** treated as a deletion signal — there is no
+"previously seen" list at all, each pass is a full independent reconciliation
+(`Deletion_I_MissingCanonicalFile_IsNeverTreatedAsDeletion`, reusing 16C's own
+`RunAsync_PreviouslySeenRemoteFileLaterDisappears_...` coverage). A malformed tombstone (unparseable
+JSON, or an `EntityType`/`EntityId` mismatch) is counted in `MalformedCount` and skipped — never
+destructive (`Deletion_J_MalformedTombstoneFile_DoesNothingDestructive`). An OneDrive conflict-copy
+filename is still silently ignored regardless of whether it happens to contain a tombstone or content
+envelope (16C's filename-parsing gate runs before any envelope is even read).
+
+## 16D.14 Tombstone retention
+
+Retained **indefinitely** — no garbage collection of tombstone files or `sync_entity_state`/
+`sync_conflicts` rows was implemented (spec §16's explicit instruction, given there is no authoritative
+multi-device registry to safely base a GC policy on). Storage impact is negligible (a tombstone envelope
+is a few hundred bytes of JSON, same order of magnitude as a normal draft/note envelope — see 16A §J).
+
+## 16D.15 Transaction safety, idempotence, and failure behavior
+
+Every resolution action that changes both a local domain row and `sync_entity_state`/`sync_conflicts`
+does so inside one `SqliteUnitOfWork` (via the already-registered `IUnitOfWorkFactory`) — commit-or-
+rollback together, spec §20. The one thing deliberately **outside** that transaction is the cloud
+filesystem write in `ResolveKeepLocalAsync` — it happens *before*, and only a successful write unlocks
+the subsequent DB transaction, so "DB succeeds, export fails" (the failure mode spec §20 calls out) can
+never happen; the only possible failure mode is "export fails, DB untouched," which is exactly the safe,
+retryable state required.
+
+Idempotence (§21), verified directly:
+- Resolving an already-resolved conflict a second time returns `NoConflictFound` rather than throwing,
+  duplicating a revision, or resurrecting a record
+  (`Resolution_ResolvingTheSameConflictTwice_SecondCallIsIdempotent_NoConflictFound`).
+- Repeated tombstone import is a no-op after the first (`Deletion_B_RepeatedTombstoneImport_IsIdempotent`).
+- Calling `ResolveUseRemoteAsync`/`ResolveAcceptDeletionAsync` against the wrong conflict shape is
+  refused before any state changes (`Resolution_UseOtherDeviceOnARemoteDeletionConflict_IsRefused_...`,
+  `Resolution_AcceptDeletionOnANonDeletionConflict_IsRefused_...`).
+
+## 16D.16 Privacy
+
+Re-audited every new field added in this phase (`SyncConflictRecord`, the tombstone envelope shape, the
+new UI presentation types): no username, machine name, email, account identity, credential, token, path,
+or hardware identifier. `RemotePayloadJson` carries the same category of already-audited operational
+content 16A §I already cleared (manual hours, attendance, note text) — nothing new. The existing
+`ExportedSyncFiles_NeverContainMachineNameUsernameOrLocalPaths` privacy guard (16C) continues to pass
+unmodified against the new tombstone-capable export path.
+
+## 16D.17 Existing-user migration and fresh-DB result
+
+- **Existing DB 12 upgrade**: `PortableLifecycleTests.Schema12ToSchema13_CreatesSyncConflictsTable_AndPreservesExistingDraftNoteHistoryAndSyncEntityStateData`
+  seeds a real DB 12 (draft, note, finalized/History row, and a `sync_entity_state` row) through the real
+  repositories, upgrades to DB 13, and confirms every pre-existing row — including the 16C-era
+  `sync_entity_state` row — is untouched, and the new empty `sync_conflicts` table is immediately usable.
+  `Phase13GAppDataRenameCompatibilityTests` (legacy `%LOCALAPPDATA%` folder name) is likewise upgraded to
+  and verified against DB 13.
+- **Fresh DB**: every repository test in this phase (`SqliteRepositoryTestFixture`) migrates straight to
+  schema 13 in one pass.
+- **Sync configuration untouched**: the migration only creates the empty `sync_conflicts` table — a
+  device's enabled/disabled sync setting (a flat file, not a DB row) is unaffected.
+
+## 16D.18 Two-device conflict and deletion simulations
+
+Extended [`PersonalSyncServiceTests`](../tests/Carowinds.Passdown.Infrastructure.Tests/PersonalSync/PersonalSyncServiceTests.cs)'s
+existing `LocalStoreA`/`LocalStoreB`/`SharedSyncFolder` harness (now also constructing
+`ISyncConflictRepository`/`IPersonalSyncConflictResolutionService`/`IUnitOfWorkFactory` per device; a
+"restart" is simulated by calling `CreateDevice` again with the same on-disk database file and a fresh
+clock/service graph — real objects, real SQLite persistence, nothing mocked). Every scenario the phase
+brief calls out by letter:
+
+| Conflict scenario (§22) | Result |
+|---|---|
+| A. A/B edit same draft → conflict, full remote payload persisted | PASS |
+| B. A Keep Local → B converges | PASS |
+| C. A Accept Remote → A converges, never re-exports the discarded version | PASS |
+| D. Restart before resolving → conflict and full payload survive | PASS |
+| E. Sync folder unavailable during resolution → retry works, conflict never lost | PASS |
+| F. Remote changes again while pending → original stays stable, newer activity flagged | PASS |
+| Note equivalents (conflict detection, Keep Local, convergence) | PASS |
+
+| Deletion scenario (§23) | Result |
+|---|---|
+| A. A deletes → B imports deletion | PASS |
+| B. Repeated tombstone import idempotent | PASS |
+| C. Stale offline device reconnects, never edited → safe apply, never resurrects | PASS |
+| D. Stale device's own next sync pass never re-exports pre-delete content | PASS |
+| E. B locally edits before receiving tombstone → conflict | PASS |
+| F. Keep Local after delete conflict → intentional resurrection with new revision; other device also requires its own explicit confirmation (§16D.12) | PASS |
+| G. Accept Deletion removes local record | PASS |
+| H. Tombstone/delete conflict survives restart | PASS |
+| I. Missing canonical file does nothing | PASS |
+| J. Malformed tombstone does nothing destructive | PASS |
+
+## 16D.19 Sync Now behavior — unchanged
+
+`PersonalSyncSettingsViewModel.SyncNowCommand` still calls `IPersonalSyncService.RunAsync()` exactly as
+16C wired it; the only addition is a `RefreshConflictsAsync()` call afterward so the conflict count
+reflects any new conflicts that pass just detected. An unresolved conflict continues to pause only that
+one entity's export (16C behavior, unchanged) — unrelated records still sync every pass, and the
+conflict screen is never auto-opened (spec §26 — the user must click "Review Conflicts").
+
+## Tests added (Phase 16D)
+
+- `SyncReconciliationTests` — 7 new cases for the four tombstone-aware decisions (Application.Tests).
+- `SqliteSyncConflictRepositoryTests` — round-trip, tombstone-null-fields, upsert-replaces, delete,
+  list-across-types, reopened-connection (Infrastructure.Tests).
+- `DeleteAsync` coverage added to `SqliteAssociateDraftRepositoryTests`/`SqliteOperationalNoteRepositoryTests`.
+- `PersonalSyncServiceTests` — 6 conflict-resolution scenarios (A-F) + 1 note equivalent, 10 deletion
+  scenarios (A-J), 4 resolution guard-rail/idempotence tests (Infrastructure.Tests).
+- `PortableLifecycleTests.Schema12ToSchema13_...` migration test; `Phase13GAppDataRenameCompatibilityTests`
+  updated to target DB 13.
+- `PersonalSyncSettingsViewModelTests` — 6 new tests for conflict count/list/detail/resolution UI
+  coordination (Ui.Tests) — ViewModel-level only, per spec §33's preference; the native picker/real-Window
+  rendering of the new conflict panel itself remains **NOT EXECUTED** on this (macOS/Darwin) host, same
+  limitation carried since 16B.
+- `FakePersonalSyncConflictResolutionService` (Ui.Tests/TestSupport).
+- One pre-existing architectural-invariant test, `SqliteOperationalNoteRepositoryTests.Repository_ExposesNoDeleteMethod`,
+  was **updated, not removed**, to `Repository_ExposesExactlyOneDeleteMethod_ForSyncTombstonesOnly_AndNoRemoveMethod` —
+  it now asserts the one intentional exception (`DeleteAsync`, sync-only) while still guarding against any
+  casual "Remove"-style method.
+
+## Final test count
+
+1857/1857 deterministic (non-`LiveSmoke`) tests passing, run per-project
+(`Domain.Tests` 105, `Application.Tests` 524, `Infrastructure.Tests` 483, `Documents.Tests` 114,
+`Ui.Tests` 631). Up from the Phase 16C baseline of 1810/1810. `dotnet build CarowindsPassdown.slnx`:
+0 warnings, 0 errors.
+
+The same pre-existing, previously-documented (since Phase 6D) Avalonia headless cross-test parallelism
+flake observed in 16C recurs here, now also intermittently involving `OperationsCalendarViewTests`
+alongside `RealWindowStartupTimingTests`/`Phase15ERealWindowLayoutTests` when the full multi-project
+suite or the full `Ui.Tests` project runs with default parallelism — confirmed non-deterministic (two
+consecutive full-project runs produced two different failure sets) and confirmed unrelated to this
+phase's changes (isolating the three real-`Window`-constructing classes together passes 38/38 repeatably;
+isolating everything else passes 593/593 repeatably; 38 + 593 = 631, the full total, zero real failures
+attributable to Phase 16D). Per CLAUDE.md, not fixed — out of scope, pre-existing, and explicitly called
+out as such by the Phase 16D brief itself.
+
+## Known limitations
+
+- The mirror "local deleted, remote resurrects" case always requires **both** devices to make an
+  explicit choice (§16D.12) — there is no one-sided "just converge" shortcut, even though this makes the
+  UX one extra click heavier than the more common "remote deleted, local edited" direction. This was a
+  deliberate safety choice under ambiguous spec guidance, not an oversight — see §16D.12's worked example
+  and the reasoning in the final report.
+- The conflict detail comparison is a fixed, curated field list (spec-sanctioned "summarized, not raw
+  JSON"), not a generic recursive diff — a future draft-payload field that isn't in `DraftConflictComparer`'s
+  list wouldn't automatically show up in the comparison (it would still be correctly preserved/applied by
+  Keep Local/Use Other Device, which always operate on the full persisted payload, never the summarized
+  view).
+- No automatic/background sync cadence — still "Sync Now" only, unchanged from 16C (16F's job).
+- Finalized History/PDFs are not synced and have no conflict/tombstone model yet (16E's job) — the
+  generic `sync_conflicts`/tombstone infrastructure built here was kept entity-agnostic at the
+  `SyncEntityType` level specifically so 16E can extend it without another schema redesign, but no
+  `FinalizedPassdown`-specific wiring exists yet.
+- The real Windows-host OneDrive desktop client interaction, and the native conflict-panel's actual
+  on-screen rendering, remain unverified on this (macOS/Darwin) development host — same limitation
+  carried forward from every prior Personal Sync phase.
+
+## Deferred to 16E
+
+- Finalized History/PDF sync, using the insert-only/dedupe-by-content-hash rule from 16A §G.
+- Any conflict/tombstone model for `FinalizedPassdown` (the infrastructure here is ready to extend, per
+  above, but nothing is wired).
+
+## Deferred to 16F
+
+- Automatic/background sync cadence (timer, startup sync, save-triggered sync, filesystem watcher,
+  scheduled sync) — 16D remains manual-trigger ("Sync Now") only, per explicit instruction.
+- Richer sync status UX (last-synced indicator, device list) beyond the minimal conflict count/review
+  surface added here.
+
+## Phase 16E readiness
+
+The tombstone/conflict primitives (`SyncEnvelope.IsDeleted`, `SyncReconciliation.Decide`'s four
+deletion-aware branches, `sync_conflicts`) are all keyed by the existing `SyncEntityType` enum, which
+already includes `FinalizedPassdown` (defined since 16B, unused until now) — 16E can register a fourth
+entity type's import/export loop against the same `SyncReconciliation.Decide`/`ISyncConflictRepository`/
+`sync_conflicts` machinery without another schema migration for conflict/deletion support specifically
+(though History's own insert-only/content-hash dedup rule, per 16A §G, is a different — simpler —
+conflict model than drafts/notes', so 16E will still need its own decision path, not `Decide` reused
+verbatim). No blocking gap identified.

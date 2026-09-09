@@ -137,7 +137,7 @@ public sealed class AssociatePassdownService(
 
         var now = clock.UtcNow;
         var record = new AssociateDraft(operatingDate, AssociateDraftPayload.CurrentSchemaVersion, JsonSerializer.Serialize(draft), now);
-        await draftRepository.SaveAsync(record, cancellationToken).ConfigureAwait(false);
+        await draftRepository.SaveAsync(record, cancellationToken: cancellationToken).ConfigureAwait(false);
 
         // Phase 16C §7: SQLite save first, sync metadata second, never in the same transaction — a
         // failure here must never roll back (or be rolled back by) the save that already succeeded.

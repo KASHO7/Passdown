@@ -60,9 +60,28 @@
       <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
     </Style>
 
+    <Style Selector="Button.textAction">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="Padding" Value="0" />
+    </Style>
+
+    <Style Selector="Border.conflictRow">
+      <Setter Property="Padding" Value="12" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+    </Style>
+
+    <Style Selector="Grid.fieldComparisonRow > TextBlock">
+      <Setter Property="Padding" Value="0,4" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
   </UserControl.Styles>
 
-  <Grid RowDefinitions="Auto,*">
+  <Grid x:Name="PersonalSyncRoot" RowDefinitions="Auto,*">
 
     <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceTintBrush}"
             BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
@@ -118,8 +137,98 @@
             <TextBlock Text="{Binding SyncResultSummary}" TextWrapping="Wrap"
                        IsVisible="{Binding SyncResultSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
+            <!-- Phase 16D §4/§27: a minimal conflict callout — never shown when there is nothing to review. -->
+            <StackPanel Spacing="8" IsVisible="{Binding HasConflicts}">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="Status" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <Border Classes="chip">
+                  <TextBlock Text="Conflict attention needed" />
+                </Border>
+              </StackPanel>
+              <TextBlock Text="{Binding ConflictStatusText}" />
+              <Button Content="Review Conflicts" Classes="secondaryAction" HorizontalAlignment="Left"
+                      Command="{Binding ReviewConflictsCommand}"
+                      AutomationProperties.Name="Review Conflicts" />
+            </StackPanel>
+
           </StackPanel>
         </Border>
+
+        <!-- Phase 16D §4/§5/§6: the conflict list. Selecting a row loads its detail below. -->
+        <StackPanel Spacing="16" IsVisible="{Binding IsReviewingConflicts}">
+          <TextBlock Text="Conflicts" Classes="sectionTitle" Margin="0" />
+          <Border Classes="panel">
+            <StackPanel Spacing="10">
+              <ItemsControl ItemsSource="{Binding Conflicts}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="conflictRow" Margin="0,0,0,8">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="{Binding DisplayLabel}" VerticalAlignment="Center" FontWeight="Medium" />
+                        <Button Grid.Column="1" Content="Review"
+                                Command="{Binding #PersonalSyncRoot.((vm:PersonalSyncSettingsViewModel)DataContext).OpenConflictCommand}"
+                                CommandParameter="{Binding}"
+                                Classes="secondaryAction" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <Button Content="Close" Classes="textAction" HorizontalAlignment="Left"
+                      Command="{Binding CloseConflictsCommand}" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
+        <!-- Phase 16D §5/§6/§7/§8/§15: the focused local-vs-remote comparison and explicit resolution actions. -->
+        <StackPanel Spacing="16" IsVisible="{Binding SelectedConflictDetail, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <TextBlock Text="Conflict Detail" Classes="sectionTitle" Margin="0" />
+          <Border Classes="panel">
+            <StackPanel Spacing="14">
+              <TextBlock Text="{Binding SelectedConflictDetail.Title}" FontWeight="SemiBold" FontSize="15" />
+              <TextBlock Text="{Binding SelectedConflictDetail.Explanation}" Classes="muted" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding SelectedConflictDetail.RemoteActivityLabel}" Classes="muted" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding SelectedConflictDetail.NewerActivityNote}" Classes="muted" TextWrapping="Wrap"
+                         IsVisible="{Binding SelectedConflictDetail.NewerActivityNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+              <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto">
+                <TextBlock Grid.Column="0" Text="Field" FontWeight="SemiBold" />
+                <TextBlock Grid.Column="1" Text="This Device" FontWeight="SemiBold" />
+                <TextBlock Grid.Column="2" Text="Other Device" FontWeight="SemiBold" />
+              </Grid>
+              <ItemsControl ItemsSource="{Binding SelectedConflictDetail.Fields}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Grid Classes="fieldComparisonRow" ColumnDefinitions="*,*,*">
+                      <TextBlock Grid.Column="0" Text="{Binding Label}" FontWeight="Medium" />
+                      <TextBlock Grid.Column="1" Text="{Binding LocalValue}" />
+                      <TextBlock Grid.Column="2" Text="{Binding RemoteValue}" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <TextBlock Text="{Binding ConflictActionMessage}" Classes="muted" TextWrapping="Wrap"
+                         IsVisible="{Binding ConflictActionMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <Button Content="Keep This Device" Classes="secondaryAction"
+                        Command="{Binding KeepLocalCommand}"
+                        AutomationProperties.Name="Keep This Device" />
+                <Button Content="Use Other Device" Classes="secondaryAction"
+                        Command="{Binding UseRemoteCommand}"
+                        IsVisible="{Binding !SelectedConflictDetail.IsRemoteDeletion}"
+                        AutomationProperties.Name="Use Other Device" />
+                <Button Content="Accept Deletion" Classes="secondaryAction"
+                        Command="{Binding AcceptDeletionCommand}"
+                        IsVisible="{Binding SelectedConflictDetail.IsRemoteDeletion}"
+                        AutomationProperties.Name="Accept Deletion" />
+                <Button Content="Cancel" Classes="textAction"
+                        Command="{Binding CloseConflictDetailCommand}" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+        </StackPanel>
 
         <TextBlock Text="Device" Classes="sectionTitle" Margin="0" />
         <Border Classes="panel">

@@ -8,18 +8,22 @@ using Microsoft.Extensions.Logging;
 namespace Carowinds.Passdown.Desktop.ViewModels;
 
 /// <summary>
-/// The Settings / Personal Sync screen (Phase 16B §4/§14, Phase 16C §25/§26): On/Off, the configured
-/// folder, a Choose Folder action, a small status line, and (16C) a manual "Sync Now" action with a
-/// simple result line — deliberately no last-sync-time, no automatic/background cadence, and no
-/// conflict-resolution controls; those belong to 16D/16F. Loads eagerly in its constructor, mirroring
-/// <see cref="OperationsDashboardViewModel"/>'s own fire-and-forget-with-awaitable-handle pattern so a
-/// test can await <see cref="PendingLoad"/> instead of racing it.
+/// The Settings / Personal Sync screen (Phase 16B §4/§14, Phase 16C §25/§26, Phase 16D §27): On/Off, the
+/// configured folder, a Choose Folder action, a small status line, a manual "Sync Now" action with a
+/// simple result line, and (16D) a minimal conflict summary/review surface — "Review Conflicts" opens a
+/// list, selecting one shows a local-vs-remote comparison with explicit Keep This Device/Use Other
+/// Device/Accept Deletion actions. All conflict logic lives in <see cref="IPersonalSyncConflictResolutionService"/>;
+/// this type only coordinates what the user sees and which action they picked (spec §19). Deliberately
+/// still no last-sync-time or automatic/background cadence — those remain 16F. Loads eagerly in its
+/// constructor, mirroring <see cref="OperationsDashboardViewModel"/>'s own fire-and-forget-with-awaitable-handle
+/// pattern so a test can await <see cref="PendingLoad"/> instead of racing it.
 /// </summary>
 public partial class PersonalSyncSettingsViewModel : ViewModelBase
 {
     private readonly IPersonalSyncSettingsService _service;
     private readonly ISyncFolderPicker _folderPicker;
     private readonly IPersonalSyncService _syncService;
+    private readonly IPersonalSyncConflictResolutionService _conflictService;
     private readonly ILogger<PersonalSyncSettingsViewModel>? _logger;
 
     private Task _pendingLoad = Task.CompletedTask;
@@ -55,19 +59,46 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial string? SyncResultSummary { get; set; }
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasConflicts))]
+    [NotifyPropertyChangedFor(nameof(ConflictStatusText))]
+    public partial int ConflictCount { get; set; }
+
+    [ObservableProperty]
+    public partial IReadOnlyList<SyncConflictSummary> Conflicts { get; set; } = [];
+
+    [ObservableProperty]
+    public partial bool IsReviewingConflicts { get; set; }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(KeepLocalCommand))]
+    [NotifyCanExecuteChangedFor(nameof(UseRemoteCommand))]
+    [NotifyCanExecuteChangedFor(nameof(AcceptDeletionCommand))]
+    public partial ConflictDetailPresentation? SelectedConflictDetail { get; set; }
+
+    [ObservableProperty]
+    public partial string? ConflictActionMessage { get; set; }
+
+    public bool HasConflicts => ConflictCount > 0;
+
+    public string ConflictStatusText => PersonalSyncConflictStatusPresentation.Format(ConflictCount);
+
     public PersonalSyncSettingsViewModel(
         IPersonalSyncSettingsService service,
         ISyncFolderPicker folderPicker,
         IPersonalSyncService syncService,
+        IPersonalSyncConflictResolutionService conflictService,
         ILogger<PersonalSyncSettingsViewModel>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(folderPicker);
         ArgumentNullException.ThrowIfNull(syncService);
+        ArgumentNullException.ThrowIfNull(conflictService);
 
         _service = service;
         _folderPicker = folderPicker;
         _syncService = syncService;
+        _conflictService = conflictService;
         _logger = logger;
 
         _pendingLoad = LoadAsync();
@@ -88,6 +119,7 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         try
         {
             Apply(await _service.LoadAsync().ConfigureAwait(true));
+            await RefreshConflictsAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -163,6 +195,9 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
             var result = await _syncService.RunAsync().ConfigureAwait(true);
             SyncResultSummary = PersonalSyncResultPresentation.Format(result);
             Apply(await _service.LoadAsync().ConfigureAwait(true));
+            // Sync Now must never block on, or be blocked by, unrelated records (§26) — an unresolved
+            // conflict from a prior pass simply keeps showing here, alongside this pass's own results.
+            await RefreshConflictsAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -176,6 +211,118 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
     }
 
     private bool CanSyncNow() => !IsBusy && Status == PersonalSyncStatus.Ready;
+
+    // ----- Phase 16D: conflict review and resolution -----
+
+    [RelayCommand]
+    private async Task ReviewConflictsAsync()
+    {
+        await RefreshConflictsAsync().ConfigureAwait(true);
+        IsReviewingConflicts = true;
+    }
+
+    [RelayCommand]
+    private void CloseConflicts()
+    {
+        IsReviewingConflicts = false;
+        SelectedConflictDetail = null;
+        ConflictActionMessage = null;
+    }
+
+    [RelayCommand]
+    private async Task OpenConflictAsync(SyncConflictSummary summary)
+    {
+        ArgumentNullException.ThrowIfNull(summary);
+        ConflictActionMessage = null;
+
+        try
+        {
+            if (summary.EntityType == SyncEntityType.AssociateDraft)
+            {
+                if (SyncEntityIdentity.TryParseDraftId(summary.EntityId, out var operatingDate))
+                {
+                    var detail = await _conflictService.GetDraftConflictDetailAsync(operatingDate).ConfigureAwait(true);
+                    SelectedConflictDetail = detail is null ? null : ConflictDetailPresentation.ForDraft(summary, detail);
+                }
+            }
+            else if (SyncEntityIdentity.TryParseNoteId(summary.EntityId, out var noteId))
+            {
+                var detail = await _conflictService.GetNoteConflictDetailAsync(noteId).ConfigureAwait(true);
+                SelectedConflictDetail = detail is null ? null : ConflictDetailPresentation.ForNote(summary, detail);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to load a Personal Sync conflict's detail.");
+            ConflictActionMessage = "Could not load this conflict's details. See the log for details.";
+        }
+    }
+
+    [RelayCommand]
+    private void CloseConflictDetail()
+    {
+        SelectedConflictDetail = null;
+        ConflictActionMessage = null;
+    }
+
+    /// <summary>"Keep This Device" (spec §7/§15).</summary>
+    [RelayCommand(CanExecute = nameof(HasSelectedConflict))]
+    private Task KeepLocalAsync() => ResolveSelectedConflictAsync(_conflictService.ResolveKeepLocalAsync);
+
+    /// <summary>"Use Other Device" (spec §8) — disabled entirely for a remote-deletion conflict (§15's "do not call this Use Other Device" wording), enforced again at the service layer.</summary>
+    [RelayCommand(CanExecute = nameof(CanUseRemote))]
+    private Task UseRemoteAsync() => ResolveSelectedConflictAsync(_conflictService.ResolveUseRemoteAsync);
+
+    /// <summary>"Accept Deletion" (spec §15) — only offered for an actual remote-deletion conflict.</summary>
+    [RelayCommand(CanExecute = nameof(CanAcceptDeletion))]
+    private Task AcceptDeletionAsync() => ResolveSelectedConflictAsync(_conflictService.ResolveAcceptDeletionAsync);
+
+    private bool HasSelectedConflict() => SelectedConflictDetail is not null;
+
+    private bool CanUseRemote() => SelectedConflictDetail is { IsRemoteDeletion: false };
+
+    private bool CanAcceptDeletion() => SelectedConflictDetail is { IsRemoteDeletion: true };
+
+    private async Task ResolveSelectedConflictAsync(Func<SyncEntityType, string, CancellationToken, Task<ConflictResolutionResult>> resolve)
+    {
+        var selected = SelectedConflictDetail;
+        if (selected is null)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var result = await resolve(selected.EntityType, selected.EntityId, default).ConfigureAwait(true);
+            if (result.Outcome is ConflictResolutionOutcome.Resolved or ConflictResolutionOutcome.NoConflictFound)
+            {
+                SelectedConflictDetail = null;
+                ConflictActionMessage = null;
+                await RefreshConflictsAsync().ConfigureAwait(true);
+            }
+            else
+            {
+                ConflictActionMessage = result.Message;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to resolve a Personal Sync conflict.");
+            ConflictActionMessage = "Something went wrong resolving this conflict. See the log for details.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task RefreshConflictsAsync()
+    {
+        var conflicts = await _conflictService.GetConflictsAsync().ConfigureAwait(true);
+        Conflicts = conflicts;
+        ConflictCount = conflicts.Count;
+    }
 
     private void Apply(PersonalSyncSettingsSnapshot snapshot)
     {

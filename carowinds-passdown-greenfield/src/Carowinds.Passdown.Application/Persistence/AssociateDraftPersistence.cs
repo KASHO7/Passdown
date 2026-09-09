@@ -17,7 +17,16 @@ public interface IAssociateDraftRepository
     Task<AssociateDraft?> GetAsync(DateOnly operatingDate, CancellationToken cancellationToken = default);
 
     /// <summary>Inserts or fully replaces the draft for <paramref name="draft"/>'s operating date.</summary>
-    Task SaveAsync(AssociateDraft draft, CancellationToken cancellationToken = default);
+    Task SaveAsync(AssociateDraft draft, IUnitOfWork? unitOfWork = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes the draft row for <paramref name="operatingDate"/>, if one exists (Phase 16D §13) — the
+    /// repository-level primitive a genuine local-delete action or a remote-tombstone-import "SAFE"
+    /// apply (§14) needs; the product has no user-facing delete action for a draft today (§12), so
+    /// nothing in the UI calls this yet. A no-op (never throws) when no row exists, matching this
+    /// repository's other idempotent-by-nature methods.
+    /// </summary>
+    Task DeleteAsync(DateOnly operatingDate, IUnitOfWork? unitOfWork = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Every <see cref="AssociateDraft.OperatingDate"/> with a persisted row, ascending. Used by

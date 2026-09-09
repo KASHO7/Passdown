@@ -53,9 +53,10 @@ public class Phase13GAppDataRenameCompatibilityTests : IDisposable
         new Migration0010CreateOperationalNotesTable(),
         new Migration0011CreateDeepRefreshStatusTable(),
         new Migration0012CreateSyncEntityStateTable(),
+        new Migration0013CreateSyncConflictsTable(),
     ];
 
-    private const int CurrentSchemaVersion = 12;
+    private const int CurrentSchemaVersion = 13;
 
     [Fact]
     public void AppPaths_LocalApplicationDataDirectory_StillUsesTheLegacyFolderName_NotTheRenamedProductName()

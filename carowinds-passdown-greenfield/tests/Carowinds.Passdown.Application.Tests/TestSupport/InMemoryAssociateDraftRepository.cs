@@ -9,9 +9,15 @@ internal sealed class InMemoryAssociateDraftRepository : IAssociateDraftReposito
     public Task<AssociateDraft?> GetAsync(DateOnly operatingDate, CancellationToken cancellationToken = default) =>
         Task.FromResult(_drafts.GetValueOrDefault(operatingDate));
 
-    public Task SaveAsync(AssociateDraft draft, CancellationToken cancellationToken = default)
+    public Task SaveAsync(AssociateDraft draft, IUnitOfWork? unitOfWork = null, CancellationToken cancellationToken = default)
     {
         _drafts[draft.OperatingDate] = draft;
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteAsync(DateOnly operatingDate, IUnitOfWork? unitOfWork = null, CancellationToken cancellationToken = default)
+    {
+        _drafts.Remove(operatingDate);
         return Task.CompletedTask;
     }
 

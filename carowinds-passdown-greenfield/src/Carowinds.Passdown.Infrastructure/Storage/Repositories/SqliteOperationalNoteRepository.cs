@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.OperationalNotes;
+using Carowinds.Passdown.Application.Persistence;
 using Microsoft.Data.Sqlite;
 
 namespace Carowinds.Passdown.Infrastructure.Storage.Repositories;
@@ -71,28 +72,38 @@ public sealed class SqliteOperationalNoteRepository(SqliteConnectionFactory conn
         return results;
     }
 
-    public async Task AddAsync(OperationalNote note, CancellationToken cancellationToken = default)
+    public async Task AddAsync(OperationalNote note, IUnitOfWork? unitOfWork = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(note);
 
-        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-        using var command = connection.CreateCommand();
-        command.CommandText =
+        const string commandText =
             """
             INSERT INTO operational_notes (id, title, body, category, priority, effective_from, effective_through, status, created_at_utc, updated_at_utc, resolved_at_utc)
             VALUES ($id, $title, $body, $category, $priority, $effectiveFrom, $effectiveThrough, $status, $createdAt, $updatedAt, $resolvedAt);
             """;
+
+        if (unitOfWork is SqliteUnitOfWork sqliteUnitOfWork)
+        {
+            using var sharedCommand = sqliteUnitOfWork.Connection.CreateCommand();
+            sharedCommand.Transaction = sqliteUnitOfWork.Transaction;
+            sharedCommand.CommandText = commandText;
+            BindParameters(sharedCommand, note);
+            await sharedCommand.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        command.CommandText = commandText;
         BindParameters(command, note);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task UpdateAsync(OperationalNote note, CancellationToken cancellationToken = default)
+    public async Task UpdateAsync(OperationalNote note, IUnitOfWork? unitOfWork = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(note);
 
-        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-        using var command = connection.CreateCommand();
-        command.CommandText =
+        const string commandText =
             """
             UPDATE operational_notes
             SET title = $title, body = $body, category = $category, priority = $priority,
@@ -100,7 +111,43 @@ public sealed class SqliteOperationalNoteRepository(SqliteConnectionFactory conn
                 created_at_utc = $createdAt, updated_at_utc = $updatedAt, resolved_at_utc = $resolvedAt
             WHERE id = $id;
             """;
+
+        if (unitOfWork is SqliteUnitOfWork sqliteUnitOfWork)
+        {
+            using var sharedCommand = sqliteUnitOfWork.Connection.CreateCommand();
+            sharedCommand.Transaction = sqliteUnitOfWork.Transaction;
+            sharedCommand.CommandText = commandText;
+            BindParameters(sharedCommand, note);
+            await sharedCommand.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        command.CommandText = commandText;
         BindParameters(command, note);
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Deletes the note row for <paramref name="id"/>, if one exists (Phase 16D §13/§14) — the sync engine's tombstone primitive; no product delete action calls this today (§12).</summary>
+    public async Task DeleteAsync(Guid id, IUnitOfWork? unitOfWork = null, CancellationToken cancellationToken = default)
+    {
+        const string commandText = "DELETE FROM operational_notes WHERE id = $id;";
+
+        if (unitOfWork is SqliteUnitOfWork sqliteUnitOfWork)
+        {
+            using var sharedCommand = sqliteUnitOfWork.Connection.CreateCommand();
+            sharedCommand.Transaction = sqliteUnitOfWork.Transaction;
+            sharedCommand.CommandText = commandText;
+            sharedCommand.Parameters.AddWithValue("$id", id.ToString());
+            await sharedCommand.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        command.CommandText = commandText;
+        command.Parameters.AddWithValue("$id", id.ToString());
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 

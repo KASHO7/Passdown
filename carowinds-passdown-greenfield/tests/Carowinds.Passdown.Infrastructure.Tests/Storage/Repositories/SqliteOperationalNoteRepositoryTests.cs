@@ -57,6 +57,29 @@ public class SqliteOperationalNoteRepositoryTests : IDisposable
         Assert.Equal(note, loaded);
     }
 
+    /// <summary>Phase 16D §13/§14: the sync engine's tombstone primitive — never wired to any product UI (§12), only exercised directly here.</summary>
+    [Fact]
+    public async Task DeleteAsync_RemovesTheNoteRow()
+    {
+        var repository = CreateRepository();
+        var note = Sample();
+        await repository.AddAsync(note);
+
+        await repository.DeleteAsync(note.Id);
+
+        Assert.Null(await repository.GetByIdAsync(note.Id));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenNoRowExists_IsANoOp()
+    {
+        var repository = CreateRepository();
+
+        await repository.DeleteAsync(Guid.NewGuid());
+
+        Assert.True(true);
+    }
+
     [Fact]
     public async Task AddAsync_NullEffectiveThrough_RoundTripsAsNull()
     {
@@ -196,12 +219,20 @@ public class SqliteOperationalNoteRepositoryTests : IDisposable
         Assert.Contains(all, n => n.Id == resolved.Id);
     }
 
+    /// <summary>
+    /// Updated for Phase 16D §13: the repository now exposes exactly one delete primitive,
+    /// <see cref="IOperationalNoteRepository.DeleteAsync"/> — added solely as the sync engine's
+    /// tombstone-import/resolution primitive (no product "delete note" action exists or calls it; see
+    /// <c>docs/personal-sync-architecture.md</c> Phase 16D §12/§13). The original invariant this test
+    /// protects — no casual "Remove"-style convenience method a normal application code path could call
+    /// to silently drop a historical note row — still holds.
+    /// </summary>
     [Fact]
-    public void Repository_ExposesNoDeleteMethod()
+    public void Repository_ExposesExactlyOneDeleteMethod_ForSyncTombstonesOnly_AndNoRemoveMethod()
     {
         var methodNames = typeof(IOperationalNoteRepository).GetMethods().Select(m => m.Name).ToList();
 
-        Assert.DoesNotContain(methodNames, name => name.Contains("Delete", StringComparison.OrdinalIgnoreCase));
+        Assert.Single(methodNames, name => string.Equals(name, nameof(IOperationalNoteRepository.DeleteAsync), StringComparison.Ordinal));
         Assert.DoesNotContain(methodNames, name => name.Contains("Remove", StringComparison.OrdinalIgnoreCase));
     }
 

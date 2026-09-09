@@ -16,6 +16,16 @@ namespace Carowinds.Passdown.Application.PersonalSync;
 /// </summary>
 public static class SyncContentHash
 {
+    /// <summary>
+    /// Sentinel value for <see cref="SyncEntityState.SyncedContentHash"/> meaning "as of the last
+    /// confirmed sync, this device understood the entity as deleted" (Phase 16D §11/§13) — never a real
+    /// SHA-256 hex digest (those are always 64 hex characters), so it can never collide with genuine
+    /// content. Reusing the existing <see cref="SyncEntityState.SyncedContentHash"/>/dirty-comparison
+    /// mechanism for deletion state means no additional schema column is needed to track "is this
+    /// entity's deletion already synced."
+    /// </summary>
+    public const string TombstoneMarker = "TOMBSTONE";
+
     /// <summary>Compact, stable-order options shared by every hash input — deliberately distinct from <see cref="AssociateDraftPayloadSerializer"/>'s storage format and from <see cref="Application.PersonalSync.SyncEnvelopeSerializer"/>'s indented file format.</summary>
     private static readonly JsonSerializerOptions CanonicalOptions = new()
     {

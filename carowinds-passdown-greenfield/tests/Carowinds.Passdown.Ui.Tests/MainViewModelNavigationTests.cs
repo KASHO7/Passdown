@@ -39,7 +39,7 @@ public class MainViewModelNavigationTests
             Summaries = [new FinalizedPassdownSummary(HistoryDate, DateTimeOffset.UtcNow, FinalizationOrigin.Scheduled, true, 100)],
         };
         history = new PassdownHistoryViewModel(historyService, new FakeFinalizedPassdownPdfRetrievalService());
-        var settings = new PersonalSyncSettingsViewModel(new FakePersonalSyncSettingsService(), new FakeSyncFolderPicker(), new FakePersonalSyncService());
+        var settings = new PersonalSyncSettingsViewModel(new FakePersonalSyncSettingsService(), new FakeSyncFolderPicker(), new FakePersonalSyncService(), new FakePersonalSyncConflictResolutionService());
         return new MainViewModel(dashboard, calendar, associate, notes, history, settings);
     }
 
@@ -639,7 +639,7 @@ public class MainViewModelNavigationTests
             Summaries = [new FinalizedPassdownSummary(HistoryDate, DateTimeOffset.UtcNow, FinalizationOrigin.Scheduled, true, 100)],
         };
         var history = new PassdownHistoryViewModel(historyService, new FakeFinalizedPassdownPdfRetrievalService());
-        var settings = new PersonalSyncSettingsViewModel(new FakePersonalSyncSettingsService(), new FakeSyncFolderPicker(), new FakePersonalSyncService());
+        var settings = new PersonalSyncSettingsViewModel(new FakePersonalSyncSettingsService(), new FakeSyncFolderPicker(), new FakePersonalSyncService(), new FakePersonalSyncConflictResolutionService());
         var main = new MainViewModel(dashboard, calendar, associate, notes, history, settings);
         await calendar.PendingLoad;
         await history.PendingLoad;

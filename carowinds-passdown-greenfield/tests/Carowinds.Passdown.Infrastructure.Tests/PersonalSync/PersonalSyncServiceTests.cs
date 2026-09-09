@@ -48,8 +48,11 @@ public class PersonalSyncServiceTests : IDisposable
         IOperationalNotesService Notes,
         IOperationalNoteRepository NoteRepository,
         ISyncEntityStateRepository States,
+        ISyncConflictRepository Conflicts,
         ISyncChangeTracker Tracker,
         IPersonalSyncService Sync,
+        IPersonalSyncConflictResolutionService Resolution,
+        IUnitOfWorkFactory UnitOfWorkFactory,
         FakeClock Clock,
         Guid DeviceId);
 
@@ -71,12 +74,15 @@ public class PersonalSyncServiceTests : IDisposable
             new Migration0010CreateOperationalNotesTable(),
             new Migration0011CreateDeepRefreshStatusTable(),
             new Migration0012CreateSyncEntityStateTable(),
+            new Migration0013CreateSyncConflictsTable(),
         ];
         new MigrationRunner(connectionFactory, migrations, NullLogger<MigrationRunner>.Instance).Run();
 
         var drafts = new SqliteAssociateDraftRepository(connectionFactory);
         var noteRepository = new SqliteOperationalNoteRepository(connectionFactory);
         var states = new SqliteSyncEntityStateRepository(connectionFactory);
+        var conflicts = new SqliteSyncConflictRepository(connectionFactory);
+        var unitOfWorkFactory = new SqliteUnitOfWorkFactory(connectionFactory);
         var tracker = new SyncChangeTracker(states, clock);
         var notes = new OperationalNotesService(noteRepository, clock, tracker);
 
@@ -88,9 +94,10 @@ public class PersonalSyncServiceTests : IDisposable
             deviceIdProvider,
             clock);
 
-        var sync = new PersonalSyncService(settingsService, deviceIdProvider, drafts, noteRepository, states, clock);
+        var sync = new PersonalSyncService(settingsService, deviceIdProvider, drafts, noteRepository, states, conflicts, clock);
+        var resolution = new PersonalSyncConflictResolutionService(settingsService, deviceIdProvider, drafts, noteRepository, states, conflicts, unitOfWorkFactory, clock);
 
-        return new TestDevice(drafts, notes, noteRepository, states, tracker, sync, clock, deviceId);
+        return new TestDevice(drafts, notes, noteRepository, states, conflicts, tracker, sync, resolution, unitOfWorkFactory, clock, deviceId);
     }
 
     private static Task SaveDraftAsync(TestDevice device, DateOnly date, AssociateDraftPayload payload)
@@ -103,6 +110,25 @@ public class PersonalSyncServiceTests : IDisposable
     {
         await device.Drafts.SaveAsync(record);
         await device.Tracker.MarkLocalChangeAsync(SyncEntityType.AssociateDraft, SyncEntityIdentity.ForDraft(date));
+    }
+
+    /// <summary>
+    /// Phase 16D §13: the two-step "genuine local delete" pattern — repository delete, then the same
+    /// <see cref="ISyncChangeTracker.MarkLocalChangeAsync"/> hook every other local write already goes
+    /// through (spec §7's "save SQLite first, sync metadata second"). No product UI calls this (§12) —
+    /// exercised directly here per §23's "test tombstone/reconciliation primitives directly without
+    /// inventing product UI."
+    /// </summary>
+    private static async Task DeleteDraftAsync(TestDevice device, DateOnly date)
+    {
+        await device.Drafts.DeleteAsync(date);
+        await device.Tracker.MarkLocalChangeAsync(SyncEntityType.AssociateDraft, SyncEntityIdentity.ForDraft(date));
+    }
+
+    private static async Task DeleteNoteAsync(TestDevice device, Guid noteId)
+    {
+        await device.NoteRepository.DeleteAsync(noteId);
+        await device.Tracker.MarkLocalChangeAsync(SyncEntityType.OperationalNote, SyncEntityIdentity.ForNote(noteId));
     }
 
     // ------------------------------------------------------------------
@@ -305,7 +331,7 @@ public class PersonalSyncServiceTests : IDisposable
             new FakeOneDriveLocationSuggestionProvider(),
             new FakeDeviceIdProvider(DeviceAId),
             new FakeClock(BaseNow));
-        var sync = new PersonalSyncService(disabledSettings, new FakeDeviceIdProvider(DeviceAId), device.Drafts, device.NoteRepository, device.States, new FakeClock(BaseNow));
+        var sync = new PersonalSyncService(disabledSettings, new FakeDeviceIdProvider(DeviceAId), device.Drafts, device.NoteRepository, device.States, device.Conflicts, new FakeClock(BaseNow));
 
         var result = await sync.RunAsync();
 
@@ -323,7 +349,7 @@ public class PersonalSyncServiceTests : IDisposable
             new FakeOneDriveLocationSuggestionProvider(),
             new FakeDeviceIdProvider(DeviceAId),
             new FakeClock(BaseNow));
-        var sync = new PersonalSyncService(unavailableSettings, new FakeDeviceIdProvider(DeviceAId), device.Drafts, device.NoteRepository, device.States, new FakeClock(BaseNow));
+        var sync = new PersonalSyncService(unavailableSettings, new FakeDeviceIdProvider(DeviceAId), device.Drafts, device.NoteRepository, device.States, device.Conflicts, new FakeClock(BaseNow));
 
         // Local save must succeed regardless of sync folder health (§1).
         await SaveDraftAsync(device, OperatingDate, AssociateDraftPayload.CreateDefault());
@@ -563,6 +589,522 @@ public class PersonalSyncServiceTests : IDisposable
         Assert.Equal(1, result.ConflictCount);
         var bLocal = AssociateDraftPayloadSerializer.Deserialize((await b.Drafts.GetAsync(OperatingDate))!.PayloadJson);
         Assert.Equal(777, bLocal.ProjectedAttendance);
+    }
+
+    // ====================================================================
+    // Phase 16D §22: explicit conflict resolution — two-device scenarios A-F.
+    // ====================================================================
+
+    [Fact]
+    public async Task ConflictResolution_A_ConcurrentEdit_DetectsConflict_AndPersistsTheFullRemotePayload()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        await SaveDraftAsync(a, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 100 });
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+
+        await SaveDraftAsync(a, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 500 });
+        await SaveDraftAsync(b, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 999 });
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+
+        var conflicts = await b.Resolution.GetConflictsAsync();
+        Assert.Single(conflicts);
+        Assert.False(conflicts[0].IsRemoteDeletion);
+
+        var detail = await b.Resolution.GetDraftConflictDetailAsync(OperatingDate);
+        Assert.NotNull(detail);
+        Assert.Equal(999, detail!.Local!.ProjectedAttendance);
+        Assert.Equal(500, detail.Remote!.ProjectedAttendance); // The full conflicting remote payload survived — not just a hash.
+    }
+
+    [Fact]
+    public async Task ConflictResolution_B_KeepLocal_ExportsNewAuthoritativeRevision_AndOtherDeviceConverges()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        await SaveDraftAsync(a, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 100 });
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+        await SaveDraftAsync(a, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 500 });
+        await SaveDraftAsync(b, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 999 });
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+
+        var resolution = await b.Resolution.ResolveKeepLocalAsync(SyncEntityType.AssociateDraft, SyncEntityIdentity.ForDraft(OperatingDate));
+        Assert.Equal(ConflictResolutionOutcome.Resolved, resolution.Outcome);
+        Assert.Empty(await b.Resolution.GetConflictsAsync());
+
+        // B's own copy is unchanged locally...
+        var bLocal = AssociateDraftPayloadSerializer.Deserialize((await b.Drafts.GetAsync(OperatingDate))!.PayloadJson);
+        Assert.Equal(999, bLocal.ProjectedAttendance);
+
+        // ...and A converges to it on the next sync (rebased, no further conflict).
+        var aResult = await a.Sync.RunAsync();
+        Assert.Equal(0, aResult.ConflictCount);
+        var aLocal = AssociateDraftPayloadSerializer.Deserialize((await a.Drafts.GetAsync(OperatingDate))!.PayloadJson);
+        Assert.Equal(999, aLocal.ProjectedAttendance);
+
+        // Convergence is stable — a further pass on either side changes nothing further.
+        var bAgain = await b.Sync.RunAsync();
+        var aAgain = await a.Sync.RunAsync();
+        Assert.Equal(0, bAgain.ImportedCount + bAgain.ExportedCount + bAgain.ConflictCount);
+        Assert.Equal(0, aAgain.ImportedCount + aAgain.ExportedCount + aAgain.ConflictCount);
+    }
+
+    [Fact]
+    public async Task ConflictResolution_C_UseOtherDevice_AdoptsRemoteContent_AndConverges()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        await SaveDraftAsync(a, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 100 });
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+        await SaveDraftAsync(a, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 500 });
+        await SaveDraftAsync(b, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 999 });
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+
+        var resolution = await b.Resolution.ResolveUseRemoteAsync(SyncEntityType.AssociateDraft, SyncEntityIdentity.ForDraft(OperatingDate));
+        Assert.Equal(ConflictResolutionOutcome.Resolved, resolution.Outcome);
+
+        var bLocal = AssociateDraftPayloadSerializer.Deserialize((await b.Drafts.GetAsync(OperatingDate))!.PayloadJson);
+        Assert.Equal(500, bLocal.ProjectedAttendance); // Adopted A's content, B's own conflicting edit discarded by explicit choice.
+
+        // A further sync pass must not immediately re-export B's old (discarded) version (§8.6).
+        var bAgain = await b.Sync.RunAsync();
+        Assert.Equal(0, bAgain.ExportedCount);
+    }
+
+    [Fact]
+    public async Task ConflictResolution_D_RestartBeforeResolving_ConflictAndFullPayloadSurvive()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        await SaveDraftAsync(a, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 100 });
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+        await SaveDraftAsync(a, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 500 });
+        await SaveDraftAsync(b, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 999 });
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+
+        // Simulate an app restart on B: brand-new service instances over the same on-disk database.
+        var bRestarted = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddHours(2)));
+
+        var conflicts = await bRestarted.Resolution.GetConflictsAsync();
+        Assert.Single(conflicts);
+
+        var detail = await bRestarted.Resolution.GetDraftConflictDetailAsync(OperatingDate);
+        Assert.NotNull(detail);
+        Assert.Equal(500, detail!.Remote!.ProjectedAttendance); // The conflicting remote payload survived the restart.
+
+        var resolution = await bRestarted.Resolution.ResolveKeepLocalAsync(SyncEntityType.AssociateDraft, SyncEntityIdentity.ForDraft(OperatingDate));
+        Assert.Equal(ConflictResolutionOutcome.Resolved, resolution.Outcome);
+    }
+
+    [Fact]
+    public async Task ConflictResolution_E_SyncFolderUnavailableDuringResolution_ConflictPreserved_RetrySucceeds()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        await SaveDraftAsync(a, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 100 });
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+        await SaveDraftAsync(a, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 500 });
+        await SaveDraftAsync(b, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 999 });
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+
+        // Obstruct B's export target so Keep Local's write fails.
+        var obstructedPath = SyncPathService.GetDraftFilePath(_sharedRoot, OperatingDate);
+        File.Delete(obstructedPath);
+        Directory.CreateDirectory(obstructedPath);
+
+        var failedAttempt = await b.Resolution.ResolveKeepLocalAsync(SyncEntityType.AssociateDraft, SyncEntityIdentity.ForDraft(OperatingDate));
+        Assert.Equal(ConflictResolutionOutcome.ExportUnavailable, failedAttempt.Outcome);
+        Assert.Single(await b.Resolution.GetConflictsAsync()); // Not lost, not falsely marked resolved.
+
+        Directory.Delete(obstructedPath);
+        var retry = await b.Resolution.ResolveKeepLocalAsync(SyncEntityType.AssociateDraft, SyncEntityIdentity.ForDraft(OperatingDate));
+        Assert.Equal(ConflictResolutionOutcome.Resolved, retry.Outcome);
+        Assert.Empty(await b.Resolution.GetConflictsAsync());
+    }
+
+    [Fact]
+    public async Task ConflictResolution_F_RemoteChangesAgainWhilePending_OriginalConflictStaysStable_NewerActivityFlagged()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        await SaveDraftAsync(a, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 100 });
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+        await SaveDraftAsync(a, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 500 });
+        await SaveDraftAsync(b, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 999 });
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync(); // Conflict detected, original remote payload (500) persisted.
+
+        // A advances again before B resolves anything.
+        await SaveDraftAsync(a, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 700 });
+        await a.Sync.RunAsync();
+        var bResult = await b.Sync.RunAsync();
+
+        Assert.Equal(1, bResult.ConflictCount); // Still (only) one conflict — not a second, unrelated one.
+        var detail = await b.Resolution.GetDraftConflictDetailAsync(OperatingDate);
+        Assert.NotNull(detail);
+        Assert.Equal(500, detail!.Remote!.ProjectedAttendance); // Original conflict payload never silently replaced.
+        Assert.True(detail.HasNewerRemoteActivity); // ...but newer remote activity is surfaced.
+
+        // Resolving still works normally afterward.
+        var resolution = await b.Resolution.ResolveKeepLocalAsync(SyncEntityType.AssociateDraft, SyncEntityIdentity.ForDraft(OperatingDate));
+        Assert.Equal(ConflictResolutionOutcome.Resolved, resolution.Outcome);
+    }
+
+    [Fact]
+    public async Task ConflictResolution_Note_KeepLocal_ExportsNewRevision_AndOtherDeviceConverges()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        var created = await a.Notes.CreateAsync(new OperationalNoteDraft("Original", "Body", OperationalNoteCategory.General, OperationalNotePriority.Normal, OperatingDate, null));
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+
+        await a.Notes.UpdateAsync(created.Id, new OperationalNoteDraft("Edited by A", "Body", OperationalNoteCategory.General, OperationalNotePriority.Normal, OperatingDate, null));
+        await b.Notes.UpdateAsync(created.Id, new OperationalNoteDraft("Edited by B", "Body", OperationalNoteCategory.General, OperationalNotePriority.Normal, OperatingDate, null));
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+
+        var entityId = SyncEntityIdentity.ForNote(created.Id);
+        Assert.Single(await b.Resolution.GetConflictsAsync());
+        var noteDetail = await b.Resolution.GetNoteConflictDetailAsync(created.Id);
+        Assert.Equal("Edited by A", noteDetail!.Remote!.Title);
+
+        var resolution = await b.Resolution.ResolveKeepLocalAsync(SyncEntityType.OperationalNote, entityId);
+        Assert.Equal(ConflictResolutionOutcome.Resolved, resolution.Outcome);
+
+        var aResult = await a.Sync.RunAsync();
+        Assert.Equal(0, aResult.ConflictCount);
+        Assert.Equal("Edited by B", (await a.NoteRepository.GetByIdAsync(created.Id))!.Title);
+    }
+
+    // ====================================================================
+    // Phase 16D §23: deletion/tombstone scenarios A-J.
+    // ====================================================================
+
+    [Fact]
+    public async Task Deletion_A_ADeletesNote_BImportsDeletion()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        var created = await a.Notes.CreateAsync(new OperationalNoteDraft("Gate 3 scanner down", null, OperationalNoteCategory.Equipment, OperationalNotePriority.Important, OperatingDate, null));
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+        Assert.NotNull(await b.NoteRepository.GetByIdAsync(created.Id));
+
+        await DeleteNoteAsync(a, created.Id);
+        var aExport = await a.Sync.RunAsync();
+        Assert.Equal(1, aExport.ExportedCount);
+
+        var bImport = await b.Sync.RunAsync();
+        Assert.Equal(1, bImport.ImportedCount);
+        Assert.Null(await b.NoteRepository.GetByIdAsync(created.Id));
+    }
+
+    [Fact]
+    public async Task Deletion_B_RepeatedTombstoneImport_IsIdempotent()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        var created = await a.Notes.CreateAsync(new OperationalNoteDraft("Note", null, OperationalNoteCategory.General, OperationalNotePriority.Normal, OperatingDate, null));
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+        await DeleteNoteAsync(a, created.Id);
+        await a.Sync.RunAsync();
+
+        var firstImport = await b.Sync.RunAsync();
+        var secondImport = await b.Sync.RunAsync();
+        var thirdImport = await b.Sync.RunAsync();
+
+        Assert.Equal(1, firstImport.ImportedCount);
+        Assert.Equal(0, secondImport.ImportedCount);
+        Assert.Equal(0, thirdImport.ImportedCount);
+        Assert.Null(await b.NoteRepository.GetByIdAsync(created.Id));
+    }
+
+    [Fact]
+    public async Task Deletion_C_StaleOfflineDeviceReconnectsAfterDeletion_SafelyAppliesDeletion_NeverResurrects()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var c = CreateDevice("c", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        var created = await a.Notes.CreateAsync(new OperationalNoteDraft("Note", null, OperationalNoteCategory.General, OperationalNotePriority.Normal, OperatingDate, null));
+        await a.Sync.RunAsync();
+        await c.Sync.RunAsync(); // C sees the note once, then goes offline for a long time.
+
+        await DeleteNoteAsync(a, created.Id);
+        await a.Sync.RunAsync();
+
+        // C reconnects much later, having never edited its own copy in the meantime.
+        var cResult = await c.Sync.RunAsync();
+        Assert.Equal(1, cResult.ImportedCount);
+        Assert.Equal(0, cResult.ConflictCount);
+        Assert.Null(await c.NoteRepository.GetByIdAsync(created.Id));
+
+        // C must never re-export the pre-delete content it used to have.
+        var cAgain = await c.Sync.RunAsync();
+        Assert.Equal(0, cAgain.ExportedCount);
+    }
+
+    [Fact]
+    public async Task Deletion_D_StaleDeviceThatDidNotEditDoesNotResurrectAfterOwnSyncPass()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        var created = await a.Notes.CreateAsync(new OperationalNoteDraft("Note", null, OperationalNoteCategory.General, OperationalNotePriority.Normal, OperatingDate, null));
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+        await DeleteNoteAsync(a, created.Id);
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync(); // B applies the deletion safely (never edited its own copy).
+
+        // The canonical remote file must still be A's tombstone — B never overwrote it with its old copy.
+        var envelope = SyncEnvelopeSerializer.Deserialize(await File.ReadAllTextAsync(SyncPathService.GetOperationalNoteFilePath(_sharedRoot, created.Id)));
+        Assert.True(envelope.IsDeleted);
+    }
+
+    [Fact]
+    public async Task Deletion_E_LocalEditBeforeReceivingTombstone_IsConflict_NeverSilentDeletion()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        var created = await a.Notes.CreateAsync(new OperationalNoteDraft("Original", null, OperationalNoteCategory.General, OperationalNotePriority.Normal, OperatingDate, null));
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+
+        await b.Notes.UpdateAsync(created.Id, new OperationalNoteDraft("Edited by B before delete arrives", null, OperationalNoteCategory.General, OperationalNotePriority.Normal, OperatingDate, null));
+        await DeleteNoteAsync(a, created.Id);
+        await a.Sync.RunAsync();
+
+        var bResult = await b.Sync.RunAsync();
+        Assert.Equal(1, bResult.ConflictCount);
+        Assert.NotNull(await b.NoteRepository.GetByIdAsync(created.Id)); // B's edit preserved, never silently deleted.
+
+        var summary = Assert.Single(await b.Resolution.GetConflictsAsync());
+        Assert.True(summary.IsRemoteDeletion);
+    }
+
+    [Fact]
+    public async Task Deletion_F_KeepLocalAfterDeleteConflict_ResurrectsIntentionallyWithNewAuthoritativeRevision()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        var created = await a.Notes.CreateAsync(new OperationalNoteDraft("Original", null, OperationalNoteCategory.General, OperationalNotePriority.Normal, OperatingDate, null));
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+        await b.Notes.UpdateAsync(created.Id, new OperationalNoteDraft("Edited by B before delete arrives", null, OperationalNoteCategory.General, OperationalNotePriority.Normal, OperatingDate, null));
+        await DeleteNoteAsync(a, created.Id);
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+
+        var entityId = SyncEntityIdentity.ForNote(created.Id);
+        var resolution = await b.Resolution.ResolveKeepLocalAsync(SyncEntityType.OperationalNote, entityId);
+        Assert.Equal(ConflictResolutionOutcome.Resolved, resolution.Outcome);
+        Assert.NotNull(await b.NoteRepository.GetByIdAsync(created.Id));
+
+        // A considers this entity deleted (it authored the tombstone); B's resurrection is itself a new,
+        // independent piece of remote activity from A's point of view — resurrection is never silent on
+        // EITHER side, so A must also make its own explicit choice, not auto-adopt B's undelete (§17).
+        var aResult = await a.Sync.RunAsync();
+        Assert.Equal(1, aResult.ConflictCount);
+        Assert.Null(await a.NoteRepository.GetByIdAsync(created.Id)); // A's deletion is not silently overridden either.
+
+        var aConflict = Assert.Single(await a.Resolution.GetConflictsAsync());
+        Assert.False(aConflict.IsRemoteDeletion); // B's incoming envelope is live content, not a deletion.
+
+        // A explicitly accepts B's resurrection ("Use Other Device") — now both sides converge.
+        var aResolution = await a.Resolution.ResolveUseRemoteAsync(SyncEntityType.OperationalNote, entityId);
+        Assert.Equal(ConflictResolutionOutcome.Resolved, aResolution.Outcome);
+        var aNote = await a.NoteRepository.GetByIdAsync(created.Id);
+        Assert.NotNull(aNote);
+        Assert.Equal("Edited by B before delete arrives", aNote!.Title);
+        Assert.Equal(created.Id, aNote.Id); // Identity preserved, never a duplicate Guid.
+    }
+
+    [Fact]
+    public async Task Deletion_G_AcceptDeletionRemovesLocalRecord()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        var created = await a.Notes.CreateAsync(new OperationalNoteDraft("Original", null, OperationalNoteCategory.General, OperationalNotePriority.Normal, OperatingDate, null));
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+        await b.Notes.UpdateAsync(created.Id, new OperationalNoteDraft("Edited by B before delete arrives", null, OperationalNoteCategory.General, OperationalNotePriority.Normal, OperatingDate, null));
+        await DeleteNoteAsync(a, created.Id);
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+
+        var entityId = SyncEntityIdentity.ForNote(created.Id);
+        var resolution = await b.Resolution.ResolveAcceptDeletionAsync(SyncEntityType.OperationalNote, entityId);
+        Assert.Equal(ConflictResolutionOutcome.Resolved, resolution.Outcome);
+        Assert.Null(await b.NoteRepository.GetByIdAsync(created.Id));
+        Assert.Empty(await b.Resolution.GetConflictsAsync());
+    }
+
+    [Fact]
+    public async Task Deletion_H_TombstoneAndDeleteConflictSurviveRestart()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        var created = await a.Notes.CreateAsync(new OperationalNoteDraft("Original", null, OperationalNoteCategory.General, OperationalNotePriority.Normal, OperatingDate, null));
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+        await b.Notes.UpdateAsync(created.Id, new OperationalNoteDraft("Edited by B before delete arrives", null, OperationalNoteCategory.General, OperationalNotePriority.Normal, OperatingDate, null));
+        await DeleteNoteAsync(a, created.Id);
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+
+        var bRestarted = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddHours(2)));
+        var conflicts = await bRestarted.Resolution.GetConflictsAsync();
+        Assert.Single(conflicts);
+        Assert.True(conflicts[0].IsRemoteDeletion);
+
+        var resolution = await bRestarted.Resolution.ResolveAcceptDeletionAsync(SyncEntityType.OperationalNote, SyncEntityIdentity.ForNote(created.Id));
+        Assert.Equal(ConflictResolutionOutcome.Resolved, resolution.Outcome);
+    }
+
+    [Fact]
+    public async Task Deletion_I_MissingCanonicalFile_IsNeverTreatedAsDeletion()
+    {
+        // Already covered end-to-end by RunAsync_PreviouslySeenRemoteFileLaterDisappears_NeverDeletesOrTombstonesTheLocalNote
+        // above (§18/§29) — a missing file is indistinguishable from "not yet synced," never a tombstone.
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        var created = await a.Notes.CreateAsync(new OperationalNoteDraft("Note", null, OperationalNoteCategory.General, OperationalNotePriority.Normal, OperatingDate, null));
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+
+        File.Delete(SyncPathService.GetOperationalNoteFilePath(_sharedRoot, created.Id));
+        var result = await b.Sync.RunAsync();
+
+        Assert.Equal(0, result.ImportedCount);
+        Assert.NotNull(await b.NoteRepository.GetByIdAsync(created.Id));
+    }
+
+    [Fact]
+    public async Task Deletion_J_MalformedTombstoneFile_DoesNothingDestructive()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        var created = await a.Notes.CreateAsync(new OperationalNoteDraft("Note", null, OperationalNoteCategory.General, OperationalNotePriority.Normal, OperatingDate, null));
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+
+        await File.WriteAllTextAsync(SyncPathService.GetOperationalNoteFilePath(_sharedRoot, created.Id), """{ "IsDeleted": true, "EntityType":""");
+
+        var result = await b.Sync.RunAsync();
+
+        Assert.Equal(1, result.MalformedCount);
+        Assert.NotNull(await b.NoteRepository.GetByIdAsync(created.Id)); // Never destroyed by a malformed tombstone.
+    }
+
+    // ====================================================================
+    // Phase 16D §19/§21: resolution service guard rails and idempotence.
+    // ====================================================================
+
+    [Fact]
+    public async Task Resolution_NoConflictExists_ResolveKeepLocal_ReturnsNoConflictFound_NotAnError()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+
+        var result = await a.Resolution.ResolveKeepLocalAsync(SyncEntityType.AssociateDraft, SyncEntityIdentity.ForDraft(OperatingDate));
+
+        Assert.Equal(ConflictResolutionOutcome.NoConflictFound, result.Outcome);
+    }
+
+    [Fact]
+    public async Task Resolution_ResolvingTheSameConflictTwice_SecondCallIsIdempotent_NoConflictFound()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        await SaveDraftAsync(a, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 100 });
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+        await SaveDraftAsync(a, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 500 });
+        await SaveDraftAsync(b, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 999 });
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+
+        var entityId = SyncEntityIdentity.ForDraft(OperatingDate);
+        var first = await b.Resolution.ResolveKeepLocalAsync(SyncEntityType.AssociateDraft, entityId);
+        var second = await b.Resolution.ResolveKeepLocalAsync(SyncEntityType.AssociateDraft, entityId);
+
+        Assert.Equal(ConflictResolutionOutcome.Resolved, first.Outcome);
+        Assert.Equal(ConflictResolutionOutcome.NoConflictFound, second.Outcome); // Accidental UI retry never duplicates a revision.
+
+        var state = await b.States.GetAsync(SyncEntityType.AssociateDraft, entityId);
+        Assert.Equal(3, state!.LocalRevision); // 1 (baseline) -> 2 (B's own edit) -> 3 (Keep Local). Not bumped twice.
+    }
+
+    [Fact]
+    public async Task Resolution_UseOtherDeviceOnARemoteDeletionConflict_IsRefused_UseAcceptDeletionInstead()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        var created = await a.Notes.CreateAsync(new OperationalNoteDraft("Original", null, OperationalNoteCategory.General, OperationalNotePriority.Normal, OperatingDate, null));
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+        await b.Notes.UpdateAsync(created.Id, new OperationalNoteDraft("Edited by B", null, OperationalNoteCategory.General, OperationalNotePriority.Normal, OperatingDate, null));
+        await DeleteNoteAsync(a, created.Id);
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+
+        var entityId = SyncEntityIdentity.ForNote(created.Id);
+        var result = await b.Resolution.ResolveUseRemoteAsync(SyncEntityType.OperationalNote, entityId);
+
+        Assert.Equal(ConflictResolutionOutcome.WrongActionForConflict, result.Outcome);
+        Assert.NotNull(await b.NoteRepository.GetByIdAsync(created.Id)); // Nothing was changed by the refused call.
+        Assert.Single(await b.Resolution.GetConflictsAsync()); // Conflict remains, ready for the correct action.
+    }
+
+    [Fact]
+    public async Task Resolution_AcceptDeletionOnANonDeletionConflict_IsRefused_UseOtherDeviceInstead()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        await SaveDraftAsync(a, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 100 });
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+        await SaveDraftAsync(a, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 500 });
+        await SaveDraftAsync(b, OperatingDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 999 });
+        await a.Sync.RunAsync();
+        await b.Sync.RunAsync();
+
+        var entityId = SyncEntityIdentity.ForDraft(OperatingDate);
+        var result = await b.Resolution.ResolveAcceptDeletionAsync(SyncEntityType.AssociateDraft, entityId);
+
+        Assert.Equal(ConflictResolutionOutcome.WrongActionForConflict, result.Outcome);
+        var bLocal = AssociateDraftPayloadSerializer.Deserialize((await b.Drafts.GetAsync(OperatingDate))!.PayloadJson);
+        Assert.Equal(999, bLocal.ProjectedAttendance); // Nothing was changed by the refused call.
     }
 
     private sealed class FakeDeviceIdProvider(Guid fixedId) : IDeviceIdProvider

@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.PersonalSync;
 using Microsoft.Data.Sqlite;
 
@@ -40,12 +41,27 @@ public sealed class SqliteSyncEntityStateRepository(SqliteConnectionFactory conn
         return results;
     }
 
-    public async Task UpsertAsync(SyncEntityState state, CancellationToken cancellationToken = default)
+    public async Task UpsertAsync(SyncEntityState state, IUnitOfWork? unitOfWork = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(state);
 
+        if (unitOfWork is SqliteUnitOfWork sqliteUnitOfWork)
+        {
+            using var sharedCommand = sqliteUnitOfWork.Connection.CreateCommand();
+            sharedCommand.Transaction = sqliteUnitOfWork.Transaction;
+            ConfigureUpsertCommand(sharedCommand, state);
+            await sharedCommand.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         using var command = connection.CreateCommand();
+        ConfigureUpsertCommand(command, state);
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static void ConfigureUpsertCommand(SqliteCommand command, SyncEntityState state)
+    {
         command.CommandText =
             """
             INSERT INTO sync_entity_state (
@@ -83,8 +99,6 @@ public sealed class SqliteSyncEntityStateRepository(SqliteConnectionFactory conn
         command.Parameters.AddWithValue("$conflictRemoteContentHash", (object?)state.ConflictRemoteContentHash ?? DBNull.Value);
         command.Parameters.AddWithValue("$conflictDetectedAtUtc", state.ConflictDetectedAtUtc is { } detectedAt ? SqliteConvert.ToText(detectedAt) : DBNull.Value);
         command.Parameters.AddWithValue("$updatedAtUtc", SqliteConvert.ToText(state.UpdatedAtUtc));
-
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private static SyncEntityState Map(SqliteDataReader reader) => new(

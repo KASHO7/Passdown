@@ -65,7 +65,7 @@ public sealed class OperationalNotesService(IOperationalNoteRepository repositor
             UpdatedAtUtc: now,
             ResolvedAtUtc: null);
 
-        await repository.AddAsync(note, cancellationToken).ConfigureAwait(false);
+        await repository.AddAsync(note, cancellationToken: cancellationToken).ConfigureAwait(false);
         await MarkChangedAsync(note.Id, cancellationToken).ConfigureAwait(false);
         return note;
     }
@@ -88,7 +88,7 @@ public sealed class OperationalNotesService(IOperationalNoteRepository repositor
             UpdatedAtUtc = clock.UtcNow,
         };
 
-        await repository.UpdateAsync(updated, cancellationToken).ConfigureAwait(false);
+        await repository.UpdateAsync(updated, cancellationToken: cancellationToken).ConfigureAwait(false);
         await MarkChangedAsync(updated.Id, cancellationToken).ConfigureAwait(false);
         return updated;
     }
@@ -111,7 +111,7 @@ public sealed class OperationalNotesService(IOperationalNoteRepository repositor
             UpdatedAtUtc = now,
         };
 
-        await repository.UpdateAsync(resolved, cancellationToken).ConfigureAwait(false);
+        await repository.UpdateAsync(resolved, cancellationToken: cancellationToken).ConfigureAwait(false);
         await MarkChangedAsync(resolved.Id, cancellationToken).ConfigureAwait(false);
         return resolved;
     }

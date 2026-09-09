@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Tests.TestSupport;
 
@@ -75,7 +76,7 @@ public class SyncChangeTrackerTests
             return Task.FromResult(results);
         }
 
-        public Task UpsertAsync(SyncEntityState state, CancellationToken cancellationToken = default)
+        public Task UpsertAsync(SyncEntityState state, IUnitOfWork? unitOfWork = null, CancellationToken cancellationToken = default)
         {
             _states[(state.EntityType, state.EntityId)] = state;
             return Task.CompletedTask;

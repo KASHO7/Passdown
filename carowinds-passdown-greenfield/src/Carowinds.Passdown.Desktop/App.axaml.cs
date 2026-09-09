@@ -261,6 +261,7 @@ public partial class App : global::Avalonia.Application
             new Migration0010CreateOperationalNotesTable(),
             new Migration0011CreateDeepRefreshStatusTable(),
             new Migration0012CreateSyncEntityStateTable(),
+            new Migration0013CreateSyncConflictsTable(),
         ]);
         services.AddSingleton<MigrationRunner>();
 
@@ -374,6 +375,13 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<ISyncEntityStateRepository, SqliteSyncEntityStateRepository>();
         services.AddSingleton<ISyncChangeTracker, SyncChangeTracker>();
         services.AddSingleton<IPersonalSyncService, PersonalSyncService>();
+
+        // Phase 16D: explicit conflict resolution and deletion/tombstone propagation. ISyncConflictRepository
+        // persists the full conflicting remote envelope (DB 13's sync_conflicts table) so resolution
+        // survives a restart; IPersonalSyncConflictResolutionService owns Keep This Device/Use Other
+        // Device/Accept Deletion — no ViewModel implements any of that logic directly.
+        services.AddSingleton<ISyncConflictRepository, SqliteSyncConflictRepository>();
+        services.AddSingleton<IPersonalSyncConflictResolutionService, PersonalSyncConflictResolutionService>();
         services.AddTransient<PersonalSyncSettingsViewModel>();
 
         services.AddTransient<MainWindow>();

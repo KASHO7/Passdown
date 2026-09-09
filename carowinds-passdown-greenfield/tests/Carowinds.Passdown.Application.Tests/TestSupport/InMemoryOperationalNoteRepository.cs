@@ -1,8 +1,9 @@
 using Carowinds.Passdown.Application.OperationalNotes;
+using Carowinds.Passdown.Application.Persistence;
 
 namespace Carowinds.Passdown.Application.Tests.TestSupport;
 
-/// <summary>In-memory <see cref="IOperationalNoteRepository"/> mirroring the SQLite implementation's shape (a mutable dictionary keyed by <see cref="OperationalNote.Id"/>, no delete method) for Application-layer service tests.</summary>
+/// <summary>In-memory <see cref="IOperationalNoteRepository"/> mirroring the SQLite implementation's shape (a mutable dictionary keyed by <see cref="OperationalNote.Id"/>) for Application-layer service tests. <see cref="DeleteAsync"/> exists only as the Phase 16D sync-tombstone primitive (§13) — no product delete action calls it.</summary>
 internal sealed class InMemoryOperationalNoteRepository : IOperationalNoteRepository
 {
     private readonly Dictionary<Guid, OperationalNote> _notes = new();
@@ -13,15 +14,21 @@ internal sealed class InMemoryOperationalNoteRepository : IOperationalNoteReposi
     public Task<IReadOnlyList<OperationalNote>> ListAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<OperationalNote>>(_notes.Values.ToList());
 
-    public Task AddAsync(OperationalNote note, CancellationToken cancellationToken = default)
+    public Task AddAsync(OperationalNote note, IUnitOfWork? unitOfWork = null, CancellationToken cancellationToken = default)
     {
         _notes[note.Id] = note;
         return Task.CompletedTask;
     }
 
-    public Task UpdateAsync(OperationalNote note, CancellationToken cancellationToken = default)
+    public Task UpdateAsync(OperationalNote note, IUnitOfWork? unitOfWork = null, CancellationToken cancellationToken = default)
     {
         _notes[note.Id] = note;
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteAsync(Guid id, IUnitOfWork? unitOfWork = null, CancellationToken cancellationToken = default)
+    {
+        _notes.Remove(id);
         return Task.CompletedTask;
     }
 

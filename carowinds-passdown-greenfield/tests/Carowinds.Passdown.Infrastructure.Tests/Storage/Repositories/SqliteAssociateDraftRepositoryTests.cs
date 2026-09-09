@@ -35,6 +35,28 @@ public class SqliteAssociateDraftRepositoryTests : IDisposable
         Assert.Equal(draft, loaded);
     }
 
+    /// <summary>Phase 16D §13: the sync engine's tombstone primitive — never wired to any product UI (§12), only exercised directly here.</summary>
+    [Fact]
+    public async Task DeleteAsync_RemovesTheDraftRow()
+    {
+        var repository = CreateRepository();
+        await repository.SaveAsync(new AssociateDraft(Halloween, 1, "{}", new DateTimeOffset(2026, 8, 19, 6, 0, 0, TimeSpan.Zero)));
+
+        await repository.DeleteAsync(Halloween);
+
+        Assert.Null(await repository.GetAsync(Halloween));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenNoRowExists_IsANoOp()
+    {
+        var repository = CreateRepository();
+
+        await repository.DeleteAsync(Halloween);
+
+        Assert.Null(await repository.GetAsync(Halloween));
+    }
+
     [Fact]
     public async Task SaveAsync_CalledTwiceForSameDate_UpsertsRatherThanDuplicating()
     {

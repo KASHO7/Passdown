@@ -14,7 +14,7 @@ public class SyncReconciliationTests
     private static readonly JsonElement EmptyPayload = JsonDocument.Parse("{}").RootElement;
     private static readonly DateTimeOffset Now = new(2026, 9, 9, 6, 0, 0, TimeSpan.Zero);
 
-    private static SyncEnvelope Envelope(Guid deviceId, int revision) => new()
+    private static SyncEnvelope Envelope(Guid deviceId, int revision, bool isDeleted = false) => new()
     {
         SyncSchemaVersion = 1,
         EntityType = SyncEntityType.AssociateDraft,
@@ -22,8 +22,8 @@ public class SyncReconciliationTests
         DeviceId = deviceId,
         Revision = revision,
         ModifiedUtc = Now,
-        IsDeleted = false,
-        PayloadSchemaVersion = 3,
+        IsDeleted = isDeleted,
+        PayloadSchemaVersion = isDeleted ? 0 : 3,
         Payload = EmptyPayload,
     };
 
@@ -163,5 +163,114 @@ public class SyncReconciliationTests
         var decision = SyncReconciliation.Decide(LocalDeviceId, envelope, localEntityExists: true, "baseHash", state, remoteContentHash: "thirdDeviceHash");
 
         Assert.Equal(SyncImportDecision.SafeRemoteUpdate, decision);
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 16D §11-§18: tombstone-aware decisions.
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void Decide_RemoteTombstone_NoLocalEntity_NeverTracked_IsRemoteDeletionAlreadyAbsent()
+    {
+        // Never seen this entity at all — its deletion is moot.
+        var envelope = Envelope(RemoteDeviceId, revision: 1, isDeleted: true);
+
+        var decision = SyncReconciliation.Decide(LocalDeviceId, envelope, localEntityExists: false, localContentHash: null, state: null, remoteContentHash: "");
+
+        Assert.Equal(SyncImportDecision.RemoteDeletionAlreadyAbsent, decision);
+    }
+
+    [Fact]
+    public void Decide_RemoteTombstone_LocalAlreadyDeleted_IsRemoteDeletionAlreadyAbsent()
+    {
+        // This device already incorporated an earlier deletion (or deleted locally itself) — both sides agree.
+        var state = SyncEntityState.CreateNew(SyncEntityType.AssociateDraft, "2026-09-09", Now) with
+        {
+            LocalRevision = 2,
+            SyncedRevision = 2,
+            SyncedContentHash = SyncContentHash.TombstoneMarker,
+            LastRemoteDeviceId = RemoteDeviceId,
+            LastRemoteRevision = 1,
+        };
+        var envelope = Envelope(RemoteDeviceId, revision: 2, isDeleted: true);
+
+        var decision = SyncReconciliation.Decide(LocalDeviceId, envelope, localEntityExists: false, localContentHash: null, state, remoteContentHash: "");
+
+        Assert.Equal(SyncImportDecision.RemoteDeletionAlreadyAbsent, decision);
+    }
+
+    [Fact]
+    public void Decide_RemoteTombstone_LocalUnchangedSinceLastSync_IsRemoteDeletionSafeApply()
+    {
+        var state = SyncEntityState.CreateNew(SyncEntityType.AssociateDraft, "2026-09-09", Now) with
+        {
+            LocalRevision = 4,
+            SyncedRevision = 4,
+            SyncedContentHash = "baseHash",
+            LastRemoteDeviceId = RemoteDeviceId,
+            LastRemoteRevision = 4,
+        };
+        var envelope = Envelope(RemoteDeviceId, revision: 5, isDeleted: true);
+
+        var decision = SyncReconciliation.Decide(LocalDeviceId, envelope, localEntityExists: true, "baseHash", state, remoteContentHash: "");
+
+        Assert.Equal(SyncImportDecision.RemoteDeletionSafeApply, decision);
+    }
+
+    [Fact]
+    public void Decide_RemoteTombstone_LocalDivergedSinceLastSync_IsRemoteDeletionConflict()
+    {
+        var state = SyncEntityState.CreateNew(SyncEntityType.AssociateDraft, "2026-09-09", Now) with
+        {
+            LocalRevision = 5,
+            SyncedRevision = 4,
+            SyncedContentHash = "baseHash",
+            LastRemoteDeviceId = RemoteDeviceId,
+            LastRemoteRevision = 4,
+        };
+        var envelope = Envelope(RemoteDeviceId, revision: 5, isDeleted: true);
+
+        var decision = SyncReconciliation.Decide(LocalDeviceId, envelope, localEntityExists: true, "locallyEditedHash", state, remoteContentHash: "");
+
+        Assert.Equal(SyncImportDecision.RemoteDeletionConflict, decision);
+    }
+
+    [Fact]
+    public void Decide_RemoteTombstone_NoSharedBaselineEver_LocalExists_IsRemoteDeletionConflict()
+    {
+        // Bootstrap-shaped case: local created this independently, never synced; remote independently deleted it.
+        var envelope = Envelope(RemoteDeviceId, revision: 1, isDeleted: true);
+
+        var decision = SyncReconciliation.Decide(LocalDeviceId, envelope, localEntityExists: true, "localHash", state: null, remoteContentHash: "");
+
+        Assert.Equal(SyncImportDecision.RemoteDeletionConflict, decision);
+    }
+
+    [Fact]
+    public void Decide_LocalConsideredDeleted_RemoteSendsLiveContent_IsLocalDeletionConflict()
+    {
+        // Resurrection-risk case (§17): this device knows the entity is gone (state exists, no local row),
+        // but a non-deletion envelope arrives — never silently resurrect, never silently drop it.
+        var state = SyncEntityState.CreateNew(SyncEntityType.AssociateDraft, "2026-09-09", Now) with
+        {
+            LocalRevision = 2,
+            SyncedRevision = 2,
+            SyncedContentHash = SyncContentHash.TombstoneMarker,
+        };
+        var envelope = Envelope(RemoteDeviceId, revision: 1, isDeleted: false);
+
+        var decision = SyncReconciliation.Decide(LocalDeviceId, envelope, localEntityExists: false, localContentHash: null, state, remoteContentHash: "someHash");
+
+        Assert.Equal(SyncImportDecision.LocalDeletionConflict, decision);
+    }
+
+    [Fact]
+    public void Decide_SelfAuthoredTombstone_IsIgnored()
+    {
+        var envelope = Envelope(LocalDeviceId, revision: 3, isDeleted: true);
+
+        var decision = SyncReconciliation.Decide(LocalDeviceId, envelope, localEntityExists: true, "hash", state: null, remoteContentHash: "");
+
+        Assert.Equal(SyncImportDecision.Ignored, decision);
     }
 }
