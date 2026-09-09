@@ -52,4 +52,11 @@ public interface ISyncConflictRepository
 
     /// <summary>Clears a resolved (or no-longer-applicable) conflict. A no-op if none exists — resolution must stay idempotent (Phase 16D §21).</summary>
     Task DeleteAsync(SyncEntityType entityType, string entityId, IUnitOfWork? unitOfWork = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes every conflict row (Phase 16F §19/§20) — used only alongside <see cref="ISyncEntityStateRepository.ClearAllAsync"/>
+    /// on a folder-switch rebase: a conflict recorded against the old sync folder's remote content no
+    /// longer describes anything relevant once the device has moved to a different sync universe.
+    /// </summary>
+    Task ClearAllAsync(CancellationToken cancellationToken = default);
 }

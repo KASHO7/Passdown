@@ -79,6 +79,14 @@ public sealed class SqliteSyncConflictRepository(SqliteConnectionFactory connect
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task ClearAllAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM sync_conflicts;";
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private static void ConfigureDeleteCommand(SqliteCommand command, SyncEntityType entityType, string entityId)
     {
         command.CommandText = "DELETE FROM sync_conflicts WHERE entity_type = $entityType AND entity_id = $entityId;";

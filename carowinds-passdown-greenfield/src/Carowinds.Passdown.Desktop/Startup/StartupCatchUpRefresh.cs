@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Concurrency;
 using Carowinds.Passdown.Application.Finalization;
+using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Desktop.ScheduledRefresh;
 using Microsoft.Extensions.DependencyInjection;
@@ -48,6 +49,20 @@ public static class StartupCatchUpRefresh
                 var finalizer = services.GetRequiredService<IScheduledPassdownFinalizer>();
                 var finalizationSummary = await finalizer.FinalizeEligibleAsync(cancellationToken).ConfigureAwait(false);
                 ScheduledRefreshHost.LogFinalizationSummary(logger, finalizationSummary);
+
+                // Phase 16F §5: a newly finalized History record becomes pending for Personal Sync
+                // (export dirtiness is decided by content-hash comparison during the next pass's own
+                // enumeration, Phase 16E §10 — no per-record hook exists or is needed) — just request a
+                // pass so it exports promptly instead of waiting for the next periodic sweep. A no-op
+                // before IPersonalSyncCoordinator.Start() has run or when nothing was actually
+                // finalized. GetService (not GetRequiredService): the coordinator is an interactive-app
+                // concern only (spec §31) — a headless/minimal service provider that never registered
+                // Personal Sync at all (e.g. a focused finalize+refresh integration test) must not have
+                // its finalize-then-refresh sequence broken by a missing, unrelated registration.
+                if (finalizationSummary.FinalizedCount > 0)
+                {
+                    services.GetService<IPersonalSyncCoordinator>()?.RequestSync(SyncTriggerReason.Finalization);
+                }
 
                 var runner = services.GetRequiredService<IScheduledRefreshRunner>();
                 await runner.RunAsync(RefreshMode.StartupCatchUp, cancellationToken).ConfigureAwait(false);

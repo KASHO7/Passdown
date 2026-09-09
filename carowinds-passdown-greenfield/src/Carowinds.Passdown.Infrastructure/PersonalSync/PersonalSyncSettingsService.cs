@@ -73,7 +73,7 @@ public sealed class PersonalSyncSettingsService(
         return manifestResult.Outcome switch
         {
             SyncManifestEnsureOutcome.Ready =>
-                new PersonalSyncSettingsSnapshot(true, configuration.SyncRootPath, PersonalSyncStatus.Ready, null, suggestions, deviceId),
+                new PersonalSyncSettingsSnapshot(true, configuration.SyncRootPath, PersonalSyncStatus.Ready, null, suggestions, deviceId, manifestResult.SyncSpaceId),
             SyncManifestEnsureOutcome.Unavailable =>
                 new PersonalSyncSettingsSnapshot(true, configuration.SyncRootPath, PersonalSyncStatus.FolderUnavailable, manifestResult.Message, suggestions, deviceId),
             _ =>

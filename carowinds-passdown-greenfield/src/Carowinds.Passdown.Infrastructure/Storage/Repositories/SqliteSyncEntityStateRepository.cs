@@ -101,6 +101,14 @@ public sealed class SqliteSyncEntityStateRepository(SqliteConnectionFactory conn
         command.Parameters.AddWithValue("$updatedAtUtc", SqliteConvert.ToText(state.UpdatedAtUtc));
     }
 
+    public async Task ClearAllAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM sync_entity_state;";
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private static SyncEntityState Map(SqliteDataReader reader) => new(
         EntityType: Enum.Parse<SyncEntityType>(reader.GetString(0)),
         EntityId: reader.GetString(1),

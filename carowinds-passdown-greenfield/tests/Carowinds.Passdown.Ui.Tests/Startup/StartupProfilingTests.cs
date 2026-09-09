@@ -146,7 +146,7 @@ public class StartupProfilingTests
                 var notesVm = new OperationalNotesViewModel(operationalNotesService, clock);
                 var historyVm = new PassdownHistoryViewModel(
                     historyService, pdfRetrievalService, pdfSavePicker: new FakePdfSaveFilePicker(), pdfLauncher: new FakeFinalizedPdfLauncher());
-                var settingsVm = new PersonalSyncSettingsViewModel(new FakePersonalSyncSettingsService(), new FakeSyncFolderPicker(), new FakePersonalSyncService(), new FakePersonalSyncConflictResolutionService());
+                var settingsVm = new PersonalSyncSettingsViewModel(new FakePersonalSyncSettingsService(), new FakeSyncFolderPicker(), new FakePersonalSyncConflictResolutionService(), new FakePersonalSyncCoordinator());
                 var mainVm = new MainViewModel(dashboardVm, calendarVm, associateVm, notesVm, historyVm, settingsVm);
                 vmSw.Stop();
                 viewModelConstructionMs.Add(vmSw.Elapsed.TotalMilliseconds);

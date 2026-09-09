@@ -81,5 +81,11 @@ public class SyncChangeTrackerTests
             _states[(state.EntityType, state.EntityId)] = state;
             return Task.CompletedTask;
         }
+
+        public Task ClearAllAsync(CancellationToken cancellationToken = default)
+        {
+            _states.Clear();
+            return Task.CompletedTask;
+        }
     }
 }

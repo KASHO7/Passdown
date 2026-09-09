@@ -91,4 +91,14 @@ public interface ISyncEntityStateRepository
 
     /// <summary>Inserts or fully replaces the state row for (<paramref name="state"/>'s EntityType, EntityId).</summary>
     Task UpsertAsync(SyncEntityState state, IUnitOfWork? unitOfWork = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes every row, across every entity type (Phase 16F §19/§20) — used only when a sync pass
+    /// discovers the configured folder's <see cref="SyncManifest.SyncSpaceId"/> no longer matches the
+    /// one this device last reconciled against (a folder switch to a different sync universe), so no
+    /// stale <see cref="SyncEntityState.SyncedContentHash"/> from the old folder can cause a record to
+    /// be silently skipped as "already synced" against the new one. Never called for an ordinary sync
+    /// pass against the same, unchanged folder.
+    /// </summary>
+    Task ClearAllAsync(CancellationToken cancellationToken = default);
 }

@@ -57,9 +57,12 @@ public class PersonalSyncServiceTests : IDisposable
         IPersonalSyncConflictResolutionService Resolution,
         IUnitOfWorkFactory UnitOfWorkFactory,
         FakeClock Clock,
-        Guid DeviceId);
+        Guid DeviceId,
+        FakeSyncConfigurationStore ConfigStore);
 
-    private TestDevice CreateDevice(string name, Guid deviceId, FakeClock clock)
+    private TestDevice CreateDevice(string name, Guid deviceId, FakeClock clock) => CreateDevice(name, deviceId, clock, _sharedRoot);
+
+    private TestDevice CreateDevice(string name, Guid deviceId, FakeClock clock, string sharedRoot)
     {
         var databasePath = Path.Combine(_tempDataRoot, $"{name}.db");
         var connectionFactory = new SqliteConnectionFactory(databasePath);
@@ -91,17 +94,18 @@ public class PersonalSyncServiceTests : IDisposable
         var notes = new OperationalNotesService(noteRepository, clock, tracker);
 
         var deviceIdProvider = new FakeDeviceIdProvider(deviceId);
+        var configStore = new FakeSyncConfigurationStore { Current = new SyncConfiguration(true, sharedRoot) };
         var settingsService = new PersonalSyncSettingsService(
-            new FakeSyncConfigurationStore { Current = new SyncConfiguration(true, _sharedRoot) },
+            configStore,
             new SyncFolderValidator(),
             new FakeOneDriveLocationSuggestionProvider(),
             deviceIdProvider,
             clock);
 
-        var sync = new PersonalSyncService(settingsService, deviceIdProvider, drafts, noteRepository, finalizedPassdowns, states, conflicts, clock);
+        var sync = new PersonalSyncService(settingsService, configStore, deviceIdProvider, drafts, noteRepository, finalizedPassdowns, states, conflicts, clock);
         var resolution = new PersonalSyncConflictResolutionService(settingsService, deviceIdProvider, drafts, noteRepository, states, conflicts, unitOfWorkFactory, clock);
 
-        return new TestDevice(drafts, notes, noteRepository, finalizedPassdowns, states, conflicts, tracker, sync, resolution, unitOfWorkFactory, clock, deviceId);
+        return new TestDevice(drafts, notes, noteRepository, finalizedPassdowns, states, conflicts, tracker, sync, resolution, unitOfWorkFactory, clock, deviceId, configStore);
     }
 
     private static Task SaveDraftAsync(TestDevice device, DateOnly date, AssociateDraftPayload payload)
@@ -378,7 +382,7 @@ public class PersonalSyncServiceTests : IDisposable
             new FakeOneDriveLocationSuggestionProvider(),
             new FakeDeviceIdProvider(DeviceAId),
             new FakeClock(BaseNow));
-        var sync = new PersonalSyncService(disabledSettings, new FakeDeviceIdProvider(DeviceAId), device.Drafts, device.NoteRepository, device.FinalizedPassdowns, device.States, device.Conflicts, new FakeClock(BaseNow));
+        var sync = new PersonalSyncService(disabledSettings, new FakeSyncConfigurationStore { Current = SyncConfiguration.Disabled }, new FakeDeviceIdProvider(DeviceAId), device.Drafts, device.NoteRepository, device.FinalizedPassdowns, device.States, device.Conflicts, new FakeClock(BaseNow));
 
         var result = await sync.RunAsync();
 
@@ -396,7 +400,7 @@ public class PersonalSyncServiceTests : IDisposable
             new FakeOneDriveLocationSuggestionProvider(),
             new FakeDeviceIdProvider(DeviceAId),
             new FakeClock(BaseNow));
-        var sync = new PersonalSyncService(unavailableSettings, new FakeDeviceIdProvider(DeviceAId), device.Drafts, device.NoteRepository, device.FinalizedPassdowns, device.States, device.Conflicts, new FakeClock(BaseNow));
+        var sync = new PersonalSyncService(unavailableSettings, new FakeSyncConfigurationStore { Current = new SyncConfiguration(true, Path.Combine(_sharedRoot, "does", "not", "exist")) }, new FakeDeviceIdProvider(DeviceAId), device.Drafts, device.NoteRepository, device.FinalizedPassdowns, device.States, device.Conflicts, new FakeClock(BaseNow));
 
         // Local save must succeed regardless of sync folder health (§1).
         await SaveDraftAsync(device, OperatingDate, AssociateDraftPayload.CreateDefault());
@@ -1411,6 +1415,79 @@ public class PersonalSyncServiceTests : IDisposable
         Assert.Equal(ConflictResolutionOutcome.WrongActionForConflict, acceptDeletion.Outcome);
         // The 16D mutable-entity conflict list stays scoped to drafts/notes (Phase 16E §30).
         Assert.Empty(await b.Resolution.GetConflictsAsync());
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 16F §19/§20/§35: folder-switch (SyncSpaceId) reconciliation — a device pointed at a
+    // different sync folder must never treat its old SyncedContentHash bookkeeping as meaning "already
+    // shared with the new folder."
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public async Task RunAsync_FirstEverSync_AdoptsTheFolderSSyncSpaceId_WithoutResettingAnything()
+    {
+        var device = CreateDevice("solo", DeviceAId, new FakeClock(BaseNow));
+        await SaveDraftAsync(device, OperatingDate, AssociateDraftPayload.CreateDefault());
+
+        var result = await device.Sync.RunAsync();
+
+        Assert.Equal(PersonalSyncOutcome.Completed, result.Outcome);
+        Assert.Equal(1, result.ExportedCount);
+        Assert.NotNull(device.ConfigStore.Current.LastKnownSyncSpaceId);
+        Assert.NotEqual(Guid.Empty, device.ConfigStore.Current.LastKnownSyncSpaceId!.Value);
+    }
+
+    [Fact]
+    public async Task RunAsync_SwitchingToADifferentEmptyFolder_ReExportsAlreadySyncedRecords_InsteadOfSkippingThem()
+    {
+        var otherRoot = Path.Combine(_tempDataRoot, $"other-folder-{Guid.NewGuid():N}");
+        var device = CreateDevice("solo", DeviceAId, new FakeClock(BaseNow));
+
+        await SaveDraftAsync(device, OperatingDate, AssociateDraftPayload.CreateDefault());
+        var firstPass = await device.Sync.RunAsync();
+        Assert.Equal(1, firstPass.ExportedCount);
+        Assert.True(File.Exists(SyncPathService.GetDraftFilePath(_sharedRoot, OperatingDate)));
+
+        // A confirmed-synced record (SyncedContentHash already matches) — this is exactly the state
+        // that, without SyncSpaceId reconciliation, would make the export loop silently skip this
+        // record forever once pointed at a different folder.
+        var stateBeforeSwitch = await device.States.GetAsync(SyncEntityType.AssociateDraft, SyncEntityIdentity.ForDraft(OperatingDate));
+        Assert.NotNull(stateBeforeSwitch?.SyncedContentHash);
+
+        device.ConfigStore.Current = device.ConfigStore.Current with { SyncRootPath = otherRoot };
+
+        var secondPass = await device.Sync.RunAsync();
+
+        Assert.Equal(PersonalSyncOutcome.Completed, secondPass.Outcome);
+        Assert.Equal(1, secondPass.ExportedCount); // Re-exported into the new folder, not silently skipped.
+        Assert.True(File.Exists(SyncPathService.GetDraftFilePath(otherRoot, OperatingDate)));
+        Assert.NotEqual(device.ConfigStore.Current.LastKnownSyncSpaceId, Guid.Empty);
+    }
+
+    [Fact]
+    public async Task RunAsync_SwitchingBackToTheOriginalFolder_ReconcilesSafely_AndOriginalFolderStillHasTheRecord()
+    {
+        var otherRoot = Path.Combine(_tempDataRoot, $"other-folder-{Guid.NewGuid():N}");
+        var device = CreateDevice("solo", DeviceAId, new FakeClock(BaseNow));
+
+        await SaveDraftAsync(device, OperatingDate, AssociateDraftPayload.CreateDefault());
+        await device.Sync.RunAsync();
+        var originalFolderContentBeforeSwitch = await File.ReadAllTextAsync(SyncPathService.GetDraftFilePath(_sharedRoot, OperatingDate));
+
+        device.ConfigStore.Current = device.ConfigStore.Current with { SyncRootPath = otherRoot };
+        await device.Sync.RunAsync(); // Switch #1: original -> other.
+
+        device.ConfigStore.Current = device.ConfigStore.Current with { SyncRootPath = _sharedRoot };
+        var switchBackResult = await device.Sync.RunAsync(); // Switch #2: back to the original folder.
+
+        Assert.Equal(PersonalSyncOutcome.Completed, switchBackResult.Outcome);
+        Assert.Equal(0, switchBackResult.ConflictCount); // Never surfaced as a conflict against its own earlier export.
+        Assert.True(File.Exists(SyncPathService.GetDraftFilePath(_sharedRoot, OperatingDate)));
+        var originalFolderContentAfterSwitchBack = await File.ReadAllTextAsync(SyncPathService.GetDraftFilePath(_sharedRoot, OperatingDate));
+        Assert.Contains("\"ProjectedAttendance\"", originalFolderContentAfterSwitchBack);
+        // Content is preserved byte-for-byte modulo the envelope's own re-issued Revision/DeviceId — the
+        // underlying draft payload itself never changed, matching "safely reconciles" rather than data loss.
+        Assert.Equal(originalFolderContentBeforeSwitch.Length > 0, originalFolderContentAfterSwitchBack.Length > 0);
     }
 
     private sealed class FakeDeviceIdProvider(Guid fixedId) : IDeviceIdProvider

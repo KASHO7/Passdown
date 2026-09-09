@@ -131,6 +131,20 @@
             <TextBlock Text="{Binding StatusDetail}" Classes="muted" TextWrapping="Wrap"
                        IsVisible="{Binding StatusDetail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
+            <!-- Phase 16F §12/§13/§17: the automatic-sync status this phase adds — layered on top of
+                 the readiness chip above, never replacing it. Compact by design (§17): one chip, an
+                 optional one-line detail, and a "Last synced" line. -->
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="Sync" FontWeight="SemiBold" VerticalAlignment="Center" />
+              <Border Classes="chip">
+                <TextBlock Text="{Binding AutomationStatusPresentation.Text}" />
+              </Border>
+            </StackPanel>
+            <TextBlock Text="{Binding AutomationStatusPresentation.DetailText}" Classes="muted" TextWrapping="Wrap"
+                       IsVisible="{Binding AutomationStatusPresentation.DetailText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <TextBlock Text="{Binding LastSyncedText}" Classes="muted"
+                       IsVisible="{Binding LastSyncedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
             <Button Content="Sync Now" Classes="secondaryAction" HorizontalAlignment="Left"
                     Command="{Binding SyncNowCommand}"
                     AutomationProperties.Name="Sync Now" />

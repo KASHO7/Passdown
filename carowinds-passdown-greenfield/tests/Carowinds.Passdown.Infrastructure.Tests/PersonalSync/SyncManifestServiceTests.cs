@@ -75,4 +75,49 @@ public class SyncManifestServiceTests : IDisposable
 
         Assert.Equal(SyncManifestEnsureOutcome.UnsupportedVersion, result.Outcome);
     }
+
+    // ------------------------------------------------------------------
+    // Phase 16F §20: SyncSpaceId — folder identity.
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public async Task EnsureManifestAsync_NewManifest_GetsANonEmptySyncSpaceId()
+    {
+        var result = await SyncManifestService.EnsureManifestAsync(_root, Now);
+
+        Assert.Equal(SyncManifestEnsureOutcome.Ready, result.Outcome);
+        Assert.NotNull(result.SyncSpaceId);
+        Assert.NotEqual(Guid.Empty, result.SyncSpaceId!.Value);
+    }
+
+    [Fact]
+    public async Task EnsureManifestAsync_ExistingManifestWithSyncSpaceId_ReturnsTheSameIdOnEveryCall()
+    {
+        var first = await SyncManifestService.EnsureManifestAsync(_root, Now);
+        var second = await SyncManifestService.EnsureManifestAsync(_root, Now.AddDays(1));
+
+        Assert.Equal(first.SyncSpaceId, second.SyncSpaceId);
+    }
+
+    [Fact]
+    public async Task EnsureManifestAsync_Pre16FManifestWithNoSyncSpaceId_IsBackfilledOnce_PreservingCreatedUtc()
+    {
+        var manifestPath = SyncPathService.GetManifestFilePath(_root);
+        Directory.CreateDirectory(Path.GetDirectoryName(manifestPath)!);
+        var legacyManifest = new SyncManifest(SyncManifestSerializer.CurrentSyncSchemaVersion, SyncManifest.ProductName, Now);
+        await File.WriteAllTextAsync(manifestPath, SyncManifestSerializer.Serialize(legacyManifest));
+
+        var result = await SyncManifestService.EnsureManifestAsync(_root, Now.AddDays(1));
+
+        Assert.Equal(SyncManifestEnsureOutcome.Ready, result.Outcome);
+        Assert.NotNull(result.SyncSpaceId);
+        Assert.NotEqual(Guid.Empty, result.SyncSpaceId!.Value);
+
+        var json = await File.ReadAllTextAsync(manifestPath);
+        var backfilled = System.Text.Json.JsonSerializer.Deserialize<SyncManifest>(json, SyncManifestSerializer.Options);
+        Assert.Equal(Now, backfilled!.CreatedUtc); // CreatedUtc preserved, not reset to the second call's "now".
+
+        var second = await SyncManifestService.EnsureManifestAsync(_root, Now.AddDays(2));
+        Assert.Equal(result.SyncSpaceId, second.SyncSpaceId); // Backfilled exactly once, then stable.
+    }
 }

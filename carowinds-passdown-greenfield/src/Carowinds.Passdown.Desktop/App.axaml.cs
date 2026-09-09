@@ -96,7 +96,8 @@ public partial class App : global::Avalonia.Application
             mainWindow.DataContext = mainViewModel;
             var mainViewModelResolvedMs = ElapsedSinceProcessStartMs();
 
-            AttachShutdownFlush(desktop, mainViewModel, logger);
+            var syncCoordinator = services.GetRequiredService<IPersonalSyncCoordinator>();
+            AttachShutdownFlush(desktop, mainViewModel, syncCoordinator, logger);
 
             // Phase 15D: the closest available cross-platform proxy for "the shell became visible" —
             // Window.Opened fires once the platform has actually shown the window, well after
@@ -115,6 +116,12 @@ public partial class App : global::Avalonia.Application
                 "mainViewModelResolved={MainViewModelResolvedMs:F1} mainWindowAssigned={MainWindowAssignedMs:F1}",
                 _xamlLoadedMs, _serviceProviderBuiltMs, migrationsRunMs, mainViewModelResolvedMs, mainWindowAssignedMs);
 
+            // Phase 16F §3: started after the window is already assigned/visible, before the catch-up
+            // refresh below (whose own finalization step may call IPersonalSyncCoordinator.RequestSync)
+            // — Start() itself returns immediately (the startup sync pass runs in the background), so
+            // this can never delay the first usable window the way a blocking bootstrap would.
+            syncCoordinator.Start();
+
             StartCatchUpRefresh(services);
         }
 
@@ -131,7 +138,7 @@ public partial class App : global::Avalonia.Application
     /// again to actually close; the <c>flushed</c> guard prevents that second request from looping
     /// back into this handler.
     /// </summary>
-    private static void AttachShutdownFlush(IClassicDesktopStyleApplicationLifetime desktop, MainViewModel mainViewModel, ILogger logger)
+    private static void AttachShutdownFlush(IClassicDesktopStyleApplicationLifetime desktop, MainViewModel mainViewModel, IPersonalSyncCoordinator syncCoordinator, ILogger logger)
     {
         var flushed = false;
 
@@ -149,6 +156,22 @@ public partial class App : global::Avalonia.Application
         async Task FlushThenShutdownAsync()
         {
             await FlushPendingAutosaveBeforeShutdownAsync(mainViewModel, logger).ConfigureAwait(true);
+
+            // Phase 16F §23: stops the periodic loop and any pending debounce/retry timer only — it
+            // deliberately does not wait for a sync pass that happens to be mid-flight (file I/O uses
+            // atomic temp-then-rename, so an interrupted pass never leaves a half-written file visible
+            // to anything else; pending local changes simply sync on next startup, §24). No bounded
+            // final sync is added here — local autosave flush above is the only thing shutdown actually
+            // waits on, matching the spec's "do not risk shutdown hangs waiting on OneDrive."
+            try
+            {
+                await syncCoordinator.StopAsync().ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to stop the Personal Sync coordinator during shutdown; closing anyway.");
+            }
+
             flushed = true;
             desktop.Shutdown();
         }
@@ -373,7 +396,17 @@ public partial class App : global::Avalonia.Application
         // AssociatePassdownService/OperationalNotesService's optional constructor parameters above;
         // nothing else needs to change at those registrations.
         services.AddSingleton<ISyncEntityStateRepository, SqliteSyncEntityStateRepository>();
-        services.AddSingleton<ISyncChangeTracker, SyncChangeTracker>();
+
+        // Phase 16F §4/§8: every local draft/note save already calls ISyncChangeTracker once it saves
+        // (Phase 16C §7) — AutomaticSyncChangeTracker wraps the plain SyncChangeTracker so that same
+        // call also requests a debounced automatic sync pass, with no change to AssociatePassdownService/
+        // OperationalNotesService or any ViewModel. SyncChangeTracker itself is kept resolvable under its
+        // own concrete type for the wrapper to depend on, matching the decorator pattern used nowhere
+        // else in this composition root only because nothing else here has needed one yet.
+        services.AddSingleton<SyncChangeTracker>();
+        services.AddSingleton<ISyncChangeTracker>(provider => new AutomaticSyncChangeTracker(
+            provider.GetRequiredService<SyncChangeTracker>(),
+            provider.GetRequiredService<IPersonalSyncCoordinator>()));
         // Phase 16E: finalized History/PDF sync. PersonalSyncService's constructor now also takes
         // IFinalizedPassdownRepository — already registered above (Phase 9A) — resolved automatically;
         // no separate finalization-to-sync hook was added (spec §22: export dirtiness is decided by
@@ -387,6 +420,15 @@ public partial class App : global::Avalonia.Application
         // Device/Accept Deletion — no ViewModel implements any of that logic directly.
         services.AddSingleton<ISyncConflictRepository, SqliteSyncConflictRepository>();
         services.AddSingleton<IPersonalSyncConflictResolutionService, PersonalSyncConflictResolutionService>();
+
+        // Phase 16F: the automatic-sync coordinator (debounce/coalescing/periodic-safety-sync/retry
+        // backoff/status) — one singleton for the process's lifetime, started in
+        // OnFrameworkInitializationCompleted and stopped during shutdown (AttachShutdownFlush). Never
+        // resolved (and therefore never started) by the headless --scheduled-refresh entry point, which
+        // reuses this same BuildServiceProvider but has no interactive session to run automatic sync for
+        // (spec §31 — Personal Sync operates only while the interactive app is running).
+        services.AddSingleton<IPersonalSyncCoordinator, PersonalSyncCoordinator>();
+
         services.AddTransient<PersonalSyncSettingsViewModel>();
 
         services.AddTransient<MainWindow>();

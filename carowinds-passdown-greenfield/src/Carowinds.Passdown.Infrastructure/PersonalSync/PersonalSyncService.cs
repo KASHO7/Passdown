@@ -28,6 +28,7 @@ namespace Carowinds.Passdown.Infrastructure.PersonalSync;
 /// </summary>
 public sealed class PersonalSyncService(
     IPersonalSyncSettingsService settingsService,
+    ISyncConfigurationStore configurationStore,
     IDeviceIdProvider deviceIdProvider,
     IAssociateDraftRepository draftRepository,
     IOperationalNoteRepository noteRepository,
@@ -53,6 +54,15 @@ public sealed class PersonalSyncService(
             return PersonalSyncResult.AlreadyRunning();
         }
 
+        // Phase 16F §26: the in-process gate above only protects this one process — a second app
+        // instance on the same device has its own gate. This adds the minimum cross-process guard.
+        using var processLock = PersonalSyncProcessLock.TryAcquire();
+        if (processLock is null)
+        {
+            _gate.Release();
+            return PersonalSyncResult.AlreadyRunning();
+        }
+
         try
         {
             var snapshot = await settingsService.LoadAsync(cancellationToken).ConfigureAwait(false);
@@ -71,6 +81,8 @@ public sealed class PersonalSyncService(
             var now = clock.UtcNow;
             var counters = new Counters();
 
+            await ReconcileSyncSpaceAsync(snapshot.SyncSpaceId, cancellationToken).ConfigureAwait(false);
+
             await ImportDraftsAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
             await ImportNotesAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
             await ImportHistoryAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
@@ -84,6 +96,47 @@ public sealed class PersonalSyncService(
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>
+    /// Phase 16F §19/§20: audits whether the configured folder's manifest still identifies the same
+    /// sync universe this device last reconciled against. <see cref="SyncEntityState.SyncedContentHash"/>
+    /// only ever means "this device confirmed its content matches what's in the sync folder" — it says
+    /// nothing about *which* folder that was. Without this check, switching to a different (possibly
+    /// empty) folder would make every already-"synced" record silently skip export forever, because its
+    /// stale hash still matches — the exact release-critical bug this phase's design doc calls out.
+    /// A first-ever sync (no <see cref="SyncConfiguration.LastKnownSyncSpaceId"/> yet) simply adopts the
+    /// current folder's identity with no reset (nothing has been synced to anything yet). A genuine
+    /// mismatch wipes every entity's sync bookkeeping (Phase 16D's tombstone/conflict state included) so
+    /// every record above is re-evaluated fresh against the new folder's actual contents through the
+    /// normal reconciliation rules — never a blind re-export, since the new folder may already hold
+    /// equivalent content from another device that used it first.
+    /// </summary>
+    private async Task ReconcileSyncSpaceAsync(Guid? currentSyncSpaceId, CancellationToken cancellationToken)
+    {
+        if (currentSyncSpaceId is not { } spaceId || spaceId == Guid.Empty)
+        {
+            // Manifest unavailable/still being backfilled this pass — nothing safe to compare yet;
+            // the next successful pass (once EnsureManifestAsync has written a real id) will catch up.
+            return;
+        }
+
+        var configuration = await configurationStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+
+        if (configuration.LastKnownSyncSpaceId == spaceId)
+        {
+            return; // Same sync universe as last time — nothing to reconcile.
+        }
+
+        if (configuration.LastKnownSyncSpaceId is not null)
+        {
+            // A real mismatch, not just "never synced before" — rebase local sync metadata so nothing
+            // from the old folder is mistaken for already being shared with the new one.
+            await stateRepository.ClearAllAsync(cancellationToken).ConfigureAwait(false);
+            await conflictRepository.ClearAllAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await configurationStore.SaveAsync(configuration with { LastKnownSyncSpaceId = spaceId }, cancellationToken).ConfigureAwait(false);
     }
 
     // ----- Drafts: import -----

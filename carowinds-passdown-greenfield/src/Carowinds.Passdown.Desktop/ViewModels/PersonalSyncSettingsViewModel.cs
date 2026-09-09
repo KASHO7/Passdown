@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Desktop.Services;
@@ -22,8 +23,8 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
 {
     private readonly IPersonalSyncSettingsService _service;
     private readonly ISyncFolderPicker _folderPicker;
-    private readonly IPersonalSyncService _syncService;
     private readonly IPersonalSyncConflictResolutionService _conflictService;
+    private readonly IPersonalSyncCoordinator _coordinator;
     private readonly ILogger<PersonalSyncSettingsViewModel>? _logger;
 
     private Task _pendingLoad = Task.CompletedTask;
@@ -83,23 +84,42 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
 
     public string ConflictStatusText => PersonalSyncConflictStatusPresentation.Format(ConflictCount);
 
+    /// <summary>Phase 16F §12: the automatic-sync status — layered on top of <see cref="Status"/>/<see cref="StatusPresentation"/>, never replacing it. Kept current for the lifetime of this (single, app-session-long — see <see cref="MainViewModel"/>) instance via <see cref="IPersonalSyncCoordinator.StatusChanged"/>.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AutomationStatusPresentation))]
+    [NotifyPropertyChangedFor(nameof(LastSyncedText))]
+    public partial PersonalSyncAutomationSnapshot AutomationStatus { get; set; } = PersonalSyncAutomationSnapshot.Initial;
+
+    public PersonalSyncAutomationStatusPresentation AutomationStatusPresentation => PersonalSyncAutomationStatusPresentation.Build(AutomationStatus);
+
+    public string? LastSyncedText => PersonalSyncAutomationStatusPresentation.BuildLastSyncedText(AutomationStatus.LastSuccessfulSyncUtc);
+
     public PersonalSyncSettingsViewModel(
         IPersonalSyncSettingsService service,
         ISyncFolderPicker folderPicker,
-        IPersonalSyncService syncService,
         IPersonalSyncConflictResolutionService conflictService,
+        IPersonalSyncCoordinator coordinator,
         ILogger<PersonalSyncSettingsViewModel>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(folderPicker);
-        ArgumentNullException.ThrowIfNull(syncService);
         ArgumentNullException.ThrowIfNull(conflictService);
+        ArgumentNullException.ThrowIfNull(coordinator);
 
         _service = service;
         _folderPicker = folderPicker;
-        _syncService = syncService;
         _conflictService = conflictService;
+        _coordinator = coordinator;
         _logger = logger;
+
+        AutomationStatus = coordinator.CurrentStatus;
+        // This ViewModel is resolved exactly once for the app's session (MainViewModel's own
+        // constructor parameter, itself resolved once in App.axaml.cs) — so this subscription lives
+        // exactly as long as _coordinator does, never leaking across repeated Settings navigations.
+        // A periodic/retry-triggered pass raises this from a background thread pool thread (there is
+        // no user-initiated UI-thread call on that path to preserve), so the property update is
+        // marshalled onto the UI thread rather than assumed to already be there.
+        coordinator.StatusChanged += (_, snapshot) => Dispatcher.UIThread.Post(() => AutomationStatus = snapshot);
 
         _pendingLoad = LoadAsync();
     }
@@ -185,14 +205,22 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
 
     private bool CanChooseFolder() => !IsBusy;
 
-    /// <summary>Phase 16C §25/§26: the one manual trigger this phase adds — no automatic/background cadence. Only meaningful once the folder/manifest are actually <see cref="PersonalSyncStatus.Ready"/>; <see cref="Carowinds.Passdown.Application.PersonalSync.IPersonalSyncService"/> itself already no-ops safely otherwise, but disabling the button avoids a confusing "nothing happened" click.</summary>
+    /// <summary>
+    /// Phase 16C §25/§26, Phase 16F §27: the manual trigger — routed through <see cref="IPersonalSyncCoordinator.SyncNowAsync"/>
+    /// rather than calling <see cref="Carowinds.Passdown.Application.PersonalSync.IPersonalSyncService"/>
+    /// directly, so a click bypasses any pending debounce and still respects the coordinator's overlap
+    /// protection (never runs in parallel with an automatic pass). Only meaningful once the
+    /// folder/manifest are actually <see cref="PersonalSyncStatus.Ready"/>; the underlying service
+    /// itself already no-ops safely otherwise, but disabling the button avoids a confusing "nothing
+    /// happened" click.
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanSyncNow))]
     private async Task SyncNowAsync()
     {
         IsBusy = true;
         try
         {
-            var result = await _syncService.RunAsync().ConfigureAwait(true);
+            var result = await _coordinator.SyncNowAsync().ConfigureAwait(true);
             SyncResultSummary = PersonalSyncResultPresentation.Format(result);
             Apply(await _service.LoadAsync().ConfigureAwait(true));
             // Sync Now must never block on, or be blocked by, unrelated records (§26) — an unresolved

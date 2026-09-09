@@ -1999,3 +1999,473 @@ Every entity kind (drafts, notes, History) now has a working, tested manual "Syn
 own appropriate conflict model. 16F's automatic-cadence work has a single integration point to hook —
 `IPersonalSyncService.RunAsync()` — already proven safe to call repeatedly/idempotently for all three
 entity kinds; no entity-specific readiness gap was identified for 16F.
+
+---
+
+# Phase 16F — Personal Sync: Automatic Sync and Status UX (Implementation)
+
+Makes Personal Sync run automatically while the app is open, on top of the completed manual sync
+engine — `IPersonalSyncService.RunAsync()` itself is untouched (still the one record-reconciliation
+entry point, still safe to call repeatedly/concurrently across processes/devices); this phase adds
+**one new thing above it**: WHEN it runs, and how that is shown to the user. Manual "Sync Now" remains
+available and now routes through the same coordinator as every automatic trigger, so it gets the same
+overlap protection for free.
+
+## 16F.1 Coordinator architecture
+
+[`IPersonalSyncCoordinator`/`PersonalSyncCoordinator`](../src/Carowinds.Passdown.Application/PersonalSync/IPersonalSyncCoordinator.cs) —
+one Application-layer singleton (no filesystem/SQLite access of its own; every dependency is an
+existing interface — `IPersonalSyncService`, `IPersonalSyncConflictResolutionService`, `IClock`), owning
+**when** a pass runs. `PersonalSyncService` (Infrastructure) remains completely unaware this type
+exists — it still just answers "run one pass" when asked, exactly as 16C–16E left it. Per spec §8's
+explicit instruction, no timer/semaphore is spread across ViewModels: `PersonalSyncSettingsViewModel`
+only ever calls `RequestSync`/`SyncNowAsync` and renders `CurrentStatus`/`StatusChanged`.
+
+Internals: one `SemaphoreSlim` (`_runGate`) ensures at most one physical call into
+`IPersonalSyncService.RunAsync()` is in flight from this coordinator at a time; a single `bool
+_runRequestedAgain` flag (not a queue/counter) implements the coalescing rule in §16F.9; independent
+`CancellationTokenSource`s for the debounce timer, the retry timer, and the coordinator's own lifetime
+let each be cancelled without disturbing the others (e.g. `SyncNowAsync` cancels a pending debounce/retry
+without touching the periodic loop).
+
+## 16F.2 Startup-sync behavior
+
+`IPersonalSyncCoordinator.Start()` is called once, in `App.axaml.cs`'s `OnFrameworkInitializationCompleted`,
+**after** `desktop.MainWindow` is already assigned (so the window is already visible/interactive) and
+**before** `StartCatchUpRefresh` — `Start()` itself is synchronous and returns immediately; the startup
+sync pass it fires runs as a detached background task exactly like the existing startup catch-up refresh
+already did (Phase 6B). If the sync folder is unavailable, the pass simply reports `FolderUnavailable`
+and schedules a retry (§16F.5) — nothing here blocks or delays the first usable window. Never resolved
+(and therefore never started) by the headless `--scheduled-refresh` process
+(`Program.BuildScheduledRefreshServiceProvider` reuses the same `App.BuildServiceProvider()` composition
+root, but nothing in that headless path ever calls `.Start()` — spec §31's "Personal Sync operates only
+while the interactive app is running").
+
+## 16F.3 Local-change trigger behavior
+
+`AssociatePassdownService.SaveDraftAsync`/`OperationalNotesService`'s existing `ISyncChangeTracker.MarkLocalChangeAsync`
+hook (Phase 16C §7) is unchanged in both callers. What changed:
+[`AutomaticSyncChangeTracker`](../src/Carowinds.Passdown.Application/PersonalSync/AutomaticSyncChangeTracker.cs)
+decorates the plain `SyncChangeTracker` — after the dirty-metadata write succeeds, it calls
+`IPersonalSyncCoordinator.RequestSync(SyncTriggerReason.LocalChange)`. Wired only in
+`App.axaml.cs`'s composition root (`SyncChangeTracker` itself stays registered under its own concrete
+type so the decorator can depend on it); nothing in the Application services changed. A tracker call
+that is skipped entirely (a direct repository write bypassing the Application service, already a
+documented, accepted gap since 16C) simply never requests a pass either — no new gap introduced.
+
+## 16F.4 Debounce/coalescing behavior
+
+`PersonalSyncCoordinator.DefaultDebounceInterval` = **5 seconds**. Chosen relative to the Associate
+screen's own 800ms autosave debounce (Phase 4C): 5 seconds comfortably outlasts a realistic burst of
+several autosaves from continued typing/toggling, so "edit → autosave → edit → autosave" collapses into
+one sync pass "shortly afterward," per spec §4's own example — not one sync pass per autosave. Only
+`SyncTriggerReason.LocalChange`/`Finalization` are debounced; every other reason (`Startup`, `Periodic`,
+`Retry`, `Manual`) dispatches promptly, since each already has its own natural spacing.
+
+## 16F.5 Finalization trigger behavior
+
+No hook was added to `FinalizedPassdownFinalizationService`/`ScheduledPassdownFinalizer` (consistent
+with 16E §10's own "avoid unnecessary hooks" precedent — History dirtiness is still decided by content-hash
+comparison during `ExportHistoryAsync`'s per-pass enumeration, never a write-time notification). Instead,
+[`StartupCatchUpRefresh.RunAsync`](../src/Carowinds.Passdown.Desktop/Startup/StartupCatchUpRefresh.cs)
+(the one place finalization can happen inside the *interactive* process — the headless
+`--scheduled-refresh` process finalizes in a separate process with no coordinator at all) calls
+`IPersonalSyncCoordinator.RequestSync(SyncTriggerReason.Finalization)` immediately after
+`IScheduledPassdownFinalizer.FinalizeEligibleAsync` reports `FinalizedCount > 0`. Uses `GetService` (not
+`GetRequiredService`) — the coordinator is an interactive-app-only concern (§31), so a minimal/headless
+service provider that never registered Personal Sync at all must not have its finalize-then-refresh
+sequence broken by an unrelated missing registration (this was caught by, and fixed against,
+`Phase9EIntegrationTests.StartupCatchUp_MissedCutoff_FinalizesAndHistoryAppears`, which builds exactly
+such a minimal provider). A finalization that happens only in the headless scheduled process is still
+picked up — just via the interactive app's next startup/periodic pass rather than an immediate trigger,
+since History export is a full, cheap per-pass scan regardless of *why* a record became dirty.
+
+## 16F.6 Periodic cadence
+
+`PersonalSyncCoordinator.DefaultPeriodicInterval` = **5 minutes**. Order-of-magnitude per spec §6
+("every few minutes, not every few seconds") — frequent enough to notice a remote change or recover a
+missed local trigger within a normal work session, infrequent enough that it is never the dominant cost
+of running the app (each no-op pass is a handful of cheap content-hash comparisons, §16F.15). Re-arms
+itself after every tick (including after a triggered pass completes) for the app's entire running
+lifetime, cancelled only by `StopAsync()`.
+
+## 16F.7 Filesystem-watcher decision
+
+**Not added, by design** — exactly as 16E's own "Deferred to 16F" note anticipated. Periodic (§16F.6) +
+event-triggered (§16F.3/§16F.5) sync converges without one: every entity kind's dirtiness is decided by
+content-hash/revision comparison during enumeration, not by "did a file-system event fire," so a missed
+or noisy OneDrive filesystem event (partial writes, conflict-copy intermediate states, sync-client churn)
+can never cause a record to be silently skipped — the next periodic tick re-evaluates everything fresh
+regardless. Reasons against, per spec §7: OneDrive's own event stream is noisy/transient around partial
+uploads and conflict copies, and a watcher adds real complexity (debouncing filesystem events, handling a
+watcher's own failure modes) for a benefit periodic + event-triggered sync already delivers.
+
+## 16F.8 Retry/backoff behavior
+
+Classification happens in `PersonalSyncCoordinator.ApplyResult` (spec §10/§28), mapping
+`PersonalSyncResult` to a `PersonalSyncAutomationState` and deciding whether the outcome is **transient**
+(retry) or not:
+
+| Outcome | Transient? | Resulting state |
+|---|---|---|
+| `Disabled` | No | `Off` |
+| `NotConfigured` | No | `NotConfigured` |
+| `FolderUnavailable` | **Yes** | `Offline` |
+| `ConfigurationError` (malformed/unsupported manifest) | No | `Error` |
+| `Completed`, history/mutable conflicts present | No | `HistoryConflictAttention` / `ConflictAttention` |
+| `Completed`, `IoFailureCount > 0` (some transient per-file I/O failures) | **Yes** | `Pending` |
+| `Completed`, clean | No | `UpToDate` |
+
+Only the two transient rows schedule a retry — a conflict or a malformed/unsupported configuration will
+never be fixed by retrying, so retrying would only be noise (spec §10's "do not spam retries indefinitely
+if retry cannot resolve them," §15's "do not repeatedly auto-resolve anything"); those states are instead
+picked up again by the next periodic sweep or an explicit user action (resolve the conflict, fix the
+folder). Backoff schedule (`PersonalSyncCoordinator.DefaultBackoffSchedule`): **15s, 30s, 1min, 2min,
+5min**, exactly the spec's own example — capped at the last (5min) step for any further consecutive
+failure, never busy-looping. Reset to the first step (`_consecutiveTransientFailures = 0`) on the very
+next non-transient outcome, success or otherwise.
+
+## 16F.9 Overlap/coalescing behavior
+
+Every automatic trigger funnels through `PersonalSyncCoordinator.TriggerRunAsync`, which tries to acquire
+`_runGate` without blocking (`WaitAsync(0)`). If busy, it sets `_runRequestedAgain = true` and returns —
+never a second parallel call into `IPersonalSyncService.RunAsync()`. The pass currently holding the gate,
+once it finishes, checks that flag itself and — if set — clears it and runs exactly one more pass before
+releasing the gate; a further trigger arriving *during* that follow-up pass sets the flag again for
+*its own* one more follow-up. This produces "run #1 active → local save occurs → one follow-up run after
+#1," never an unbounded queue (spec §9), verified directly by
+`LocalChangeDuringActiveSync_ProducesExactlyOneFollowUpPass_NeverParallel`.
+
+## 16F.10 Offline/unavailable behavior
+
+`PersonalSyncAutomationState.Offline` maps to the text **"Sync unavailable"** with detail **"Changes are
+saved locally and will sync automatically once the folder is reachable again."** — deliberately no
+"lost"/"failed"/"error" language (spec §11), verified by
+`OfflineStatus_NeverUsesAlarmingDataLossLanguage`. Local persistence was never on this code path to begin
+with (§16F.1's core invariant, unchanged since 16A) — Offline is purely a *sync* status, never a save
+status. `HasPendingChanges` is `true` in this state; the retry schedule (§16F.8) picks the folder back up
+automatically the moment it becomes reachable again, no manual intervention required.
+
+## 16F.11 Status model
+
+[`PersonalSyncAutomationState`/`PersonalSyncAutomationSnapshot`](../src/Carowinds.Passdown.Application/PersonalSync/PersonalSyncAutomationSnapshot.cs) —
+a new, richer status layered **on top of**, never replacing, the existing 16B `PersonalSyncStatus`
+(Off/NotConfigured/Ready/FolderUnavailable/ConfigurationError — still answers "is the folder/manifest
+itself configured and reachable"). States: `Off`, `NotConfigured`, `Syncing`, `UpToDate`, `Pending`,
+`Offline`, `ConflictAttention`, `HistoryConflictAttention` (kept **distinct** from `ConflictAttention` per
+spec §16 — never mistaken for an ordinary mutable conflict), `Error`. Metadata carried alongside:
+`IsSyncRunning`, `LastSuccessfulSyncUtc`, `LastAttemptUtc`, `HasPendingChanges`, `ConflictCount`,
+`HistoryConflictCount`, `LastResultSummary`, `LastErrorMessage`, `RetryAttempt`. Nothing here is persisted
+across a restart beyond what already lives in `sync_entity_state`/`sync_conflicts`/`sync-config.json` —
+`PersonalSyncAutomationSnapshot` itself resets to `Initial` on every process start and is rebuilt fresh by
+the startup pass, matching spec §12's "do not persist unnecessary transient status unless needed across
+restart" (nothing here is needed across restart; §13's `LastSuccessfulSyncUtc` is display-only, not a
+reconciliation input, so losing it across a restart is cosmetic, not a correctness gap).
+
+## 16F.12 Pending-state semantics
+
+`HasPendingChanges` is `true` only for `Pending`/`Offline` — never merely because a pass *ran* (spec §14's
+explicit "do not claim Up to date merely because a sync attempt ran if conflicts remain/exports
+failed/folder unavailable"). A clean `Completed` result with zero conflicts and zero I/O failures is the
+only path to `UpToDate`.
+
+## 16F.13 Last-successful-sync behavior
+
+[`PersonalSyncAutomationStatusPresentation.BuildLastSyncedText`](../src/Carowinds.Passdown.Desktop/Presentation/PersonalSyncAutomationStatusPresentation.cs)
+renders **"Last synced: 2:41 PM"** — local display time, same `ToLocalTime():h:mm tt` formatting
+`SaveStatusPresentation` already established for the Associate autosave footer (Phase 4C), not a new
+convention. Null (line hidden) until the very first successful pass. Purely display metadata — never an
+input to any reconciliation decision (16A §D's own warning against trusting wall-clock ordering still
+holds; this value is never read by `SyncReconciliation`/`FinalizedPassdownSyncReconciliation`).
+
+## 16F.14 Mutable-conflict / History-conflict status
+
+The coordinator re-queries `IPersonalSyncConflictResolutionService.GetConflictsAsync()` after every pass
+(cheap DB read) rather than trusting only that pass's own counters — so a conflict detected several
+passes ago and still unresolved keeps showing correctly even on a pass that found nothing new.
+`SyncEntityType.FinalizedPassdown` conflicts are split into `HistoryConflictCount`; everything else into
+`ConflictCount`. Existing 16D conflict review/resolution UX (Keep This Device/Use Other Device/Accept
+Deletion) is unchanged and remains the only way to clear a mutable conflict — the coordinator never
+touches conflict resolution itself (spec §15's "do not repeatedly auto-resolve anything").
+
+## 16F.15 Settings UX result
+
+Additive only, per spec §17's "keep it compact": one new chip (`AutomationStatusPresentation.Text`) plus
+an optional one-line detail and a "Last synced" line, inserted between the existing readiness chip/detail
+and the "Sync Now" button in
+[`PersonalSyncSettingsView.axaml`](../src/Carowinds.Passdown.Desktop/Views/PersonalSyncSettingsView.axaml).
+No new screen, no device list, no monitoring dashboard. "Sync Now" now calls
+`IPersonalSyncCoordinator.SyncNowAsync()` instead of `IPersonalSyncService.RunAsync()` directly (§16F.24).
+
+## 16F.16 Enable/disable behavior
+
+**No coordinator-level special-casing was needed.** The periodic loop keeps ticking regardless of the
+enabled toggle — but each tick's call into `IPersonalSyncService.RunAsync()` itself already returns
+`Disabled` near-instantly (the existing 16C guard, unchanged) whenever `PersonalSyncEnabled` is false, so
+disabling sync makes every subsequent automatic/periodic/retry pass a cheap no-op, never actual file/DB
+work, without the coordinator needing to know *why*. Turning it back on makes the very next pass (the
+next periodic tick, or the next local-change/manual trigger) resume normal reconciliation — nothing
+about local data, conflicts, tombstones, or `DeviceId` is ever reset by toggling this (all of that lives
+in SQLite/flat config files this toggle never touches).
+
+## 16F.17 Folder-switch behavior / 16F.18 SyncSpaceId
+
+**Audited and fixed** — this was the one genuinely release-critical gap spec §19/§20 called out.
+[`SyncManifest.SyncSpaceId`](../src/Carowinds.Passdown.Application/PersonalSync/SyncManifest.cs) (a
+`Guid`, default `Guid.Empty` for backward JSON compatibility) is a stable identity for one sync
+folder/manifest — generated once by `SyncManifestService.WriteNewManifestAsync` for a brand-new folder,
+and **backfilled once** into any pre-16F manifest `SyncManifestService.EnsureManifestAsync` reads with the
+empty default (preserving `CreatedUtc`/`SyncSchemaVersion`, rewritten exactly once via the same
+`AtomicFileWriter` every other manifest write uses).
+[`SyncConfiguration.LastKnownSyncSpaceId`](../src/Carowinds.Passdown.Application/PersonalSync/SyncConfiguration.cs)
+(nullable `Guid`, also defaulted for back-compat) is the local, per-device record of which sync universe
+this device last reconciled against — itself device state, never synced, exactly like `SyncRootPath`.
+
+`PersonalSyncService.ReconcileSyncSpaceAsync` runs at the top of every `RunAsync` pass, once the folder is
+confirmed `Ready`:
+
+- **First-ever sync** (`LastKnownSyncSpaceId` is `null`): adopts the current folder's `SyncSpaceId`, no
+  reset — nothing has been synced to anything yet.
+- **Same `SyncSpaceId` as last time**: no-op, the overwhelming common case on every normal pass.
+- **A genuine mismatch** (switched to a different, possibly-empty folder — including switching back to an
+  old folder that was itself reset in between): `ISyncEntityStateRepository.ClearAllAsync()` +
+  `ISyncConflictRepository.ClearAllAsync()` wipe every entity's local sync bookkeeping (both new,
+  §16F.19), then every record is re-evaluated fresh through the *normal* reconciliation rules on the very
+  same pass — never a blind re-export (the new folder may already hold equivalent content from another
+  device that used it first) and never a silent "already synced" skip (the exact bug this fixes: without
+  this check, a record's `SyncedContentHash` from the *old* folder would still match the current local
+  content, so the export loop would wrongly conclude "already shared" against a folder it was never
+  actually written to).
+
+Verified directly (`PersonalSyncServiceTests`): a first sync adopts the id with no reset; switching to a
+different empty folder re-exports an already-"synced" record instead of skipping it; switching back to
+the original folder reconciles safely with no spurious conflict and the record still present. Deliberately
+never `DeviceId` reused as `SyncSpaceId` (spec's explicit warning) — one identifies a folder, the other a
+device; two devices sharing one folder must never look like "the folder changed."
+
+## 16F.19 First-enable / bootstrap behavior
+
+Unchanged from 16C/16E: `ExportDraftsAsync`/`ExportNotesAsync`/`ExportHistoryAsync` already *are* the
+bootstrap path (a never-synced record has no `SyncEntityState` row, so it trivially exports on the first
+pass that finds it) — no separate "first enable" code path was added or needed. What 16F adds on top is
+only that this first pass now runs automatically (the startup trigger, §16F.2) instead of requiring a
+manual "Sync Now" click; the toggle itself (`PersonalSyncSettingsViewModel.SetEnabledAsync`) is unchanged
+and still returns immediately (persists the flag, no bootstrap work performed synchronously) — the
+coordinator picks up the change on its next periodic tick or the next `RequestSync` call.
+
+## 16F.20 Remote-change periodic import
+
+Composition of two already-independently-tested things: `PersonalSyncCoordinatorTests.PeriodicIntervalElapsing_TriggersAnAdditionalPass_AndReArmsItself`
+proves the coordinator calls `IPersonalSyncService.RunAsync()` on the periodic cadence with no local
+trigger involved; the existing Phase 16C/16E `PersonalSyncServiceTests` two-device scenarios (A exports →
+B's `RunAsync()` imports) prove that call itself correctly imports a remote-only change. No new dedicated
+end-to-end "coordinator + real two-device harness" test was written combining both — a reasonable,
+declared scope boundary given the two halves are each already proven; flagged here rather than silently
+assumed.
+
+## 16F.21 Shutdown behavior
+
+**No bounded final sync was added — by design**, matching spec §23's explicit permission. `App.axaml.cs`'s
+`AttachShutdownFlush` now also calls `IPersonalSyncCoordinator.StopAsync()` (cancels the periodic loop and
+any pending debounce/retry timer) immediately after the existing autosave flush, before `desktop.Shutdown()`
+actually closes the window. `StopAsync()` deliberately does **not** wait for a sync pass that happens to be
+mid-flight — only for the periodic-loop task's own delay to observe cancellation, which is immediate. An
+interrupted pass's own file writes are safe regardless (atomic temp-then-rename, unchanged since 16A §F) —
+a half-written temp file is simply abandoned, never observed as final by anything. Pending local changes
+(never lost — local persistence always completed before any sync trigger fires, §16F's own core invariant)
+sync on next startup (§16F.22).
+
+## 16F.22 Startup-after-pending-exit / 16F.23 Retry-across-restart
+
+Both work **without any new state** — the existing 16C content-hash/revision model already makes this
+recoverable: an edit made just before exit already updated `SyncEntityState.LocalRevision`/local content
+in SQLite (via `SaveDraftAsync`'s existing "SQLite first, sync metadata second" ordering, unchanged) even
+if the coordinator's debounced sync pass never got to run before the process closed. On next launch,
+`Start()`'s own startup trigger (§16F.2) runs a normal pass — `ExportDraftsAsync`/`ExportNotesAsync` see the
+same "local content hash ≠ `SyncedContentHash`" dirtiness they always would, with no notion of "this was
+pending across a restart" needed at all. The same logic covers a failed export (folder was unavailable at
+exit): the record's `SyncEntityState` was never advanced to reflect a successful export, so the next
+startup pass (now with the folder reachable) retries it automatically, no manual intervention required.
+
+## 16F.24 Multiple-instance protection
+
+[`PersonalSyncProcessLock`](../src/Carowinds.Passdown.Infrastructure/PersonalSync/PersonalSyncProcessLock.cs) —
+audited first: no existing single-app-instance enforcement exists anywhere in this codebase (confirmed:
+no `Mutex`/"SingleInstance" hits under `src/` before this phase), so *something* new was needed per spec
+§26's explicit "do not assume it cannot happen." Mirrors `FileScheduledRefreshLock`'s own proven approach —
+one exclusively-held (`FileShare.None`) local lock file — rather than a named `Mutex`: a `Mutex`'s
+ownership is thread-affine (`ReleaseMutex` must run on the exact thread that acquired it), which a
+long-lived `async` sync pass cannot guarantee across its many `await` suspension points (this was actually
+tried first and failed with `ApplicationException: Object synchronization method was called from an
+unsynchronized block of code` under real test conditions — the file-lock approach has no such
+requirement). Held only for the duration of one `PersonalSyncService.RunAsync()` pass — acquired
+immediately after the existing in-process `SemaphoreSlim` gate succeeds, released via the same `finally`.
+A second process attempting to hold it while the first still does gets `PersonalSyncResult.AlreadyRunning()`
+back — the same, already-existing outcome a second concurrent in-process call gets. Never the shared
+OneDrive folder itself (spec's explicit prohibition) and never `FileScheduledRefreshLock`'s own file
+(sharing it would make a sync pass wait on an unrelated, possibly long-running scheduled *retrieval*
+refresh). Verified directly (`PersonalSyncProcessLockTests`, via reflection against a test-only explicit
+path, never the shared real `AppPaths.LocalApplicationDataDirectory` location).
+
+## 16F.25 Manual Sync Now / 16F.26 Result classification
+
+`PersonalSyncSettingsViewModel.SyncNowAsync` now calls `IPersonalSyncCoordinator.SyncNowAsync()` instead
+of `IPersonalSyncService.RunAsync()` directly (§16F.15). That method cancels any pending debounce/retry
+timer (bypasses debounce, §27), then does a **blocking** `_runGate.WaitAsync()` (not the non-blocking
+`WaitAsync(0)` every automatic trigger uses) — if a pass is already running, Manual waits for it to finish
+and then always runs one guaranteed fresh pass of its own before returning, never in parallel and never
+silently coalesced away without the user seeing a real result
+(`SyncNowAsync_WhileAPassIsActive_WaitsThenRunsOneFreshPass_NeverInParallel`). Result classification
+(§16F.8's table) is unchanged/reused for both automatic and manual passes — never a single flattened
+"Failed" (spec §28); `PersonalSyncResultPresentation.Format` (16C, unchanged) still renders the
+manual-sync summary line shown after a click.
+
+## 16F.27 Logging/privacy behavior
+
+`PersonalSyncCoordinator` logs at pass start/finish (`LogInformation`: reason, outcome, import/export/
+unchanged/conflict/malformed/I-O-failure **counts** only), a coalesced-follow-up note (`LogDebug`), and an
+unexpected-exception/conflict-refresh-failure warning (`LogWarning`, exception object only — no payload).
+Never logs draft/note/PDF/snapshot content, credentials, usernames, or full JSON payloads — consistent
+with every prior Personal Sync phase's own logging discipline (16C §29 established this; nothing new here
+weakens it). `DeviceId`/`SyncSpaceId` may appear in Infrastructure-layer logs/state as bare GUIDs
+(unchanged, 16A §C/16F.18) — never a username, machine name, email, or local AppData path.
+
+## 16F.28 No-retrieval-coupling verification
+
+Grepped `PersonalSyncCoordinator`/`AutomaticSyncChangeTracker`/`StartupCatchUpRefresh`'s new code for any
+reference to `IRefreshOrchestrator`/`RefreshMode`/`IScheduledRefreshRunner`/HTTP/Playwright: none exist.
+The coordinator's only dependencies are `IPersonalSyncService`, `IPersonalSyncConflictResolutionService`,
+and `IClock` — no public-data retrieval type is reachable from it at all. `StartupCatchUpRefresh`'s
+existing refresh-runner call (`IScheduledRefreshRunner`) and the new Personal Sync trigger are two
+independent statements in sequence, not a shared code path — a Personal Sync failure/exception is caught
+entirely inside `IPersonalSyncCoordinator.RequestSync` (fire-and-forget, never throws to its caller) and
+can never prevent or alter the refresh-runner call that follows it, and vice versa. Confirms spec §30
+("Personal Sync automatic cadence must remain independent of Check Online/Deep Refresh/scheduled-refresh/
+source freshness/park-hours retrieval") holds by construction, not merely by absence of a bug found.
+
+## 16F.29 Loop prevention
+
+No new loop-prevention logic was added — the existing content-hash/revision semantics (16C/16E, unchanged)
+already make one impossible, and automatic cadence does not change that: a device's own periodic re-scan
+of a file it just exported hits the same `envelope.DeviceId == deviceId` self-skip (History) or
+`SyncedContentHash` match (drafts/notes) it always would on any repeated `RunAsync()` call, manual or
+automatic. Automatic cadence only means `RunAsync()` is called *more often*, never that it is called with
+different inputs that could produce a different (looping) outcome.
+
+## 16F.30 No-op performance / storage impact
+
+No new measurement was needed beyond what 16C–16E already established and this phase's own tests confirm
+by construction: a periodic tick against nothing-changed content is exactly the same cheap
+content-hash-comparison-then-skip path every existing "already in sync — no unnecessary rewrite" test
+(§6/§15 of 16C/16E) already covers — automatic cadence adds *more calls* to that same cheap path, not a
+new expensive one. No full PDF re-hash/rewrite happens on a no-op pass (unchanged: `ExportHistoryAsync`
+only re-hashes/writes when `SyncedContentHash` doesn't already match). `PersonalSyncCoordinator`'s own
+per-pass overhead beyond the `RunAsync()` call itself is one `GetConflictsAsync()` DB read and a handful
+of in-memory comparisons/allocations — no filesystem I/O of its own outside of `RunAsync()`/`ReconcileSyncSpaceAsync`.
+
+## 16F.31 Schema/config impact / 16F.32 Existing-user upgrade / 16F.33 Fresh-install result
+
+**No SQLite migration** — DB schema remains **13** (unchanged since 16D). `SyncSpaceId`/`LastKnownSyncSpaceId`
+(§16F.18) live entirely in the existing flat JSON files (`manifest.json`, `sync-config.json`), each already
+tolerant of unknown/missing fields via ordinary `System.Text.Json` optional-parameter defaults — no
+version bump was needed for either file format. An existing 16B–16E user's `sync-config.json` (no
+`LastKnownSyncSpaceId` field) and `manifest.json` (no `SyncSpaceId` field) both deserialize successfully
+with the new fields defaulting to `null`/`Guid.Empty`; the very next sync pass backfills the manifest's
+`SyncSpaceId` once and records it as this device's `LastKnownSyncSpaceId` with **no reset** (the
+"first-ever-sync" branch in §16F.18 — a pre-16F device has necessarily already synced against this exact
+folder before, so nothing is treated as a folder switch). `DeviceId`, the selected folder, all sync
+metadata (`sync_entity_state`), all conflicts (`sync_conflicts`), and all tombstones are preserved exactly
+as before — verified by construction (no migration touches any of those tables/files) and by the existing
+16B–16E upgrade-path tests continuing to pass unmodified. A fresh install / first-ever-enable
+(`SyncConfiguration.Disabled`, no manifest) proceeds exactly as 16B always did, now simply followed by an
+automatic startup/periodic cadence instead of requiring a manual click.
+
+## 16F.34 Tests added
+
+- `PersonalSyncCoordinatorTests` (Application.Tests/PersonalSync, 18 tests) — startup trigger, debounce
+  coalescing, overlap/one-follow-up, clean-success → `UpToDate`, retry/backoff increase-then-cap, backoff
+  reset on success, manual bypass (idle and while-active), periodic re-arming, `StopAsync` cancelling the
+  periodic loop and a pending debounce, mutable/History conflict status distinction, `Disabled`/
+  `NotConfigured` passthrough, `StatusChanged` firing. Uses `ManualDelayScheduler` (new,
+  Application.Tests/TestSupport) so every timing assertion is deterministic — no test sleeps for a real
+  interval (spec §32).
+- `SyncManifestServiceTests` additions (Infrastructure.Tests) — a new manifest gets a non-empty
+  `SyncSpaceId`; an existing manifest returns the same id on every call; a pre-16F manifest is backfilled
+  exactly once, preserving `CreatedUtc`.
+- `PersonalSyncServiceTests` additions (Infrastructure.Tests) — first-ever sync adopts the folder's
+  `SyncSpaceId` with no reset; switching to a different empty folder re-exports an already-"synced"
+  record instead of silently skipping it (the release-critical §19/§20 scenario); switching back to the
+  original folder reconciles safely with the record still present and no spurious conflict.
+- `PersonalSyncProcessLockTests` (new, Infrastructure.Tests) — acquire-when-free, a second acquire while
+  held returns null, a second acquire after release succeeds — via reflection against a test-only path,
+  never the shared real per-user AppData location.
+- `PersonalSyncSettingsViewModelTests` additions (Ui.Tests) — the coordinator's current status is applied
+  immediately on construction; every `PersonalSyncAutomationState` renders its expected chip text;
+  `LastSyncedText` is null before any successful sync; the `Offline` detail text never uses alarming
+  data-loss language; "Sync Now" routes through and is counted by the coordinator, not the raw sync
+  service (two existing tests updated accordingly). `FakePersonalSyncCoordinator`/
+  `FakePersonalSyncService`/`FakePersonalSyncConflictResolutionService` (Application.Tests/TestSupport)
+  and `FakePersonalSyncCoordinator` (Ui.Tests/TestSupport) are new/reused fakes.
+- `SyncChangeTrackerTests`' in-file `InMemorySyncEntityStateRepository` gained `ClearAllAsync` — mechanical,
+  required by the `ISyncEntityStateRepository` interface addition (§16F.18), no behavior change to what
+  that test file actually exercises.
+
+## 16F.35 Final deterministic test count / build result
+
+**1938/1938** deterministic (non-`LiveSmoke`) tests passing — up from the Phase 16E baseline of
+1900/1900 (Domain 105 unchanged, Application 546 → 564 [+18], Infrastructure 499 → 508 [+9: 6 folder-switch/
+manifest + 3 `PersonalSyncProcessLockTests`], Documents 114
+unchanged, Ui.Tests 636 → 647 [+11: 598 → 609 in the non-real-Window group, 38 real-Window tests
+unchanged]). `dotnet build CarowindsPassdown.slnx`: **0 warnings, 0 errors**. The same pre-existing,
+previously-documented (since Phase 6D) Avalonia headless cross-test parallelism flake — unrelated to this
+phase — was worked around using the established isolated strategy (the three real-`Window`-constructing
+classes run together: 38/38 repeatably; everything else in `Ui.Tests` runs together: 609/609 repeatably;
+38 + 609 = 647, the full project total). Not fixed, per CLAUDE.md — out of scope, pre-existing.
+
+## 16F.36 DB/Draft/Snapshot versions
+
+DB schema **13** (unchanged). Draft schema **3** (unchanged). Snapshot schema **1** (unchanged). No
+migration was added — see §16F.31.
+
+## 16F.37 Docs updated
+
+This document. Also worth noting for a future reader: `SyncManifest`/`SyncConfiguration`'s XML doc
+comments were extended in place to describe `SyncSpaceId`/`LastKnownSyncSpaceId` rather than duplicating
+that explanation only here.
+
+## Known limitations
+
+- No dedicated end-to-end test combines the coordinator's periodic trigger with a real two-device shared
+  folder in one test (§16F.20) — each half is proven independently; a combined test is a reasonable next
+  step but was not required to validate the behavior, which is a straightforward composition of two
+  already-tested pieces.
+- `PersonalSyncProcessLock` uses a fixed, non-configurable production path
+  (`AppPaths.LocalApplicationDataDirectory\personal-sync.lock`) — correct and sufficient for its actual
+  purpose (one lock per device/profile), but means `PersonalSyncService` itself cannot be unit-tested for
+  cross-process behavior without reflection against an explicit test path, which is what
+  `PersonalSyncProcessLockTests` does.
+- `LastSuccessfulSyncUtc`/`LastAttemptUtc`/retry-attempt count reset to defaults on every process
+  restart (§16F.11) — cosmetic only ("Last synced" briefly shows nothing until the next pass completes),
+  never a correctness gap, since none of it is a reconciliation input.
+- Real Windows-host/OneDrive-client validation (does a genuine, running OneDrive desktop client actually
+  pick up and propagate these automatic writes the way this design assumes) remains unverified on this
+  (macOS/Darwin) development host — the same standing limitation carried forward from every prior Personal
+  Sync phase, explicitly reserved for 16G.
+
+## Deferred to 16G
+
+- Real Windows/OneDrive two-device validation (every prior phase's own standing deferral).
+- Any admin-facing resolution surface for a `FinalizedPassdown` conflict, should product direction ever
+  call for one (16E §14's deliberate, not merely temporary, deferral — unchanged by this phase).
+- A combined coordinator-plus-two-device-harness automated test (§16F.20/Known limitations) — nice-to-have
+  hardening, not required for correctness.
+- Any Manager-workflow Personal Sync scope (out of the current release per CLAUDE.md; unrelated to 16F).
+
+## Phase 16G readiness
+
+Automatic sync, retry/backoff, and status UX are all implemented and tested against the fake-clock/fake-
+scheduler harness this phase introduces. What remains genuinely unverified across every Personal Sync
+phase to date — real Windows 11 hosts with a real, running OneDrive desktop client, actually observing
+this design's file-layout/atomic-write/conflict-copy assumptions against production OneDrive behavior —
+is exactly what 16G exists for; nothing in 16F narrows that scope further, and nothing in 16F introduces a
+new gap that needs closing before that validation can begin.

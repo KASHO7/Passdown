@@ -18,9 +18,10 @@ public enum SyncManifestEnsureOutcome
     Unavailable,
 }
 
-public sealed record SyncManifestEnsureResult(SyncManifestEnsureOutcome Outcome, string? Message)
+/// <param name="SyncSpaceId">Populated only when <see cref="Outcome"/> is <see cref="SyncManifestEnsureOutcome.Ready"/> (Phase 16F §20) — the manifest's stable folder identity, freshly generated for a brand-new manifest and backfilled once for a pre-16F manifest that predates this field.</param>
+public sealed record SyncManifestEnsureResult(SyncManifestEnsureOutcome Outcome, string? Message, Guid? SyncSpaceId = null)
 {
-    public static SyncManifestEnsureResult Ready() => new(SyncManifestEnsureOutcome.Ready, null);
+    public static SyncManifestEnsureResult Ready(Guid syncSpaceId) => new(SyncManifestEnsureOutcome.Ready, null, syncSpaceId);
 
     public static SyncManifestEnsureResult Malformed(string message) => new(SyncManifestEnsureOutcome.Malformed, message);
 
@@ -51,7 +52,15 @@ public static class SyncManifestService
         switch (readResult.Status)
         {
             case SyncFileReadStatus.Success:
-                return SyncManifestEnsureResult.Ready();
+                var manifest = readResult.Value!;
+                if (manifest.SyncSpaceId != Guid.Empty)
+                {
+                    return SyncManifestEnsureResult.Ready(manifest.SyncSpaceId);
+                }
+
+                // Phase 16F §20: a manifest written before this field existed — backfill it once, in
+                // place, preserving everything else (never treated as Malformed/rewritten from scratch).
+                return await BackfillSyncSpaceIdAsync(manifestPath, manifest, cancellationToken).ConfigureAwait(false);
 
             case SyncFileReadStatus.Missing:
                 return await WriteNewManifestAsync(manifestPath, nowUtc, cancellationToken).ConfigureAwait(false);
@@ -74,13 +83,22 @@ public static class SyncManifestService
     private static async Task<SyncManifestEnsureResult> WriteNewManifestAsync(
         string manifestPath, DateTimeOffset nowUtc, CancellationToken cancellationToken)
     {
-        var manifest = new SyncManifest(SyncManifestSerializer.CurrentSyncSchemaVersion, SyncManifest.ProductName, nowUtc);
+        var manifest = new SyncManifest(SyncManifestSerializer.CurrentSyncSchemaVersion, SyncManifest.ProductName, nowUtc, Guid.NewGuid());
+        return await WriteAsync(manifestPath, manifest, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<SyncManifestEnsureResult> BackfillSyncSpaceIdAsync(
+        string manifestPath, SyncManifest existing, CancellationToken cancellationToken) =>
+        await WriteAsync(manifestPath, existing with { SyncSpaceId = Guid.NewGuid() }, cancellationToken).ConfigureAwait(false);
+
+    private static async Task<SyncManifestEnsureResult> WriteAsync(string manifestPath, SyncManifest manifest, CancellationToken cancellationToken)
+    {
         var json = SyncManifestSerializer.Serialize(manifest);
 
         try
         {
             await AtomicFileWriter.WriteTextAsync(manifestPath, json, cancellationToken).ConfigureAwait(false);
-            return SyncManifestEnsureResult.Ready();
+            return SyncManifestEnsureResult.Ready(manifest.SyncSpaceId);
         }
         catch (IOException ex)
         {

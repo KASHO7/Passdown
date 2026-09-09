@@ -11,13 +11,15 @@ public enum PersonalSyncStatus
 }
 
 /// <summary>Everything the Personal Sync settings screen needs to render, computed fresh on every load/change — never cached longer than one call.</summary>
+/// <param name="SyncSpaceId">Phase 16F §20: the current folder's manifest identity, populated only when <paramref name="Status"/> is <see cref="PersonalSyncStatus.Ready"/> — null otherwise (no manifest has been read/created yet).</param>
 public sealed record PersonalSyncSettingsSnapshot(
     bool PersonalSyncEnabled,
     string? SyncRootPath,
     PersonalSyncStatus Status,
     string? StatusDetail,
     IReadOnlyList<string> SuggestedRoots,
-    Guid DeviceId);
+    Guid DeviceId,
+    Guid? SyncSpaceId = null);
 
 /// <summary>
 /// Orchestrates the local sync configuration, folder validation, OneDrive suggestions, and device ID
