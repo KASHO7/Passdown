@@ -39,7 +39,8 @@ public class MainViewModelNavigationTests
             Summaries = [new FinalizedPassdownSummary(HistoryDate, DateTimeOffset.UtcNow, FinalizationOrigin.Scheduled, true, 100)],
         };
         history = new PassdownHistoryViewModel(historyService, new FakeFinalizedPassdownPdfRetrievalService());
-        return new MainViewModel(dashboard, calendar, associate, notes, history);
+        var settings = new PersonalSyncSettingsViewModel(new FakePersonalSyncSettingsService(), new FakeSyncFolderPicker());
+        return new MainViewModel(dashboard, calendar, associate, notes, history, settings);
     }
 
     // 2: top-level nav defaults to Dashboard (spec Phase 10A Part Q).
@@ -76,6 +77,19 @@ public class MainViewModelNavigationTests
         Assert.Equal(AppSection.History, main.SelectedSection);
         Assert.True(main.IsHistorySectionSelected);
         Assert.False(main.IsAssociateSectionSelected);
+        Assert.False(main.IsDashboardSectionSelected);
+    }
+
+    // Phase 16B: the Settings / Personal Sync section — same plain section-switch shape as History.
+    [Fact]
+    public void ShowSettingsSectionCommand_SwitchesSection()
+    {
+        var main = CreateMainViewModel(out _, out _, out _);
+
+        main.ShowSettingsSectionCommand.Execute(null);
+
+        Assert.Equal(AppSection.Settings, main.SelectedSection);
+        Assert.True(main.IsSettingsSectionSelected);
         Assert.False(main.IsDashboardSectionSelected);
     }
 
@@ -258,15 +272,16 @@ public class MainViewModelNavigationTests
         Assert.Equal(HistoryDate, history.SelectedItem?.PassdownDate);
     }
 
-    // Phase 11B Part AI #1/#2/#3/#4 (updated Phase 12A Part B): top-level navigation includes
-    // Operational Notes between Associate Passdown and History, and (as of Phase 12A) Operations
-    // Calendar between Dashboard and Associate Passdown — no Manager/Alerts value exists at all.
+    // Phase 11B Part AI #1/#2/#3/#4 (updated Phase 12A Part B, Phase 16B): top-level navigation
+    // includes Operational Notes between Associate Passdown and History, Operations Calendar
+    // between Dashboard and Associate Passdown, and (as of Phase 16B) Settings last — no
+    // Manager/Alerts value exists at all.
     [Fact]
-    public void AppSection_ContainsOperationsCalendarAndOperationalNotesAndNoManagerOrAlerts()
+    public void AppSection_ContainsOperationsCalendarAndOperationalNotesAndSettingsAndNoManagerOrAlerts()
     {
         var values = Enum.GetNames<AppSection>();
 
-        Assert.Equal(["Dashboard", "OperationsCalendar", "AssociatePassdown", "OperationalNotes", "History"], values);
+        Assert.Equal(["Dashboard", "OperationsCalendar", "AssociatePassdown", "OperationalNotes", "History", "Settings"], values);
     }
 
     // Phase 11B Part AI #5: Dashboard remains the default startup section.
@@ -624,7 +639,8 @@ public class MainViewModelNavigationTests
             Summaries = [new FinalizedPassdownSummary(HistoryDate, DateTimeOffset.UtcNow, FinalizationOrigin.Scheduled, true, 100)],
         };
         var history = new PassdownHistoryViewModel(historyService, new FakeFinalizedPassdownPdfRetrievalService());
-        var main = new MainViewModel(dashboard, calendar, associate, notes, history);
+        var settings = new PersonalSyncSettingsViewModel(new FakePersonalSyncSettingsService(), new FakeSyncFolderPicker());
+        var main = new MainViewModel(dashboard, calendar, associate, notes, history, settings);
         await calendar.PendingLoad;
         await history.PendingLoad;
 

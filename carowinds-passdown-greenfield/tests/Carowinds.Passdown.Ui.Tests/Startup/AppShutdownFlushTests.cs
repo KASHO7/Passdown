@@ -32,7 +32,8 @@ public class AppShutdownFlushTests
             Summaries = [new FinalizedPassdownSummary(Today, FixedNow, FinalizationOrigin.Scheduled, true, 100)],
         };
         var history = new PassdownHistoryViewModel(historyService, new FakeFinalizedPassdownPdfRetrievalService());
-        return new MainViewModel(dashboard, calendar, associate, notes, history);
+        var settings = new PersonalSyncSettingsViewModel(new FakePersonalSyncSettingsService(), new FakeSyncFolderPicker());
+        return new MainViewModel(dashboard, calendar, associate, notes, history, settings);
     }
 
     /// <summary>

@@ -1,8 +1,11 @@
 # Phase 16A — Personal OneDrive Sync: Architecture
 
-Status: **design only**. No synchronization code exists yet. Nothing in this document changes
-current persistence, startup, or UI behavior. See §O below and the phase 16A task for the
-constraints this document was written under.
+Status: Phase 16A below is **design only**, unchanged since it was written. Phase 16B (see the
+section appended at the end of this document) implements the reusable local foundation this design
+calls for — device ID, local sync configuration, OneDrive suggestion, folder validation, the sync
+path/envelope/manifest contracts, atomic writes, and a small settings screen. **No entity (draft,
+Operational Note, or finalized passdown) is exported or imported yet** — that begins in 16C. Nothing
+in either phase changes normal (non-sync) persistence, startup, or workflow behavior.
 
 Baseline this audit was performed against: Phase 15 complete, DB schema 11, Draft schema 3,
 Snapshot schema 1, 1674/1674 non-live tests passing, application local-first.
@@ -496,3 +499,273 @@ None. This phase produced documentation only, per the phase instructions' prefer
 design-only proof over a functioning prototype — every design question above (identity reuse,
 envelope shape, conflict rules) was answerable by reading the existing schema/serializers directly,
 with no ambiguity that would have required executable code to resolve.
+
+---
+
+# Phase 16B — Personal Sync: Local Foundation (Implementation)
+
+Implements the reusable plumbing 16A designed: DeviceId, local sync configuration, OneDrive
+suggestion, folder validation, the deterministic path/envelope/manifest contracts, atomic file
+writes, a safe reader, and a small Settings screen. **No entity is synced** — `drafts/`, `notes/`,
+and `history/` files are never written or read by anything in this phase; only `manifest.json` is
+ever created, and only once sync is explicitly enabled with a folder that already validated. All new
+code lives under `PersonalSync/` in Application, Infrastructure, and Desktop.
+
+## 16B.1 DeviceId
+
+[`IDeviceIdProvider`](../src/Carowinds.Passdown.Application/PersonalSync/IDeviceIdProvider.cs) /
+[`FileDeviceIdProvider`](../src/Carowinds.Passdown.Infrastructure/PersonalSync/FileDeviceIdProvider.cs).
+One plain-text file, `device-id.txt`, holding a `Guid.ToString("D")`, directly under
+`AppPaths.LocalApplicationDataDirectory` (flat, no `Settings/` subfolder — see "Deviations" below).
+`GetOrCreateDeviceId()` reads and `Guid.TryParse`s the file; a missing file, unparsable content, or a
+read failure (`IOException`/`UnauthorizedAccessException`) all fall through to generating a fresh
+`Guid.NewGuid()` and persisting it via the same temp-then-rename write `FileDeviceIdProvider` uses
+internally. Lazily created on first call — nothing calls this at normal startup unless the Settings
+screen (or, from 16C on, the sync engine) is actually resolved, matching 16A §C's "not at first app
+launch" intent closely enough that a device that never opens Settings never gets a DeviceId file.
+
+## 16B.2 Sync configuration
+
+[`SyncConfiguration`](../src/Carowinds.Passdown.Application/PersonalSync/SyncConfiguration.cs) /
+[`FileSyncConfigurationStore`](../src/Carowinds.Passdown.Infrastructure/PersonalSync/FileSyncConfigurationStore.cs).
+`{ PersonalSyncEnabled: bool, SyncRootPath: string? }` as one small JSON file, `sync-config.json`,
+same flat-file convention as DeviceId. `LoadAsync` never throws — a missing, malformed, or unreadable
+file all return `SyncConfiguration.Disabled`, so a corrupt local settings file can never block normal
+app startup. No credential, Microsoft account identifier, or token field exists on this type by
+construction (verified by a test that greps the written JSON for "Token"/"Password"/"Credential").
+Writes go through `AtomicFileWriter` (§16B.10).
+
+## 16B.3 OneDrive suggestion
+
+[`IOneDriveLocationSuggestionProvider`](../src/Carowinds.Passdown.Application/PersonalSync/IOneDriveLocationSuggestionProvider.cs) /
+[`EnvironmentOneDriveLocationSuggestionProvider`](../src/Carowinds.Passdown.Infrastructure/PersonalSync/EnvironmentOneDriveLocationSuggestionProvider.cs).
+Reads `OneDrive`, `OneDriveConsumer`, and `OneDriveCommercial` via
+`Environment.GetEnvironmentVariable`, returning the distinct, non-empty values found (order:
+`OneDrive`, then `OneDriveConsumer`, then `OneDriveCommercial`). No variable set is not an error —
+returns an empty list. Never hardcodes a path. `Environment.GetEnvironmentVariable` is portable, so
+this is directly unit-tested on this (non-Windows) development host by setting/clearing the same
+variable names — no Windows-only API is involved, and no seam/abstraction beyond the interface was
+needed for testability.
+
+## 16B.4/§14 Settings UI
+
+New "Settings" top-level app-shell section (`AppSection.Settings`, last in the nav strip), backed by
+[`PersonalSyncSettingsViewModel`](../src/Carowinds.Passdown.Desktop/ViewModels/PersonalSyncSettingsViewModel.cs)
+and [`PersonalSyncSettingsView.axaml`](../src/Carowinds.Passdown.Desktop/Views/PersonalSyncSettingsView.axaml).
+Controls, exactly per spec §4: an "Enable Personal Sync" checkbox (two-way bound, persists
+immediately on toggle), the configured folder path (or "No folder chosen yet."), a "Choose Folder…"
+button, and a status chip. A device-ID panel is also shown (read-only, for support/troubleshooting
+use — matches 16A §C's "never displayed as an account identity" by only ever showing the bare GUID).
+No "Last sync time"/"Sync now"/conflict count/device list — those are explicitly out of scope per
+spec §14. The ViewModel loads eagerly in its constructor (`_pendingLoad = LoadAsync()`), mirroring
+`OperationsDashboardViewModel`'s own fire-and-forget-with-awaitable-`PendingLoad` pattern so tests can
+await it deterministically instead of racing it. `IPersonalSyncSettingsService` (below) is the one
+seam between this ViewModel and everything else; `ISyncFolderPicker`/`AvaloniaSyncFolderPicker`
+mirrors `IPdfSaveFilePicker`'s existing ViewModel/Avalonia split for the native folder picker
+(`IStorageProvider.OpenFolderPickerAsync`).
+
+Folder-picker behavior itself (the native OS dialog) is **NOT EXECUTED** — no Windows host is
+available this session, and headless Avalonia has no real storage-provider backend to drive. Every
+other piece of this screen (load, toggle, status computation, folder-chosen callback) is covered by
+ViewModel-level tests against a `FakeSyncFolderPicker`/`FakePersonalSyncSettingsService`, per spec
+§16's "use focused ViewModel/service tests ... mark Windows-only picker behavior NOT EXECUTED."
+
+## 16B.5–6 Selected-root semantics and folder validation
+
+[`SyncPathService.GetSyncFolderPath`](../src/Carowinds.Passdown.Application/PersonalSync/SyncPathService.cs)
+is the one place `<selected>/Carowinds Operations Sync/` is constructed — every other path in that
+type, and every filesystem write in this phase, derives from it, so no ViewModel or service builds
+this path independently.
+
+[`ISyncFolderValidator`](../src/Carowinds.Passdown.Application/PersonalSync/SyncFolderValidationResult.cs) /
+[`SyncFolderValidator`](../src/Carowinds.Passdown.Infrastructure/PersonalSync/SyncFolderValidator.cs).
+Two outcomes beyond `Valid`, deliberately distinguished:
+
+- **Invalid** (structural, will not resolve itself): an empty/unparsable path, or a path that
+  resolves inside `AppPaths.LocalApplicationDataDirectory` — checked as an exact match, a descendant
+  (covers both "is the DB's directory" and "is the DB file itself," since the DB always lives directly
+  inside that directory), or an ancestor (covers selecting a parent of the app's local data folder).
+  Case-insensitive comparison on Windows, case-sensitive elsewhere.
+- **Unavailable** (may resolve itself without picking a different folder): `Directory.CreateDirectory`
+  or a write-then-delete probe file inside the owned subfolder throws `IOException`/
+  `UnauthorizedAccessException`.
+
+Validation only ever creates the app-owned subfolder and a transient probe file it immediately
+deletes — it never touches `drafts/`, `notes/`, or `history/`, and never writes `manifest.json`
+itself (that is `SyncManifestService`'s job, only called once validation already returned `Valid`).
+
+## 16B.7 Sync path service
+
+[`SyncPathService`](../src/Carowinds.Passdown.Application/PersonalSync/SyncPathService.cs) — pure
+string composition, no filesystem access, matching 16A §E exactly:
+
+```
+<selected>/Carowinds Operations Sync/
+    manifest.json
+    drafts/<yyyy-MM-dd>.json          # DateOnly, invariant culture
+    notes/<guid>.json                 # Guid.ToString("D"), lowercase-hyphenated
+    history/<yyyy-MM-dd>.json
+    history/<yyyy-MM-dd>.pdf
+```
+
+Both date and GUID formats are fixed/invariant regardless of host locale. Since every filename is
+derived from a typed `DateOnly`/`Guid` rather than free text, there is no path-traversal surface to
+sanitize against. Exact-mapping tests exist for every path (`SyncPathServiceTests`).
+
+## 16B.8–9 Sync envelope and serialization
+
+[`SyncEnvelope`](../src/Carowinds.Passdown.Application/PersonalSync/SyncEnvelope.cs) implements 16A
+§D's contract field-for-field (`SyncSchemaVersion`, `EntityType`, `EntityId`, `DeviceId`, `Revision`,
+`ModifiedUtc`, `IsDeleted`, `PayloadSchemaVersion`, `Payload`, `ContentHash`), with `required` members
+so a missing field fails deserialization loudly (`SyncEnvelopeSerializer` throws `JsonException`,
+turned into a structured `Malformed` result by the safe reader once something actually calls it —
+see §16B.11). `Payload` is `System.Text.Json.JsonElement`, kept fully opaque — the envelope layer
+never interprets or re-shapes it. `SyncEnvelopeSerializer.CurrentSyncSchemaVersion = 1`.
+
+**16B implements this contract and its round-trip serialization only — no envelope is ever written to
+or read from a sync-folder file yet.** `drafts/`, `notes/`, and `history/` stay untouched; wiring a
+real entity through this envelope onto disk is 16C's job.
+
+`SyncEnvelopeSerializer`'s JSON options mirror `FinalizedPassdownSnapshotSerializer` exactly
+(`WriteIndented: true` for inspectability, `PropertyNamingPolicy: null` so property names stay
+Pascal-case, `JsonStringEnumConverter` so `EntityType` serializes as a name, not an integer).
+
+## 16B.11 Safe reader
+
+[`SyncFileReadResult<T>`/`SyncFileReadStatus`](../src/Carowinds.Passdown.Application/PersonalSync/SyncFileReadResult.cs)
+(Application, pure) / [`SyncFileReader`](../src/Carowinds.Passdown.Infrastructure/PersonalSync/SyncFileReader.cs)
+(Infrastructure, does the I/O). One generic method,
+`ReadJsonAsync<T>(path, options, isSupportedVersion, ct)`, used today only for `SyncManifest`
+(§16B.12) but written to be reusable for any versioned sync-folder file from 16C on. Five outcomes,
+never a raw exception:
+
+| Status | Cause |
+|---|---|
+| `Success` | File exists, parses, and `isSupportedVersion` accepts it. |
+| `Missing` | `File.Exists` is false. |
+| `Malformed` | `JsonException` during deserialize, or deserialized to `null`. |
+| `UnsupportedVersion` | Parsed successfully but `isSupportedVersion` rejects it (a newer schema version than this app understands). |
+| `IoError` | `IOException`/`UnauthorizedAccessException` while reading (locked file, permission denied, etc.). |
+
+No corrupt file is quarantined or deleted — recovery UX is explicitly deferred (16D+ per spec §11).
+
+## 16B.12 Manifest
+
+[`SyncManifest`/`SyncManifestSerializer`](../src/Carowinds.Passdown.Application/PersonalSync/SyncManifest.cs)
+(Application, the shape) / [`SyncManifestService`](../src/Carowinds.Passdown.Infrastructure/PersonalSync/SyncManifestService.cs)
+(Infrastructure, `EnsureManifestAsync`). Fields: `SyncSchemaVersion`, `Product` (constant string
+`"Carowinds Passdown Personal Sync"`), `CreatedUtc`. `EnsureManifestAsync`:
+
+- **Missing** → writes a new manifest (current schema version, current UTC from `IClock`) via
+  `AtomicFileWriter`, reports `Ready`.
+- **Success** (existing, version ≤ current) → reports `Ready`, does **not** rewrite the file.
+- **Malformed** → reports `Malformed`, leaves the file untouched (never auto-repaired).
+- **UnsupportedVersion** (existing, version > current) → reports `UnsupportedVersion`, leaves the
+  file untouched.
+- **IoError** (from the read, or from the write attempt on the Missing path) → reports `Unavailable`.
+
+Only ever called by `PersonalSyncSettingsService` after `ISyncFolderValidator` already returned
+`Valid` for an *enabled* configuration — never during a disabled-sync or not-yet-configured load,
+per spec §12's "not during normal app startup with sync disabled."
+
+## 16B.10 Atomic file writer
+
+[`AtomicFileWriter`](../src/Carowinds.Passdown.Infrastructure/PersonalSync/AtomicFileWriter.cs) —
+write-temp-then-rename exactly per 16A §F: the temp file (`<name>.tmp-<32-hex-guid>`) is created in
+the same directory as the final target (parent directory created first if needed), written in full,
+then `File.Move(tempPath, path, overwrite: true)`. A `try/catch` around the whole write-then-move
+deletes the temp file on any failure (including cancellation — `OperationCanceledException` is caught
+like any other exception here) before rethrowing, so a failed or cancelled write never leaves an
+orphan temp file *from that attempt*; a stale temp file left behind by a different, already-crashed
+process is simply ignored by both the writer (each attempt uses its own random suffix) and the reader
+(which only ever looks at the exact final filename). Both `WriteTextAsync` (used by every 16B caller)
+and `WriteBytesAsync` (unused in 16B; kept for 16E's PDF sibling writes) are exposed. Used today by
+`FileSyncConfigurationStore`, `FileDeviceIdProvider` (its own small inline variant, string content
+only — see Deviations), and `SyncManifestService`.
+
+## Privacy verification
+
+Grepped every field on `SyncConfiguration`, `SyncManifest`, and `SyncEnvelope`, and the settings
+screen's own display code: no username, machine name, email, OneDrive account identity, credential,
+token, or hardware identifier is written or shown anywhere. `DeviceId` is the only device identifier,
+a bare `Guid`, shown on the Settings screen only as itself (no reverse-lookup metadata attached). A
+dedicated test (`FileSyncConfigurationStoreTests.SaveAsync_DoesNotStoreAnyCredentialLikeField`) greps
+the actual written JSON for "Token"/"Password"/"Credential" as a standing regression guard.
+
+## Deviations from Phase 16A
+
+- **Flat files, not `Settings/device-id.txt`**: 16A §C's illustrative path used a `Settings/`
+  subfolder; this phase instead put `device-id.txt` and `sync-config.json` directly under
+  `AppPaths.LocalApplicationDataDirectory`, matching the existing precedent
+  (`FileScheduledRefreshLock.DefaultPath` is already a flat file there, not nested). No product
+  behavior differs — this is a same-directory naming choice, not a design change.
+- **No `ISyncManifestService` interface / no `IAtomicFileWriter` interface**: both are `static`
+  utility classes rather than DI-injected ports. Nothing in 16B (or, as far as this phase can see,
+  16C+) needs to substitute a different implementation of "write a temp file then rename it" or
+  "create/validate manifest.json" — they're pure filesystem utilities exercised directly against a
+  real temp directory in tests (the same pattern `FileScheduledRefreshLockTests` already established
+  for `FileScheduledRefreshLock`), not seams a ViewModel test needs to fake.
+- **`FileDeviceIdProvider` does not call `AtomicFileWriter`**: `IDeviceIdProvider.GetOrCreateDeviceId()`
+  is synchronous by design (a settings-screen-open-time read, not something worth an async ceremony
+  for), while `AtomicFileWriter` is async throughout; rather than block on async (`.GetAwaiter().GetResult()`)
+  to reuse it, `FileDeviceIdProvider` inlines the same three-line temp-then-rename shape directly with
+  synchronous `File` calls. The duplication is small (write-temp, `File.Move(overwrite: true)`) and
+  deliberate, not an oversight.
+- **`PersonalSyncSettingsService` composes rather than exposing each piece separately to the UI**:
+  16A didn't specify a settings-orchestration service; one was added (`IPersonalSyncSettingsService`)
+  so the ViewModel has exactly one dependency to call instead of five, and so the "only touch the
+  manifest when enabled+valid" rule (§12) lives in one place instead of being the ViewModel's
+  responsibility to get right.
+
+## Platform limitations — NOT EXECUTED
+
+No Windows 11 host or VM was available this session (same limitation as every prior rebuild since
+Phase 7A). **NOT EXECUTED**: the native Avalonia folder-picker dialog itself, and any interaction
+between this app's folder validation and a real, running Windows OneDrive desktop client (e.g.
+observing an actual "Available offline"/"Files On-Demand" placeholder file, or a folder mid-sync).
+`EnvironmentOneDriveLocationSuggestionProvider`'s environment-variable reads are platform-portable and
+were exercised directly; only the "does a real OneDrive installation actually set these variables to
+a valid, syncing folder" half is unverified. All filesystem primitives (`AtomicFileWriter`,
+`SyncFileReader`, `SyncFolderValidator`) were exercised against a real temp directory on this
+(macOS/Darwin) development host, including a Unix-permission-based unwritable-folder test
+(`SyncFolderValidatorTests.ValidateAsync_UnwritableFolder_ReturnsUnavailable_NotInvalid`) that is
+itself skipped on Windows, where the same behavior will need re-verification via an ACL-denied folder
+instead — recorded as a Windows-validation follow-up, not fabricated as passing.
+
+## Schema impact
+
+None. No SQLite migration was added; DB schema remains 11, Draft schema remains 3, Snapshot schema
+remains 1 (confirmed: `Migration0011CreateDeepRefreshStatusTable` is still the last migration; no
+`Migration0012` exists). Every 16B state (DeviceId, sync configuration) lives in flat local files
+under `AppPaths.LocalApplicationDataDirectory`, per CLAUDE.md's "prefer no SQLite schema change" and
+16A §C/§K's own design.
+
+## Tests added (Phase 16B)
+
+`SyncPathServiceTests`, `SyncEnvelopeSerializerTests` (Application.Tests/PersonalSync);
+`AtomicFileWriterTests`, `SyncFileReaderTests`, `FileDeviceIdProviderTests`,
+`FileSyncConfigurationStoreTests`, `EnvironmentOneDriveLocationSuggestionProviderTests`,
+`SyncFolderValidatorTests`, `SyncManifestServiceTests`, `PersonalSyncSettingsServiceTests`
+(Infrastructure.Tests/PersonalSync); `PersonalSyncSettingsViewModelTests`
+(Ui.Tests/PersonalSync); plus one `MainViewModelNavigationTests` addition for the new Settings
+section and two existing-test updates for the section count changing from 5 to 6
+(`AppSection_ContainsOperationsCalendarAndOperationalNotesAndSettingsAndNoManagerOrAlerts`,
+`Phase15ERealWindowLayoutTests.MainWindow_SectionStrip_EveryButtonReachableWithinWindowBounds`).
+71 new tests total.
+
+## Issues deferred to 16C/16D
+
+- Actual entity export/import (`drafts/`, `notes/`, `history/` files) — 16C.
+- Conflict detection/resolution UX (16A §G) — 16C (detection) / 16D (resolution).
+- Tombstone/deletion propagation (16A §G) — 16D.
+- Bootstrap for a device with existing local data (16A §M) — 16C/16G.
+- Real Windows-host validation of the folder picker and OneDrive interaction — first Windows session
+  with this branch available.
+
+## Phase 16C readiness
+
+Every piece 16C needs already exists and is tested in isolation: `SyncPathService` for exact record
+paths, `SyncEnvelope`/`SyncEnvelopeSerializer` for the wrapper shape, `AtomicFileWriter`/
+`SyncFileReader` for safe writes/reads, and `IPersonalSyncSettingsService` for "is sync currently
+enabled and pointed at a valid, manifest-initialized folder" — the one question 16C's entity-sync
+engine needs answered before it does anything. No blocking gap identified.

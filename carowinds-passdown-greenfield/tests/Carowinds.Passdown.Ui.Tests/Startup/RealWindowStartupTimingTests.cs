@@ -108,7 +108,8 @@ public class RealWindowStartupTimingTests
         var notesVm = new OperationalNotesViewModel(operationalNotesService, clock);
         var historyVm = new PassdownHistoryViewModel(
             historyService, pdfRetrievalService, pdfSavePicker: new FakePdfSaveFilePicker(), pdfLauncher: new FakeFinalizedPdfLauncher());
-        var mainVm = new MainViewModel(dashboardVm, calendarVm, associateVm, notesVm, historyVm);
+        var settingsVm = new PersonalSyncSettingsViewModel(new FakePersonalSyncSettingsService(), new FakeSyncFolderPicker());
+        var mainVm = new MainViewModel(dashboardVm, calendarVm, associateVm, notesVm, historyVm, settingsVm);
 
         // 4) A real MainWindow, shown — the closest available proxy for "the shell became visible".
         var window = new MainWindow { DataContext = mainVm };

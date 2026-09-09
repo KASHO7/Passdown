@@ -12,6 +12,7 @@ using Carowinds.Passdown.Application.Freshness;
 using Carowinds.Passdown.Application.History;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
+using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Retrieval.Browser;
@@ -27,6 +28,7 @@ using Carowinds.Passdown.Infrastructure;
 using Carowinds.Passdown.Infrastructure.Concurrency;
 using Carowinds.Passdown.Infrastructure.Diagnostics;
 using Carowinds.Passdown.Infrastructure.Logging;
+using Carowinds.Passdown.Infrastructure.PersonalSync;
 using Carowinds.Passdown.Infrastructure.Retrieval.Browser;
 using Carowinds.Passdown.Infrastructure.Retrieval.Http;
 using Carowinds.Passdown.Infrastructure.Retrieval.Sources;
@@ -351,6 +353,19 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IDiagnosticExportFilePicker, AvaloniaDiagnosticExportFilePicker>();
 
         services.AddTransient<AssociateViewModel>();
+
+        // Phase 16B: the local Personal Sync foundation — device ID, local sync configuration,
+        // OneDrive suggestion, folder validation, and the manifest bootstrap. No entity (draft/note/
+        // finalized passdown) is exported or imported by anything registered here; that begins in
+        // 16C. Every piece is a flat local file under AppPaths.LocalApplicationDataDirectory, not a
+        // SQLite table (CLAUDE.md "prefer no SQLite schema change").
+        services.AddSingleton<IDeviceIdProvider>(_ => new FileDeviceIdProvider(FileDeviceIdProvider.DefaultPath));
+        services.AddSingleton<ISyncConfigurationStore>(_ => new FileSyncConfigurationStore(FileSyncConfigurationStore.DefaultPath));
+        services.AddSingleton<IOneDriveLocationSuggestionProvider, EnvironmentOneDriveLocationSuggestionProvider>();
+        services.AddSingleton<ISyncFolderValidator, SyncFolderValidator>();
+        services.AddSingleton<IPersonalSyncSettingsService, PersonalSyncSettingsService>();
+        services.AddSingleton<ISyncFolderPicker, AvaloniaSyncFolderPicker>();
+        services.AddTransient<PersonalSyncSettingsViewModel>();
 
         services.AddTransient<MainWindow>();
         services.AddTransient<MainViewModel>();

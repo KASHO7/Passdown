@@ -85,7 +85,8 @@ public class Phase15ERealWindowLayoutTests
             Summaries = [new FinalizedPassdownSummary(FixedDate, DateTimeOffset.UtcNow, FinalizationOrigin.Scheduled, true, 100)],
         };
         var history = new PassdownHistoryViewModel(historyService, new FakeFinalizedPassdownPdfRetrievalService());
-        return new MainViewModel(dashboard, calendar, associate, notes, history);
+        var settings = new PersonalSyncSettingsViewModel(new FakePersonalSyncSettingsService(), new FakeSyncFolderPicker());
+        return new MainViewModel(dashboard, calendar, associate, notes, history, settings);
     }
 
     [Theory]
@@ -102,7 +103,7 @@ public class Phase15ERealWindowLayoutTests
 
         var sectionButtons = window.GetVisualDescendants().OfType<Button>()
             .Where(b => b.Classes.Contains("appSectionItem")).ToList();
-        Assert.Equal(5, sectionButtons.Count);
+        Assert.Equal(6, sectionButtons.Count);
 
         var clientWidth = window.ClientSize.Width;
         foreach (var button in sectionButtons)

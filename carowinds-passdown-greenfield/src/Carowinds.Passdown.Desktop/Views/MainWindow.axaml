@@ -110,6 +110,9 @@
                 <Button Classes="appSectionItem" Classes.active="{Binding IsHistorySectionSelected}"
                         Content="History" Command="{Binding ShowHistorySectionCommand}"
                         AutomationProperties.Name="History section" />
+                <Button Classes="appSectionItem" Classes.active="{Binding IsSettingsSectionSelected}"
+                        Content="Settings" Command="{Binding ShowSettingsSectionCommand}"
+                        AutomationProperties.Name="Settings section" />
             </WrapPanel>
         </Border>
 
@@ -136,6 +139,9 @@
             </Border>
             <Border IsVisible="{Binding IsHistorySectionSelected}">
                 <views:HistoryView DataContext="{Binding History}" />
+            </Border>
+            <Border IsVisible="{Binding IsSettingsSectionSelected}">
+                <views:PersonalSyncSettingsView DataContext="{Binding Settings}" />
             </Border>
         </Grid>
 

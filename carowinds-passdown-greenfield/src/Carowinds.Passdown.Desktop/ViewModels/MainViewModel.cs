@@ -3,7 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace Carowinds.Passdown.Desktop.ViewModels;
 
-/// <summary>Which top-level app-shell section is currently shown (spec Phase 9D Part A; extended Phase 10A Part A, Phase 11B Part A). Manager stays deferred per CLAUDE.md — there is no such value.</summary>
+/// <summary>Which top-level app-shell section is currently shown (spec Phase 9D Part A; extended Phase 10A Part A, Phase 11B Part A, Phase 16B). Manager stays deferred per CLAUDE.md — there is no such value.</summary>
 public enum AppSection
 {
     Dashboard,
@@ -11,6 +11,7 @@ public enum AppSection
     AssociatePassdown,
     OperationalNotes,
     History,
+    Settings,
 }
 
 /// <summary>
@@ -35,19 +36,21 @@ public enum AppSection
 /// </summary>
 public partial class MainViewModel : ViewModelBase
 {
-    public MainViewModel(OperationsDashboardViewModel dashboard, OperationsCalendarViewModel calendar, AssociateViewModel associate, OperationalNotesViewModel notes, PassdownHistoryViewModel history)
+    public MainViewModel(OperationsDashboardViewModel dashboard, OperationsCalendarViewModel calendar, AssociateViewModel associate, OperationalNotesViewModel notes, PassdownHistoryViewModel history, PersonalSyncSettingsViewModel settings)
     {
         ArgumentNullException.ThrowIfNull(dashboard);
         ArgumentNullException.ThrowIfNull(calendar);
         ArgumentNullException.ThrowIfNull(associate);
         ArgumentNullException.ThrowIfNull(notes);
         ArgumentNullException.ThrowIfNull(history);
+        ArgumentNullException.ThrowIfNull(settings);
 
         Dashboard = dashboard;
         Calendar = calendar;
         Associate = associate;
         Notes = notes;
         History = history;
+        Settings = settings;
 
         // "Open Passdown"/"Open Notes" (spec Phase 10C Parts F/G/H): switch the top-level section and
         // set Associate's own internal section explicitly — never Associate.SelectedDate, so an
@@ -123,6 +126,7 @@ public partial class MainViewModel : ViewModelBase
                 ShowOperationsCalendarSectionCommand.NotifyCanExecuteChanged();
                 ShowAssociateSectionCommand.NotifyCanExecuteChanged();
                 ShowHistorySectionCommand.NotifyCanExecuteChanged();
+                ShowSettingsSectionCommand.NotifyCanExecuteChanged();
             }
         };
     }
@@ -137,16 +141,21 @@ public partial class MainViewModel : ViewModelBase
 
     public PassdownHistoryViewModel History { get; }
 
+    /// <summary>Phase 16B: the local Personal Sync configuration/status screen — never touches any Associate draft, note, or finalized passdown data itself.</summary>
+    public PersonalSyncSettingsViewModel Settings { get; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDashboardSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsOperationsCalendarSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsAssociateSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsOperationalNotesSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsHistorySectionSelected))]
+    [NotifyPropertyChangedFor(nameof(IsSettingsSectionSelected))]
     [NotifyCanExecuteChangedFor(nameof(ShowDashboardSectionCommand))]
     [NotifyCanExecuteChangedFor(nameof(ShowOperationsCalendarSectionCommand))]
     [NotifyCanExecuteChangedFor(nameof(ShowAssociateSectionCommand))]
     [NotifyCanExecuteChangedFor(nameof(ShowHistorySectionCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ShowSettingsSectionCommand))]
     public partial AppSection SelectedSection { get; set; } = AppSection.Dashboard;
 
     public bool IsDashboardSectionSelected => SelectedSection == AppSection.Dashboard;
@@ -158,6 +167,8 @@ public partial class MainViewModel : ViewModelBase
     public bool IsOperationalNotesSectionSelected => SelectedSection == AppSection.OperationalNotes;
 
     public bool IsHistorySectionSelected => SelectedSection == AppSection.History;
+
+    public bool IsSettingsSectionSelected => SelectedSection == AppSection.Settings;
 
     [RelayCommand(CanExecute = nameof(CanLeaveOperationalNotesSection))]
     private void ShowDashboardSection() => SelectedSection = AppSection.Dashboard;
@@ -173,6 +184,9 @@ public partial class MainViewModel : ViewModelBase
 
     [RelayCommand(CanExecute = nameof(CanLeaveOperationalNotesSection))]
     private void ShowHistorySection() => SelectedSection = AppSection.History;
+
+    [RelayCommand(CanExecute = nameof(CanLeaveOperationalNotesSection))]
+    private void ShowSettingsSection() => SelectedSection = AppSection.Settings;
 
     /// <summary>Spec Part X: true unless the Operational Notes section is both currently shown and mid-create/edit — in which case a supervisor must Save or Cancel before any other top-level section becomes reachable.</summary>
     private bool CanLeaveOperationalNotesSection() => !(SelectedSection == AppSection.OperationalNotes && Notes.IsEditing);
