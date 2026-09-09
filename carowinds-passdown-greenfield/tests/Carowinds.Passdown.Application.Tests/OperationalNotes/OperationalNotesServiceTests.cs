@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.OperationalNotes;
+using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Tests.TestSupport;
 using Carowinds.Passdown.Application.Time;
@@ -19,11 +20,11 @@ public class OperationalNotesServiceTests
 
     private sealed record TestEnvironment(OperationalNotesService Service, InMemoryOperationalNoteRepository Repository, FakeClock Clock);
 
-    private static TestEnvironment CreateEnvironment(FakeClock? clock = null)
+    private static TestEnvironment CreateEnvironment(FakeClock? clock = null, ISyncChangeTracker? syncChangeTracker = null)
     {
         clock ??= new FakeClock(FixedNow);
         var repository = new InMemoryOperationalNoteRepository();
-        return new TestEnvironment(new OperationalNotesService(repository, clock), repository, clock);
+        return new TestEnvironment(new OperationalNotesService(repository, clock, syncChangeTracker), repository, clock);
     }
 
     private static OperationalNoteDraft SampleDraft(
@@ -54,6 +55,75 @@ public class OperationalNotesServiceTests
         Assert.Equal(FixedNow, created.UpdatedAtUtc);
         Assert.Null(created.ResolvedAtUtc);
         Assert.Equal(created, await env.Repository.GetByIdAsync(created.Id));
+    }
+
+    [Fact]
+    public async Task CreateAsync_MarksTheNoteDirtyForSync_UsingItsGuidAsTheEntityId()
+    {
+        var syncChangeTracker = new RecordingSyncChangeTracker();
+        var env = CreateEnvironment(syncChangeTracker: syncChangeTracker);
+
+        var created = await env.Service.CreateAsync(SampleDraft());
+
+        var call = Assert.Single(syncChangeTracker.Calls);
+        Assert.Equal(SyncEntityType.OperationalNote, call.EntityType);
+        Assert.Equal(SyncEntityIdentity.ForNote(created.Id), call.EntityId);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_MarksTheNoteDirtyForSync()
+    {
+        var syncChangeTracker = new RecordingSyncChangeTracker();
+        var env = CreateEnvironment(syncChangeTracker: syncChangeTracker);
+        var created = await env.Service.CreateAsync(SampleDraft());
+        syncChangeTracker.Calls.Clear();
+
+        await env.Service.UpdateAsync(created.Id, SampleDraft(title: "Updated title"));
+
+        var call = Assert.Single(syncChangeTracker.Calls);
+        Assert.Equal(SyncEntityType.OperationalNote, call.EntityType);
+        Assert.Equal(SyncEntityIdentity.ForNote(created.Id), call.EntityId);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_MarksTheNoteDirtyForSync()
+    {
+        var syncChangeTracker = new RecordingSyncChangeTracker();
+        var env = CreateEnvironment(syncChangeTracker: syncChangeTracker);
+        var created = await env.Service.CreateAsync(SampleDraft());
+        syncChangeTracker.Calls.Clear();
+
+        await env.Service.ResolveAsync(created.Id);
+
+        var call = Assert.Single(syncChangeTracker.Calls);
+        Assert.Equal(SyncEntityType.OperationalNote, call.EntityType);
+        Assert.Equal(SyncEntityIdentity.ForNote(created.Id), call.EntityId);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_AlreadyResolved_DoesNotCallTheSyncTrackerAgain()
+    {
+        // Idempotent resolve (Part Q) — no genuine change, so no reason to bump the sync revision again.
+        var syncChangeTracker = new RecordingSyncChangeTracker();
+        var env = CreateEnvironment(syncChangeTracker: syncChangeTracker);
+        var created = await env.Service.CreateAsync(SampleDraft());
+        await env.Service.ResolveAsync(created.Id);
+        syncChangeTracker.Calls.Clear();
+
+        await env.Service.ResolveAsync(created.Id);
+
+        Assert.Empty(syncChangeTracker.Calls);
+    }
+
+    private sealed class RecordingSyncChangeTracker : ISyncChangeTracker
+    {
+        public List<(SyncEntityType EntityType, string EntityId)> Calls { get; } = [];
+
+        public Task MarkLocalChangeAsync(SyncEntityType entityType, string entityId, CancellationToken cancellationToken = default)
+        {
+            Calls.Add((entityType, entityId));
+            return Task.CompletedTask;
+        }
     }
 
     [Fact]
@@ -312,16 +382,19 @@ public class OperationalNotesServiceTests
     }
 
     // ---- Architecture guarantee (spec Part AF): no HTTP/refresh/Associate-draft/PDF/Avalonia dependency ----
+    // Phase 16C adds one sanctioned dependency, ISyncChangeTracker (optional, defaults to null) —
+    // still no SQLite detail, no HTTP, no PDF, no refresh orchestrator, no Associate-draft dependency.
 
     [Fact]
-    public void Constructor_DependsOnlyOnRepositoryAndClock()
+    public void Constructor_DependsOnlyOnRepositoryClockAndSyncChangeTracker()
     {
         var constructor = typeof(OperationalNotesService).GetConstructors().Single();
         var parameterTypes = constructor.GetParameters().Select(p => p.ParameterType).ToArray();
 
-        Assert.Equal(2, parameterTypes.Length);
+        Assert.Equal(3, parameterTypes.Length);
         Assert.Contains(parameterTypes, t => t == typeof(IOperationalNoteRepository));
         Assert.Contains(parameterTypes, t => t == typeof(IClock));
+        Assert.Contains(parameterTypes, t => t == typeof(ISyncChangeTracker));
         Assert.DoesNotContain(parameterTypes, t => t == typeof(IRefreshOrchestrator));
         Assert.DoesNotContain(parameterTypes, t => t == typeof(IAssociatePassdownService));
         Assert.DoesNotContain(parameterTypes, t => t.Name.Contains("Http", StringComparison.OrdinalIgnoreCase));

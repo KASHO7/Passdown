@@ -32,11 +32,19 @@ public static class SyncPathService
     public static string GetManifestFilePath(string selectedRootPath) =>
         Path.Combine(GetSyncFolderPath(selectedRootPath), ManifestFileName);
 
+    /// <summary>The <c>drafts/</c> directory itself (Phase 16C §8/§10) — the one place a sync pass enumerates candidate draft files; never scanned recursively, never assumed to contain only canonical filenames (§28).</summary>
+    public static string GetDraftsDirectoryPath(string selectedRootPath) =>
+        Path.Combine(GetSyncFolderPath(selectedRootPath), DraftsFolderName);
+
+    /// <summary>The <c>notes/</c> directory itself (Phase 16C §9/§10) — mirrors <see cref="GetDraftsDirectoryPath"/> for Operational Notes.</summary>
+    public static string GetNotesDirectoryPath(string selectedRootPath) =>
+        Path.Combine(GetSyncFolderPath(selectedRootPath), NotesFolderName);
+
     public static string GetDraftFilePath(string selectedRootPath, DateOnly operatingDate) =>
-        Path.Combine(GetSyncFolderPath(selectedRootPath), DraftsFolderName, $"{FormatDate(operatingDate)}.json");
+        Path.Combine(GetDraftsDirectoryPath(selectedRootPath), $"{FormatDate(operatingDate)}.json");
 
     public static string GetOperationalNoteFilePath(string selectedRootPath, Guid noteId) =>
-        Path.Combine(GetSyncFolderPath(selectedRootPath), NotesFolderName, $"{FormatGuid(noteId)}.json");
+        Path.Combine(GetNotesDirectoryPath(selectedRootPath), $"{FormatGuid(noteId)}.json");
 
     public static string GetHistoryJsonFilePath(string selectedRootPath, DateOnly passdownDate) =>
         Path.Combine(GetSyncFolderPath(selectedRootPath), HistoryFolderName, $"{FormatDate(passdownDate)}.json");

@@ -1,11 +1,14 @@
 # Phase 16A — Personal OneDrive Sync: Architecture
 
 Status: Phase 16A below is **design only**, unchanged since it was written. Phase 16B (see the
-section appended at the end of this document) implements the reusable local foundation this design
-calls for — device ID, local sync configuration, OneDrive suggestion, folder validation, the sync
-path/envelope/manifest contracts, atomic writes, and a small settings screen. **No entity (draft,
-Operational Note, or finalized passdown) is exported or imported yet** — that begins in 16C. Nothing
-in either phase changes normal (non-sync) persistence, startup, or workflow behavior.
+section appended after it) implements the reusable local foundation this design calls for — device
+ID, local sync configuration, OneDrive suggestion, folder validation, the sync path/envelope/manifest
+contracts, atomic writes, and a small settings screen; no entity is exported or imported yet. **Phase
+16C** (appended at the end of this document) implements the first real record-level sync — Associate
+drafts and Operational Notes, both directions, with conflict detection (never silent auto-resolve).
+Finalized History/PDFs, deletions/tombstones, and conflict-resolution UX all remain deferred to later
+phases. Nothing in any of these three phases changes normal (non-sync) persistence, startup, or
+workflow behavior when sync is off or unavailable.
 
 Baseline this audit was performed against: Phase 15 complete, DB schema 11, Draft schema 3,
 Snapshot schema 1, 1674/1674 non-live tests passing, application local-first.
@@ -769,3 +772,401 @@ paths, `SyncEnvelope`/`SyncEnvelopeSerializer` for the wrapper shape, `AtomicFil
 `SyncFileReader` for safe writes/reads, and `IPersonalSyncSettingsService` for "is sync currently
 enabled and pointed at a valid, manifest-initialized folder" — the one question 16C's entity-sync
 engine needs answered before it does anything. No blocking gap identified.
+
+---
+
+# Phase 16C — Personal Sync: Associate Drafts and Operational Notes (Implementation)
+
+Implements the first real record-level sync on top of 16B's foundation: Associate drafts and
+Operational Notes now move between two devices through the shared sync folder, with genuine
+concurrent-edit conflicts detected and never silently resolved. Finalized History/PDFs, deletions/
+tombstones, and conflict-resolution UX all remain out of scope (see "Deferred to 16D" below).
+
+## 16C.1 Sync metadata / revision model
+
+New Application-layer type, [`SyncEntityState`](../src/Carowinds.Passdown.Application/PersonalSync/SyncEntityState.cs),
+persisted by [`ISyncEntityStateRepository`](../src/Carowinds.Passdown.Application/PersonalSync/SyncEntityState.cs)
+(SQLite implementation:
+[`SqliteSyncEntityStateRepository`](../src/Carowinds.Passdown.Infrastructure/Storage/Repositories/SqliteSyncEntityStateRepository.cs)).
+One generic table, keyed by `(EntityType, EntityId)`, instead of adding sync columns to
+`associate_drafts`/`operational_notes` (spec's explicit preference). Fields and exact semantics:
+
+| Field | Meaning |
+|---|---|
+| `LocalRevision` | A local, monotonically increasing counter bumped once per local save of this entity (via `ISyncChangeTracker`) or once per applied remote update. This is the integer written into an exported envelope's `Revision` — never a timestamp, never reset. |
+| `SyncedRevision` / `SyncedContentHash` | The `LocalRevision` and canonical content hash as of the last point this device confirmed its local content matched the sync folder — either because it just exported that exact content, or because it just imported/converged on a remote update. `SyncedRevision = 0` and `SyncedContentHash = null` together mean "never synced" — the bootstrap-candidate state. |
+| `LastRemoteDeviceId` / `LastRemoteRevision` | The envelope identity of the last remote change this device successfully incorporated (applied or found identical) — lets a re-scan of an unchanged file recognize it as already-seen without re-comparing content. |
+| `ConflictState` / `ConflictRemoteDeviceId` / `ConflictRemoteRevision` / `ConflictRemoteContentHash` / `ConflictDetectedAtUtc` | Set only when an incoming remote envelope's content differs from *both* the current local content and `SyncedContentHash` — a genuine concurrent edit (§16C.6). Left untouched (never advanced) while conflicting, so the same unresolved conflict is consistently re-detected on every pass rather than silently dropped or auto-resolved. Never carries the conflicting payload itself, only enough identity/fingerprint to describe it. |
+
+**Why not `ModifiedUtc` alone**: two Windows machines' clocks are never asserted to be in sync
+anywhere in this codebase (16A §G). `LocalRevision`/`SyncedRevision`/content-hash comparison gives a
+real, clock-independent answer to "has this device's copy diverged since it last agreed with the
+sync folder" — the exact question 16A §G identified as needing more than a timestamp.
+
+**Why content hash is still the actual source of truth for dirtiness/conflict, not `LocalRevision`
+alone**: `LocalRevision` only needs to be *some* meaningful monotonic integer for the envelope's
+`Revision` field (16A §D's contract). The real dirty/conflict decision always compares canonical
+content hashes (`SyncContentHash`, below) against `SyncedContentHash`. This means even a save that
+bypasses `ISyncChangeTracker` (e.g. a direct repository write in a test) cannot cause data to go
+permanently unsynced — the next sync pass's hash comparison still catches the real divergence; only
+the envelope's own `Revision` number would undercount that edit, a cosmetic gap, not a correctness
+one.
+
+## 16C.2 Database migration
+
+[`Migration0012CreateSyncEntityStateTable`](../src/Carowinds.Passdown.Infrastructure/Storage/Migrations/Migration0012CreateSyncEntityStateTable.cs) —
+DB schema **11 → 12**. Purely additive: one new table, `sync_entity_state`, primary-keyed on
+`(entity_type, entity_id)`. Draft schema remains 3; Snapshot schema remains 1. No existing table
+(`associate_drafts`, `operational_notes`, `finalized_passdowns`, caches) is altered. Verified against
+an existing DB 11 with pre-existing draft/note/History rows
+(`PortableLifecycleTests.Schema11ToSchema12_CreatesSyncEntityStateTable_AndPreservesExistingDraftNoteAndHistoryData`)
+and against the legacy-app-data-folder-name compatibility path
+(`Phase13GAppDataRenameCompatibilityTests`) — both now target DB 12. A fresh database also
+initializes correctly straight to schema 12 (`SqliteRepositoryTestFixture`, used by every repository
+test in this phase).
+
+## 16C.3 Entity types and centralized identity
+
+`SyncEntityType` (already defined in 16B: `AssociateDraft`, `OperationalNote`, `FinalizedPassdown`)
+remains the one enum — no free-form entity-type strings anywhere in 16C's code. New
+[`SyncEntityIdentity`](../src/Carowinds.Passdown.Application/PersonalSync/SyncEntityIdentity.cs)
+centralizes the one mapping between an entity's own domain identity and its `SyncEnvelope.EntityId`
+string:
+
+- `SyncEntityIdentity.ForDraft(DateOnly)` / `TryParseDraftId(string, out DateOnly)` — invariant
+  `yyyy-MM-dd`, never timezone-converted (16C §18).
+- `SyncEntityIdentity.ForNote(Guid)` / `TryParseNoteId(string, out Guid)` — lowercase-hyphenated
+  `"D"` format, matching `SyncPathService`'s own filename convention (16C §19).
+
+An envelope whose `EntityType` doesn't match the folder it was found in, or whose `EntityId` doesn't
+match its own filename, is rejected as malformed rather than trusted (see §16C.7) — this is the
+"unknown/mismatched entity type rejected safely" requirement in practice, since 16C only ever scans
+`drafts/` and `notes/` (never `history/`, where a `FinalizedPassdown`-typed envelope would live).
+
+## 16C.4 Draft export/import and the public-data boundary
+
+**Payload**: reuses `AssociateDraftPayload`/`AssociateDraftPayloadSerializer` unchanged —
+`PayloadSchemaVersion` in the envelope is `AssociateDraftPayload.CurrentSchemaVersion` (3 today). The
+exported envelope's `Payload` is written with the exact same (default, non-string-enum) JSON options
+`AssociatePassdownService.SaveDraftAsync` already uses for `payload_json`, so
+`AssociateDraftPayloadSerializer.Deserialize` (including its legacy-schema migration-on-read logic)
+can read an imported envelope's payload with zero special-casing — one deserializer, one migration
+path, for local storage and sync alike.
+
+**Public-data boundary (spec §21/§22, audited carefully)**: `AssociateDraftPayload` is already,
+by construction, the *only* thing persisted for a draft — no retrieved/cached catalog or dated-result
+data has ever lived inside it (16A §A/§J's own audit already established this before 16C existed). 16C
+does not change what gets serialized into `payload_json`; it only wraps that exact same, already-pure
+payload in a `SyncEnvelope`. There is no code path in `PersonalSyncService` that reads from
+`IDatedResultRepository`/`ICatalogProductRepository` at all — confirmed by inspection of
+[`PersonalSyncService.cs`](../src/Carowinds.Passdown.Infrastructure/PersonalSync/PersonalSyncService.cs),
+which only depends on `IAssociateDraftRepository`, `IOperationalNoteRepository`,
+`ISyncEntityStateRepository`, `IPersonalSyncSettingsService`, `IDeviceIdProvider`, and `IClock`.
+
+**Export** (`ExportDraftsAsync`): for every locally-saved draft date
+(`IAssociateDraftRepository.ListSavedDraftDatesAsync`), skip if its sync state is `Conflicting`
+(§16C.6); otherwise compute the canonical content hash and compare to `SyncedContentHash` — write
+`drafts/<yyyy-MM-dd>.json` via `AtomicFileWriter` only if they differ, then update
+`LocalRevision`/`SyncedRevision`/`SyncedContentHash` together. This naturally implements bootstrap
+(§16C.9): an entity with no prior `SyncEntityState` row has `SyncedContentHash = null`, which never
+equals any real hash, so it is always exported the first time a sync pass sees it.
+
+**Import** (`ImportDraftsAsync` → `ProcessDraftEnvelopeAsync`): for every file in `drafts/` whose
+filename parses as an exact `yyyy-MM-dd.json` (§16C.7), read and validate the envelope, then delegate
+the actual accept/reject decision to the pure `SyncReconciliation.Decide` function (§16C.6). Applying
+an import writes the full `AssociateDraft` row (`operating_date`, `schema_version`, `payload_json`,
+`updated_at_utc = envelope.ModifiedUtc`) via the existing `IAssociateDraftRepository.SaveAsync` upsert
+— no new persistence path for drafts, no bulk-replace API, one entity at a time (16A §L's own
+constraint).
+
+## 16C.5 Note export/import and the note sync payload
+
+Operational Notes had no independent JSON payload before this phase (16A §D). New
+[`OperationalNoteSyncPayload`](../src/Carowinds.Passdown.Application/PersonalSync/OperationalNoteSyncPayload.cs) /
+`OperationalNoteSyncPayloadSerializer` — schema version **1** — carries every user-authored lifecycle
+field needed to reproduce the same note on another device: `Id`, `Title`, `Body`, `Category`,
+`Priority`, `EffectiveFrom`, `EffectiveThrough`, `Status` (Active/Resolved), and all three timestamps.
+No deletion field exists because the domain itself has no delete path (16A §B/§G) — "resolved" is
+itself just a normal field under this payload, synced like any other (spec §20's "sync that state
+normally, do not invent deletion behavior").
+
+Export/import mirror drafts exactly (`ExportNotesAsync`/`ImportNotesAsync` →
+`ProcessNoteEnvelopeAsync`), using `IOperationalNoteRepository.AddAsync` for a genuinely new remote
+note (identity preserved exactly — the imported `Guid` is never replaced, spec §19) and `UpdateAsync`
+for a safe remote update to an existing local note. Selected-note copies embedded inside a draft
+(`AssociateOperationalNoteSelection`) are not synced as independent entities — spec §19 is explicit
+that they are part of the draft payload, and 16C's draft export already carries them as-is inside
+`AssociateDraftPayload.SelectedOperationalNotes`.
+
+## 16C.6 Content hashing and conflict detection
+
+[`SyncContentHash`](../src/Carowinds.Passdown.Application/PersonalSync/SyncContentHash.cs) computes a
+SHA-256 hash over a **fresh, compact, fixed-option re-serialization** of the strongly-typed payload —
+never the raw file/column text. This matters concretely: an envelope file is written with
+`WriteIndented: true` (16B §9), so hashing `envelope.Payload.GetRawText()` directly would differ from
+hashing the same content as stored compactly in `payload_json`, even though the data is identical.
+Both the local and remote side of every comparison go through the same
+`AssociateDraftPayloadSerializer.Deserialize` (drafts) or `OperationalNoteSyncPayload.FromDomain`
+(notes) → `SyncContentHash.Compute*Hash` pipeline, so formatting differences and legacy-schema
+migration are both normalized away before comparison — sync metadata itself never affects the hash.
+
+[`SyncReconciliation.Decide`](../src/Carowinds.Passdown.Application/PersonalSync/SyncReconciliation.cs)
+is the one pure decision function (no filesystem, no repository access) behind every import:
+
+```
+if envelope.DeviceId == our own device      -> Ignored (our own file, read back)
+if envelope already incorporated            -> Ignored (idempotent re-scan)
+if local entity does not exist              -> RemoteOnlyImport
+if local hash == remote hash                -> Converged (byte-identical, nothing to apply)
+if local hash == last-synced hash           -> SafeRemoteUpdate (local hasn't diverged — safe to apply)
+otherwise                                   -> Conflict (never applied automatically)
+```
+
+The `Conflict` branch covers both the "steady-state concurrent edit" case (16A §G's worked example:
+device B imported revision 4, edited locally, device A also produced revision 5) *and* the "first-ever
+contact between two independently-created copies" bootstrap case (§16C.9) — one rule, not two, exactly
+as the phase brief asked for ("no special bootstrap mode needed beyond seeding revision"). A conflict
+never overwrites local data and never overwrites the remote file: the entity is simply excluded from
+that pass's export step (§16C.4/§16C.5) until it resolves — either a future 16D merge, or the
+contents happening to converge on their own, at which point the very next pass's `Converged` branch
+clears the conflict automatically (no code path treats "identical after canonicalization" as a
+conflict to begin with).
+
+## 16C.7 Malformed files, unexpected filenames, and missing files
+
+`PersonalSyncService` only ever enumerates `*.json` inside `drafts/`/`notes/` and only treats a file
+as canonical if its filename (minus extension) parses exactly as `SyncEntityIdentity.TryParseDraftId`/
+`TryParseNoteId` expects — an OneDrive conflict-copy filename like `2026-09-09-DESKTOP1.json` fails
+that parse and is silently skipped, never imported as a duplicate entity and never deleted (§16C
+requirement 28; verified by
+`PersonalSyncServiceTests.RunAsync_UnexpectedOneDriveConflictCopyFilename_IsIgnored_NeverImportedOrDeleted`).
+A canonical-named file that fails to parse as a `SyncEnvelope`, or whose `EntityType`/`EntityId`
+doesn't match its own filename, is counted as `MalformedCount` and skipped — the rest of the pass
+continues (verified by
+`RunAsync_MalformedOneRecordAmongValidOnes_ProcessesTheOthersAndReportsMalformedCount`). A file that
+was previously imported and later disappears from the folder is never treated as a deletion signal —
+there is no "previously seen" list at all; each pass is a full, independent reconciliation against
+whatever currently exists (verified by
+`RunAsync_PreviouslySeenRemoteFileLaterDisappears_NeverDeletesOrTombstonesTheLocalNote`).
+
+## 16C.8 Local change tracking (the "mark dirty" hook)
+
+[`ISyncChangeTracker`](../src/Carowinds.Passdown.Application/PersonalSync/SyncChangeTracker.cs) is the
+one hook every local save goes through: `AssociatePassdownService.SaveDraftAsync` and
+`OperationalNotesService.CreateAsync`/`UpdateAsync`/`ResolveAsync` each call
+`MarkLocalChangeAsync(entityType, entityId)` **after** their own repository write already succeeded —
+never inside the same SQLite transaction, matching spec §7's "save SQLite first, sync metadata
+second, never in the same write." Both constructors take `ISyncChangeTracker?` as an **optional**
+trailing parameter defaulting to `null` (a no-op when absent) — this is what lets every pre-16C
+caller/test that constructs these services directly keep working unmodified, and is exactly why local
+save behavior with sync disabled is provably identical to Phase 15/16B (a `null` tracker performs zero
+extra I/O). `OperationalNotesService.ResolveAsync` on an already-resolved note (an idempotent no-op)
+correctly does **not** call the tracker again — no genuine change occurred, so no reason to bump the
+revision.
+
+## 16C.9 Bootstrap (first device, and a non-empty second device)
+
+No separate "bootstrap mode" exists in the code — it falls out of the same algorithm used for every
+sync pass (spec explicitly permits and expects this):
+
+- **First device, already has months of local data, sync folder empty**: every local draft/note has
+  no `SyncEntityState` row yet, so `SyncedContentHash` is `null`, which never matches any computed
+  hash — the export step above (§16C.4/§16C.5) exports all of them, one file write + one metadata
+  upsert per entity, fully resumable (an interruption after N of M entities leaves the first N marked
+  synced and the rest still pending for the next run — never one giant transaction). Verified by
+  `Bootstrap_FirstDeviceWithExistingLocalData_ExportsEverythingOnFirstSyncPass`.
+- **Second device, already has its own independent local data**: for a date/note that exists only on
+  one side, the normal `RemoteOnlyImport` (§16C.6) picks it up as a pure gain
+  (`Bootstrap_SecondDeviceWithNonOverlappingExistingData_MergesBothWaysWithoutConflict`). For a
+  date/note that exists **on both** devices independently (never having synced before): if the
+  content happens to be identical, `Converged` fires and both sides silently agree
+  (`Bootstrap_SecondDeviceWithIdenticalOverlappingData_ConvergesSilently_NoConflict`); if it differs,
+  `Conflict` fires — neither side is overwritten, exactly as the steady-state conflict case
+  (`Bootstrap_SecondDeviceWithOverlappingDivergentData_DetectsConflict_NeverAutoPicksAWinner`).
+
+## 16C.10 `PersonalSyncService` orchestration and "Sync Now"
+
+[`IPersonalSyncService`](../src/Carowinds.Passdown.Application/PersonalSync/IPersonalSyncService.cs) /
+[`PersonalSyncService`](../src/Carowinds.Passdown.Infrastructure/PersonalSync/PersonalSyncService.cs)
+(Infrastructure — reuses `IPersonalSyncSettingsService` for readiness/folder/manifest checks rather
+than re-implementing that logic). One `RunAsync()` call:
+
+1. Acquire a local, in-process, non-blocking gate (`SemaphoreSlim(1,1).WaitAsync(0)`) — a second
+   concurrent call in the same process returns `PersonalSyncOutcome.AlreadyRunning` immediately rather
+   than queuing or racing (spec §27; deliberately *not* `IScheduledRefreshLock`, which exists to
+   serialize retrieval refreshes, not sync passes — cross-device simultaneity is expected and handled
+   by the revision/conflict logic above, not a shared lock).
+2. `IPersonalSyncSettingsService.LoadAsync()` — if sync is off, not configured, or the folder/manifest
+   isn't `Ready`, return the corresponding `PersonalSyncResult` immediately; nothing is touched.
+3. Import drafts, then notes (§16C.4/§16C.5).
+4. Export drafts, then notes.
+5. Return a structured [`PersonalSyncResult`](../src/Carowinds.Passdown.Application/PersonalSync/IPersonalSyncService.cs):
+   `ImportedCount`, `ExportedCount`, `UnchangedCount` (converged/self-authored/already-seen), the
+   deliberately-never-silent `ConflictCount`, `MalformedCount`, `IoFailureCount`.
+
+**UI (spec §25/§26)**: `PersonalSyncSettingsViewModel` gained one `SyncNowCommand`
+(`CanExecute`: not busy and `Status == Ready`) and a `SyncResultSummary` string, rendered via new
+[`PersonalSyncResultPresentation`](../src/Carowinds.Passdown.Desktop/Presentation/PersonalSyncResultPresentation.cs)
+(e.g. `"Synced: 3 imported, 2 exported, 1 unchanged. 1 conflict detected — not resolved
+automatically."`). No automatic/background cadence exists anywhere in 16C — the only trigger is this
+one manual button. No initial-bootstrap-on-enable auto-run was added either (deliberately: the phase
+brief marks it optional, and a user's first "Sync Now" click after enabling already performs the
+exact same bootstrap export as any other pass — see §16C.9 — so no separate code path was needed).
+
+## 16C.11 Idempotence
+
+Verified directly (`ScenarioF_RepeatedSyncPassesWithNoChanges_AreIdempotent`,
+`RunAsync_ImportingTheSameEnvelopeTwice_NeverDuplicatesOrInflatesRevision`): repeated import of an
+unchanged remote file produces `Ignored`/`Converged` (never a duplicate row, never an inflated
+`LocalRevision`), and repeated export of an unchanged local entity is skipped entirely once
+`SyncedContentHash` already matches the current content — no file rewrite, no metadata churn.
+
+## 16C.12 Failure / retry behavior
+
+An I/O failure exporting one entity (simulated in tests by pre-creating a directory at the target file
+path, forcing `AtomicFileWriter`'s rename-into-place to throw `IOException`) is caught, counted in
+`IoFailureCount`, and leaves that entity's `SyncEntityState` untouched — since dirtiness is decided by
+content-hash comparison, the entity is automatically retried (and this time succeeds) on the very next
+pass, with no separate "retry queue" needed
+(`RunAsync_IoFailureDuringOneExport_LeavesTheEntityDirtyForRetry_AndOtherExportsStillSucceed`). A
+folder that is missing/offline/locked is reported via `PersonalSyncOutcome.FolderUnavailable`/
+`ConfigurationError` without touching any local table — a local draft save made while the folder is
+unavailable still succeeds normally
+(`RunAsync_FolderUnavailable_ReportsFolderUnavailable_AndLocalDraftStillSaves`).
+
+## 16C.13 Concurrent-sync protection
+
+A `SemaphoreSlim(1, 1)` instance field on `PersonalSyncService` (registered as a DI singleton) blocks
+a second concurrent `RunAsync()` call in the same process, returning `AlreadyRunning` rather than
+queuing behind the first (spec §27). Deliberately not shared with `IScheduledRefreshLock` — that lock
+protects retrieval refreshes on one machine; a second device syncing "at the same time" is not a race
+this lock is meant to prevent, and is instead handled entirely by the revision/conflict logic above.
+
+## 16C.14 Privacy verification
+
+Inspected the actual JSON written to the shared sync folder across a full test pass containing both a
+draft and a note (`ExportedSyncFiles_NeverContainMachineNameUsernameOrLocalPaths`): no occurrence of
+`Environment.UserName`, `Environment.MachineName`, the local AppData-equivalent path, or the strings
+"Token"/"Password"/"Credential" (case-insensitive), matching 16B's existing standing privacy guard for
+`SyncConfiguration`/`SyncManifest`/`SyncEnvelope`. `DeviceId` remains the only device identifier, a
+bare random `Guid`.
+
+## 16C.15 Existing-user migration and fresh-DB result
+
+- **Existing DB 11 upgrade**: `PortableLifecycleTests.Schema11ToSchema12_...` seeds a real DB 11 with
+  a draft, a note, and a finalized/History row through the real repositories, upgrades it to DB 12,
+  and confirms every pre-existing row is untouched and the new `sync_entity_state` table is empty and
+  immediately usable. `Phase13GAppDataRenameCompatibilityTests` (legacy `%LOCALAPPDATA%` folder name)
+  is likewise upgraded to and verified against DB 12.
+- **Fresh DB**: every repository test in this phase (`SqliteRepositoryTestFixture`) runs against a
+  brand-new database that migrates straight through to schema 12 in one pass; no separate "empty
+  upgrade" code path exists to diverge from the "existing data" path.
+- **Sync remains disabled unless previously configured**: the migration only ever creates the empty
+  `sync_entity_state` table — it never reads or writes `SyncConfiguration`, so a device's
+  enabled/disabled sync setting (16B, a flat file, not a DB row) is completely unaffected by this
+  schema change.
+
+## 16C.16 Two-device simulation results
+
+[`PersonalSyncServiceTests`](../tests/Carowinds.Passdown.Infrastructure.Tests/PersonalSync/PersonalSyncServiceTests.cs)
+implements the harness spec §31 calls for — `LocalStoreA`/`LocalStoreB` as two independent real SQLite
+databases (via `CreateDevice`), `SharedSyncFolder` as one real temp directory both point at, no real
+OneDrive client involved. All required scenarios pass:
+
+| Scenario | Result |
+|---|---|
+| A. A creates draft → B imports | PASS |
+| B. A creates note → B imports (Guid preserved) | PASS |
+| C. Non-overlapping changes on two devices converge | PASS |
+| D. Concurrent same-draft edit → conflict, neither side overwritten | PASS |
+| E. Concurrent same-note edit → conflict, neither side overwritten | PASS |
+| F. Repeated runs → stable/idempotent | PASS |
+| G. Offline B reconnects later → picks up latest state directly | PASS |
+| Bootstrap: first device, existing data | PASS |
+| Bootstrap: second device, non-overlapping existing data | PASS |
+| Bootstrap: second device, overlapping divergent data → conflict | PASS |
+| Bootstrap: second device, overlapping identical data → converges | PASS |
+| Sync disabled / folder unavailable | PASS |
+| Malformed file among valid ones | PASS |
+| I/O failure during export + retry | PASS |
+| Duplicate/repeated import | PASS |
+| OneDrive conflict-copy filename ignored | PASS |
+| Missing previously-seen file ≠ deletion | PASS |
+| Local edit after clean import, then remote advances → conflict | PASS |
+| Privacy: no machine/user/path leakage | PASS |
+
+20 tests, 20 passing.
+
+## Tests added (Phase 16C)
+
+- `SyncReconciliationTests`, `SyncContentHashTests`, `SyncEntityIdentityTests`,
+  `SyncChangeTrackerTests` (Application.Tests/PersonalSync) — pure decision-logic and fingerprinting
+  coverage, no filesystem or database.
+- `PersonalSyncServiceTests` (Infrastructure.Tests/PersonalSync) — the two-device harness above.
+- `SqliteSyncEntityStateRepositoryTests` (Infrastructure.Tests/Storage/Repositories).
+- `Schema11ToSchema12_...` addition to `PortableLifecycleTests`; migration-list/version-constant
+  updates to `Phase13GAppDataRenameCompatibilityTests` and `SqliteRepositoryTestFixture`.
+- Sync-tracker-hook coverage added to `AssociatePassdownServiceTests` and `OperationalNotesServiceTests`
+  (Application.Tests), including the "no tracker configured" backward-compatibility case.
+- `PersonalSyncSettingsViewModelTests` additions for `SyncNowCommand` (Ui.Tests).
+- `FakePersonalSyncService` (Ui.Tests/TestSupport).
+
+Two pre-existing architectural-invariant tests were **updated, not removed**, to reflect the
+sanctioned new `ISyncChangeTracker?` dependency: `OperationalNotesServiceTests.Constructor_...`
+(Application.Tests) and `OperationalNotesServiceIntegrationTests.RealServiceConstructor_...`
+(Ui.Tests) — both still assert no HTTP/PDF/refresh-orchestrator/Associate-draft dependency exists;
+only the expected parameter count changed from 2 to 3.
+
+## Final test count
+
+1810/1810 deterministic (non-`LiveSmoke`) tests passing, run per-project
+(`Domain.Tests` 105, `Application.Tests` 517, `Infrastructure.Tests` 449, `Documents.Tests` 114,
+`Ui.Tests` 625). Up from the Phase 16B baseline of 1745/1745. `dotnet build CarowindsPassdown.slnx`:
+0 warnings, 0 errors.
+
+A pre-existing, previously-documented (since Phase 6D — see `docs/phase12-operations-calendar.md`,
+`docs/release-strategy.md`) Avalonia headless cross-test parallelism flake was observed when running
+the *entire* `Ui.Tests` project's 625 tests in one `dotnet test` invocation (a non-deterministic
+subset of `RealWindowStartupTimingTests`/`Phase15ERealWindowLayoutTests`/`OperationsCalendarViewTests`
+— real-`Window`-constructing tests unrelated to any Phase 16C file — intermittently throw "The calling
+thread cannot access this object because a different thread owns it"). Per CLAUDE.md, this flake was
+not "fixed" (out of scope, pre-existing). It was isolated instead: filtering to just those three test
+classes passes cleanly and repeatably (38/38), and filtering everything else in `Ui.Tests` passes
+cleanly and repeatably (587/587) — 587 + 38 = 625, the full project total, with zero real failures
+attributable to this phase's changes. No test whose name contains "PersonalSync" ever appeared in any
+flaky failure list across multiple repeated runs.
+
+## Known limitations
+
+- No manual merge/resolution UI for a detected conflict — 16D's job. A conflicted entity's own local
+  copy remains fully usable; only that one entity's export is paused until it resolves.
+- No automatic/background sync cadence — "Sync Now" is the only trigger.
+- No deletion/tombstone propagation — the domain has no delete path for drafts or notes today, so
+  there is nothing to propagate; a future local-delete feature will need a 16D-era tombstone design.
+- Finalized History/PDFs are not synced.
+- The real Windows-host OneDrive desktop client interaction (a live "Available offline"/Files-On-Demand
+  placeholder, or a folder mid-upload) remains unverified on this (macOS/Darwin) development host —
+  same limitation carried forward from 16B; all filesystem primitives were exercised against a real
+  temp directory here, exactly as in 16B.
+- The reconciliation model tracks only the single most-recently-incorporated remote device per entity
+  (`LastRemoteDeviceId`/`LastRemoteRevision`) rather than a revision per `(EntityId, DeviceId)` pair —
+  sufficient and correct for this phase's two-device personal-sync scope (a third device's envelope
+  still falls through correctly to content-hash comparison, just without the "already seen" fast-path
+  optimization; see `SyncReconciliationTests.Decide_NewRevisionFromADifferentRemoteDevice_...`). A
+  later phase supporting more than two devices per person should revisit this if the lack of the
+  fast-path ever becomes a measurable cost.
+
+## Deferred to 16D
+
+- Conflict *resolution* UX (Keep mine / Use theirs / field-level merge).
+- Tombstone/deletion model and propagation.
+- Revisiting whether local draft persistence needs field-level granularity (currently whole-blob
+  replace, per `SqliteAssociateDraftRepository.SaveAsync` — unchanged by 16C).
+
+## Phase 16D readiness
+
+`SyncEntityState`'s conflict fields already carry everything a resolution UI needs to render "a draft
+for this date was also edited on `<device>` at `<time>`" (spec's own worked example, 16A §G):
+`ConflictRemoteDeviceId`, `ConflictRemoteRevision`, `ConflictRemoteContentHash`,
+`ConflictDetectedAtUtc`, plus the local entity's own current content for comparison. No blocking gap
+identified for 16D to build on.

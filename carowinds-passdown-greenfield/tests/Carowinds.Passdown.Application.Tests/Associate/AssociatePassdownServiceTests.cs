@@ -3,6 +3,7 @@ using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Concurrency;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
+using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Tests.TestSupport;
 using Carowinds.Passdown.Domain;
@@ -31,7 +32,8 @@ public class AssociatePassdownServiceTests
     private static TestEnvironment CreateEnvironment(
         FakeClock? clock = null,
         IOperationalNotesService? operationalNotes = null,
-        Func<IScheduledRefreshLock>? refreshLockFactory = null)
+        Func<IScheduledRefreshLock>? refreshLockFactory = null,
+        ISyncChangeTracker? syncChangeTracker = null)
     {
         clock ??= new FakeClock(FixedNow);
         var drafts = new InMemoryAssociateDraftRepository();
@@ -39,7 +41,7 @@ public class AssociatePassdownServiceTests
         var catalogProducts = new InMemoryCatalogProductRepository();
         var refreshOrchestrator = new FakeRefreshOrchestrator();
         operationalNotes ??= new OperationalNotesService(new InMemoryOperationalNoteRepository(), clock);
-        var service = new AssociatePassdownService(drafts, datedResults, catalogProducts, refreshOrchestrator, operationalNotes, clock, refreshLockFactory);
+        var service = new AssociatePassdownService(drafts, datedResults, catalogProducts, refreshOrchestrator, operationalNotes, clock, refreshLockFactory, syncChangeTracker: syncChangeTracker);
         return new TestEnvironment(service, drafts, datedResults, catalogProducts, refreshOrchestrator, operationalNotes, clock);
     }
 
@@ -270,6 +272,42 @@ public class AssociatePassdownServiceTests
         clock.UtcNow = FixedNow.AddHours(3);
         var secondStatus = await env.Service.SaveDraftAsync(Date, AssociateDraftPayload.CreateDefault());
         Assert.Equal(FixedNow.AddHours(3), secondStatus.LastSavedAt);
+    }
+
+    [Fact]
+    public async Task SaveDraftAsync_MarksTheDraftDirtyForSync_UsingTheDraftDateAsTheEntityId()
+    {
+        var syncChangeTracker = new RecordingSyncChangeTracker();
+        var env = CreateEnvironment(syncChangeTracker: syncChangeTracker);
+
+        await env.Service.SaveDraftAsync(Date, AssociateDraftPayload.CreateDefault());
+
+        var call = Assert.Single(syncChangeTracker.Calls);
+        Assert.Equal(SyncEntityType.AssociateDraft, call.EntityType);
+        Assert.Equal(SyncEntityIdentity.ForDraft(Date), call.EntityId);
+    }
+
+    [Fact]
+    public async Task SaveDraftAsync_WithNoSyncChangeTrackerConfigured_StillSavesSuccessfully()
+    {
+        // Phase 16C §1: sync tracking is additive — a caller/test that never wires a tracker (the
+        // default for every pre-16C call site) must behave exactly as before.
+        var env = CreateEnvironment(syncChangeTracker: null);
+
+        var status = await env.Service.SaveDraftAsync(Date, AssociateDraftPayload.CreateDefault());
+
+        Assert.Equal(AssociateSaveState.Saved, status.State);
+    }
+
+    private sealed class RecordingSyncChangeTracker : ISyncChangeTracker
+    {
+        public List<(SyncEntityType EntityType, string EntityId)> Calls { get; } = [];
+
+        public Task MarkLocalChangeAsync(SyncEntityType entityType, string entityId, CancellationToken cancellationToken = default)
+        {
+            Calls.Add((entityType, entityId));
+            return Task.CompletedTask;
+        }
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Time;
 
 namespace Carowinds.Passdown.Application.OperationalNotes;
@@ -44,7 +45,7 @@ public interface IOperationalNotesService
 }
 
 /// <inheritdoc cref="IOperationalNotesService"/>
-public sealed class OperationalNotesService(IOperationalNoteRepository repository, IClock clock) : IOperationalNotesService
+public sealed class OperationalNotesService(IOperationalNoteRepository repository, IClock clock, ISyncChangeTracker? syncChangeTracker = null) : IOperationalNotesService
 {
     public async Task<OperationalNote> CreateAsync(OperationalNoteDraft draft, CancellationToken cancellationToken = default)
     {
@@ -65,6 +66,7 @@ public sealed class OperationalNotesService(IOperationalNoteRepository repositor
             ResolvedAtUtc: null);
 
         await repository.AddAsync(note, cancellationToken).ConfigureAwait(false);
+        await MarkChangedAsync(note.Id, cancellationToken).ConfigureAwait(false);
         return note;
     }
 
@@ -87,6 +89,7 @@ public sealed class OperationalNotesService(IOperationalNoteRepository repositor
         };
 
         await repository.UpdateAsync(updated, cancellationToken).ConfigureAwait(false);
+        await MarkChangedAsync(updated.Id, cancellationToken).ConfigureAwait(false);
         return updated;
     }
 
@@ -109,8 +112,13 @@ public sealed class OperationalNotesService(IOperationalNoteRepository repositor
         };
 
         await repository.UpdateAsync(resolved, cancellationToken).ConfigureAwait(false);
+        await MarkChangedAsync(resolved.Id, cancellationToken).ConfigureAwait(false);
         return resolved;
     }
+
+    /// <summary>Phase 16C §7: SQLite save first, sync metadata second — never part of the same write, never skipped for any of the three ways a note's content can change.</summary>
+    private Task MarkChangedAsync(Guid noteId, CancellationToken cancellationToken) =>
+        syncChangeTracker?.MarkLocalChangeAsync(SyncEntityType.OperationalNote, SyncEntityIdentity.ForNote(noteId), cancellationToken) ?? Task.CompletedTask;
 
     public async Task<IReadOnlyList<OperationalNote>> ListAsync(CancellationToken cancellationToken = default)
     {

@@ -260,6 +260,7 @@ public partial class App : global::Avalonia.Application
             new Migration0009AddFinalizedPassdownPdfColumns(),
             new Migration0010CreateOperationalNotesTable(),
             new Migration0011CreateDeepRefreshStatusTable(),
+            new Migration0012CreateSyncEntityStateTable(),
         ]);
         services.AddSingleton<MigrationRunner>();
 
@@ -365,6 +366,14 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<ISyncFolderValidator, SyncFolderValidator>();
         services.AddSingleton<IPersonalSyncSettingsService, PersonalSyncSettingsService>();
         services.AddSingleton<ISyncFolderPicker, AvaloniaSyncFolderPicker>();
+
+        // Phase 16C: the first real record-level sync — Associate drafts and Operational Notes.
+        // ISyncEntityStateRepository/ISyncChangeTracker are resolved automatically into
+        // AssociatePassdownService/OperationalNotesService's optional constructor parameters above;
+        // nothing else needs to change at those registrations.
+        services.AddSingleton<ISyncEntityStateRepository, SqliteSyncEntityStateRepository>();
+        services.AddSingleton<ISyncChangeTracker, SyncChangeTracker>();
+        services.AddSingleton<IPersonalSyncService, PersonalSyncService>();
         services.AddTransient<PersonalSyncSettingsViewModel>();
 
         services.AddTransient<MainWindow>();

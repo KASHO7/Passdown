@@ -7,9 +7,10 @@
              x:Class="Carowinds.Passdown.Desktop.Views.PersonalSyncSettingsView"
              x:DataType="vm:PersonalSyncSettingsViewModel">
 
-  <!-- Phase 16B: the smallest configuration surface for the local sync foundation (§4/§14) — no
-       "Last sync time"/"Sync now"/conflict count/device list; those belong to a later phase. Styles
-       mirror HistoryView's own small, self-contained subset. -->
+  <!-- Phase 16B: the smallest configuration surface for the local sync foundation (§4/§14). Phase
+       16C adds the one manual "Sync Now" action and a simple result line (§25/§26) — still no
+       last-sync-time, automatic cadence, or conflict-resolution controls; those belong to 16D/16F.
+       Styles mirror HistoryView's own small, self-contained subset. -->
   <UserControl.Styles>
 
     <Style Selector="TextBlock.pageTitle">
@@ -110,6 +111,12 @@
             </StackPanel>
             <TextBlock Text="{Binding StatusDetail}" Classes="muted" TextWrapping="Wrap"
                        IsVisible="{Binding StatusDetail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+            <Button Content="Sync Now" Classes="secondaryAction" HorizontalAlignment="Left"
+                    Command="{Binding SyncNowCommand}"
+                    AutomationProperties.Name="Sync Now" />
+            <TextBlock Text="{Binding SyncResultSummary}" TextWrapping="Wrap"
+                       IsVisible="{Binding SyncResultSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
           </StackPanel>
         </Border>

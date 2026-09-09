@@ -139,14 +139,15 @@ public class OperationalNotesServiceIntegrationTests
         Assert.Equal(created, stored);
     }
 
-    // 8: no network dependency was introduced anywhere in this chain — same constructor-reflection guarantee OperationalNotesServiceTests already proves at the Application layer, reasserted here at the composition the ViewModel actually uses.
+    // 8: no network dependency was introduced anywhere in this chain — same constructor-reflection guarantee OperationalNotesServiceTests already proves at the Application layer, reasserted here at the composition the ViewModel actually uses. Phase 16C adds one sanctioned dependency, ISyncChangeTracker (optional, defaults to null) — still no HTTP/retrieval dependency.
     [Fact]
     public void RealServiceConstructor_HasNoNetworkOrRetrievalDependency()
     {
         var parameters = typeof(OperationalNotesService).GetConstructors(BindingFlags.Public | BindingFlags.Instance).Single().GetParameters();
 
-        Assert.Equal(2, parameters.Length);
+        Assert.Equal(3, parameters.Length);
         Assert.Contains(parameters, p => p.ParameterType == typeof(IOperationalNoteRepository));
         Assert.Contains(parameters, p => p.ParameterType == typeof(Carowinds.Passdown.Application.Time.IClock));
+        Assert.Contains(parameters, p => p.ParameterType == typeof(Carowinds.Passdown.Application.PersonalSync.ISyncChangeTracker));
     }
 }

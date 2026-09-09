@@ -4,6 +4,7 @@ using Carowinds.Passdown.Application.Concurrency;
 using Carowinds.Passdown.Application.Freshness;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
+using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Time;
@@ -35,7 +36,8 @@ public sealed class AssociatePassdownService(
     IOperationalNotesService operationalNotesService,
     IClock clock,
     Func<IScheduledRefreshLock>? refreshLockFactory = null,
-    IDeepRefreshStatusRepository? deepRefreshStatusRepository = null) : IAssociatePassdownService
+    IDeepRefreshStatusRepository? deepRefreshStatusRepository = null,
+    ISyncChangeTracker? syncChangeTracker = null) : IAssociatePassdownService
 {
     private static readonly SourceCategory[] CatalogCategories =
     [
@@ -136,6 +138,13 @@ public sealed class AssociatePassdownService(
         var now = clock.UtcNow;
         var record = new AssociateDraft(operatingDate, AssociateDraftPayload.CurrentSchemaVersion, JsonSerializer.Serialize(draft), now);
         await draftRepository.SaveAsync(record, cancellationToken).ConfigureAwait(false);
+
+        // Phase 16C §7: SQLite save first, sync metadata second, never in the same transaction — a
+        // failure here must never roll back (or be rolled back by) the save that already succeeded.
+        if (syncChangeTracker is not null)
+        {
+            await syncChangeTracker.MarkLocalChangeAsync(SyncEntityType.AssociateDraft, SyncEntityIdentity.ForDraft(operatingDate), cancellationToken).ConfigureAwait(false);
+        }
 
         return new AssociateSaveStatus(AssociateSaveState.Saved, now);
     }

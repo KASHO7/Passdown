@@ -46,9 +46,10 @@ public class PortableLifecycleTests : IDisposable
         new Migration0009AddFinalizedPassdownPdfColumns(),
         new Migration0010CreateOperationalNotesTable(),
         new Migration0011CreateDeepRefreshStatusTable(),
+        new Migration0012CreateSyncEntityStateTable(),
     ];
 
-    private const int CurrentSchemaVersion = 11;
+    private const int CurrentSchemaVersion = 12;
 
     // ------------------------------------------------------------------
     // Part B: clean first run.
@@ -260,7 +261,7 @@ public class PortableLifecycleTests : IDisposable
             {
                 versions.Add(reader.GetInt64(0));
             }
-            Assert.Equal([1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L, 11L], versions);
+            Assert.Equal([1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L, 11L, 12L], versions);
         }
 
         // Re-running the current runner again is idempotent.
@@ -415,6 +416,103 @@ public class PortableLifecycleTests : IDisposable
         Assert.Equal(1, CountRows(finalConnection, "associate_drafts"));
         Assert.Equal(1, CountRows(finalConnection, "finalized_passdowns"));
         Assert.Equal(1, CountRows(finalConnection, "operational_notes"));
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 16C: schema 11 -> 12 (sync_entity_state table) is purely additive — it creates the new
+    // generic sync metadata table and leaves every existing table (drafts, notes, History) untouched.
+    // Personal Sync itself remains disabled unless it was already explicitly configured (Phase 16B's
+    // own SyncConfiguration.Disabled default) — no sync_entity_state row is ever fabricated by the
+    // migration itself, only by an actual local save going through Application.PersonalSync.ISyncChangeTracker.
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public async Task Schema11ToSchema12_CreatesSyncEntityStateTable_AndPreservesExistingDraftNoteAndHistoryData()
+    {
+        var databasePath = Path.Combine(_tempDirectory, "carowinds-passdown.db");
+        var connectionFactory = new SqliteConnectionFactory(databasePath);
+
+        IReadOnlyList<IMigration> schema11Migrations =
+        [
+            new Migration0001CreateSchemaVersionTable(),
+            new Migration0002CreateSourceStateTable(),
+            new Migration0003CreateDatedResultsTable(),
+            new Migration0004CreateCatalogProductsTable(),
+            new Migration0005CreateProductHistoryTable(),
+            new Migration0006CreateAssociateDraftsTable(),
+            new Migration0007CreateManagerDraftsTable(),
+            new Migration0008CreateFinalizedPassdownsTable(),
+            new Migration0009AddFinalizedPassdownPdfColumns(),
+            new Migration0010CreateOperationalNotesTable(),
+            new Migration0011CreateDeepRefreshStatusTable(),
+        ];
+        var schema11Version = new MigrationRunner(connectionFactory, schema11Migrations, NullLogger<MigrationRunner>.Instance).Run();
+        Assert.Equal(11, schema11Version);
+
+        var operatingDate = new DateOnly(2026, 8, 22);
+        var checkedAt = new DateTimeOffset(2026, 8, 22, 6, 0, 0, TimeSpan.Zero);
+        await new SqliteAssociateDraftRepository(connectionFactory).SaveAsync(
+            new AssociateDraft(operatingDate, 3, """{"notes":"pre-16C draft"}""", checkedAt));
+
+        var note = new OperationalNote(
+            Guid.NewGuid(), "Pre-16C note", null, OperationalNoteCategory.General, OperationalNotePriority.Normal,
+            operatingDate, null, OperationalNoteStatus.Active, checkedAt, checkedAt, null);
+        await new SqliteOperationalNoteRepository(connectionFactory).AddAsync(note);
+
+        var pdfBytes = new byte[] { 0x25, 0x50, 0x44, 0x46 };
+        await new SqliteFinalizedPassdownRepository(connectionFactory).AddAsync(new Application.Persistence.FinalizedPassdown(
+            Guid.NewGuid(), operatingDate, checkedAt, FinalizedPassdownSnapshot.CurrentSchemaVersion,
+            "{}", "pre-16c-hash", FinalizationOrigin.Scheduled, pdfBytes, "deadbeef", pdfBytes.LongLength));
+
+        var upgradedVersion = new MigrationRunner(connectionFactory, AllMigrations, NullLogger<MigrationRunner>.Instance).Run();
+        Assert.Equal(CurrentSchemaVersion, upgradedVersion);
+
+        // The new table exists, is empty (no sync metadata is fabricated by the migration itself),
+        // and is immediately usable through the real repository.
+        var stateRepository = new SqliteSyncEntityStateRepository(connectionFactory);
+        Assert.Empty(await stateRepository.ListByTypeAsync(Application.PersonalSync.SyncEntityType.AssociateDraft));
+        Assert.Empty(await stateRepository.ListByTypeAsync(Application.PersonalSync.SyncEntityType.OperationalNote));
+
+        var state = Application.PersonalSync.SyncEntityState.CreateNew(Application.PersonalSync.SyncEntityType.AssociateDraft, "2026-08-22", checkedAt);
+        await stateRepository.UpsertAsync(state);
+        Assert.Equal(state, await stateRepository.GetAsync(Application.PersonalSync.SyncEntityType.AssociateDraft, "2026-08-22"));
+
+        // Required columns exist with the expected shape.
+        using (var connection = connectionFactory.OpenConnection())
+        {
+            using var tableInfo = connection.CreateCommand();
+            tableInfo.CommandText = "PRAGMA table_info(sync_entity_state);";
+            using var reader = tableInfo.ExecuteReader();
+            var columnNames = new List<string>();
+            while (reader.Read())
+            {
+                columnNames.Add(reader.GetString(1));
+            }
+            Assert.Equal(
+                ["entity_type", "entity_id", "local_revision", "synced_revision", "synced_content_hash",
+                 "last_remote_device_id", "last_remote_revision", "conflict_state", "conflict_remote_device_id",
+                 "conflict_remote_revision", "conflict_remote_content_hash", "conflict_detected_at_utc", "updated_at_utc"],
+                columnNames);
+        }
+
+        // Existing pre-16C data is untouched by this purely additive migration.
+        var reloadedDraft = await new SqliteAssociateDraftRepository(connectionFactory).GetAsync(operatingDate);
+        Assert.NotNull(reloadedDraft);
+        Assert.Equal("""{"notes":"pre-16C draft"}""", reloadedDraft.PayloadJson);
+
+        var reloadedNote = await new SqliteOperationalNoteRepository(connectionFactory).GetByIdAsync(note.Id);
+        Assert.NotNull(reloadedNote);
+        Assert.Equal("Pre-16C note", reloadedNote.Title);
+
+        var reloadedFinalized = await new SqliteFinalizedPassdownRepository(connectionFactory).GetByDateAsync(operatingDate);
+        Assert.NotNull(reloadedFinalized);
+        Assert.Equal("pre-16c-hash", reloadedFinalized.ContentHash);
+
+        using var finalConnection = connectionFactory.OpenConnection();
+        Assert.Equal(1, CountRows(finalConnection, "associate_drafts"));
+        Assert.Equal(1, CountRows(finalConnection, "operational_notes"));
+        Assert.Equal(1, CountRows(finalConnection, "finalized_passdowns"));
+        Assert.Equal(1, CountRows(finalConnection, "sync_entity_state"));
     }
 
     private static long CountRows(SqliteConnection connection, string tableName)
