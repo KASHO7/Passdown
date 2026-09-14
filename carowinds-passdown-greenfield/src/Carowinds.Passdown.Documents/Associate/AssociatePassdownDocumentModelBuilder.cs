@@ -2,6 +2,7 @@ using System.Globalization;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Ert;
 using Carowinds.Passdown.Domain.Hours;
 
 namespace Carowinds.Passdown.Documents.Associate;
@@ -29,7 +30,7 @@ public static class AssociatePassdownDocumentModelBuilder
             FormatOperatingDate(workspace.OperatingDate),
             BuildParkHours(workspace),
             new PdfAttendance(workspace.Draft.ProjectedAttendance, workspace.Draft.PreSolds),
-            BuildEarlyRideTime(workspace.Draft.EarlyRideTime),
+            BuildEarlyRideTime(workspace.EarlyRideTime),
             BuildDailyFeature(workspace.Draft),
             BuildOperationalNotes(workspace.Draft),
             productCategories,
@@ -96,11 +97,13 @@ public static class AssociatePassdownDocumentModelBuilder
     /// </summary>
     private static string? BuildVerificationText(AssociateVerificationInfo verification, EffectiveHours effective) => null;
 
-    private static PdfEarlyRideTime BuildEarlyRideTime(EarlyRideTimeDetails details)
-    {
-        var enabled = !string.IsNullOrWhiteSpace(details.Details) || details.ParticipatingAttractions.Count > 0;
-        return new PdfEarlyRideTime(enabled, string.IsNullOrWhiteSpace(details.Details) ? null : details.Details.Trim(), details.ParticipatingAttractions);
-    }
+    /// <summary>Phase 17B: a straight passthrough of the workspace's already-resolved <see cref="EffectiveErt"/> — Documents formats the start time (the resolver's own convention, <see cref="FormatTime"/>) but decides nothing about precedence/configuration state.</summary>
+    private static PdfEarlyRideTime BuildEarlyRideTime(EffectiveErt earlyRideTime) => new(
+        earlyRideTime.Kind,
+        earlyRideTime.Source,
+        earlyRideTime.StartTime is { } startTime ? FormatTime(startTime) : null,
+        earlyRideTime.Rides,
+        string.IsNullOrWhiteSpace(earlyRideTime.Note) ? null : earlyRideTime.Note.Trim());
 
     /// <summary>
     /// Phase 11D Part AB/L: the Operational Notes panel's content is the associate's own manual

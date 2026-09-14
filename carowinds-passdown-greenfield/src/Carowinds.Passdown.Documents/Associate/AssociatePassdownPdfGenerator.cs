@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Reflection;
+using Carowinds.Passdown.Domain.Ert;
 using QuestPDF.Drawing;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
@@ -282,53 +283,60 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
         });
 
     /// <summary>
-    /// Phase 13F: the start time is no longer free-typed into <see cref="PdfEarlyRideTime.Details"/> —
-    /// it is <see cref="PdfParkHours.NorthGateText"/>, the exact same already-derived value the Park
-    /// Hours box prints as "North Gate" (spec Part L: one shared derived value, never two independent
-    /// calculations). Printed again here so a reader glancing only at this box still sees the time
-    /// (spec Part R), never fabricated when no effective opening exists (spec Parts H/I/J).
+    /// Phase 17B: renders <see cref="AssociatePassdownDocumentModel.EarlyRideTime"/> exactly as
+    /// resolved — the PDF never derives a start time from Park Hours/North Gate (spec Part 13/31).
+    /// <see cref="EffectiveErtKind.NotConfigured"/> prints an explicit "Not configured" line rather
+    /// than omitting the section or fabricating a value — this is an Associate-to-Associate
+    /// operational document, not guest-facing, so ops staff need to know ERT was never set up for the
+    /// month rather than have the section silently vanish (spec Part 13's explicit decision).
     /// </summary>
     private static void ComposeEarlyRideTimeBox(IContainer container, AssociatePassdownDocumentModel model) =>
         ComposePanel(container, "EARLY RIDE TIME", column =>
         {
-            if (!model.EarlyRideTime.Enabled)
+            switch (model.EarlyRideTime.Kind)
             {
-                column.Item().Text("Not applicable for this date.").FontSize(9.5f).Italic().FontColor(MutedTextColor);
-                return;
-            }
+                case EffectiveErtKind.NotConfigured:
+                    column.Item().Text(NotConfiguredText(model.OperatingDate)).FontSize(9.5f).Italic().FontColor(MutedTextColor);
+                    return;
 
-            // PdfParkHours.NorthGateText is never null (it formats to "-" when there is no time), so
-            // Status — not the formatted string — is what actually distinguishes "has a derived
-            // start" from "nothing to derive from" (Status is only Open when Opening is non-null).
-            if (model.ParkHours.Status == PdfParkHoursStatus.Open)
-            {
-                column.Item().Text(text =>
-                {
-                    text.Span("Start  ").FontSize(9).FontColor(MutedTextColor);
-                    text.Span(model.ParkHours.NorthGateText).FontSize(11).Bold();
-                });
-            }
-            else
-            {
-                column.Item().Text(EarlyRideTimeUnavailableText(model.ParkHours.Status)).FontSize(9).Italic().FontColor(MutedTextColor);
-            }
+                case EffectiveErtKind.NoErt:
+                    column.Item().Text("No Early Ride Time today.").FontSize(9.5f).Italic().FontColor(MutedTextColor);
+                    if (model.EarlyRideTime.Note is { } noErtNote)
+                    {
+                        column.Item().Text(noErtNote).FontSize(9);
+                    }
+                    return;
 
-            if (model.EarlyRideTime.Details is { } details)
-            {
-                column.Item().Text(details).FontSize(9.5f);
-            }
+                default:
+                    column.Item().Text(text =>
+                    {
+                        text.Span("Start  ").FontSize(9).FontColor(MutedTextColor);
+                        text.Span(model.EarlyRideTime.StartTimeText ?? "-").FontSize(11).Bold();
+                    });
 
-            if (model.EarlyRideTime.ParticipatingAttractions.Count > 0)
-            {
-                column.Item().Text($"Attractions: {string.Join(", ", model.EarlyRideTime.ParticipatingAttractions)}").FontSize(9);
+                    if (model.EarlyRideTime.Rides.Count > 0)
+                    {
+                        column.Item().Text($"Rides: {string.Join(", ", model.EarlyRideTime.Rides)}").FontSize(9);
+                    }
+
+                    if (model.EarlyRideTime.Source == EffectiveErtSource.Override)
+                    {
+                        column.Item().Text("Date override").FontSize(8).Italic().FontColor(MutedTextColor);
+                    }
+
+                    if (model.EarlyRideTime.Note is { } note)
+                    {
+                        column.Item().Text(note).FontSize(9);
+                    }
+
+                    return;
             }
         });
 
-    private static string EarlyRideTimeUnavailableText(PdfParkHoursStatus status) => status switch
-    {
-        PdfParkHoursStatus.Closed => "Start time not applicable — park is closed.",
-        _ => "Start time unavailable — park hours not yet confirmed.",
-    };
+    private static string NotConfiguredText(DateOnly? operatingDate) =>
+        operatingDate is { } date
+            ? $"Not configured for {date.ToString("MMMM yyyy", CultureInfo.InvariantCulture)}."
+            : "Not configured.";
 
     /// <summary>
     /// Level 2 (spec Phase 8B Part 3): the Daily Feature gets its own full-width panel, visually

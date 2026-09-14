@@ -1,3 +1,5 @@
+using Carowinds.Passdown.Domain.Ert;
+
 namespace Carowinds.Passdown.Application.Finalization;
 
 /// <summary>
@@ -46,8 +48,27 @@ public sealed record FinalizedParkHoursSnapshot(
 /// <summary>Frozen projected attendance and pre-solds (spec Phase 9 Part C).</summary>
 public sealed record FinalizedAttendanceSnapshot(int? ProjectedAttendance, int? PreSolds);
 
-/// <summary>Frozen Early Ride Time content (spec Phase 9 Part C).</summary>
-public sealed record FinalizedEarlyRideTimeSnapshot(bool Enabled, string? Details, IReadOnlyList<string> ParticipatingAttractions);
+/// <summary>
+/// Frozen Early Ride Time content (spec Phase 9 Part C; reworked Phase 17B spec Part 14).
+/// <see cref="Enabled"/>/<see cref="Details"/>/<see cref="ParticipatingAttractions"/> are the original
+/// pre-17B fields, kept unchanged so a historical row finalized before Phase 17B still deserializes
+/// and displays exactly as it always has. <see cref="Kind"/> is deliberately nullable and is the
+/// discriminator: <see langword="null"/> unambiguously marks a pre-17B row (read the legacy three
+/// fields); a real value (including <see cref="EffectiveErtKind.NotConfigured"/>) marks a row
+/// finalized under the new resolver-driven model (read <see cref="StartTimeText"/>/<see cref="Rides"/>/
+/// <see cref="Note"/> instead). Frozen at finalization time exactly as
+/// <c>Application.Associate.AssociateWorkspace.EarlyRideTime</c> resolved then — future monthly/
+/// override edits never alter an already-finalized snapshot.
+/// </summary>
+public sealed record FinalizedEarlyRideTimeSnapshot(
+    bool Enabled,
+    string? Details,
+    IReadOnlyList<string> ParticipatingAttractions,
+    EffectiveErtKind? Kind = null,
+    EffectiveErtSource? Source = null,
+    string? StartTimeText = null,
+    IReadOnlyList<string>? Rides = null,
+    string? Note = null);
 
 /// <summary>Frozen Daily Feature content (spec Phase 9 Part C).</summary>
 public sealed record FinalizedDailyFeatureSnapshot(string? TypeLabel, string? Text);
@@ -96,6 +117,9 @@ public sealed record FinalizedPassdownSnapshot(
     /// F) — NOT the app version. Bump this, and only this constant, when the snapshot shape changes
     /// incompatibly; a future reader uses <see cref="Persistence.FinalizedPassdown.SnapshotSchemaVersion"/>
     /// to detect which shape a historical row's <see cref="Persistence.FinalizedPassdown.SnapshotJson"/> is in.
+    /// Phase 17B bumps 1 -> 2 for <see cref="FinalizedEarlyRideTimeSnapshot"/>'s new resolver-driven
+    /// fields — additive only (old fields untouched), so a pre-17B row still deserializes correctly;
+    /// the bump exists because the shape genuinely changed, not because old rows stop reading.
     /// </summary>
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 }

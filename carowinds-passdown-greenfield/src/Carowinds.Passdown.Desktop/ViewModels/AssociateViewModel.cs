@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Diagnostics;
+using Carowinds.Passdown.Application.Ert;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Time;
@@ -9,6 +10,7 @@ using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Desktop.Services;
 using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Ert;
 using Carowinds.Passdown.Domain.Hours;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -58,6 +60,7 @@ public partial class AssociateViewModel : ViewModelBase
     private static readonly IReadOnlyDictionary<Guid, OperationalNoteSourceComparisonState> EmptySourceStates = new Dictionary<Guid, OperationalNoteSourceComparisonState>();
 
     private readonly IAssociatePassdownService _service;
+    private readonly IErtConfigurationService _ertConfigurationService;
     private readonly IAssociatePassdownPdfExportService _pdfExportService;
     private readonly IPdfSaveFilePicker _pdfSavePicker;
     private readonly IDiagnosticExportService _diagnosticExportService;
@@ -101,9 +104,11 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasWorkspace))]
     [NotifyPropertyChangedFor(nameof(ParkHours))]
-    [NotifyPropertyChangedFor(nameof(EarlyRideTimeStartText))]
-    [NotifyPropertyChangedFor(nameof(EarlyRideTimeStartAutomationName))]
-    [NotifyPropertyChangedFor(nameof(EarlyRideTimeCaptionText))]
+    [NotifyPropertyChangedFor(nameof(EarlyRideTimeStatusText))]
+    [NotifyPropertyChangedFor(nameof(EarlyRideTimeIsOverride))]
+    [NotifyPropertyChangedFor(nameof(EarlyRideTimeIsConfigured))]
+    [NotifyPropertyChangedFor(nameof(EarlyRideTimeIsNotConfigured))]
+    [NotifyPropertyChangedFor(nameof(EarlyRideTimeIsNoErt))]
     [NotifyPropertyChangedFor(nameof(SaveStatus))]
     [NotifyPropertyChangedFor(nameof(SaveStatusText))]
     [NotifyCanExecuteChangedFor(nameof(CreatePdfCommand))]
@@ -128,6 +133,8 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedDateForPicker))]
     [NotifyPropertyChangedFor(nameof(AvailableOperationalNoteSuggestionsHeading))]
+    [NotifyPropertyChangedFor(nameof(SelectedMonthLabel))]
+    [NotifyPropertyChangedFor(nameof(EarlyRideTimeStatusText))]
     public partial DateOnly SelectedDate { get; set; }
 
     /// <summary>
@@ -190,9 +197,6 @@ public partial class AssociateViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ParkHours))]
-    [NotifyPropertyChangedFor(nameof(EarlyRideTimeStartText))]
-    [NotifyPropertyChangedFor(nameof(EarlyRideTimeStartAutomationName))]
-    [NotifyPropertyChangedFor(nameof(EarlyRideTimeCaptionText))]
     [NotifyPropertyChangedFor(nameof(ManualHoursWarningText))]
     [NotifyPropertyChangedFor(nameof(ManualOpeningTimeError))]
     [NotifyPropertyChangedFor(nameof(ManualClosingTimeError))]
@@ -213,9 +217,6 @@ public partial class AssociateViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ParkHours))]
-    [NotifyPropertyChangedFor(nameof(EarlyRideTimeStartText))]
-    [NotifyPropertyChangedFor(nameof(EarlyRideTimeStartAutomationName))]
-    [NotifyPropertyChangedFor(nameof(EarlyRideTimeCaptionText))]
     [NotifyPropertyChangedFor(nameof(PrivateBuyoutHoursWarningText))]
     [NotifyPropertyChangedFor(nameof(PrivateBuyoutOpeningTimeError))]
     [NotifyPropertyChangedFor(nameof(PrivateBuyoutClosingTimeError))]
@@ -242,14 +243,45 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     public partial string? PreSoldsError { get; set; }
 
+    /// <summary>Whether the "Configure Monthly ERT" inline panel is open (Phase 17B spec Part 7) — independent of <see cref="IsOverrideEditorOpen"/>; only one is expected open at a time, but nothing enforces that beyond the UI only ever offering one "Configure"/"Override" action at once.</summary>
     [ObservableProperty]
-    public partial bool IsEarlyRideTimeEnabled { get; set; }
+    public partial bool IsMonthlyErtEditorOpen { get; set; }
 
     [ObservableProperty]
-    public partial string? EarlyRideTimeDetailsText { get; set; }
+    public partial string? MonthlyErtStartTimeText { get; set; }
 
     [ObservableProperty]
-    public partial string? ParticipatingAttractionsText { get; set; }
+    public partial string? MonthlyErtRidesText { get; set; }
+
+    /// <summary>"No ERT this month" (spec Part 7/11) — when checked, the start time/rides fields are ignored by <see cref="SaveMonthlyErtAsync"/> regardless of what they still show, matching <see cref="Application.Ert.ErtConfigurationService"/>'s own server-side normalization.</summary>
+    [ObservableProperty]
+    public partial bool MonthlyErtNoErt { get; set; }
+
+    [ObservableProperty]
+    public partial string? MonthlyErtNoteText { get; set; }
+
+    /// <summary>Set only by an explicit Save attempt (spec Part 9: reuse <see cref="OperationalTimeParser"/>'s error message) — never updated by simply typing, unlike Manual Hours' per-keystroke-commit fields, since Monthly ERT saves only on the explicit button press (spec Part 7).</summary>
+    [ObservableProperty]
+    public partial string? MonthlyErtSaveError { get; set; }
+
+    /// <summary>Whether the "Override for this date" inline panel is open (Phase 17B spec Part 8).</summary>
+    [ObservableProperty]
+    public partial bool IsOverrideEditorOpen { get; set; }
+
+    [ObservableProperty]
+    public partial string? OverrideStartTimeText { get; set; }
+
+    [ObservableProperty]
+    public partial string? OverrideRidesText { get; set; }
+
+    [ObservableProperty]
+    public partial bool OverrideNoErt { get; set; }
+
+    [ObservableProperty]
+    public partial string? OverrideReasonText { get; set; }
+
+    [ObservableProperty]
+    public partial string? OverrideSaveError { get; set; }
 
     [ObservableProperty]
     public partial string? OperationalNotesText { get; set; }
@@ -359,12 +391,14 @@ public partial class AssociateViewModel : ViewModelBase
         IAssociatePassdownPdfExportService? pdfExportService = null,
         IPdfSaveFilePicker? pdfSavePicker = null,
         IDiagnosticExportService? diagnosticExportService = null,
-        IDiagnosticExportFilePicker? diagnosticExportPicker = null)
+        IDiagnosticExportFilePicker? diagnosticExportPicker = null,
+        IErtConfigurationService? ertConfigurationService = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
 
         _service = service;
+        _ertConfigurationService = ertConfigurationService ?? new UnavailableErtConfigurationService();
         _logger = logger;
         _autosaveDebounce = autosaveDebounce ?? DefaultAutosaveDebounce;
         _autosaveDelay = autosaveDelay ?? Task.Delay;
@@ -428,64 +462,35 @@ public partial class AssociateViewModel : ViewModelBase
 
     public ParkHoursPresentation? ParkHours => LiveParkHours is { } live ? ParkHoursPresentation.Build(live) : null;
 
-    /// <summary>
-    /// Phase 13F: Early Ride Time start is no longer typed by the associate — it is
-    /// <see cref="EffectiveHours.NorthGateOpening"/> (effective park opening minus 30 minutes), the
-    /// exact same value the Park Hours panel prints as "North Gate" (spec Part L: "do not create two
-    /// independently computed times"). Null whenever no effective opening exists yet (Closed,
-    /// NotCheckedYet, NotPublished, or Unavailable) — never a fabricated time.
-    /// </summary>
-    public string? EarlyRideTimeStartText => LiveParkHours?.Effective.NorthGateOpening is { } time
-        ? OperationalTimeFormatter.Format(time)
-        : null;
+    /// <summary>"September 2026" — the Associate-selected date's month/year (Phase 17B spec Part 6/7), used by both the effective-ERT "Not configured for ..." message and the Configure Monthly ERT panel's own heading.</summary>
+    public string SelectedMonthLabel => SelectedDate.ToString("MMMM yyyy", CultureInfo.InvariantCulture);
+
+    private EffectiveErt EffectiveEarlyRideTime => Workspace?.EarlyRideTime ?? EffectiveErt.NotConfigured;
+
+    public bool EarlyRideTimeIsConfigured => EffectiveEarlyRideTime.Kind == EffectiveErtKind.Configured;
+
+    public bool EarlyRideTimeIsNotConfigured => EffectiveEarlyRideTime.Kind == EffectiveErtKind.NotConfigured;
+
+    public bool EarlyRideTimeIsNoErt => EffectiveEarlyRideTime.Kind == EffectiveErtKind.NoErt;
+
+    /// <summary>Whether the selected date's effective ERT came from a date override rather than the monthly default (Phase 17B spec Part 12) — drives the "Date override" caption and which action ("Override for this date" vs. "Remove override") the panel offers.</summary>
+    public bool EarlyRideTimeIsOverride => EffectiveEarlyRideTime.Source == EffectiveErtSource.Override;
 
     /// <summary>
-    /// A plain (non-<c>StringFormat</c>) automation name for <see cref="EarlyRideTimeStartText"/> —
-    /// an unattached/headless container does not reliably realize a <c>StringFormat</c>-bound
-    /// <c>AutomationProperties.Name</c> (see the per-row product template note in
-    /// <c>AssociateViewAccessibilityTests</c>), so this composes the full string in the ViewModel
-    /// instead, matching every other automation name in this view.
+    /// The compact effective-ERT line (Phase 17B spec Part 12) — built entirely from
+    /// <see cref="Workspace"/>'s already-resolved <see cref="AssociateWorkspace.EarlyRideTime"/>, the
+    /// same value the Dashboard/PDF/finalized snapshot read; this view never derives ERT from park
+    /// hours (spec Part 1/31) or fabricates a value for <see cref="EffectiveErtKind.NotConfigured"/>
+    /// (spec Part 6).
     /// </summary>
-    public string EarlyRideTimeStartAutomationName => EarlyRideTimeStartText is { } start
-        ? $"Early Ride Time derived start: {start}"
-        : "Early Ride Time derived start unavailable";
-
-    /// <summary>
-    /// The short explanatory line under the derived start time (spec Part M/N's compact mockup), or —
-    /// when no start time is available — a concise, non-fabricated reason (spec Parts H/I/J) reusing
-    /// the same <see cref="AssociateVerificationState"/> the Park Hours panel already surfaces, rather
-    /// than inventing a second ERT-specific freshness model (spec Part AD).
-    /// </summary>
-    public string EarlyRideTimeCaptionText
+    public string EarlyRideTimeStatusText => EffectiveEarlyRideTime.Kind switch
     {
-        get
-        {
-            if (LiveParkHours is not { } live)
-            {
-                return "ERT time unavailable until park hours are published.";
-            }
-
-            if (live.Effective.NorthGateOpening is not null)
-            {
-                return live.Effective.Opening is { } opening
-                    ? $"Derived from {OperationalTimeFormatter.Format(opening)} park opening."
-                    : "Derived from today's park opening.";
-            }
-
-            if (live.Effective.Status == EffectiveHoursStatus.Closed)
-            {
-                return "Not applicable — the park is closed.";
-            }
-
-            return live.Verification.State switch
-            {
-                AssociateVerificationState.NotPublished => "ERT time unavailable until park hours are published.",
-                AssociateVerificationState.Unavailable or AssociateVerificationState.Error =>
-                    "ERT time unavailable — park hours could not be checked.",
-                _ => "ERT time unavailable — park hours have not been checked yet.",
-            };
-        }
-    }
+        EffectiveErtKind.NotConfigured => $"Not configured for {SelectedMonthLabel}",
+        EffectiveErtKind.NoErt => "None",
+        _ => EffectiveEarlyRideTime.Rides.Count > 0
+            ? $"{OperationalTimeFormatter.Format(EffectiveEarlyRideTime.StartTime!.Value)} — {string.Join(", ", EffectiveEarlyRideTime.Rides)}"
+            : OperationalTimeFormatter.Format(EffectiveEarlyRideTime.StartTime!.Value),
+    };
 
     /// <summary>
     /// Re-runs <see cref="ParkHoursCalculator.Calculate"/> against <paramref name="official"/>'s raw
@@ -904,6 +909,214 @@ public partial class AssociateViewModel : ViewModelBase
             .ToList();
     }
 
+    /// <summary>
+    /// Opens the Configure Monthly ERT panel (Phase 17B spec Part 7), pre-filled from the
+    /// <em>persisted monthly record</em> for the selected date's month — not from
+    /// <see cref="Workspace"/>'s already-resolved <see cref="EffectiveEarlyRideTime"/>, since that
+    /// value may currently be coming from a date override; editing "the month" must always start from
+    /// the month's own saved default, never from whatever happens to be in effect today.
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenMonthlyErtEditorAsync()
+    {
+        var date = SelectedDate;
+        MonthlyErtSaveError = null;
+
+        var existing = await _ertConfigurationService.GetMonthlyAsync(date.Year, date.Month).ConfigureAwait(true);
+        if (date != SelectedDate)
+        {
+            return; // superseded by a date switch while the read was in flight.
+        }
+
+        MonthlyErtNoErt = existing?.State == ErtConfigurationState.NoErt;
+        MonthlyErtStartTimeText = existing?.StartTime is { } startTime ? OperationalTimeFormatter.Format(startTime) : null;
+        MonthlyErtRidesText = existing is null ? null : string.Join(Environment.NewLine, existing.Rides);
+        MonthlyErtNoteText = existing?.Note;
+        IsMonthlyErtEditorOpen = true;
+    }
+
+    [RelayCommand]
+    private void CancelMonthlyErtEditor()
+    {
+        IsMonthlyErtEditorOpen = false;
+        MonthlyErtSaveError = null;
+    }
+
+    /// <summary>
+    /// Validates and saves the Configure Monthly ERT panel (spec Part 7/9/33): reuses
+    /// <see cref="OperationalTimeParser"/> exactly like Manual Hours, but — unlike Manual Hours'
+    /// per-keystroke live commit — only ever runs on this explicit Save action (spec Part 7's "[ Save
+    /// Monthly ERT ]" button), never implicitly from typing. On success, reloads the workspace so
+    /// <see cref="EarlyRideTimeStatusText"/> and every other resolver-driven display refreshes
+    /// together (spec Part 4's "one authoritative resolver").
+    /// </summary>
+    [RelayCommand]
+    private async Task SaveMonthlyErtAsync()
+    {
+        var date = SelectedDate;
+
+        if (!TryBuildErtDraftFields(MonthlyErtNoErt, MonthlyErtStartTimeText, MonthlyErtRidesText, out var state, out var startTime, out var rides, out var error))
+        {
+            MonthlyErtSaveError = error;
+            return;
+        }
+
+        MonthlyErtSaveError = null;
+        try
+        {
+            await _ertConfigurationService.SaveMonthlyAsync(
+                new MonthlyErtDraft(date.Year, date.Month, state, startTime, rides, NullIfBlank(MonthlyErtNoteText))).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogError(ex, "Failed to save monthly Early Ride Time for {Year}-{Month}.", date.Year, date.Month);
+            MonthlyErtSaveError = "Could not save. Try again.";
+            return;
+        }
+
+        if (date != SelectedDate)
+        {
+            return; // superseded by a date switch while the save was in flight.
+        }
+
+        IsMonthlyErtEditorOpen = false;
+        await RefreshWorkspaceAsync(date).ConfigureAwait(true);
+    }
+
+    /// <summary>Opens the Override for this date panel (spec Part 8), pre-filled from any existing override for the selected date.</summary>
+    [RelayCommand]
+    private async Task OpenOverrideEditorAsync()
+    {
+        var date = SelectedDate;
+        OverrideSaveError = null;
+
+        var existing = await _ertConfigurationService.GetOverrideAsync(date).ConfigureAwait(true);
+        if (date != SelectedDate)
+        {
+            return;
+        }
+
+        OverrideNoErt = existing?.State == ErtConfigurationState.NoErt;
+        OverrideStartTimeText = existing?.StartTime is { } startTime ? OperationalTimeFormatter.Format(startTime) : null;
+        OverrideRidesText = existing is null ? null : string.Join(Environment.NewLine, existing.Rides);
+        OverrideReasonText = existing?.Reason;
+        IsOverrideEditorOpen = true;
+    }
+
+    [RelayCommand]
+    private void CancelOverrideEditor()
+    {
+        IsOverrideEditorOpen = false;
+        OverrideSaveError = null;
+    }
+
+    /// <summary>Validates and saves the date override panel (spec Part 8/9/33) — mirrors <see cref="SaveMonthlyErtAsync"/> exactly, scoped to <see cref="SelectedDate"/> instead of its month.</summary>
+    [RelayCommand]
+    private async Task SaveOverrideAsync()
+    {
+        var date = SelectedDate;
+
+        if (!TryBuildErtDraftFields(OverrideNoErt, OverrideStartTimeText, OverrideRidesText, out var state, out var startTime, out var rides, out var error))
+        {
+            OverrideSaveError = error;
+            return;
+        }
+
+        OverrideSaveError = null;
+        try
+        {
+            await _ertConfigurationService.SaveOverrideAsync(
+                new ErtDateOverrideDraft(date, state, startTime, rides, NullIfBlank(OverrideReasonText))).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogError(ex, "Failed to save Early Ride Time override for {OperatingDate}.", date);
+            OverrideSaveError = "Could not save. Try again.";
+            return;
+        }
+
+        if (date != SelectedDate)
+        {
+            return;
+        }
+
+        IsOverrideEditorOpen = false;
+        await RefreshWorkspaceAsync(date).ConfigureAwait(true);
+    }
+
+    /// <summary>Removes the selected date's override (spec Part 8/28) — the date immediately falls back to the monthly default once the workspace reloads.</summary>
+    [RelayCommand]
+    private async Task RemoveOverrideAsync()
+    {
+        var date = SelectedDate;
+        OverrideSaveError = null;
+        try
+        {
+            await _ertConfigurationService.RemoveOverrideAsync(date).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogError(ex, "Failed to remove Early Ride Time override for {OperatingDate}.", date);
+            OverrideSaveError = "Could not remove. Try again.";
+            return;
+        }
+
+        if (date != SelectedDate)
+        {
+            return;
+        }
+
+        IsOverrideEditorOpen = false;
+        await RefreshWorkspaceAsync(date).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Shared validate-and-shape step for both the monthly and override editors (spec Part 33):
+    /// <see cref="ErtConfigurationState.NoErt"/> always clears start time/rides (mirrors
+    /// <c>ErtConfigurationService</c>'s own server-side normalization — validated here too so the
+    /// associate sees the problem immediately rather than after a round trip); otherwise a valid,
+    /// non-blank start time is required, reusing <see cref="OperationalTimeParser"/> so the accepted
+    /// input grammar never diverges from Manual Hours/Private Buyout (spec Part 9). Rides are parsed
+    /// with the same <see cref="ParseLines"/> newline-list idiom already used elsewhere in this class.
+    /// </summary>
+    private static bool TryBuildErtDraftFields(
+        bool noErt, string? startTimeText, string? ridesText,
+        out ErtConfigurationState state, out TimeOnly? startTime, out IReadOnlyList<string> rides, out string? error)
+    {
+        if (noErt)
+        {
+            state = ErtConfigurationState.NoErt;
+            startTime = null;
+            rides = [];
+            error = null;
+            return true;
+        }
+
+        state = ErtConfigurationState.Configured;
+        rides = ParseLines(ridesText);
+
+        if (!OperationalTimeParser.TryParse(startTimeText, out startTime, out var parseError) || startTime is null)
+        {
+            error = parseError ?? OperationalTimeParser.InvalidTimeMessage;
+            return false;
+        }
+
+        error = null;
+        return true;
+    }
+
+    /// <summary>Reloads <see cref="Workspace"/> for <paramref name="date"/> after an ERT save/remove (spec Part 4/16) — a full <see cref="ApplyWorkspaceToFields"/> pass, mirroring how <see cref="AddOperationalNoteAsync"/>/<see cref="RemoveOperationalNoteAsync"/> already refresh the whole workspace after their own immediate, non-debounced service round-trip.</summary>
+    private async Task RefreshWorkspaceAsync(DateOnly date)
+    {
+        var workspace = await _service.LoadAssociateDateAsync(date).ConfigureAwait(true);
+        if (date != SelectedDate)
+        {
+            return;
+        }
+
+        ApplyWorkspaceToFields(workspace);
+    }
+
     partial void OnManualHoursOverrideEnabledChanged(bool value) => ScheduleAutosave();
 
     partial void OnPrivateBuyoutEnabledChanged(bool value) => ScheduleAutosave();
@@ -955,9 +1168,6 @@ public partial class AssociateViewModel : ViewModelBase
         {
             OnPropertyChanged(nameof(ManualOpeningTimeError));
             OnPropertyChanged(nameof(ParkHours));
-            OnPropertyChanged(nameof(EarlyRideTimeStartText));
-            OnPropertyChanged(nameof(EarlyRideTimeStartAutomationName));
-            OnPropertyChanged(nameof(EarlyRideTimeCaptionText));
             OnPropertyChanged(nameof(ManualHoursWarningText));
         });
 
@@ -970,9 +1180,6 @@ public partial class AssociateViewModel : ViewModelBase
         {
             OnPropertyChanged(nameof(ManualClosingTimeError));
             OnPropertyChanged(nameof(ParkHours));
-            OnPropertyChanged(nameof(EarlyRideTimeStartText));
-            OnPropertyChanged(nameof(EarlyRideTimeStartAutomationName));
-            OnPropertyChanged(nameof(EarlyRideTimeCaptionText));
             OnPropertyChanged(nameof(ManualHoursWarningText));
         });
 
@@ -985,9 +1192,6 @@ public partial class AssociateViewModel : ViewModelBase
         {
             OnPropertyChanged(nameof(PrivateBuyoutOpeningTimeError));
             OnPropertyChanged(nameof(ParkHours));
-            OnPropertyChanged(nameof(EarlyRideTimeStartText));
-            OnPropertyChanged(nameof(EarlyRideTimeStartAutomationName));
-            OnPropertyChanged(nameof(EarlyRideTimeCaptionText));
             OnPropertyChanged(nameof(PrivateBuyoutHoursWarningText));
         });
 
@@ -1000,9 +1204,6 @@ public partial class AssociateViewModel : ViewModelBase
         {
             OnPropertyChanged(nameof(PrivateBuyoutClosingTimeError));
             OnPropertyChanged(nameof(ParkHours));
-            OnPropertyChanged(nameof(EarlyRideTimeStartText));
-            OnPropertyChanged(nameof(EarlyRideTimeStartAutomationName));
-            OnPropertyChanged(nameof(EarlyRideTimeCaptionText));
             OnPropertyChanged(nameof(PrivateBuyoutHoursWarningText));
         });
 
@@ -1033,22 +1234,6 @@ public partial class AssociateViewModel : ViewModelBase
             PreSoldsError = error;
         }
     }
-
-    /// <summary>Turning Early Ride Time off means "not applicable" (spec Part D) — its detail fields are cleared rather than left populated but hidden.</summary>
-    partial void OnIsEarlyRideTimeEnabledChanged(bool value)
-    {
-        if (!value && !_isApplyingWorkspace)
-        {
-            EarlyRideTimeDetailsText = null;
-            ParticipatingAttractionsText = null;
-        }
-
-        ScheduleAutosave();
-    }
-
-    partial void OnEarlyRideTimeDetailsTextChanged(string? value) => ScheduleAutosave();
-
-    partial void OnParticipatingAttractionsTextChanged(string? value) => ScheduleAutosave();
 
     partial void OnOperationalNotesTextChanged(string? value) => ScheduleAutosave();
 
@@ -1103,9 +1288,15 @@ public partial class AssociateViewModel : ViewModelBase
             PreSoldsText = draft.PreSolds?.ToString(CultureInfo.InvariantCulture);
             PreSoldsError = null;
 
-            IsEarlyRideTimeEnabled = !string.IsNullOrWhiteSpace(draft.EarlyRideTime.Details) || draft.EarlyRideTime.ParticipatingAttractions.Count > 0;
-            EarlyRideTimeDetailsText = draft.EarlyRideTime.Details;
-            ParticipatingAttractionsText = string.Join(Environment.NewLine, draft.EarlyRideTime.ParticipatingAttractions);
+            // Phase 17B: Early Ride Time is no longer part of the draft — nothing to populate here.
+            // The effective-ERT display properties read workspace.EarlyRideTime directly; the
+            // Configure/Override editor panels populate themselves on demand (OpenMonthlyErtEditorAsync/
+            // OpenOverrideEditorAsync) since they need the underlying monthly/override record, not the
+            // resolved effective value.
+            IsMonthlyErtEditorOpen = false;
+            IsOverrideEditorOpen = false;
+            MonthlyErtSaveError = null;
+            OverrideSaveError = null;
 
             OperationalNotesText = string.Join(Environment.NewLine, draft.OperationalNotes);
 
@@ -1209,7 +1400,6 @@ public partial class AssociateViewModel : ViewModelBase
             PrivateBuyout = new PrivateBuyoutOverride(PrivateBuyoutEnabled, _privateBuyoutOpeningTime, _privateBuyoutClosingTime, NullIfBlank(PrivateBuyoutDetails)),
             ProjectedAttendance = _projectedAttendance,
             PreSolds = _preSolds,
-            EarlyRideTime = new EarlyRideTimeDetails(NullIfBlank(EarlyRideTimeDetailsText), ParseLines(ParticipatingAttractionsText)),
             OperationalNotes = ParseLines(OperationalNotesText),
             DailyFeatureType = SelectedDailyFeatureTypeOption.Value,
             DailyFeatureText = NullIfBlank(DailyFeatureText),
@@ -1415,6 +1605,25 @@ public partial class AssociateViewModel : ViewModelBase
     }
 
     private static string? FormatTimeOrNull(TimeOnly? value) => value is { } time ? OperationalTimeFormatter.Format(time) : null;
+
+    /// <summary>Default <see cref="IErtConfigurationService"/> when none is supplied — only reachable if the composition root failed to register the real one; every production path registers <see cref="Application.Ert.ErtConfigurationService"/>. Reads return "nothing configured" rather than throwing (so the effective-ERT display still renders NotConfigured correctly); only a Save/Remove attempt throws.</summary>
+    private sealed class UnavailableErtConfigurationService : IErtConfigurationService
+    {
+        public Task<MonthlyErtConfiguration?> GetMonthlyAsync(int year, int month, CancellationToken cancellationToken = default) =>
+            Task.FromResult<MonthlyErtConfiguration?>(null);
+
+        public Task<MonthlyErtConfiguration> SaveMonthlyAsync(MonthlyErtDraft draft, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Early Ride Time configuration is not available.");
+
+        public Task<ErtDateOverride?> GetOverrideAsync(DateOnly operatingDate, CancellationToken cancellationToken = default) =>
+            Task.FromResult<ErtDateOverride?>(null);
+
+        public Task<ErtDateOverride> SaveOverrideAsync(ErtDateOverrideDraft draft, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Early Ride Time configuration is not available.");
+
+        public Task RemoveOverrideAsync(DateOnly operatingDate, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Early Ride Time configuration is not available.");
+    }
 
     /// <summary>Default <see cref="IPdfSaveFilePicker"/> when none is supplied — only reachable if the composition root failed to register the real one; every production path registers <see cref="Services.AvaloniaPdfSaveFilePicker"/>.</summary>
     private sealed class UnavailablePdfSaveFilePicker : IPdfSaveFilePicker

@@ -51,12 +51,6 @@ public sealed record PrivateBuyoutOverride(bool Enabled, TimeOnly? OpeningTime, 
     public static PrivateBuyoutOverride Disabled { get; } = new(false, null, null, null);
 }
 
-/// <summary>Early Ride Time details and participating attractions (spec §8.1). Free text plus a plain list — no attraction catalog exists to validate names against.</summary>
-public sealed record EarlyRideTimeDetails(string? Details, IReadOnlyList<string> ParticipatingAttractions)
-{
-    public static EarlyRideTimeDetails Empty { get; } = new(null, []);
-}
-
 /// <summary>
 /// Per-draft manual correction for one official product, keyed by <see cref="AssociateProductIdentity"/>
 /// (spec §7.5: include/exclude and a display-price override that never touches the official cache).
@@ -102,7 +96,6 @@ public sealed record AssociateDraftPayload(
     PrivateBuyoutOverride PrivateBuyout,
     int? ProjectedAttendance,
     int? PreSolds,
-    EarlyRideTimeDetails EarlyRideTime,
     IReadOnlyList<string> OperationalNotes,
     DailyFeatureType? DailyFeatureType,
     string? DailyFeatureText,
@@ -114,11 +107,16 @@ public sealed record AssociateDraftPayload(
     /// <summary>
     /// Current schema version for <see cref="Persistence.AssociateDraft.SchemaVersion"/> — bump when
     /// this shape changes incompatibly. Phase 8A bumped 1 -> 2 for the Daily Fun -> Daily Feature
-    /// rename plus <see cref="SectionSelection"/>; Phase 11D bumps 2 -> 3 for <see cref="SelectedOperationalNotes"/>.
-    /// See <see cref="AssociatePassdownService.DeserializeDraft"/> for how an older persisted payload
-    /// is migrated forward on read.
+    /// rename plus <see cref="SectionSelection"/>; Phase 11D bumped 2 -> 3 for <see cref="SelectedOperationalNotes"/>;
+    /// Phase 17B bumps 3 -> 4 for removing the old free-text <c>EarlyRideTime</c> field — Early Ride
+    /// Time is now authoritative monthly/override configuration
+    /// (<see cref="Ert.MonthlyErtConfiguration"/>/<see cref="Ert.ErtDateOverride"/>), never per-draft
+    /// content. A pre-17B draft's persisted "EarlyRideTime" JSON property is simply ignored on read —
+    /// nothing is migrated forward from it (spec Part 34: never fabricate persisted monthly intent
+    /// from old data). See <see cref="AssociateDraftPayloadSerializer.Deserialize"/> for every other
+    /// migrated-forward field.
     /// </summary>
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
 
     /// <summary>The draft an operating date starts with before an associate has entered anything (spec §8.3's "no draft -> default draft").</summary>
     public static AssociateDraftPayload CreateDefault() => new(
@@ -126,7 +124,6 @@ public sealed record AssociateDraftPayload(
         PrivateBuyoutOverride.Disabled,
         ProjectedAttendance: null,
         PreSolds: null,
-        EarlyRideTimeDetails.Empty,
         OperationalNotes: [],
         DailyFeatureType: null,
         DailyFeatureText: null,

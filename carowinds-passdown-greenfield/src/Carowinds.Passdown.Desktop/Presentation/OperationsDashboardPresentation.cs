@@ -1,5 +1,7 @@
 using System.Globalization;
 using Carowinds.Passdown.Application.Dashboard;
+using Carowinds.Passdown.Domain.Ert;
+using Carowinds.Passdown.Domain.Hours;
 
 namespace Carowinds.Passdown.Desktop.Presentation;
 
@@ -70,14 +72,16 @@ public sealed record OperationsDashboardPresentation(
             _ => ("Unknown", null, true),
         };
 
-        // "Not set" mirrors DailyFeatureTypeOption's own wording for an unset choice (Phase 10B Part H)
-        // rather than inventing a second "off" label. Phase 13F: prefer the derived start time
-        // (reusing the same ParkHours.NorthGateText already built above — never a second
-        // subtraction) over the free-text Details field, which no longer carries a manually-typed
-        // time. Falls back to "Enabled" when no effective opening exists yet.
-        var earlyRideTimeText = snapshot.EarlyRideTimeEnabled
-            ? (parkHours.NorthGateText is { } startText ? $"Starts {startText}" : "Enabled")
-            : "Not set";
+        // Phase 17B: the Dashboard reads the same resolver-produced EffectiveErt every other screen
+        // does (spec Part 17) — never park hours/North Gate. "Not configured" and "None" are kept
+        // deliberately terse (spec §17 "do not redesign Dashboard") rather than the fuller
+        // "Not configured for <Month Year>" wording the Associate screen/PDF use.
+        var earlyRideTimeText = snapshot.EarlyRideTime.Kind switch
+        {
+            EffectiveErtKind.Configured => $"Starts {OperationalTimeFormatter.Format(snapshot.EarlyRideTime.StartTime!.Value)}",
+            EffectiveErtKind.NoErt => "None",
+            _ => "Not configured",
+        };
 
         var dailyFeatureLabel = DailyFeatureTypeOption.For(snapshot.DailyFeatureType).Label;
 

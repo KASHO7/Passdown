@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Carowinds.Passdown.Application.Catalog;
 using Carowinds.Passdown.Application.Concurrency;
+using Carowinds.Passdown.Application.Ert;
 using Carowinds.Passdown.Application.Freshness;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
@@ -10,6 +11,7 @@ using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Catalog;
+using Carowinds.Passdown.Domain.Ert;
 using Carowinds.Passdown.Domain.Retrieval;
 
 namespace Carowinds.Passdown.Application.Associate;
@@ -37,7 +39,8 @@ public sealed class AssociatePassdownService(
     IClock clock,
     Func<IScheduledRefreshLock>? refreshLockFactory = null,
     IDeepRefreshStatusRepository? deepRefreshStatusRepository = null,
-    ISyncChangeTracker? syncChangeTracker = null) : IAssociatePassdownService
+    ISyncChangeTracker? syncChangeTracker = null,
+    IEffectiveErtResolver? effectiveErtResolver = null) : IAssociatePassdownService
 {
     private static readonly SourceCategory[] CatalogCategories =
     [
@@ -309,7 +312,16 @@ public sealed class AssociatePassdownService(
 
         var selectedNoteSourceStates = await ComposeSelectedOperationalNoteSourceStatesAsync(operatingDate, draft.SelectedOperationalNotes, cancellationToken).ConfigureAwait(false);
 
-        return new AssociateWorkspace(operatingDate, draft, parkHours, products, categoryStatuses, saveStatus, selectedNoteSourceStates);
+        // Phase 17B: the one place a date override and a monthly configuration are ever loaded
+        // together (IEffectiveErtResolver.ResolveAsync) — every consumer of this workspace
+        // (Associate screen, Dashboard, PDF, finalized snapshot) reads the result from here rather
+        // than re-resolving. A null resolver (every pre-17B test/caller that doesn't care about ERT)
+        // never fabricates a configured value — it composes as NotConfigured, matching spec §6/34/35.
+        var earlyRideTime = effectiveErtResolver is not null
+            ? await effectiveErtResolver.ResolveAsync(operatingDate, cancellationToken).ConfigureAwait(false)
+            : EffectiveErt.NotConfigured;
+
+        return new AssociateWorkspace(operatingDate, draft, parkHours, products, categoryStatuses, saveStatus, selectedNoteSourceStates, earlyRideTime);
     }
 
     /// <summary>

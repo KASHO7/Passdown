@@ -40,6 +40,14 @@ public static class SyncContentHash
     public static string ComputeNoteHash(OperationalNoteSyncPayload payload) =>
         Compute(OperationalNoteSyncPayloadSerializer.Serialize(payload));
 
+    /// <summary>Phase 17B — delegates to <see cref="MonthlyErtSyncPayloadSerializer"/>, mirroring <see cref="ComputeNoteHash"/>.</summary>
+    public static string ComputeMonthlyErtHash(MonthlyErtSyncPayload payload) =>
+        Compute(MonthlyErtSyncPayloadSerializer.Serialize(payload));
+
+    /// <summary>Phase 17B — delegates to <see cref="ErtDateOverrideSyncPayloadSerializer"/>, mirroring <see cref="ComputeNoteHash"/>.</summary>
+    public static string ComputeErtDateOverrideHash(ErtDateOverrideSyncPayload payload) =>
+        Compute(ErtDateOverrideSyncPayloadSerializer.Serialize(payload));
+
     private static string Compute(string canonicalJson) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalJson)));
 }

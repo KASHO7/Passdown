@@ -3,6 +3,7 @@ using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Documents.Tests.Associate.TestSupport;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Ert;
 using Carowinds.Passdown.Domain.Hours;
 
 namespace Carowinds.Passdown.Documents.Tests.Associate;
@@ -387,36 +388,48 @@ public sealed class AssociatePassdownPdfGeneratorTests
         Assert.Contains("4,200", text);
     }
 
-    // 8. Early Ride Time content appears when enabled.
+    // 8. Early Ride Time content appears when configured.
     [Fact]
-    public void EarlyRideTimeDetails_AppearWhenEnabled()
+    public void EarlyRideTimeDetails_AppearWhenConfigured()
     {
         var model = BuildModel(AssociateWorkspaceFixtures.NormalDay());
         var text = GenerateText(model);
 
-        Assert.True(model.EarlyRideTime.Enabled);
-        Assert.Contains("Early Ride Time from 8:30 AM", text);
+        Assert.Equal(EffectiveErtKind.Configured, model.EarlyRideTime.Kind);
+        Assert.Contains("8:30 AM", text);
+        // Not asserted as one contiguous string: the narrow ERT box word-wraps this note, and
+        // PdfPig's text extraction joins wrapped lines with no inserted space ("...the" + "benefit."
+        // -> "...thebenefit."), an extraction artifact unrelated to what the PDF actually renders.
+        Assert.Contains("For pass members", text);
+        Assert.Contains("benefit.", text);
     }
 
-    // Phase 13F Part R/S/L: the Early Ride Time box prints the derived start time, and it is the
-    // exact same value the Park Hours box prints as "North Gate" — never a second, independently
-    // computed time.
+    // Phase 17B spec Part 31: ERT is a monthly/override configuration, never derived from park hours
+    // — the Early Ride Time box's start time no longer matches (or depends on) the Park Hours box's
+    // "North Gate" value.
     [Fact]
-    public void EarlyRideTimeBox_ShowsDerivedStartTime_MatchingNorthGate()
+    public void EarlyRideTimeBox_ShowsResolvedStartTime_IndependentOfNorthGate()
     {
-        var model = BuildModel(AssociateWorkspaceFixtures.NormalDay());
+        // NormalDay's fixture ERT start (8:30 AM) happens to equal North Gate's derived value for
+        // that same fixture (park opens 9:00 AM) — overridden here to a deliberately different time
+        // so the assertion proves independence rather than relying on that coincidence.
+        var workspace = AssociateWorkspaceFixtures.NormalDay() with
+        {
+            EarlyRideTime = new EffectiveErt(EffectiveErtKind.Configured, EffectiveErtSource.Monthly, new TimeOnly(7, 45), ["Fury 325"], null),
+        };
+        var model = BuildModel(workspace);
         var text = GenerateText(model);
 
         Assert.NotNull(model.ParkHours.NorthGateText);
-        Assert.Equal("8:30 AM", model.ParkHours.NorthGateText);
+        Assert.NotEqual(model.EarlyRideTime.StartTimeText, model.ParkHours.NorthGateText);
         Assert.Contains("Start", text);
-        Assert.Contains(model.ParkHours.NorthGateText!, text);
+        Assert.Contains(model.EarlyRideTime.StartTimeText!, text);
     }
 
-    // Phase 13F Part H: a Closed date never fabricates a start time, but rides already saved on the
-    // draft still print rather than being silently erased.
+    // Phase 17B spec Part 31/32 (park-hours independence regression): a Closed park day never
+    // changes or erases the resolved ERT — rides/start time still print exactly as configured.
     [Fact]
-    public void EarlyRideTimeBox_ClosedDayWithRidesConfigured_DoesNotFabricateStartTime_ButKeepsRides()
+    public void EarlyRideTimeBox_ClosedParkDay_ErtUnaffected()
     {
         var workspace = AssociateWorkspaceFixtures.NormalDay() with
         {
@@ -428,9 +441,10 @@ public sealed class AssociatePassdownPdfGeneratorTests
         var model = BuildModel(workspace);
         var text = GenerateText(model);
 
-        Assert.True(model.EarlyRideTime.Enabled);
+        Assert.Equal(EffectiveErtKind.Configured, model.EarlyRideTime.Kind);
         Assert.Equal(PdfParkHoursStatus.Closed, model.ParkHours.Status);
         Assert.Contains("Fury 325", text); // rides preserved, never silently erased.
+        Assert.Contains("8:30 AM", text); // ERT start time preserved, independent of park status.
         Assert.Contains("park is closed", text, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -771,7 +785,7 @@ public sealed class AssociatePassdownPdfGeneratorTests
         Assert.Contains(model.OperatingDateText, text);
         Assert.Contains(model.ParkHours.HeadlineText, text);
         Assert.Contains("18,500", text); // attendance
-        Assert.Contains("Early Ride Time from 8:30 AM", text);
+        Assert.Contains("8:30 AM", text); // Early Ride Time start
         Assert.Contains("QUESTION OF THE DAY", text); // Daily Feature
     }
 

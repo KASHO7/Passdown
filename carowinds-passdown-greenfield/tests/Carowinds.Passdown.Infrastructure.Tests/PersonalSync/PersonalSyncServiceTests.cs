@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.Ert;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
@@ -58,7 +59,10 @@ public class PersonalSyncServiceTests : IDisposable
         IUnitOfWorkFactory UnitOfWorkFactory,
         FakeClock Clock,
         Guid DeviceId,
-        FakeSyncConfigurationStore ConfigStore);
+        FakeSyncConfigurationStore ConfigStore,
+        IErtConfigurationService ErtConfiguration,
+        IMonthlyErtRepository MonthlyErts,
+        IErtDateOverrideRepository ErtOverrides);
 
     private TestDevice CreateDevice(string name, Guid deviceId, FakeClock clock) => CreateDevice(name, deviceId, clock, _sharedRoot);
 
@@ -81,6 +85,8 @@ public class PersonalSyncServiceTests : IDisposable
             new Migration0011CreateDeepRefreshStatusTable(),
             new Migration0012CreateSyncEntityStateTable(),
             new Migration0013CreateSyncConflictsTable(),
+            new Migration0014CreateMonthlyErtConfigurationsTable(),
+            new Migration0015CreateErtDateOverridesTable(),
         ];
         new MigrationRunner(connectionFactory, migrations, NullLogger<MigrationRunner>.Instance).Run();
 
@@ -92,6 +98,9 @@ public class PersonalSyncServiceTests : IDisposable
         var unitOfWorkFactory = new SqliteUnitOfWorkFactory(connectionFactory);
         var tracker = new SyncChangeTracker(states, clock);
         var notes = new OperationalNotesService(noteRepository, clock, tracker);
+        var monthlyErtRepository = new SqliteMonthlyErtRepository(connectionFactory);
+        var ertDateOverrideRepository = new SqliteErtDateOverrideRepository(connectionFactory);
+        var ertConfiguration = new ErtConfigurationService(monthlyErtRepository, ertDateOverrideRepository, clock, tracker);
 
         var deviceIdProvider = new FakeDeviceIdProvider(deviceId);
         var configStore = new FakeSyncConfigurationStore { Current = new SyncConfiguration(true, sharedRoot) };
@@ -102,10 +111,10 @@ public class PersonalSyncServiceTests : IDisposable
             deviceIdProvider,
             clock);
 
-        var sync = new PersonalSyncService(settingsService, configStore, deviceIdProvider, drafts, noteRepository, finalizedPassdowns, states, conflicts, clock);
-        var resolution = new PersonalSyncConflictResolutionService(settingsService, deviceIdProvider, drafts, noteRepository, states, conflicts, unitOfWorkFactory, clock);
+        var sync = new PersonalSyncService(settingsService, configStore, deviceIdProvider, drafts, noteRepository, finalizedPassdowns, states, conflicts, clock, monthlyErtRepository, ertDateOverrideRepository);
+        var resolution = new PersonalSyncConflictResolutionService(settingsService, deviceIdProvider, drafts, noteRepository, states, conflicts, unitOfWorkFactory, clock, monthlyErtRepository, ertDateOverrideRepository);
 
-        return new TestDevice(drafts, notes, noteRepository, finalizedPassdowns, states, conflicts, tracker, sync, resolution, unitOfWorkFactory, clock, deviceId, configStore);
+        return new TestDevice(drafts, notes, noteRepository, finalizedPassdowns, states, conflicts, tracker, sync, resolution, unitOfWorkFactory, clock, deviceId, configStore, ertConfiguration, monthlyErtRepository, ertDateOverrideRepository);
     }
 
     private static Task SaveDraftAsync(TestDevice device, DateOnly date, AssociateDraftPayload payload)
@@ -382,7 +391,7 @@ public class PersonalSyncServiceTests : IDisposable
             new FakeOneDriveLocationSuggestionProvider(),
             new FakeDeviceIdProvider(DeviceAId),
             new FakeClock(BaseNow));
-        var sync = new PersonalSyncService(disabledSettings, new FakeSyncConfigurationStore { Current = SyncConfiguration.Disabled }, new FakeDeviceIdProvider(DeviceAId), device.Drafts, device.NoteRepository, device.FinalizedPassdowns, device.States, device.Conflicts, new FakeClock(BaseNow));
+        var sync = new PersonalSyncService(disabledSettings, new FakeSyncConfigurationStore { Current = SyncConfiguration.Disabled }, new FakeDeviceIdProvider(DeviceAId), device.Drafts, device.NoteRepository, device.FinalizedPassdowns, device.States, device.Conflicts, new FakeClock(BaseNow), device.MonthlyErts, device.ErtOverrides);
 
         var result = await sync.RunAsync();
 
@@ -400,7 +409,7 @@ public class PersonalSyncServiceTests : IDisposable
             new FakeOneDriveLocationSuggestionProvider(),
             new FakeDeviceIdProvider(DeviceAId),
             new FakeClock(BaseNow));
-        var sync = new PersonalSyncService(unavailableSettings, new FakeSyncConfigurationStore { Current = new SyncConfiguration(true, Path.Combine(_sharedRoot, "does", "not", "exist")) }, new FakeDeviceIdProvider(DeviceAId), device.Drafts, device.NoteRepository, device.FinalizedPassdowns, device.States, device.Conflicts, new FakeClock(BaseNow));
+        var sync = new PersonalSyncService(unavailableSettings, new FakeSyncConfigurationStore { Current = new SyncConfiguration(true, Path.Combine(_sharedRoot, "does", "not", "exist")) }, new FakeDeviceIdProvider(DeviceAId), device.Drafts, device.NoteRepository, device.FinalizedPassdowns, device.States, device.Conflicts, new FakeClock(BaseNow), device.MonthlyErts, device.ErtOverrides);
 
         // Local save must succeed regardless of sync folder health (§1).
         await SaveDraftAsync(device, OperatingDate, AssociateDraftPayload.CreateDefault());

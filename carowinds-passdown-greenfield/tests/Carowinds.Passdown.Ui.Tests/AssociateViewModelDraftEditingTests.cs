@@ -169,53 +169,9 @@ public class AssociateViewModelDraftEditingTests
         Assert.False(viewModel.Workspace!.Draft.SectionSelection.IncludeSeasonPasses);
     }
 
-    // 5. Early Ride Time fields persist.
-    [Fact]
-    public async Task EarlyRideTime_Edit_PersistsDetails()
-    {
-        var (viewModel, service, scheduler) = CreateViewModel();
-        await viewModel.PendingLoad;
-
-        viewModel.IsEarlyRideTimeEnabled = true;
-        viewModel.EarlyRideTimeDetailsText = "9:00 AM – 10:00 AM, first two rows only";
-        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
-
-        Assert.Equal("9:00 AM – 10:00 AM, first two rows only", service.SaveCalls.Last().Draft.EarlyRideTime.Details);
-    }
-
-    // 6. Participating attractions persist.
-    [Fact]
-    public async Task ParticipatingAttractions_Edit_PersistsAsList()
-    {
-        var (viewModel, service, scheduler) = CreateViewModel();
-        await viewModel.PendingLoad;
-
-        viewModel.IsEarlyRideTimeEnabled = true;
-        viewModel.ParticipatingAttractionsText = "Fury 325\nCopperhead Strike\n";
-        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
-
-        Assert.Equal(["Fury 325", "Copperhead Strike"], service.SaveCalls.Last().Draft.EarlyRideTime.ParticipatingAttractions);
-    }
-
-    /// <summary>Turning Early Ride Time off clears its detail fields back to "not applicable" (spec Part D).</summary>
-    [Fact]
-    public async Task EarlyRideTime_Disabled_ClearsDetailsAndAttractions()
-    {
-        var (viewModel, service, scheduler) = CreateViewModel();
-        await viewModel.PendingLoad;
-
-        viewModel.IsEarlyRideTimeEnabled = true;
-        viewModel.EarlyRideTimeDetailsText = "9:00 AM – 10:00 AM";
-        viewModel.ParticipatingAttractionsText = "Fury 325";
-        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
-
-        viewModel.IsEarlyRideTimeEnabled = false;
-        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
-
-        var draft = service.SaveCalls.Last().Draft;
-        Assert.Null(draft.EarlyRideTime.Details);
-        Assert.Empty(draft.EarlyRideTime.ParticipatingAttractions);
-    }
+    // Phase 17B: Early Ride Time is no longer part of the draft (moved to monthly/override
+    // configuration, its own repositories) — see AssociateViewModelEarlyRideTimeTests.cs for its
+    // coverage instead of the draft-editing tests this file used to carry.
 
     // 7. Manual hours override persists.
     [Fact]

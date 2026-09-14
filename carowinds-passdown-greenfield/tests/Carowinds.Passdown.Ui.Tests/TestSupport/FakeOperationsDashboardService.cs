@@ -3,6 +3,7 @@ using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Ert;
 using Carowinds.Passdown.Domain.Hours;
 
 namespace Carowinds.Passdown.Ui.Tests.TestSupport;
@@ -122,8 +123,7 @@ internal sealed class FakeOperationsDashboardService : IOperationsDashboardServi
         new DashboardPassdownStatusSummary(DashboardPassdownStatus.NoDraft, null, null),
         ProjectedAttendance: null,
         PreSolds: null,
-        EarlyRideTimeEnabled: false,
-        EarlyRideTimeDetails: null,
+        EarlyRideTime: EffectiveErt.NotConfigured,
         DailyFeatureType: null,
         DailyFeatureText: null,
         Notes: DashboardNotesSummary.Empty,

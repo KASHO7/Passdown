@@ -38,6 +38,21 @@ public class SyncPathServiceTests
     }
 
     [Fact]
+    public void GetMonthlyErtFilePath_UsesInvariantYearMonthFilename()
+    {
+        var expected = Path.Combine(Root, "Carowinds Operations Sync", "monthly-ert", "2026-09.json");
+        Assert.Equal(expected, SyncPathService.GetMonthlyErtFilePath(Root, 2026, 9));
+    }
+
+    [Fact]
+    public void GetErtDateOverrideFilePath_UsesInvariantIsoDateFilename()
+    {
+        var date = new DateOnly(2026, 9, 19);
+        var expected = Path.Combine(Root, "Carowinds Operations Sync", "ert-date-overrides", "2026-09-19.json");
+        Assert.Equal(expected, SyncPathService.GetErtDateOverrideFilePath(Root, date));
+    }
+
+    [Fact]
     public void GetHistoryJsonFilePath_UsesInvariantIsoDatePlusGuidFilename()
     {
         var date = new DateOnly(2026, 1, 5);

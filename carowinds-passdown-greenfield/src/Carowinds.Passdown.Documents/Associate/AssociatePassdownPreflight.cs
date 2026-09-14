@@ -1,3 +1,5 @@
+using Carowinds.Passdown.Domain.Ert;
+
 namespace Carowinds.Passdown.Documents.Associate;
 
 /// <summary>
@@ -113,20 +115,35 @@ public sealed class AssociatePassdownPreflightService : IAssociatePassdownPrefli
 
         lines += 2; // "Attendance" heading + combined projected/pre-sold line
 
-        lines += model.EarlyRideTime.Enabled
-            ? 1 // heading
-                + 1 // Phase 13F: derived start time / unavailable line, always printed when enabled
-                + Math.Max(1, EstimateWrappedLines(model.EarlyRideTime.Details, WrapCharsPerLine))
-                + (model.EarlyRideTime.ParticipatingAttractions.Count > 0
-                    ? EstimateWrappedLines(string.Join(", ", model.EarlyRideTime.ParticipatingAttractions), WrapCharsPerLine)
-                    : 0)
-            : 2; // heading + "Not applicable for this date."
+        lines += EstimateEarlyRideTimeLines(model.EarlyRideTime);
 
         lines += model.DailyFeature.HasContent
             ? 1 + Math.Max(1, EstimateWrappedLines(model.DailyFeature.Text, WrapCharsPerLine))
             : 0;
 
         return lines;
+    }
+
+    /// <summary>Phase 17B: mirrors <c>AssociatePassdownPdfGenerator.ComposeEarlyRideTimeBox</c>'s per-<see cref="EffectiveErtKind"/> line shape so the preflight estimate never drifts from what actually renders.</summary>
+    private static int EstimateEarlyRideTimeLines(PdfEarlyRideTime earlyRideTime)
+    {
+        const int heading = 1;
+
+        switch (earlyRideTime.Kind)
+        {
+            case EffectiveErtKind.NotConfigured:
+                return heading + 1; // "Not configured for <Month Year>."
+
+            case EffectiveErtKind.NoErt:
+                return heading + 1 + EstimateWrappedLines(earlyRideTime.Note, WrapCharsPerLine); // "No Early Ride Time today." + optional note
+
+            default:
+                return heading
+                    + 1 // Start line
+                    + (earlyRideTime.Rides.Count > 0 ? EstimateWrappedLines(string.Join(", ", earlyRideTime.Rides), WrapCharsPerLine) : 0)
+                    + (earlyRideTime.Source == EffectiveErtSource.Override ? 1 : 0) // "Date override" caption
+                    + EstimateWrappedLines(earlyRideTime.Note, WrapCharsPerLine);
+        }
     }
 
     /// <summary>

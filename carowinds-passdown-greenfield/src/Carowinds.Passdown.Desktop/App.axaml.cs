@@ -7,6 +7,7 @@ using Carowinds.Passdown.Application.Catalog;
 using Carowinds.Passdown.Application.Concurrency;
 using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Diagnostics;
+using Carowinds.Passdown.Application.Ert;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Freshness;
 using Carowinds.Passdown.Application.History;
@@ -285,6 +286,8 @@ public partial class App : global::Avalonia.Application
             new Migration0011CreateDeepRefreshStatusTable(),
             new Migration0012CreateSyncEntityStateTable(),
             new Migration0013CreateSyncConflictsTable(),
+            new Migration0014CreateMonthlyErtConfigurationsTable(),
+            new Migration0015CreateErtDateOverridesTable(),
         ]);
         services.AddSingleton<MigrationRunner>();
 
@@ -304,6 +307,16 @@ public partial class App : global::Avalonia.Application
         // pattern) — OS-level exclusive file access is what actually enforces the single-holder
         // guarantee, not shared C# instance state.
         services.AddSingleton<Func<IScheduledRefreshLock>>(_ => () => new FileScheduledRefreshLock(FileScheduledRefreshLock.DefaultPath));
+
+        // Phase 17B: the persistent monthly Early Ride Time foundation, registered ahead of
+        // IAssociatePassdownService so its IEffectiveErtResolver constructor dependency resolves.
+        // IErtConfigurationService (save/remove, used by the Associate screen's Configure/Override
+        // actions) depends on IClock/ISyncChangeTracker only, mirroring IOperationalNotesService.
+        services.AddSingleton<IMonthlyErtRepository, SqliteMonthlyErtRepository>();
+        services.AddSingleton<IErtDateOverrideRepository, SqliteErtDateOverrideRepository>();
+        services.AddSingleton<IEffectiveErtResolver, EffectiveErtResolver>();
+        services.AddSingleton<IErtConfigurationService, ErtConfigurationService>();
+
         services.AddSingleton<IAssociatePassdownService, AssociatePassdownService>();
 
         // Phase 4F Part I: the Associate PDF export pipeline (Documents project) plus the native

@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Ert;
 
 namespace Carowinds.Passdown.Application.Associate;
 
@@ -31,6 +32,15 @@ public sealed record AssociateProductCategoryStatus(
 /// compose, never persisted. Defaults to <see langword="null"/> (treated as empty by every reader) so
 /// every pre-11E construction site of this record keeps compiling unchanged.
 /// </param>
+/// <param name="EarlyRideTime">
+/// Phase 17B: the one resolved Early Ride Time value for <see cref="OperatingDate"/> —
+/// <see cref="IEffectiveErtResolver.ResolveAsync"/>'s result, computed once in
+/// <see cref="AssociatePassdownService.ComposeAsync"/>. Every consumer (Associate screen, Dashboard,
+/// PDF, finalized snapshot) reads this rather than resolving ERT itself. The constructor parameter is
+/// nullable only so every pre-17B construction site of this record (tests, fixtures) keeps compiling
+/// unchanged; the <see cref="EarlyRideTime"/> property itself is never null — a <see langword="null"/>
+/// argument maps to <see cref="EffectiveErt.NotConfigured"/>, never a silently fabricated configured value.
+/// </param>
 public sealed record AssociateWorkspace(
     DateOnly OperatingDate,
     AssociateDraftPayload Draft,
@@ -38,4 +48,8 @@ public sealed record AssociateWorkspace(
     IReadOnlyList<AssociateProduct> Products,
     IReadOnlyList<AssociateProductCategoryStatus> CategoryStatuses,
     AssociateSaveStatus SaveStatus,
-    IReadOnlyDictionary<Guid, OperationalNoteSourceComparisonState>? SelectedOperationalNoteSourceStates = null);
+    IReadOnlyDictionary<Guid, OperationalNoteSourceComparisonState>? SelectedOperationalNoteSourceStates = null,
+    EffectiveErt? EarlyRideTime = null)
+{
+    public EffectiveErt EarlyRideTime { get; init; } = EarlyRideTime ?? EffectiveErt.NotConfigured;
+}

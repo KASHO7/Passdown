@@ -92,4 +92,63 @@ public class SyncEntityIdentityTests
 
         Assert.NotEqual(SyncEntityIdentity.ForFinalizedPassdown(idA), SyncEntityIdentity.ForFinalizedPassdown(idB));
     }
+
+    // ----- Phase 17B: MonthlyErt / ErtDateOverride -----
+
+    [Fact]
+    public void ForMonthlyErt_UsesInvariantYearMonth()
+    {
+        Assert.Equal("2026-09", SyncEntityIdentity.ForMonthlyErt(2026, 9));
+    }
+
+    [Fact]
+    public void TryParseMonthlyErtId_RoundTripsAFormattedId()
+    {
+        Assert.True(SyncEntityIdentity.TryParseMonthlyErtId(SyncEntityIdentity.ForMonthlyErt(2026, 9), out var year, out var month));
+        Assert.Equal(2026, year);
+        Assert.Equal(9, month);
+    }
+
+    [Theory]
+    [InlineData("2026-9")]
+    [InlineData("2026-09-09")]
+    [InlineData("2026-13")]
+    [InlineData("2026-00")]
+    [InlineData("not-a-month")]
+    [InlineData("")]
+    public void TryParseMonthlyErtId_NonCanonicalText_ReturnsFalse(string text)
+    {
+        Assert.False(SyncEntityIdentity.TryParseMonthlyErtId(text, out _, out _));
+    }
+
+    // Spec Part 5/30: September 2026 and September 2027 are different identities.
+    [Fact]
+    public void MonthlyErtIdentity_SameMonthDifferentYear_NeverCollide()
+    {
+        Assert.NotEqual(SyncEntityIdentity.ForMonthlyErt(2026, 9), SyncEntityIdentity.ForMonthlyErt(2027, 9));
+    }
+
+    [Fact]
+    public void ForErtDateOverride_UsesInvariantIsoDate()
+    {
+        Assert.Equal("2026-09-19", SyncEntityIdentity.ForErtDateOverride(new DateOnly(2026, 9, 19)));
+    }
+
+    [Fact]
+    public void TryParseErtDateOverrideId_RoundTripsAFormattedId()
+    {
+        var date = new DateOnly(2026, 9, 19);
+
+        Assert.True(SyncEntityIdentity.TryParseErtDateOverrideId(SyncEntityIdentity.ForErtDateOverride(date), out var parsed));
+        Assert.Equal(date, parsed);
+    }
+
+    [Theory]
+    [InlineData("2026-9-19")]
+    [InlineData("not-a-date")]
+    [InlineData("")]
+    public void TryParseErtDateOverrideId_NonCanonicalText_ReturnsFalse(string text)
+    {
+        Assert.False(SyncEntityIdentity.TryParseErtDateOverrideId(text, out _));
+    }
 }

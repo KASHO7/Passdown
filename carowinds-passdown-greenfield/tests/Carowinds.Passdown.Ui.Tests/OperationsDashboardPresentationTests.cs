@@ -3,6 +3,7 @@ using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Desktop.Presentation;
+using Carowinds.Passdown.Domain.Ert;
 using Carowinds.Passdown.Domain.Hours;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
 
@@ -73,45 +74,47 @@ public class OperationsDashboardPresentationTests
         Assert.Equal("0", presentation.AttendanceText);
     }
 
+    // Phase 17B: the Dashboard reads the same resolver-produced EffectiveErt as every other screen —
+    // never park hours/North Gate.
     [Fact]
-    public void Build_EarlyRideTimeDisabled_ShowsNotSet()
+    public void Build_EarlyRideTimeNotConfigured_ShowsNotConfigured()
     {
-        var snapshot = DefaultSnapshot() with { EarlyRideTimeEnabled = false, EarlyRideTimeDetails = null };
+        var snapshot = DefaultSnapshot() with { EarlyRideTime = EffectiveErt.NotConfigured };
 
         var presentation = OperationsDashboardPresentation.Build(snapshot);
 
-        Assert.Equal("Not set", presentation.EarlyRideTimeText);
+        Assert.Equal("Not configured", presentation.EarlyRideTimeText);
     }
 
-    // Phase 13F: the Dashboard's ERT line now prefers the derived start time (the same
-    // ParkHoursPresentation.NorthGateText the Park Hours summary already computes) over the free-text
-    // Details field, which no longer carries a manually-typed time.
     [Fact]
-    public void Build_EarlyRideTimeEnabledWithKnownHours_ShowsDerivedStart()
+    public void Build_EarlyRideTimeNoErt_ShowsNone()
+    {
+        var snapshot = DefaultSnapshot() with
+        {
+            EarlyRideTime = new EffectiveErt(EffectiveErtKind.NoErt, EffectiveErtSource.Monthly, null, [], null),
+        };
+
+        var presentation = OperationsDashboardPresentation.Build(snapshot);
+
+        Assert.Equal("None", presentation.EarlyRideTimeText);
+    }
+
+    // Independent of park hours (spec Part 31) — a known-open park with a different opening time
+    // must not influence what the ERT line shows.
+    [Fact]
+    public void Build_EarlyRideTimeConfigured_ShowsResolvedStart_IndependentOfParkHours()
     {
         var effective = ParkHoursCalculator.Calculate(false, new TimeOnly(10, 0), new TimeOnly(22, 0), false, null, null, false, null, null);
         var hours = new AssociateParkHoursView(effective, new AssociateVerificationInfo(AssociateVerificationState.Verified, DateTimeOffset.UtcNow, null, null), false, new TimeOnly(10, 0), new TimeOnly(22, 0));
         var snapshot = DefaultSnapshot() with
         {
             ParkStatus = new DashboardParkStatusSummary(DashboardParkStatus.Open, hours),
-            EarlyRideTimeEnabled = true,
-            EarlyRideTimeDetails = "First two rows only.",
+            EarlyRideTime = new EffectiveErt(EffectiveErtKind.Configured, EffectiveErtSource.Monthly, new TimeOnly(8, 30), ["Fury 325"], null),
         };
 
         var presentation = OperationsDashboardPresentation.Build(snapshot);
 
-        Assert.Equal("Starts 9:30 AM", presentation.EarlyRideTimeText);
-    }
-
-    // Hours not yet known — never fabricate a start time, but still distinguish "enabled" from "Not set".
-    [Fact]
-    public void Build_EarlyRideTimeEnabledWithoutKnownHours_ShowsEnabledFallback()
-    {
-        var snapshot = DefaultSnapshot() with { EarlyRideTimeEnabled = true, EarlyRideTimeDetails = null };
-
-        var presentation = OperationsDashboardPresentation.Build(snapshot);
-
-        Assert.Equal("Enabled", presentation.EarlyRideTimeText);
+        Assert.Equal("Starts 8:30 AM", presentation.EarlyRideTimeText); // 9:30 AM (North Gate) would be the old, now-removed derivation.
     }
 
     [Fact]

@@ -75,7 +75,6 @@ internal static class DraftConflictComparer
             new ConflictFieldComparison("Private Buyout", L(FormatPrivateBuyout), R(FormatPrivateBuyout)),
             new ConflictFieldComparison("Projected Attendance", L(p => p.ProjectedAttendance?.ToString() ?? "—"), R(p => p.ProjectedAttendance?.ToString() ?? "—")),
             new ConflictFieldComparison("Pre-Solds", L(p => p.PreSolds?.ToString() ?? "—"), R(p => p.PreSolds?.ToString() ?? "—")),
-            new ConflictFieldComparison("Early Ride Time", L(FormatEarlyRideTime), R(FormatEarlyRideTime)),
             new ConflictFieldComparison("Daily Feature", L(FormatDailyFeature), R(FormatDailyFeature)),
             new ConflictFieldComparison("Product Overrides", L(p => p.ProductOverrides.Count.ToString()), R(p => p.ProductOverrides.Count.ToString())),
             new ConflictFieldComparison("Custom Products", L(FormatCustomProducts), R(FormatCustomProducts)),
@@ -90,11 +89,6 @@ internal static class DraftConflictComparer
     private static string FormatPrivateBuyout(AssociateDraftPayload p) => p.PrivateBuyout.Enabled
         ? $"{p.PrivateBuyout.OpeningTime:h\\:mm tt} – {p.PrivateBuyout.ClosingTime:h\\:mm tt}{(string.IsNullOrWhiteSpace(p.PrivateBuyout.Details) ? "" : $" ({p.PrivateBuyout.Details})")}"
         : "Off";
-
-    private static string FormatEarlyRideTime(AssociateDraftPayload p) =>
-        string.IsNullOrWhiteSpace(p.EarlyRideTime.Details) && p.EarlyRideTime.ParticipatingAttractions.Count == 0
-            ? "—"
-            : $"{p.EarlyRideTime.Details} [{string.Join(", ", p.EarlyRideTime.ParticipatingAttractions)}]";
 
     private static string FormatDailyFeature(AssociateDraftPayload p) =>
         p.DailyFeatureType is null ? "—" : $"{p.DailyFeatureType}: {p.DailyFeatureText}";

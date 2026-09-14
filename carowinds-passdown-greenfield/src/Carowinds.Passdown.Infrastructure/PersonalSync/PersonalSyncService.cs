@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.Ert;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
@@ -35,7 +36,9 @@ public sealed class PersonalSyncService(
     IFinalizedPassdownRepository finalizedPassdownRepository,
     ISyncEntityStateRepository stateRepository,
     ISyncConflictRepository conflictRepository,
-    IClock clock) : IPersonalSyncService
+    IClock clock,
+    IMonthlyErtRepository monthlyErtRepository,
+    IErtDateOverrideRepository ertDateOverrideRepository) : IPersonalSyncService
 {
     private static readonly JsonSerializerOptions DraftPayloadWriteOptions = new();
 
@@ -86,9 +89,13 @@ public sealed class PersonalSyncService(
             await ImportDraftsAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
             await ImportNotesAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
             await ImportHistoryAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
+            await ImportMonthlyErtsAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
+            await ImportErtDateOverridesAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
             await ExportDraftsAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
             await ExportNotesAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
             await ExportHistoryAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
+            await ExportMonthlyErtsAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
+            await ExportErtDateOverridesAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
 
             return counters.ToResult();
         }
@@ -680,6 +687,528 @@ public sealed class PersonalSyncService(
         await ExportPendingTombstonesAsync(root, deviceId, now, liveEntityIds, SyncEntityType.OperationalNote, counters, cancellationToken).ConfigureAwait(false);
     }
 
+    // ----- Monthly ERT: import (Phase 17B — mirrors Notes exactly: mutable, tombstone-capable, one JSON blob) -----
+
+    private async Task ImportMonthlyErtsAsync(string root, Guid deviceId, DateTimeOffset now, Counters counters, CancellationToken cancellationToken)
+    {
+        var directory = SyncPathService.GetMonthlyErtsDirectoryPath(root);
+        if (!Directory.Exists(directory))
+        {
+            return;
+        }
+
+        foreach (var file in Directory.GetFiles(directory, "*.json"))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!SyncEntityIdentity.TryParseMonthlyErtId(Path.GetFileNameWithoutExtension(file), out var year, out var month))
+            {
+                continue; // Not a canonical <yyyy-MM>.json filename — leave untouched (§28).
+            }
+
+            var readResult = await SyncFileReader.ReadJsonAsync<SyncEnvelope>(
+                file,
+                SyncEnvelopeSerializer.Options,
+                envelope => envelope.SyncSchemaVersion <= SyncEnvelopeSerializer.CurrentSyncSchemaVersion,
+                cancellationToken).ConfigureAwait(false);
+
+            switch (readResult.Status)
+            {
+                case SyncFileReadStatus.Success:
+                    await ProcessMonthlyErtEnvelopeAsync(readResult.Value!, year, month, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
+                    break;
+
+                case SyncFileReadStatus.Missing:
+                    break;
+
+                case SyncFileReadStatus.IoError:
+                    counters.IoFailures++;
+                    break;
+
+                default:
+                    counters.Malformed++;
+                    break;
+            }
+        }
+    }
+
+    private async Task ProcessMonthlyErtEnvelopeAsync(
+        SyncEnvelope envelope, int year, int month, Guid deviceId, DateTimeOffset now, Counters counters, CancellationToken cancellationToken)
+    {
+        var entityId = SyncEntityIdentity.ForMonthlyErt(year, month);
+        if (envelope.EntityType != SyncEntityType.MonthlyErt || !string.Equals(envelope.EntityId, entityId, StringComparison.Ordinal))
+        {
+            counters.Malformed++;
+            return;
+        }
+
+        MonthlyErtSyncPayload? remotePayload = null;
+        string remoteHash = string.Empty;
+
+        if (!envelope.IsDeleted)
+        {
+            try
+            {
+                remotePayload = MonthlyErtSyncPayloadSerializer.Deserialize(envelope.Payload);
+            }
+            catch (JsonException)
+            {
+                counters.Malformed++;
+                return;
+            }
+
+            remoteHash = SyncContentHash.ComputeMonthlyErtHash(remotePayload);
+        }
+
+        var localConfiguration = await monthlyErtRepository.GetAsync(year, month, cancellationToken).ConfigureAwait(false);
+        var state = await stateRepository.GetAsync(SyncEntityType.MonthlyErt, entityId, cancellationToken).ConfigureAwait(false);
+
+        var localHash = localConfiguration is null ? null : SyncContentHash.ComputeMonthlyErtHash(MonthlyErtSyncPayload.FromDomain(localConfiguration));
+
+        var decision = SyncReconciliation.Decide(deviceId, envelope, localConfiguration is not null, localHash, state, remoteHash);
+
+        switch (decision)
+        {
+            case SyncImportDecision.Ignored:
+                counters.Unchanged++;
+                break;
+
+            case SyncImportDecision.RemoteOnlyImport:
+                await monthlyErtRepository.UpsertAsync(remotePayload!.ToDomain(), cancellationToken: cancellationToken).ConfigureAwait(false);
+                await stateRepository.UpsertAsync(
+                    SyncEntityState.CreateNew(SyncEntityType.MonthlyErt, entityId, now) with
+                    {
+                        SyncedRevision = 1,
+                        SyncedContentHash = remoteHash,
+                        LastRemoteDeviceId = envelope.DeviceId,
+                        LastRemoteRevision = envelope.Revision,
+                    },
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                counters.Imported++;
+                break;
+
+            case SyncImportDecision.Converged:
+            {
+                var baseRevision = state?.LocalRevision ?? 1;
+                await stateRepository.UpsertAsync(
+                    (state ?? SyncEntityState.CreateNew(SyncEntityType.MonthlyErt, entityId, now)) with
+                    {
+                        LocalRevision = baseRevision,
+                        SyncedRevision = baseRevision,
+                        SyncedContentHash = remoteHash,
+                        LastRemoteDeviceId = envelope.DeviceId,
+                        LastRemoteRevision = envelope.Revision,
+                        ConflictState = SyncConflictState.None,
+                        ConflictRemoteDeviceId = null,
+                        ConflictRemoteRevision = null,
+                        ConflictRemoteContentHash = null,
+                        ConflictDetectedAtUtc = null,
+                        UpdatedAtUtc = now,
+                    },
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                counters.Unchanged++;
+                break;
+            }
+
+            case SyncImportDecision.SafeRemoteUpdate:
+            {
+                var newRevision = (state?.LocalRevision ?? 1) + 1;
+                await monthlyErtRepository.UpsertAsync(remotePayload!.ToDomain(), cancellationToken: cancellationToken).ConfigureAwait(false);
+                await stateRepository.UpsertAsync(
+                    (state ?? SyncEntityState.CreateNew(SyncEntityType.MonthlyErt, entityId, now)) with
+                    {
+                        LocalRevision = newRevision,
+                        SyncedRevision = newRevision,
+                        SyncedContentHash = remoteHash,
+                        LastRemoteDeviceId = envelope.DeviceId,
+                        LastRemoteRevision = envelope.Revision,
+                        ConflictState = SyncConflictState.None,
+                        ConflictRemoteDeviceId = null,
+                        ConflictRemoteRevision = null,
+                        ConflictRemoteContentHash = null,
+                        ConflictDetectedAtUtc = null,
+                        UpdatedAtUtc = now,
+                    },
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                counters.Imported++;
+                break;
+            }
+
+            case SyncImportDecision.Conflict:
+            case SyncImportDecision.LocalDeletionConflict:
+                await RecordConflictAsync(SyncEntityType.MonthlyErt, entityId, envelope, remotePayload is null ? null : MonthlyErtSyncPayloadSerializer.Serialize(remotePayload), remoteHash, isDeleted: false, state, now, cancellationToken).ConfigureAwait(false);
+                counters.Conflicts++;
+                break;
+
+            case SyncImportDecision.RemoteDeletionAlreadyAbsent:
+                if (state is not null)
+                {
+                    await stateRepository.UpsertAsync(
+                        state with { LastRemoteDeviceId = envelope.DeviceId, LastRemoteRevision = envelope.Revision, UpdatedAtUtc = now },
+                        cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
+                counters.Unchanged++;
+                break;
+
+            case SyncImportDecision.RemoteDeletionSafeApply:
+            {
+                await monthlyErtRepository.DeleteAsync(year, month, cancellationToken: cancellationToken).ConfigureAwait(false);
+                var newRevision = (state?.LocalRevision ?? 1) + 1;
+                await stateRepository.UpsertAsync(
+                    (state ?? SyncEntityState.CreateNew(SyncEntityType.MonthlyErt, entityId, now)) with
+                    {
+                        LocalRevision = newRevision,
+                        SyncedRevision = newRevision,
+                        SyncedContentHash = SyncContentHash.TombstoneMarker,
+                        LastRemoteDeviceId = envelope.DeviceId,
+                        LastRemoteRevision = envelope.Revision,
+                        ConflictState = SyncConflictState.None,
+                        ConflictRemoteDeviceId = null,
+                        ConflictRemoteRevision = null,
+                        ConflictRemoteContentHash = null,
+                        ConflictDetectedAtUtc = null,
+                        UpdatedAtUtc = now,
+                    },
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                counters.Imported++;
+                break;
+            }
+
+            case SyncImportDecision.RemoteDeletionConflict:
+                await RecordConflictAsync(SyncEntityType.MonthlyErt, entityId, envelope, remotePayloadJson: null, remoteHash: null, isDeleted: true, state, now, cancellationToken).ConfigureAwait(false);
+                counters.Conflicts++;
+                break;
+        }
+    }
+
+    // ----- Monthly ERT: export -----
+
+    private async Task ExportMonthlyErtsAsync(string root, Guid deviceId, DateTimeOffset now, Counters counters, CancellationToken cancellationToken)
+    {
+        var configurations = await monthlyErtRepository.ListAsync(cancellationToken).ConfigureAwait(false);
+        var liveEntityIds = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var configuration in configurations)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var entityId = SyncEntityIdentity.ForMonthlyErt(configuration.Year, configuration.Month);
+            liveEntityIds.Add(entityId);
+
+            var state = await stateRepository.GetAsync(SyncEntityType.MonthlyErt, entityId, cancellationToken).ConfigureAwait(false);
+            if (state?.ConflictState == SyncConflictState.Conflicting)
+            {
+                continue;
+            }
+
+            var payload = MonthlyErtSyncPayload.FromDomain(configuration);
+            var hash = SyncContentHash.ComputeMonthlyErtHash(payload);
+
+            if (state is not null && string.Equals(state.SyncedContentHash, hash, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var revision = state?.LocalRevision ?? 1;
+            var envelope = new SyncEnvelope
+            {
+                SyncSchemaVersion = SyncEnvelopeSerializer.CurrentSyncSchemaVersion,
+                EntityType = SyncEntityType.MonthlyErt,
+                EntityId = entityId,
+                DeviceId = deviceId,
+                Revision = revision,
+                ModifiedUtc = configuration.ModifiedUtc,
+                IsDeleted = false,
+                PayloadSchemaVersion = MonthlyErtSyncPayload.CurrentSchemaVersion,
+                Payload = JsonSerializer.SerializeToElement(payload, MonthlyErtSyncPayloadSerializer.Options),
+            };
+
+            try
+            {
+                await AtomicFileWriter.WriteTextAsync(SyncPathService.GetMonthlyErtFilePath(root, configuration.Year, configuration.Month), SyncEnvelopeSerializer.Serialize(envelope), cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                counters.IoFailures++;
+                continue;
+            }
+
+            await stateRepository.UpsertAsync(
+                (state ?? SyncEntityState.CreateNew(SyncEntityType.MonthlyErt, entityId, now)) with
+                {
+                    LocalRevision = revision,
+                    SyncedRevision = revision,
+                    SyncedContentHash = hash,
+                    UpdatedAtUtc = now,
+                },
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            counters.Exported++;
+        }
+
+        await ExportPendingTombstonesAsync(root, deviceId, now, liveEntityIds, SyncEntityType.MonthlyErt, counters, cancellationToken).ConfigureAwait(false);
+    }
+
+    // ----- ERT date override: import (mirrors Monthly ERT above) -----
+
+    private async Task ImportErtDateOverridesAsync(string root, Guid deviceId, DateTimeOffset now, Counters counters, CancellationToken cancellationToken)
+    {
+        var directory = SyncPathService.GetErtDateOverridesDirectoryPath(root);
+        if (!Directory.Exists(directory))
+        {
+            return;
+        }
+
+        foreach (var file in Directory.GetFiles(directory, "*.json"))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!SyncEntityIdentity.TryParseErtDateOverrideId(Path.GetFileNameWithoutExtension(file), out var operatingDate))
+            {
+                continue;
+            }
+
+            var readResult = await SyncFileReader.ReadJsonAsync<SyncEnvelope>(
+                file,
+                SyncEnvelopeSerializer.Options,
+                envelope => envelope.SyncSchemaVersion <= SyncEnvelopeSerializer.CurrentSyncSchemaVersion,
+                cancellationToken).ConfigureAwait(false);
+
+            switch (readResult.Status)
+            {
+                case SyncFileReadStatus.Success:
+                    await ProcessErtDateOverrideEnvelopeAsync(readResult.Value!, operatingDate, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
+                    break;
+
+                case SyncFileReadStatus.Missing:
+                    break;
+
+                case SyncFileReadStatus.IoError:
+                    counters.IoFailures++;
+                    break;
+
+                default:
+                    counters.Malformed++;
+                    break;
+            }
+        }
+    }
+
+    private async Task ProcessErtDateOverrideEnvelopeAsync(
+        SyncEnvelope envelope, DateOnly operatingDate, Guid deviceId, DateTimeOffset now, Counters counters, CancellationToken cancellationToken)
+    {
+        var entityId = SyncEntityIdentity.ForErtDateOverride(operatingDate);
+        if (envelope.EntityType != SyncEntityType.ErtDateOverride || !string.Equals(envelope.EntityId, entityId, StringComparison.Ordinal))
+        {
+            counters.Malformed++;
+            return;
+        }
+
+        ErtDateOverrideSyncPayload? remotePayload = null;
+        string remoteHash = string.Empty;
+
+        if (!envelope.IsDeleted)
+        {
+            try
+            {
+                remotePayload = ErtDateOverrideSyncPayloadSerializer.Deserialize(envelope.Payload);
+            }
+            catch (JsonException)
+            {
+                counters.Malformed++;
+                return;
+            }
+
+            remoteHash = SyncContentHash.ComputeErtDateOverrideHash(remotePayload);
+        }
+
+        var localOverride = await ertDateOverrideRepository.GetAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+        var state = await stateRepository.GetAsync(SyncEntityType.ErtDateOverride, entityId, cancellationToken).ConfigureAwait(false);
+
+        var localHash = localOverride is null ? null : SyncContentHash.ComputeErtDateOverrideHash(ErtDateOverrideSyncPayload.FromDomain(localOverride));
+
+        var decision = SyncReconciliation.Decide(deviceId, envelope, localOverride is not null, localHash, state, remoteHash);
+
+        switch (decision)
+        {
+            case SyncImportDecision.Ignored:
+                counters.Unchanged++;
+                break;
+
+            case SyncImportDecision.RemoteOnlyImport:
+                await ertDateOverrideRepository.UpsertAsync(remotePayload!.ToDomain(), cancellationToken: cancellationToken).ConfigureAwait(false);
+                await stateRepository.UpsertAsync(
+                    SyncEntityState.CreateNew(SyncEntityType.ErtDateOverride, entityId, now) with
+                    {
+                        SyncedRevision = 1,
+                        SyncedContentHash = remoteHash,
+                        LastRemoteDeviceId = envelope.DeviceId,
+                        LastRemoteRevision = envelope.Revision,
+                    },
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                counters.Imported++;
+                break;
+
+            case SyncImportDecision.Converged:
+            {
+                var baseRevision = state?.LocalRevision ?? 1;
+                await stateRepository.UpsertAsync(
+                    (state ?? SyncEntityState.CreateNew(SyncEntityType.ErtDateOverride, entityId, now)) with
+                    {
+                        LocalRevision = baseRevision,
+                        SyncedRevision = baseRevision,
+                        SyncedContentHash = remoteHash,
+                        LastRemoteDeviceId = envelope.DeviceId,
+                        LastRemoteRevision = envelope.Revision,
+                        ConflictState = SyncConflictState.None,
+                        ConflictRemoteDeviceId = null,
+                        ConflictRemoteRevision = null,
+                        ConflictRemoteContentHash = null,
+                        ConflictDetectedAtUtc = null,
+                        UpdatedAtUtc = now,
+                    },
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                counters.Unchanged++;
+                break;
+            }
+
+            case SyncImportDecision.SafeRemoteUpdate:
+            {
+                var newRevision = (state?.LocalRevision ?? 1) + 1;
+                await ertDateOverrideRepository.UpsertAsync(remotePayload!.ToDomain(), cancellationToken: cancellationToken).ConfigureAwait(false);
+                await stateRepository.UpsertAsync(
+                    (state ?? SyncEntityState.CreateNew(SyncEntityType.ErtDateOverride, entityId, now)) with
+                    {
+                        LocalRevision = newRevision,
+                        SyncedRevision = newRevision,
+                        SyncedContentHash = remoteHash,
+                        LastRemoteDeviceId = envelope.DeviceId,
+                        LastRemoteRevision = envelope.Revision,
+                        ConflictState = SyncConflictState.None,
+                        ConflictRemoteDeviceId = null,
+                        ConflictRemoteRevision = null,
+                        ConflictRemoteContentHash = null,
+                        ConflictDetectedAtUtc = null,
+                        UpdatedAtUtc = now,
+                    },
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                counters.Imported++;
+                break;
+            }
+
+            case SyncImportDecision.Conflict:
+            case SyncImportDecision.LocalDeletionConflict:
+                await RecordConflictAsync(SyncEntityType.ErtDateOverride, entityId, envelope, remotePayload is null ? null : ErtDateOverrideSyncPayloadSerializer.Serialize(remotePayload), remoteHash, isDeleted: false, state, now, cancellationToken).ConfigureAwait(false);
+                counters.Conflicts++;
+                break;
+
+            case SyncImportDecision.RemoteDeletionAlreadyAbsent:
+                if (state is not null)
+                {
+                    await stateRepository.UpsertAsync(
+                        state with { LastRemoteDeviceId = envelope.DeviceId, LastRemoteRevision = envelope.Revision, UpdatedAtUtc = now },
+                        cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
+                counters.Unchanged++;
+                break;
+
+            case SyncImportDecision.RemoteDeletionSafeApply:
+            {
+                await ertDateOverrideRepository.DeleteAsync(operatingDate, cancellationToken: cancellationToken).ConfigureAwait(false);
+                var newRevision = (state?.LocalRevision ?? 1) + 1;
+                await stateRepository.UpsertAsync(
+                    (state ?? SyncEntityState.CreateNew(SyncEntityType.ErtDateOverride, entityId, now)) with
+                    {
+                        LocalRevision = newRevision,
+                        SyncedRevision = newRevision,
+                        SyncedContentHash = SyncContentHash.TombstoneMarker,
+                        LastRemoteDeviceId = envelope.DeviceId,
+                        LastRemoteRevision = envelope.Revision,
+                        ConflictState = SyncConflictState.None,
+                        ConflictRemoteDeviceId = null,
+                        ConflictRemoteRevision = null,
+                        ConflictRemoteContentHash = null,
+                        ConflictDetectedAtUtc = null,
+                        UpdatedAtUtc = now,
+                    },
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                counters.Imported++;
+                break;
+            }
+
+            case SyncImportDecision.RemoteDeletionConflict:
+                await RecordConflictAsync(SyncEntityType.ErtDateOverride, entityId, envelope, remotePayloadJson: null, remoteHash: null, isDeleted: true, state, now, cancellationToken).ConfigureAwait(false);
+                counters.Conflicts++;
+                break;
+        }
+    }
+
+    // ----- ERT date override: export -----
+
+    private async Task ExportErtDateOverridesAsync(string root, Guid deviceId, DateTimeOffset now, Counters counters, CancellationToken cancellationToken)
+    {
+        var overrides = await ertDateOverrideRepository.ListAsync(cancellationToken).ConfigureAwait(false);
+        var liveEntityIds = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var dateOverride in overrides)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var entityId = SyncEntityIdentity.ForErtDateOverride(dateOverride.OperatingDate);
+            liveEntityIds.Add(entityId);
+
+            var state = await stateRepository.GetAsync(SyncEntityType.ErtDateOverride, entityId, cancellationToken).ConfigureAwait(false);
+            if (state?.ConflictState == SyncConflictState.Conflicting)
+            {
+                continue;
+            }
+
+            var payload = ErtDateOverrideSyncPayload.FromDomain(dateOverride);
+            var hash = SyncContentHash.ComputeErtDateOverrideHash(payload);
+
+            if (state is not null && string.Equals(state.SyncedContentHash, hash, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var revision = state?.LocalRevision ?? 1;
+            var envelope = new SyncEnvelope
+            {
+                SyncSchemaVersion = SyncEnvelopeSerializer.CurrentSyncSchemaVersion,
+                EntityType = SyncEntityType.ErtDateOverride,
+                EntityId = entityId,
+                DeviceId = deviceId,
+                Revision = revision,
+                ModifiedUtc = dateOverride.ModifiedUtc,
+                IsDeleted = false,
+                PayloadSchemaVersion = ErtDateOverrideSyncPayload.CurrentSchemaVersion,
+                Payload = JsonSerializer.SerializeToElement(payload, ErtDateOverrideSyncPayloadSerializer.Options),
+            };
+
+            try
+            {
+                await AtomicFileWriter.WriteTextAsync(SyncPathService.GetErtDateOverrideFilePath(root, dateOverride.OperatingDate), SyncEnvelopeSerializer.Serialize(envelope), cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                counters.IoFailures++;
+                continue;
+            }
+
+            await stateRepository.UpsertAsync(
+                (state ?? SyncEntityState.CreateNew(SyncEntityType.ErtDateOverride, entityId, now)) with
+                {
+                    LocalRevision = revision,
+                    SyncedRevision = revision,
+                    SyncedContentHash = hash,
+                    UpdatedAtUtc = now,
+                },
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            counters.Exported++;
+        }
+
+        await ExportPendingTombstonesAsync(root, deviceId, now, liveEntityIds, SyncEntityType.ErtDateOverride, counters, cancellationToken).ConfigureAwait(false);
+    }
+
     // ----- History: import (Phase 16E §11-§19) -----
 
     /// <summary>
@@ -1040,24 +1569,57 @@ public sealed class PersonalSyncService(
                 continue; // Already synced as deleted — nothing to export (§21 idempotence).
             }
 
+            // Never trust a two-way if/else here (a real bug this phase fixed): each mutable,
+            // tombstone-capable entity type has its own filename shape and its own payload schema
+            // version constant — a generalized switch is what keeps a third/fourth type (Phase 17B's
+            // MonthlyErt/ErtDateOverride) from being silently misparsed as a Note.
             string targetPath;
-            if (entityType == SyncEntityType.AssociateDraft)
+            int payloadSchemaVersion;
+            switch (entityType)
             {
-                if (!SyncEntityIdentity.TryParseDraftId(state.EntityId, out var operatingDate))
-                {
-                    continue; // Defensive: a malformed entity id can never have reached this table via normal code paths.
-                }
+                case SyncEntityType.AssociateDraft:
+                    if (!SyncEntityIdentity.TryParseDraftId(state.EntityId, out var operatingDate))
+                    {
+                        continue; // Defensive: a malformed entity id can never have reached this table via normal code paths.
+                    }
 
-                targetPath = SyncPathService.GetDraftFilePath(root, operatingDate);
-            }
-            else
-            {
-                if (!SyncEntityIdentity.TryParseNoteId(state.EntityId, out var noteId))
-                {
+                    targetPath = SyncPathService.GetDraftFilePath(root, operatingDate);
+                    payloadSchemaVersion = AssociateDraftPayload.CurrentSchemaVersion;
+                    break;
+
+                case SyncEntityType.OperationalNote:
+                    if (!SyncEntityIdentity.TryParseNoteId(state.EntityId, out var noteId))
+                    {
+                        continue;
+                    }
+
+                    targetPath = SyncPathService.GetOperationalNoteFilePath(root, noteId);
+                    payloadSchemaVersion = OperationalNoteSyncPayload.CurrentSchemaVersion;
+                    break;
+
+                case SyncEntityType.MonthlyErt:
+                    if (!SyncEntityIdentity.TryParseMonthlyErtId(state.EntityId, out var year, out var month))
+                    {
+                        continue;
+                    }
+
+                    targetPath = SyncPathService.GetMonthlyErtFilePath(root, year, month);
+                    payloadSchemaVersion = MonthlyErtSyncPayload.CurrentSchemaVersion;
+                    break;
+
+                case SyncEntityType.ErtDateOverride:
+                    if (!SyncEntityIdentity.TryParseErtDateOverrideId(state.EntityId, out var overrideDate))
+                    {
+                        continue;
+                    }
+
+                    targetPath = SyncPathService.GetErtDateOverrideFilePath(root, overrideDate);
+                    payloadSchemaVersion = ErtDateOverrideSyncPayload.CurrentSchemaVersion;
+                    break;
+
+                default:
+                    // FinalizedPassdown has no tombstone model (§20) and is never passed to this method.
                     continue;
-                }
-
-                targetPath = SyncPathService.GetOperationalNoteFilePath(root, noteId);
             }
 
             var revision = state.LocalRevision;
@@ -1070,7 +1632,7 @@ public sealed class PersonalSyncService(
                 Revision = revision,
                 ModifiedUtc = now,
                 IsDeleted = true,
-                PayloadSchemaVersion = entityType == SyncEntityType.AssociateDraft ? AssociateDraftPayload.CurrentSchemaVersion : OperationalNoteSyncPayload.CurrentSchemaVersion,
+                PayloadSchemaVersion = payloadSchemaVersion,
                 Payload = JsonSerializer.SerializeToElement<object?>(null),
             };
 

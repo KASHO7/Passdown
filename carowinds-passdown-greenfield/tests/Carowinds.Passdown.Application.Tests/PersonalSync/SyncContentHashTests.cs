@@ -1,6 +1,8 @@
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.Ert;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.PersonalSync;
+using Carowinds.Passdown.Domain.Ert;
 
 namespace Carowinds.Passdown.Application.Tests.PersonalSync;
 
@@ -62,5 +64,45 @@ public class SyncContentHashTests
         Assert.NotEqual(
             SyncContentHash.ComputeNoteHash(OperationalNoteSyncPayload.FromDomain(note)),
             SyncContentHash.ComputeNoteHash(OperationalNoteSyncPayload.FromDomain(changed)));
+    }
+
+    [Fact]
+    public void ComputeMonthlyErtHash_SamePayloadTwice_ProducesTheSameHash()
+    {
+        var configuration = new MonthlyErtConfiguration(2026, 9, ErtConfigurationState.Configured, new TimeOnly(9, 30), ["Fury 325"], null, DateTimeOffset.UtcNow);
+        var payload = MonthlyErtSyncPayload.FromDomain(configuration);
+
+        Assert.Equal(SyncContentHash.ComputeMonthlyErtHash(payload), SyncContentHash.ComputeMonthlyErtHash(payload));
+    }
+
+    [Fact]
+    public void ComputeMonthlyErtHash_DifferentStartTime_ProducesADifferentHash()
+    {
+        var configuration = new MonthlyErtConfiguration(2026, 9, ErtConfigurationState.Configured, new TimeOnly(9, 30), ["Fury 325"], null, DateTimeOffset.UtcNow);
+        var changed = configuration with { StartTime = new TimeOnly(10, 0) };
+
+        Assert.NotEqual(
+            SyncContentHash.ComputeMonthlyErtHash(MonthlyErtSyncPayload.FromDomain(configuration)),
+            SyncContentHash.ComputeMonthlyErtHash(MonthlyErtSyncPayload.FromDomain(changed)));
+    }
+
+    [Fact]
+    public void ComputeErtDateOverrideHash_SamePayloadTwice_ProducesTheSameHash()
+    {
+        var dateOverride = new ErtDateOverride(new DateOnly(2026, 9, 19), ErtConfigurationState.Configured, new TimeOnly(10, 0), ["Copperhead Strike"], "Fury maintenance", DateTimeOffset.UtcNow);
+        var payload = ErtDateOverrideSyncPayload.FromDomain(dateOverride);
+
+        Assert.Equal(SyncContentHash.ComputeErtDateOverrideHash(payload), SyncContentHash.ComputeErtDateOverrideHash(payload));
+    }
+
+    [Fact]
+    public void ComputeErtDateOverrideHash_DifferentReason_ProducesADifferentHash()
+    {
+        var dateOverride = new ErtDateOverride(new DateOnly(2026, 9, 19), ErtConfigurationState.Configured, new TimeOnly(10, 0), ["Copperhead Strike"], "Fury maintenance", DateTimeOffset.UtcNow);
+        var changed = dateOverride with { Reason = "Weather delay" };
+
+        Assert.NotEqual(
+            SyncContentHash.ComputeErtDateOverrideHash(ErtDateOverrideSyncPayload.FromDomain(dateOverride)),
+            SyncContentHash.ComputeErtDateOverrideHash(ErtDateOverrideSyncPayload.FromDomain(changed)));
     }
 }

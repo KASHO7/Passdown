@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Finalization;
+using Carowinds.Passdown.Domain.Ert;
 
 namespace Carowinds.Passdown.Documents.Associate;
 
@@ -89,8 +90,16 @@ public sealed class FinalizedPassdownSnapshotBuilder(IAssociatePassdownPdfGenera
         _ => FinalizedParkHoursStatus.NotCheckedYet,
     };
 
-    private static FinalizedEarlyRideTimeSnapshot MapEarlyRideTime(PdfEarlyRideTime ert) =>
-        new(ert.Enabled, ert.Details, ert.ParticipatingAttractions.ToList());
+    /// <summary>Phase 17B: populates both the legacy fields (derived, for any pre-17B reader) and the new resolver-driven fields — never populates only one side, so a snapshot finalized under the new model is never mistaken for a legacy row (see <see cref="FinalizedEarlyRideTimeSnapshot.Kind"/>'s discriminator contract).</summary>
+    private static FinalizedEarlyRideTimeSnapshot MapEarlyRideTime(PdfEarlyRideTime ert) => new(
+        Enabled: ert.Kind == EffectiveErtKind.Configured,
+        Details: ert.Note,
+        ParticipatingAttractions: ert.Rides.ToList(),
+        Kind: ert.Kind,
+        Source: ert.Source,
+        StartTimeText: ert.StartTimeText,
+        Rides: ert.Rides.ToList(),
+        Note: ert.Note);
 
     private static FinalizedProductCategorySnapshot MapCategory(PdfProductCategory category) => new(
         category.CategoryName,

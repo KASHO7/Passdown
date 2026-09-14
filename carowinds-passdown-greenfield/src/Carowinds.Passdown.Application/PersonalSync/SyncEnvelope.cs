@@ -8,6 +8,12 @@ public enum SyncEntityType
     AssociateDraft,
     OperationalNote,
     FinalizedPassdown,
+
+    /// <summary>A persistent monthly Early Ride Time configuration (Phase 17B) — keyed by <c>yyyy-MM</c>, see <see cref="SyncEntityIdentity.ForMonthlyErt"/>.</summary>
+    MonthlyErt,
+
+    /// <summary>A persistent per-date Early Ride Time override (Phase 17B) — keyed by <c>yyyy-MM-dd</c>, see <see cref="SyncEntityIdentity.ForErtDateOverride"/>.</summary>
+    ErtDateOverride,
 }
 
 /// <summary>

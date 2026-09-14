@@ -48,9 +48,11 @@ public class PortableLifecycleTests : IDisposable
         new Migration0011CreateDeepRefreshStatusTable(),
         new Migration0012CreateSyncEntityStateTable(),
         new Migration0013CreateSyncConflictsTable(),
+        new Migration0014CreateMonthlyErtConfigurationsTable(),
+        new Migration0015CreateErtDateOverridesTable(),
     ];
 
-    private const int CurrentSchemaVersion = 13;
+    private const int CurrentSchemaVersion = 15;
 
     // ------------------------------------------------------------------
     // Part B: clean first run.
@@ -262,7 +264,7 @@ public class PortableLifecycleTests : IDisposable
             {
                 versions.Add(reader.GetInt64(0));
             }
-            Assert.Equal([1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L, 11L, 12L, 13L], versions);
+            Assert.Equal([1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L, 11L, 12L, 13L, 14L, 15L], versions);
         }
 
         // Re-running the current runner again is idempotent.
@@ -615,6 +617,77 @@ public class PortableLifecycleTests : IDisposable
         Assert.Equal(1, CountRows(finalConnection13, "finalized_passdowns"));
         Assert.Equal(1, CountRows(finalConnection13, "sync_entity_state"));
         Assert.Equal(1, CountRows(finalConnection13, "sync_conflicts"));
+    }
+
+    // Phase 17B: two purely additive migrations (0014/0015) — no existing table/column is touched, no
+    // monthly ERT record is fabricated from prior park-hours data (spec Part 34).
+    [Fact]
+    public async Task Schema13ToSchema15_CreatesMonthlyErtAndOverrideTables_AndFabricatesNothing()
+    {
+        var databasePath = Path.Combine(_tempDirectory, "carowinds-passdown.db");
+        var connectionFactory = new SqliteConnectionFactory(databasePath);
+
+        IReadOnlyList<IMigration> schema13Migrations =
+        [
+            new Migration0001CreateSchemaVersionTable(),
+            new Migration0002CreateSourceStateTable(),
+            new Migration0003CreateDatedResultsTable(),
+            new Migration0004CreateCatalogProductsTable(),
+            new Migration0005CreateProductHistoryTable(),
+            new Migration0006CreateAssociateDraftsTable(),
+            new Migration0007CreateManagerDraftsTable(),
+            new Migration0008CreateFinalizedPassdownsTable(),
+            new Migration0009AddFinalizedPassdownPdfColumns(),
+            new Migration0010CreateOperationalNotesTable(),
+            new Migration0011CreateDeepRefreshStatusTable(),
+            new Migration0012CreateSyncEntityStateTable(),
+            new Migration0013CreateSyncConflictsTable(),
+        ];
+        var schema13Version = new MigrationRunner(connectionFactory, schema13Migrations, NullLogger<MigrationRunner>.Instance).Run();
+        Assert.Equal(13, schema13Version);
+
+        var operatingDate = new DateOnly(2026, 9, 1);
+        var checkedAt = new DateTimeOffset(2026, 9, 1, 6, 0, 0, TimeSpan.Zero);
+        await new SqliteAssociateDraftRepository(connectionFactory).SaveAsync(
+            new AssociateDraft(operatingDate, 4, """{"notes":"pre-17B draft"}""", checkedAt));
+
+        var upgradedVersion = new MigrationRunner(connectionFactory, AllMigrations, NullLogger<MigrationRunner>.Instance).Run();
+        Assert.Equal(CurrentSchemaVersion, upgradedVersion);
+
+        // Spec Part 34: existing users get NotConfigured for every month — nothing is backfilled from
+        // old park-hours-derived behavior. Both new tables start empty.
+        var monthlyRepository = new SqliteMonthlyErtRepository(connectionFactory);
+        var overrideRepository = new SqliteErtDateOverrideRepository(connectionFactory);
+        Assert.Empty(await monthlyRepository.ListAsync());
+        Assert.Empty(await overrideRepository.ListAsync());
+        Assert.Null(await monthlyRepository.GetAsync(operatingDate.Year, operatingDate.Month));
+
+        // Both new tables are immediately usable through their real repositories. (Field-by-field —
+        // IReadOnlyList<string> falls back to reference equality on the record's own Equals, exactly
+        // like AssociateDraftPayload's Assert.Equal(expected, actual) never comparing lists directly.)
+        var configuration = new Application.Ert.MonthlyErtConfiguration(
+            2026, 9, Domain.Ert.ErtConfigurationState.Configured, new TimeOnly(9, 30), ["Fury 325"], null, checkedAt);
+        await monthlyRepository.UpsertAsync(configuration);
+        var reloadedConfiguration = await monthlyRepository.GetAsync(2026, 9);
+        Assert.Equal(configuration.StartTime, reloadedConfiguration!.StartTime);
+        Assert.Equal(configuration.Rides, reloadedConfiguration.Rides);
+
+        var dateOverride = new Application.Ert.ErtDateOverride(
+            operatingDate, Domain.Ert.ErtConfigurationState.Configured, new TimeOnly(10, 0), ["Copperhead Strike"], "Fury maintenance", checkedAt);
+        await overrideRepository.UpsertAsync(dateOverride);
+        var reloadedOverride = await overrideRepository.GetAsync(operatingDate);
+        Assert.Equal(dateOverride.StartTime, reloadedOverride!.StartTime);
+        Assert.Equal(dateOverride.Rides, reloadedOverride.Rides);
+
+        // Existing pre-17B draft data is untouched by this purely additive migration.
+        var reloadedDraft = await new SqliteAssociateDraftRepository(connectionFactory).GetAsync(operatingDate);
+        Assert.NotNull(reloadedDraft);
+        Assert.Equal("""{"notes":"pre-17B draft"}""", reloadedDraft.PayloadJson);
+
+        using var finalConnection = connectionFactory.OpenConnection();
+        Assert.Equal(1, CountRows(finalConnection, "associate_drafts"));
+        Assert.Equal(1, CountRows(finalConnection, "monthly_ert_configurations"));
+        Assert.Equal(1, CountRows(finalConnection, "ert_date_overrides"));
     }
 
     private static long CountRows(SqliteConnection connection, string tableName)

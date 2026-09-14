@@ -109,8 +109,6 @@ public class AssociatePassdownServiceTests
         Assert.Equal(expected.PrivateBuyout, actual.PrivateBuyout);
         Assert.Equal(expected.ProjectedAttendance, actual.ProjectedAttendance);
         Assert.Equal(expected.PreSolds, actual.PreSolds);
-        Assert.Equal(expected.EarlyRideTime.Details, actual.EarlyRideTime.Details);
-        Assert.Equal(expected.EarlyRideTime.ParticipatingAttractions, actual.EarlyRideTime.ParticipatingAttractions);
         Assert.Equal(expected.OperationalNotes, actual.OperationalNotes);
         Assert.Equal(expected.DailyFeatureType, actual.DailyFeatureType);
         Assert.Equal(expected.DailyFeatureText, actual.DailyFeatureText);
@@ -242,7 +240,6 @@ public class AssociatePassdownServiceTests
             PrivateBuyout: PrivateBuyoutOverride.Disabled,
             ProjectedAttendance: 12345,
             PreSolds: 678,
-            EarlyRideTime: new EarlyRideTimeDetails("Gates open early", ["Fury 325", "Intimidator"]),
             OperationalNotes: ["Note one", "Note two"],
             DailyFeatureType: DailyFeatureType.UselessFactOfTheDay,
             DailyFeatureText: "Carowinds opened in 1973.",
@@ -1022,7 +1019,6 @@ public class AssociatePassdownServiceTests
             PrivateBuyout: new PrivateBuyoutOverride(false, null, null, null),
             ProjectedAttendance: 18000,
             PreSolds: 4200,
-            EarlyRideTime: new EarlyRideTimeDetails("7:30-8:30 AM, wristband required", ["Fury 325", "Copperhead Strike", "Intimidator"]),
             OperationalNotes: ["Rain expected after 3 PM", "VIP tour group at 10 AM", "Short-staffed at North Gate"],
             DailyFeatureType: DailyFeatureType.QuestionOfTheDay,
             DailyFeatureText: "What year did Carowinds open?",
@@ -1053,7 +1049,6 @@ public class AssociatePassdownServiceTests
         AssertDraftsEqual(draft, workspace.Draft);
         Assert.Equal(2, workspace.Products.Count(p => p.IsCustom));
         Assert.Equal(3, workspace.Draft.ProductOverrides.Count);
-        Assert.Equal(3, workspace.Draft.EarlyRideTime.ParticipatingAttractions.Count);
         Assert.Equal(3, workspace.Draft.OperationalNotes.Count);
     }
 

@@ -2469,3 +2469,284 @@ phase to date — real Windows 11 hosts with a real, running OneDrive desktop cl
 this design's file-layout/atomic-write/conflict-copy assumptions against production OneDrive behavior —
 is exactly what 16G exists for; nothing in 16F narrows that scope further, and nothing in 16F introduces a
 new gap that needs closing before that validation can begin.
+
+# Phase 16G — Final Real-World Validation and Release Closure
+
+**Environment constraint, stated up front rather than discovered partway through:** this phase's session
+ran on a macOS/Darwin (arm64) host with no Windows 11 machine or VM, no Microsoft OneDrive desktop client,
+and no OneDrive account reachable from this environment — the same non-Windows-host limitation every prior
+Personal Sync phase (16A-16F) and every prior Windows-packaging phase (7A-15F) has carried, but this time
+squarely inside the one phase whose entire purpose is real-Windows/real-OneDrive validation. Per this
+phase's own explicit instruction ("If two physical/VM Windows environments are unavailable, use the
+strongest realistic setup possible and clearly mark anything not actually executed" / "Do not fabricate
+PASS"), **every item in this phase's task list that requires a running Windows OneDrive client, a native
+Windows folder picker, real DPI scaling, SmartScreen/Defender, or two physical/virtual devices is marked
+`NOT EXECUTED` below** — not attempted, not simulated, not inferred from code review. What this phase
+*could* verify directly — build/test/release-artifact correctness, and the one documented Phase 16F test
+gap — was verified directly and is marked accordingly. The scope of this pass (automated validation +
+doc/artifact closure, with all real-device items explicitly deferred) was confirmed with the product owner
+before starting, rather than silently assumed.
+
+## 16G.1 Combined coordinator + two-device automated test (closes the §16F.20 gap)
+
+The one documented Phase 16F gap — §16F.20 "no dedicated end-to-end 'coordinator + real two-device
+harness' test was written combining [the coordinator's periodic trigger] and [a real two-device shared
+folder]" — is closed by
+[`PersonalSyncCoordinatorEndToEndTests`](../tests/Carowinds.Passdown.Infrastructure.Tests/PersonalSync/PersonalSyncCoordinatorEndToEndTests.cs)
+(new, `Infrastructure.Tests/PersonalSync/`, 2 tests):
+
+- `DraftEditedOnDeviceA_PropagatesToDeviceB_ThroughCoordinatorLocalChangeAndPeriodicTriggers` — two real,
+  independent `PersonalSyncCoordinator` instances, each wrapping its own real `PersonalSyncService`/SQLite
+  database, both pointed at one shared temp folder. Device B's coordinator is started first and left
+  running; Device A's coordinator debounces a local draft edit (`SyncTriggerReason.LocalChange`, real 5s
+  interval, elapsed via a deterministic test scheduler — never a real sleep) and exports it. The test then
+  asserts Device B has **not yet** imported the change (no manual trigger, no direct `RunAsync()` call
+  bypassing the coordinator), elapses Device B's own periodic interval, and only then asserts the draft
+  landed in Device B's local database with the correct payload and zero conflicts.
+- `NoteCreatedOnDeviceA_PropagatesToDeviceB_ThroughStartupTriggersOnBothSides` — the same shared-folder
+  harness, exercised through both coordinators' one-time startup trigger instead, with an Operational Note
+  (stable GUID asserted preserved) instead of a draft.
+- Both tests use a local `TestDelayScheduler` (Infrastructure.Tests) rather than reusing
+  `Application.Tests`' internal `ManualDelayScheduler` — that type is `internal` to a different test
+  assembly with no `InternalsVisibleTo` grant to `Infrastructure.Tests` (confirmed by inspection before
+  writing this test); duplicating the ~20-line scheduler was simpler and lower-risk than adding a new
+  cross-assembly visibility grant for one test file.
+- Run 5 times in isolation and as part of the full suite: 100% deterministic, no observed flake (unlike the
+  pre-existing, unrelated Avalonia headless cross-test issue — see §16G.6).
+
+This composes the two previously-independent proofs (`PersonalSyncCoordinatorTests`'s fake-service timing
+proof, `PersonalSyncServiceTests`'s real-two-device direct-`RunAsync()` proof) into one real, coordinator-
+driven, two-device scenario — the gap's own wording exactly. Real Windows/OneDrive-client validation
+(§16G.2-§16G.35 below) remains a materially different, still-outstanding kind of proof this test does not
+and cannot substitute for — it proves the app's own scheduling/reconciliation logic is correct against a
+shared folder; it says nothing about how a real, running OneDrive desktop client behaves against that same
+folder (partial uploads, Files On-Demand placeholders, conflict-copy filenames, sync client timing).
+
+## 16G.2-16G.35 Real Windows/OneDrive-client validation — NOT EXECUTED
+
+Every one of this phase's items requiring an actual Windows 11 OneDrive desktop client, two physical/
+virtual Windows devices, native Windows folder picker interaction, real DPI scaling, Windows Task
+Scheduler execution, SmartScreen/Defender observation, or double-clicking a built `.exe`/`.cmd` on Windows
+is **NOT EXECUTED** this phase, for the environment reason stated above — not simulated, not inferred, not
+partially claimed. This covers (using this document's own §-numbering for traceability against the phase
+task list): real OneDrive sign-in and folder setup; first-device bootstrap and second-device initial join
+against a real synced folder; A→B and B→A automatic draft/note propagation timing on real devices; real
+finalized-History/PDF sync with byte-identical-PDF verification across two real machines; offline/
+reconnect behavior against a real paused/disconnected OneDrive client; closed-app startup recovery and
+remote-change-while-closed behavior on real hardware; concurrent draft/note conflict creation and
+Keep-This-Device/Use-Other-Device resolution on two real devices; tombstone deletion (also structurally
+**NOT APPLICABLE** — no product delete UI exists to drive it manually; see 16D's own note); dual-
+finalization conflict on two real devices; folder-switch validation against a real OneDrive client; Files
+On-Demand placeholder/"Always keep on this device" behavior; OneDrive conflict-copy-filename observation;
+pause/resume; multiple local app instances and crash/lock recovery on a real Windows machine; real-time
+observation of debounce/periodic/retry cadence against a live OneDrive client; manual Sync Now on Windows;
+Settings status UX at 100/125/150% scaling; the native Avalonia/Windows folder picker; a real inspection of
+an actual synced OneDrive folder's contents; actual sync-folder size from real usage; real Windows startup
+timing for both release forms; SmartScreen/Defender first-launch behavior; Windows icon/titlebar rendering
+and 100/125/150% scaling across every screen; and live Windows Task Scheduler registration/run.
+
+**Nothing above was skipped by oversight.** Everything that *is* verifiable without a Windows/OneDrive
+environment — the code paths these behaviors depend on, the release artifacts that would be tested, and
+the automated test suite that exercises the underlying logic — was exercised this phase and is recorded in
+§16G.1, §16G.3-16G.6 below. A concise procedure for a human with real Windows machines and an actual
+OneDrive account to complete the outstanding items is in §16G.7.
+
+## 16G.3 Scheduled-refresh regression — verified by code audit (not execution)
+
+Section 36's concern ("Personal Sync must not have affected public-data scheduled refresh") is checkable
+without Windows execution: a repo-wide search for scheduled-task registration call sites
+(`New-ScheduledTaskAction`/`ScheduledTaskPlan.TaskName`/`RegisterTask`) across `src/` and
+`packaging/windows/*.ps1` turns up exactly one task identity, `"Carowinds Passdown Daily Refresh"`
+(`ScheduledTaskPlan.cs`, `Install-ScheduledRefresh.ps1`, `Uninstall-ScheduledRefresh.ps1`,
+`docs/scheduled-refresh-task-scheduler.md`) — no second, Personal-Sync-specific scheduled task exists
+anywhere in the codebase, and nothing under `PersonalSync/` (Application, Infrastructure, or Desktop)
+references `ScheduledTaskPlan`, `Install-ScheduledRefresh.ps1`, or Windows Task Scheduler at all (§16F.28
+already confirmed the reverse direction — no retrieval/scheduler coupling from Personal Sync). This is a
+**PASS by static verification** for "no new Personal Sync scheduled task" and "Deep Refresh still
+independent"; actually running the existing (unchanged) scheduled task on a real Windows host remains
+**NOT EXECUTED**, carried forward from every prior phase (last real execution: Phase 6D, per
+`docs/scheduled-refresh-task-scheduler.md`'s "Result — manually validated by the user on Windows 11").
+
+## 16G.4 Release candidates built and validated (structurally, not by launching on Windows)
+
+Built fresh from the current working tree (post-16F) on this macOS dev host, mirroring
+`packaging/windows/Publish-Windows.ps1`/`Build-PortableRelease.ps1` exactly (no `pwsh` available on this
+host, same limitation as every prior rebuild — the underlying `dotnet publish`/staging/zip steps were run
+directly, matching those scripts' own logic line for line):
+
+- **Multi-file ZIP** (primary, unchanged designation): `dotnet publish ... -r win-x64 --self-contained true
+  -p:PlaywrightPlatform=win-x64` → 258 files staged, `.pdb`s removed, `tools/`
+  (`Install-ScheduledRefresh.ps1`/`Uninstall-ScheduledRefresh.ps1`) + both `.cmd` helpers + `README.txt` +
+  `TESTER-GUIDE.txt` added, forbidden-pattern check clean (no `.git`, `.db`/`-wal`/`-shm`, `CLAUDE.md`,
+  `AGENT_BUILD_SPEC.md`, `.pdb`, `.DS_Store`), zipped, extracted to a separate scratch directory and
+  `diff -rq`'d byte-for-byte identical against the staging folder, `.exe` SHA-256 inside the extraction
+  independently matched the staged copy.
+- **Single-file EXE** (experimental/deferred, unchanged designation — see §16G.5 for why it is not
+  promoted this phase): `dotnet publish ... -p:PublishSingleFile=true -p:PublishReadyToRun=true
+  -p:PublishTrimmed=false -p:IncludeNativeLibrariesForSelfExtract=true -p:PlaywrightPlatform=win-x64` →
+  publish output contains exactly the same two files as every prior single-file rebuild
+  (`Carowinds.Passdown.Desktop.exe` + `LatoFont/OFL.txt`, no loose `appsettings.json`, no loose font
+  files), confirmed a valid `PE32+ executable (GUI) x86-64, for MS Windows` via `file`, forbidden-pattern
+  check clean.
+- Exact artifacts and hashes: see `docs/release-manifest.md`'s new Phase 16G entry — these are the exact
+  bytes any future Windows-host validation pass should test, not a re-derived or re-built copy.
+- **What this validates**: publish correctness, packaging content/hygiene, ZIP round-trip integrity — all
+  independent of a Windows host. **What this does not validate**: whether either artifact actually
+  launches, renders, or runs Personal Sync correctly on real Windows 11 — that remains **NOT EXECUTED**
+  (§16G.2), same as every release candidate since Phase 7A.
+
+## 16G.5 Single-file promotion decision: not promoted this phase
+
+Per this phase's own explicit instruction ("Do not promote without evidence"): the single-file candidate
+was **not** launched, exercised, or observed on a real Windows host this phase (no Windows environment was
+available — §16G.2), so there is no new evidence to weigh against the standing Phase 15F decision. **The
+multi-file ZIP remains primary; the single-file EXE remains experimental/deferred**, unchanged from Phase
+15F. This is a "no new evidence" outcome, not a re-affirmed rejection — the single-file build itself
+continues to publish cleanly and pass every structural check available without Windows execution (§16G.4);
+promoting it still requires an actual Windows launch, which remains outstanding.
+
+## 16G.6 Automated regression suite
+
+Baseline before this phase: **1938/1938** deterministic tests (§16F.35), `dotnet build`: 0 warnings/0
+errors. After adding `PersonalSyncCoordinatorEndToEndTests` (§16G.1, +2 tests):
+
+- `dotnet build CarowindsPassdown.slnx` — **0 warnings, 0 errors.**
+- `dotnet test CarowindsPassdown.slnx --filter "Category!=LiveSmoke"` — **1940/1940** deterministic
+  (Domain 105 unchanged, Application 564 unchanged, Documents 114 unchanged, Infrastructure 508 → 510
+  [+2, this phase's new test file], Ui.Tests 647 unchanged), using the same established isolation strategy
+  as every phase since 16D/15F for the pre-existing, unrelated Avalonia headless cross-test flake (the
+  three real-`Window`-constructing classes — `OperationsCalendarViewTests`,
+  `Phase15ERealWindowLayoutTests`, `RealWindowStartupTimingTests`, 38 tests — run together cleanly in
+  isolation, 38/38 repeatably; everything else in `Ui.Tests` runs together cleanly, 609/609 repeatably;
+  when both groups share one test-host process, 11-12 of the 38 intermittently fail with the same
+  documented `System.InvalidOperationException: The calling thread cannot access this object because a
+  different thread owns it.` signature, confirmed this phase to be the identical, pre-existing symptom —
+  not a new or disguised failure). No deterministic test failed in any configuration this phase.
+- The new test file itself was additionally run 5 times in isolation with zero failures (§16G.1) — the
+  real-SQLite-backed two-coordinator scenario is not itself a source of the flake above (it constructs no
+  Avalonia `Window`).
+
+## 16G.7 Manual validation procedure for a future Windows/OneDrive pass
+
+Not executed this phase (§16G.2); recorded here as the concrete next step for whoever has access to real
+Windows 11 machines and a personal OneDrive account. Uses the exact artifacts hashed in §16G.4/
+`docs/release-manifest.md`'s Phase 16G entry — do not rebuild before testing unless a real defect is found
+and fixed, in which case rebuild and re-hash before shipping.
+
+1. On two Windows 11 machines (or one machine + one VM) signed into the **same** personal OneDrive
+   account: extract the ZIP (or copy the single-file EXE) on each, launch, go to Settings → Personal Sync,
+   choose the OneDrive parent folder, verify the app creates/uses `Carowinds Operations Sync` under it,
+   enable Personal Sync.
+2. Follow this phase's task items 3-27 and 33-36 in order (bootstrap → second-device join → bidirectional
+   draft/note edits → finalization/PDF sync → offline/reconnect → closed-app recovery → conflicts →
+   tombstone [structurally not applicable, no product delete UI] → dual-finalization → folder switch →
+   Files On-Demand → pause/resume → conflict-copy → multiple instances → crash/lock recovery → cadence
+   timing → manual Sync Now → status UX at 100/125/150% → native folder picker → privacy file inspection →
+   real sync-folder size → scheduled-refresh regression on real Windows).
+3. Record actual PASS/FAIL per item using this document's existing terminology
+   (`PASS`/`PASS AFTER FIX`/`PARTIAL`/`NOT EXECUTED`/`NOT APPLICABLE`/`FAIL`), fix only genuine release
+   blockers found (this phase's own §30 list is still the right bar), then rebuild/re-hash/re-document
+   before shipping.
+4. If Files On-Demand or the folder picker (the two items with a standing history of Windows-only
+   surprises — §16B "Platform limitations", §16F "Known limitations") reveal a real defect, that is this
+   procedure's most likely source of a genuine release blocker; everything else in this design has already
+   been proven correct at the logic level by the automated suite (§16G.6) and prior phases' two-device
+   harness tests.
+
+## 16G.8 End-user Personal Sync instructions (final)
+
+Concise instructions for a nontechnical user setting up Personal Sync between their own Windows machines —
+kept deliberately free of sync-engine internals, per this phase's explicit instruction:
+
+1. Sign into OneDrive on each Windows computer (the normal Microsoft OneDrive desktop client — no
+   Carowinds Operations account, no separate login).
+2. Open Carowinds Operations.
+3. Go to **Settings → Personal Sync**.
+4. Choose the OneDrive parent folder (usually your OneDrive root).
+5. Turn Personal Sync on.
+6. Wait for the status to show **Up to date**.
+
+Do this on every Windows computer you use Carowinds Operations on, signed into the same OneDrive account
+each time — your drafts, Operational Notes, and finalized History will then follow you between them.
+Optional, if your OneDrive client supports it: right-click the **Carowinds Operations Sync** folder inside
+OneDrive and choose **Always keep on this device**, so your synced records stay available even if OneDrive
+is briefly offline (this phase could not confirm this recommendation against a real Files On-Demand
+client — §16G.2 — so treat it as a reasonable default, not a verified requirement).
+
+What this means in practice: each computer still keeps its own local database — nothing about how the app
+works day-to-day changes. Only the records you create yourself (drafts, notes, finalized History) are
+stored in your OneDrive folder; nothing else is. The app keeps working normally if OneDrive is temporarily
+unavailable — your work saves locally either way, and syncs automatically once OneDrive is reachable again.
+
+## 16G.9 Release-blocker review
+
+No release blocker (per this phase's own §30 list — data loss, silent conflict overwrite, frozen-PDF byte
+change, folder-switch data skip, startup blocking on OneDrive, local saves failing when OneDrive is
+unavailable, placeholder-handling corruption, stale process lock, folder-picker failure, or SQLite/log data
+leaking into the sync folder) was found this phase, because none of the checks capable of finding most of
+those (items requiring a real running OneDrive client) could be executed (§16G.2). The combined automated
+test (§16G.1) found no defect — Device B correctly received Device A's change only through its own
+coordinator-owned trigger, with zero conflicts, on the first attempt. This phase therefore fixed nothing
+beyond adding the one test that closes the §16F.20 gap; no production code changed.
+
+## 16G.10 Phase 16 status
+
+**Not formally closed.** Every automatable validation, code-gap closure, release-artifact build, and
+documentation update in this phase's scope is complete (§16G.1, §16G.4, §16G.6, this section and §16G.8).
+This phase's own success criteria explicitly require real Windows/OneDrive behavior to be validated "where
+environment permits" — this session's environment permitted none of it (§16G.2), so the criteria
+("two-device sync works bidirectionally," "conflicts never silently lose data," "native Windows folder
+selection works," etc., as actually *observed on real hardware*) remain unverified, not satisfied by
+inference from passing automated tests. **Phase 14 remains on hold, unstarted, per CLAUDE.md — unaffected
+by this phase's scope or findings.** The manual procedure in §16G.7, run by someone with real Windows
+machines and a OneDrive account, is what would move Phase 16 from "code and automated-test complete" to
+"formally complete" per this document's own bar.
+
+---
+
+# Phase 17B — Personal Sync: Monthly Early Ride Time and Date Overrides (Implementation)
+
+Adds two new sync entity types — `MonthlyErt` (`yyyy-MM` identity) and `ErtDateOverride` (`yyyy-MM-dd`
+identity) — for the persistent monthly Early Ride Time configuration and optional per-date override
+introduced this phase (full product/domain design in `docs/ert-configuration.md`; this section covers
+only the sync-specific decisions).
+
+**SyncSchemaVersion stays at 1.** Adding two new `SyncEntityType` enum members is not an envelope
+shape change — the same precedent set when `FinalizedPassdown` was added in Phase 16E. Each new type
+gets its own independent payload schema version (`MonthlyErtSyncPayload.CurrentSchemaVersion = 1`,
+`ErtDateOverrideSyncPayload.CurrentSchemaVersion = 1`), unrelated to any other entity's payload
+version or to the envelope's own version.
+
+Both new types are mutable, tombstone-capable, single-JSON-blob entities — architecturally identical
+to Operational Notes (§16C), not to Drafts (date-keyed like a draft, but with no field-level
+granularity concerns since a monthly config or override is already a small, wholesale-replaced
+record) and not to FinalizedPassdown (mutable, unlike immutable History). `PersonalSyncService`'s
+`Import/ExportMonthlyErtsAsync` and `Import/ExportErtDateOverridesAsync` are close mirrors of
+`Import/ExportNotesAsync`, reusing the same entity-agnostic `SyncReconciliation.Decide` (§16A/§16D)
+and the same Keep-This-Device/Use-Other-Device/Accept-Deletion conflict resolution flow (§16D) with no
+new conflict semantics.
+
+**A real bug found and fixed while wiring these in**: `ExportPendingTombstonesAsync`'s tombstone
+path-resolution and `PersonalSyncConflictResolutionService`'s four resolution methods both had a
+hardcoded two-branch `if (AssociateDraft) {...} else {...}` that implicitly assumed the `else` branch
+meant `OperationalNote` — true when only two mutable entity types existed, but a real risk once a
+third and fourth were added (a `MonthlyErt`/`ErtDateOverride` entity id would have been silently
+misparsed as a Note GUID). Both were generalized into explicit `switch`/`if`-chains covering all four
+mutable entity types before the new import/export paths were wired in — this was a correctness fix
+required by adding the new types, not an optional cleanup.
+
+Folder layout adds two new sibling folders under the existing sync root:
+
+```
+Carowinds Operations Sync/
+    monthly-ert/<yyyy-MM>.json
+    ert-date-overrides/<yyyy-MM-dd>.json
+```
+
+## Schema impact
+
+DB schema 13 → 15 (`Migration0014CreateMonthlyErtConfigurationsTable`,
+`Migration0015CreateErtDateOverridesTable`, both purely additive). Draft schema 3 → 4 (removes the
+obsolete free-text `EarlyRideTime` field — see `docs/ert-configuration.md` §8). Snapshot schema 1 → 2
+(additive new fields on `FinalizedEarlyRideTimeSnapshot` — see `docs/ert-configuration.md` §9).
+SyncSchemaVersion remains 1.

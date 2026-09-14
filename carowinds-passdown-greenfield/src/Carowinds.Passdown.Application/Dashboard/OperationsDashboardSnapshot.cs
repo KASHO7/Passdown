@@ -2,6 +2,7 @@ using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Ert;
 
 namespace Carowinds.Passdown.Application.Dashboard;
 
@@ -201,14 +202,18 @@ public sealed record DashboardOperationalNotesSummary(
 /// and the History screen already use — never <see cref="FinalizedPassdown.SnapshotJson"/> or
 /// <see cref="FinalizedPassdown.PdfBytes"/> (Phase 10C Parts A/L/O).
 /// </param>
+/// <param name="EarlyRideTime">
+/// Phase 17B: the same resolver-produced value <c>AssociateWorkspace.EarlyRideTime</c> carries — the
+/// Dashboard never derives ERT independently. Replaces the old "EarlyRideTimeEnabled"/
+/// "EarlyRideTimeDetails" pair, which reconstructed an "enabled" flag from draft free-text content.
+/// </param>
 public sealed record OperationsDashboardSnapshot(
     DateOnly OperatingDate,
     DashboardParkStatusSummary ParkStatus,
     DashboardPassdownStatusSummary PassdownStatus,
     int? ProjectedAttendance,
     int? PreSolds,
-    bool EarlyRideTimeEnabled,
-    string? EarlyRideTimeDetails,
+    EffectiveErt EarlyRideTime,
     DailyFeatureType? DailyFeatureType,
     string? DailyFeatureText,
     DashboardNotesSummary Notes,

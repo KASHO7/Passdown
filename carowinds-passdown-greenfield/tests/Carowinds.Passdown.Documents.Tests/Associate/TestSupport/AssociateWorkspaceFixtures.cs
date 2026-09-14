@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Ert;
 using Carowinds.Passdown.Domain.Hours;
 
 namespace Carowinds.Passdown.Documents.Tests.Associate.TestSupport;
@@ -52,7 +53,6 @@ internal static class AssociateWorkspaceFixtures
         {
             ProjectedAttendance = 18500,
             PreSolds = 4200,
-            EarlyRideTime = new EarlyRideTimeDetails("Early Ride Time from 8:30 AM for pass members with the benefit.", ["Fury 325", "Intimidator", "Copperhead Strike"]),
             OperationalNotes =
             [
                 "Fury 325 closed for scheduled maintenance until 11 AM.",
@@ -80,7 +80,9 @@ internal static class AssociateWorkspaceFixtures
         return new AssociateWorkspace(
             Date, draft,
             new AssociateParkHoursView(effective, verification, false, new TimeOnly(9, 0), new TimeOnly(21, 0)),
-            products, [], new AssociateSaveStatus(AssociateSaveState.Saved, DateTimeOffset.UtcNow));
+            products, [], new AssociateSaveStatus(AssociateSaveState.Saved, DateTimeOffset.UtcNow),
+            SelectedOperationalNoteSourceStates: null,
+            EarlyRideTime: new EffectiveErt(EffectiveErtKind.Configured, EffectiveErtSource.Monthly, new TimeOnly(8, 30), ["Fury 325", "Intimidator", "Copperhead Strike"], "For pass members with the benefit."));
     }
 
     /// <summary>Heavy-product day (spec §11.5) — many included products across every category, but still expected to fit one page.</summary>
@@ -93,7 +95,6 @@ internal static class AssociateWorkspaceFixtures
         {
             ProjectedAttendance = 26000,
             PreSolds = 9100,
-            EarlyRideTime = new EarlyRideTimeDetails("Early Ride Time from 8:30 AM.", ["Fury 325", "Intimidator"]),
             OperationalNotes =
             [
                 "Peak-day staffing plan in effect at all gates.",
@@ -113,7 +114,9 @@ internal static class AssociateWorkspaceFixtures
         return new AssociateWorkspace(
             Date, draft,
             new AssociateParkHoursView(effective, verification, false, new TimeOnly(9, 0), new TimeOnly(22, 0)),
-            products, [], new AssociateSaveStatus(AssociateSaveState.Saved, DateTimeOffset.UtcNow));
+            products, [], new AssociateSaveStatus(AssociateSaveState.Saved, DateTimeOffset.UtcNow),
+            SelectedOperationalNoteSourceStates: null,
+            EarlyRideTime: new EffectiveErt(EffectiveErtKind.Configured, EffectiveErtSource.Monthly, new TimeOnly(8, 30), ["Fury 325", "Intimidator"], null));
     }
 
     /// <summary>Private-buyout day (spec §11.5): officially closed, but open under a private-event override with its own hours and details.</summary>
@@ -168,7 +171,6 @@ internal static class AssociateWorkspaceFixtures
         {
             ProjectedAttendance = 30000,
             PreSolds = 15000,
-            EarlyRideTime = new EarlyRideTimeDetails("Early Ride Time from 8:00 AM for all pass members and Fast Lane Plus guests.", ["Fury 325", "Intimidator", "Copperhead Strike", "Afterburn", "Nighthawk"]),
             OperationalNotes = Enumerable.Range(1, 6).Select(i => $"Operational note number {i} describing a staffing or guest-service situation for the day in enough detail to take up a full line.").ToList(),
             DailyFeatureType = DailyFeatureType.QuoteOfTheDay,
             DailyFeatureText = "\"The best way to predict the future is to create it.\"",
@@ -184,7 +186,9 @@ internal static class AssociateWorkspaceFixtures
         return new AssociateWorkspace(
             Date, draft,
             new AssociateParkHoursView(effective, verification, false, new TimeOnly(9, 0), new TimeOnly(22, 0)),
-            products, [], new AssociateSaveStatus(AssociateSaveState.Saved, DateTimeOffset.UtcNow));
+            products, [], new AssociateSaveStatus(AssociateSaveState.Saved, DateTimeOffset.UtcNow),
+            SelectedOperationalNoteSourceStates: null,
+            EarlyRideTime: new EffectiveErt(EffectiveErtKind.Configured, EffectiveErtSource.Monthly, new TimeOnly(8, 0), ["Fury 325", "Intimidator", "Copperhead Strike", "Afterburn", "Nighthawk"], "For all pass members and Fast Lane Plus guests."));
     }
 
     private static AssociateVerificationInfo Verified() => new(AssociateVerificationState.Verified, DateTimeOffset.UtcNow.AddMinutes(-30), null, null);

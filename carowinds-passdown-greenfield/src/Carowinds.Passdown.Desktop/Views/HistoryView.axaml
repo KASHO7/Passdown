@@ -257,6 +257,13 @@
                   <TextBlock Text="Not applicable for this date." Classes="muted"
                              IsVisible="{Binding !SelectedDetail.Snapshot.EarlyRideTime.Enabled}" />
                   <StackPanel Spacing="4" IsVisible="{Binding SelectedDetail.Snapshot.EarlyRideTime.Enabled}">
+                    <!-- Phase 17B: StartTimeText only exists on a snapshot finalized under the new
+                         resolver-driven model (null for a pre-17B row) — additive only, so an older
+                         finalized snapshot keeps displaying exactly as it always has via Details/
+                         ParticipatingAttractions below. -->
+                    <TextBlock Text="{Binding SelectedDetail.Snapshot.EarlyRideTime.StartTimeText, StringFormat='Start: {0}'}"
+                               FontWeight="Medium"
+                               IsVisible="{Binding SelectedDetail.Snapshot.EarlyRideTime.StartTimeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                     <TextBlock Text="{Binding SelectedDetail.Snapshot.EarlyRideTime.Details}" TextWrapping="Wrap"
                                IsVisible="{Binding SelectedDetail.Snapshot.EarlyRideTime.Details, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                     <ItemsControl ItemsSource="{Binding SelectedDetail.Snapshot.EarlyRideTime.ParticipatingAttractions}">

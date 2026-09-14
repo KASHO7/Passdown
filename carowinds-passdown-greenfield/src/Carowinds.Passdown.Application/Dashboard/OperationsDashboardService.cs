@@ -110,12 +110,6 @@ public sealed class OperationsDashboardService(
         var parkStatus = BuildParkStatus(workspace.ParkHours);
         var (passdownStatus, latestFinalized) = await BuildPassdownAndHistoryAsync(operatingDate, workspace.SaveStatus, cancellationToken).ConfigureAwait(false);
 
-        // Mirrors AssociateViewModel.OnIsEarlyRideTimeEnabledChanged's own "off means not
-        // applicable" rule (Desktop/ViewModels/AssociateViewModel.cs) so the dashboard's summary
-        // never disagrees with what the Associate Overview screen itself would show.
-        var earlyRideTimeEnabled = !string.IsNullOrWhiteSpace(workspace.Draft.EarlyRideTime.Details)
-            || workspace.Draft.EarlyRideTime.ParticipatingAttractions.Count > 0;
-
         var notes = BuildNotesSummary(workspace.Draft.OperationalNotes);
         var activeOperationalNotes = await BuildActiveOperationalNotesAsync(operatingDate, cancellationToken).ConfigureAwait(false);
         var dataHealth = BuildDataHealth(workspace);
@@ -126,8 +120,7 @@ public sealed class OperationsDashboardService(
             passdownStatus,
             workspace.Draft.ProjectedAttendance,
             workspace.Draft.PreSolds,
-            earlyRideTimeEnabled,
-            workspace.Draft.EarlyRideTime.Details,
+            workspace.EarlyRideTime,
             workspace.Draft.DailyFeatureType,
             workspace.Draft.DailyFeatureText,
             notes,

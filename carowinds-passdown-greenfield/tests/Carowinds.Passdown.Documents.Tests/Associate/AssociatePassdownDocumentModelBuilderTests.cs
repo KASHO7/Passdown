@@ -3,6 +3,7 @@ using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Documents.Tests.Associate.TestSupport;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Ert;
 
 namespace Carowinds.Passdown.Documents.Tests.Associate;
 
@@ -216,7 +217,7 @@ public sealed class AssociatePassdownDocumentModelBuilderTests
         Assert.NotNull(model.OperatingDate);
         Assert.NotEqual(PdfParkHoursStatus.NotCheckedYet, model.ParkHours.Status);
         Assert.NotNull(model.Attendance.ProjectedAttendance);
-        Assert.True(model.EarlyRideTime.Enabled);
+        Assert.Equal(EffectiveErtKind.Configured, model.EarlyRideTime.Kind);
         Assert.True(model.DailyFeature.HasContent);
     }
 

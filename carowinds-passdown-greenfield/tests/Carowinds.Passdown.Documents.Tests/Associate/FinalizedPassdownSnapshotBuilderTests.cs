@@ -3,6 +3,7 @@ using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Documents.Tests.Associate.TestSupport;
+using Carowinds.Passdown.Domain.Ert;
 using Carowinds.Passdown.Domain.Hours;
 
 namespace Carowinds.Passdown.Documents.Tests.Associate;
@@ -48,40 +49,53 @@ public class FinalizedPassdownSnapshotBuilderTests
     }
 
     [Fact]
-    public void Build_NormalDay_PreservesEarlyRideTimeDetailsAndAttractions()
+    public void Build_NormalDay_PreservesEarlyRideTimeStartRidesAndNote()
     {
         var snapshot = Builder.Build(AssociateWorkspaceFixtures.NormalDay(), AsOf);
 
+        Assert.Equal(EffectiveErtKind.Configured, snapshot.EarlyRideTime.Kind);
+        Assert.Equal(EffectiveErtSource.Monthly, snapshot.EarlyRideTime.Source);
+        Assert.Equal("8:30 AM", snapshot.EarlyRideTime.StartTimeText);
+        Assert.Equal(["Fury 325", "Intimidator", "Copperhead Strike"], snapshot.EarlyRideTime.Rides);
+        Assert.Equal("For pass members with the benefit.", snapshot.EarlyRideTime.Note);
+
+        // Legacy fields (pre-17B) are still populated for any older reader — never left at their
+        // uninitialized defaults for a genuinely new-model row.
         Assert.True(snapshot.EarlyRideTime.Enabled);
-        Assert.Contains("8:30 AM", snapshot.EarlyRideTime.Details);
         Assert.Equal(["Fury 325", "Intimidator", "Copperhead Strike"], snapshot.EarlyRideTime.ParticipatingAttractions);
     }
 
-    // Phase 13F Part T/V: the derived Early Ride Time start is already frozen as
-    // FinalizedParkHoursSnapshot.NorthGateText — no new snapshot field is needed, so
-    // FinalizedPassdownSnapshot.CurrentSchemaVersion correctly stays at 1 (asserted below).
+    // Phase 17B spec Part 14: FinalizedEarlyRideTimeSnapshot's new resolver-driven fields are an
+    // additive shape change, so FinalizedPassdownSnapshot.CurrentSchemaVersion bumps 1 -> 2.
     [Fact]
-    public void Build_NormalDay_FreezesDerivedNorthGateAsEarlyRideTimeStart()
+    public void CurrentSchemaVersion_Is2_ForThePhase17BShapeChange()
+    {
+        Assert.Equal(2, FinalizedPassdownSnapshot.CurrentSchemaVersion);
+    }
+
+    // Phase 17B spec Part 31: park hours changing (even to Closed) never alters the frozen ERT.
+    [Fact]
+    public void Build_NormalDay_ErtStartIsIndependentOfNorthGate()
     {
         var snapshot = Builder.Build(AssociateWorkspaceFixtures.NormalDay(), AsOf);
 
         Assert.Equal("8:30 AM", snapshot.ParkHours.NorthGateText);
-        Assert.Equal(1, FinalizedPassdownSnapshot.CurrentSchemaVersion);
+        Assert.Equal("8:30 AM", snapshot.EarlyRideTime.StartTimeText); // coincidentally equal in this fixture, not derived from one another.
     }
 
-    // Phase 13F Part G/L: Private Buyout's own opening drives the frozen North Gate/ERT start exactly
-    // like every other effective-opening source — no buyout-specific carve-out.
+    // Private Buyout's own opening still drives the frozen North Gate time exactly like every other
+    // effective-opening source (park-hours arithmetic, unrelated to Phase 17B's ERT changes).
     [Fact]
-    public void Build_PrivateBuyoutDay_FreezesDerivedStartFromBuyoutOpening()
+    public void Build_PrivateBuyoutDay_FreezesDerivedNorthGateFromBuyoutOpening()
     {
         var snapshot = Builder.Build(AssociateWorkspaceFixtures.PrivateBuyoutDay(), AsOf);
 
         Assert.Equal("5:30 PM", snapshot.ParkHours.NorthGateText);
     }
 
-    // Phase 13F Part T/U: finalizing freezes the derived ERT start computed from the draft's own
-    // effective hours at that moment — a later change to what "live" hours would derive must never
-    // alter the already-built (frozen) snapshot.
+    // Finalizing freezes park hours (North Gate/Avenue) computed at that moment — a later change to
+    // what "live" hours would derive must never alter the already-built (frozen) snapshot. Unrelated
+    // to Phase 17B's ERT changes; retained as a park-hours immutability regression test.
     [Fact]
     public void Build_LaterHoursChange_DoesNotAlterAnAlreadyBuiltSnapshot()
     {
@@ -120,8 +134,7 @@ public class FinalizedPassdownSnapshotBuilderTests
     }
 
     // Phase 11D Part L: the finalized snapshot represents a selected persistent note as part of the
-    // existing generic OperationalNotes string list — no new structured field, so
-    // FinalizedPassdownSnapshot.CurrentSchemaVersion correctly stays at 1 (asserted below).
+    // existing generic OperationalNotes string list — no new structured field needed for this.
     [Fact]
     public void Build_SelectedPersistentNote_FreezesIntoOperationalNotesList()
     {
@@ -136,7 +149,6 @@ public class FinalizedPassdownSnapshotBuilderTests
         var snapshot = Builder.Build(workspace, AsOf);
 
         Assert.Contains("Persistent: South Gate scanner #3 out of service — Direct guests to gate 2.", snapshot.OperationalNotes);
-        Assert.Equal(1, FinalizedPassdownSnapshot.CurrentSchemaVersion);
     }
 
     // Phase 11F Part M's required scenario, made explicit as its own regression test rather than left
@@ -224,23 +236,24 @@ public class FinalizedPassdownSnapshotBuilderTests
         var workspace = AssociateWorkspaceFixtures.NormalDay();
         var snapshot = Builder.Build(workspace, AsOf);
         var originalNotes = snapshot.OperationalNotes.ToList();
-        var originalAttractions = snapshot.EarlyRideTime.ParticipatingAttractions.ToList();
+        var originalRides = snapshot.EarlyRideTime.Rides!.ToList();
 
         // A record `with` expression never mutates the original `workspace`/`draft` in place — this
-        // simulates the next save producing a brand-new draft object, exactly as
-        // AssociatePassdownService.SaveDraftAsync does, and rebuilds from that new state.
+        // simulates a later monthly-ERT edit (a brand-new resolved EffectiveErt, exactly as
+        // AssociatePassdownService.ComposeAsync would produce after IErtConfigurationService.SaveMonthlyAsync)
+        // and rebuilds from that new state.
         var laterWorkspace = workspace with
         {
             Draft = workspace.Draft with
             {
                 OperationalNotes = ["Completely different note."],
-                EarlyRideTime = new EarlyRideTimeDetails("Different ERT details.", ["Nighthawk"]),
             },
+            EarlyRideTime = new EffectiveErt(EffectiveErtKind.Configured, EffectiveErtSource.Monthly, new TimeOnly(9, 0), ["Nighthawk"], "Different ERT note."),
         };
         Builder.Build(laterWorkspace, AsOf);
 
         Assert.Equal(originalNotes, snapshot.OperationalNotes);
-        Assert.Equal(originalAttractions, snapshot.EarlyRideTime.ParticipatingAttractions);
+        Assert.Equal(originalRides, snapshot.EarlyRideTime.Rides);
     }
 
     [Fact]

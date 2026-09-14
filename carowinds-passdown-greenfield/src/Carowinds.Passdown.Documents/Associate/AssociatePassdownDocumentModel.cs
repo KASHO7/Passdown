@@ -1,3 +1,5 @@
+using Carowinds.Passdown.Domain.Ert;
+
 namespace Carowinds.Passdown.Documents.Associate;
 
 /// <summary>Effective park-hours status for the PDF's hours banner — a 1:1 relabeling of <c>Domain.Hours.EffectiveHoursStatus</c> kept local so this project never needs to reference the calculator, only its already-computed result (via the builder).</summary>
@@ -26,8 +28,19 @@ public sealed record PdfParkHours(
 /// <summary>Projected attendance and pre-solds (spec §8.1) — null means not entered, printed as "Not entered" rather than a fabricated zero.</summary>
 public sealed record PdfAttendance(int? ProjectedAttendance, int? PreSolds);
 
-/// <summary>Early Ride Time content (spec §8.1). <see cref="Enabled"/> false means "not applicable" for this date, not merely "no details entered".</summary>
-public sealed record PdfEarlyRideTime(bool Enabled, string? Details, IReadOnlyList<string> ParticipatingAttractions);
+/// <summary>
+/// Early Ride Time content (Phase 17B spec Part 13) — built directly from
+/// <c>Application.Associate.AssociateWorkspace.EarlyRideTime</c>, the one resolver-produced value;
+/// the PDF never derives ERT independently. <see cref="StartTimeText"/> is already formatted
+/// (<c>OperationalTimeFormatter</c>-produced upstream) — Documents does no time arithmetic here, same
+/// convention as <see cref="PdfParkHours"/>.
+/// </summary>
+public sealed record PdfEarlyRideTime(
+    EffectiveErtKind Kind,
+    EffectiveErtSource? Source,
+    string? StartTimeText,
+    IReadOnlyList<string> Rides,
+    string? Note);
 
 /// <summary>One of the three Daily Feature types (Phase 8A; formerly "Daily Fun"), pre-labeled by the builder — Documents never decides how <c>DailyFeatureType</c> reads as text.</summary>
 public sealed record PdfDailyFeature(string? TypeLabel, string? Text)

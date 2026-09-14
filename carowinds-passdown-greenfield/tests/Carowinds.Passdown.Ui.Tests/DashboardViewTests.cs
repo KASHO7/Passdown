@@ -7,6 +7,7 @@ using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Ert;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
@@ -271,8 +272,7 @@ public class DashboardViewTests
             {
                 ProjectedAttendance = 18000,
                 PreSolds = 4200,
-                EarlyRideTimeEnabled = true,
-                EarlyRideTimeDetails = "7:30 AM entry via North Gate.",
+                EarlyRideTime = new EffectiveErt(EffectiveErtKind.Configured, EffectiveErtSource.Monthly, new TimeOnly(7, 30), ["Fury 325"], null),
                 DailyFeatureType = DailyFeatureType.QuoteOfTheDay,
                 DailyFeatureText = "\"The best view comes after the hardest climb.\"",
                 Notes = new DashboardNotesSummary(true, ["Gate 3 closed.", "VIP tour at 11.", "Extra staffing at Fury."], 5),
