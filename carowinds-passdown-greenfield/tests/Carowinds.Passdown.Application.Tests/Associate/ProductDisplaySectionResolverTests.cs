@@ -116,6 +116,108 @@ public class ProductDisplaySectionResolverTests
         Assert.Null(ProductDisplaySectionResolver.Resolve(custom));
     }
 
+    // Phase 17A §4/§6/§21: product-family precedence — a season-pass product name wins over category
+    // and audience wording, so Military/First-Responder-branded passes land in Season Passes while
+    // their plain daily-ticket counterparts stay in Daily Admission.
+    [Theory]
+    [InlineData(SourceCategory.SeasonPasses, "Gold Pass")]
+    [InlineData(SourceCategory.SeasonPasses, "Silver Pass")]
+    [InlineData(SourceCategory.SeasonPasses, "Prestige Pass")]
+    [InlineData(SourceCategory.SeasonPasses, "2027 Silver Pass")]
+    [InlineData(SourceCategory.SeasonPasses, "2027 Gold Pass")]
+    [InlineData(SourceCategory.SeasonPasses, "2027 Prestige Pass")]
+    [InlineData(SourceCategory.MilitaryFirstResponder, "Military Gold Pass")]
+    [InlineData(SourceCategory.MilitaryFirstResponder, "First Responder Gold Pass")]
+    public void Resolve_SeasonPassProductNames_ResolveToSeasonPasses(SourceCategory category, string displayName)
+    {
+        Assert.Equal(ProductDisplaySection.SeasonPasses, ProductDisplaySectionResolver.Resolve(Product(category, displayName)));
+    }
+
+    [Theory]
+    [InlineData("Military 1-Day Ticket")]
+    [InlineData("Military & First Responder Tickets")]
+    [InlineData("First Responder Daily Ticket")]
+    public void Resolve_MilitaryOrFirstResponderDailyTicket_StaysDailyAdmission_NotSeasonPasses(string displayName)
+    {
+        Assert.Equal(ProductDisplaySection.DailyAdmission, ProductDisplaySectionResolver.Resolve(Product(SourceCategory.MilitaryFirstResponder, displayName)));
+    }
+
+    [Fact]
+    public void Resolve_BringAFriend_StillClassifiesCorrectly()
+    {
+        Assert.Equal(ProductDisplaySection.Promotions, ProductDisplaySectionResolver.Resolve(Product(SourceCategory.Promotions, "Bring-A-Friend Ticket")));
+        // The catalog "Celebrate America! Bring-A-Friend Duo" card is represented once, generically, under Promotions — never its own section.
+        Assert.Equal(ProductDisplaySection.Promotions, ProductDisplaySectionResolver.Resolve(Product(SourceCategory.Promotions, "Celebrate America! Bring-A-Friend Duo")));
+    }
+
+    [Fact]
+    public void Resolve_ScarowindsPromotion_StillResolvesToScarowinds_AfterSeasonPassOverride()
+    {
+        // Proves the season-pass check doesn't accidentally short-circuit or reorder the existing
+        // SCarowinds-specific override for an unrelated Promotions card.
+        Assert.Equal(ProductDisplaySection.SCarowinds, ProductDisplaySectionResolver.Resolve(Product(SourceCategory.Promotions, "SCarowinds Bundles")));
+    }
+
+    // Phase 17A §9/§10: "2027 Gold Pass" is deliberately tracked as two independent catalog rows (one
+    // native to SeasonPasses, one discovered generically under Promotions) — before this phase they
+    // printed once in each of two different sections, so it was never a visible duplicate; now that
+    // the season-pass override reclassifies the Promotions row into Season Passes too, ResolveAll must
+    // drop the reclassified duplicate and keep only the native Season Passes row.
+    [Fact]
+    public void ResolveAll_SameNamedPassAcrossTwoCategories_KeepsOnlyTheNativeSeasonPassesRow()
+    {
+        var nativeSeasonPass = Product(SourceCategory.SeasonPasses, "2027 Gold Pass");
+        var promotionsDuplicate = Product(SourceCategory.Promotions, "2027 Gold Pass");
+
+        var resolved = ProductDisplaySectionResolver.ResolveAll([nativeSeasonPass, promotionsDuplicate]);
+
+        var goldPassEntries = resolved.Where(entry => entry.Product.DisplayName == "2027 Gold Pass").ToList();
+        var kept = Assert.Single(goldPassEntries);
+        Assert.Equal(ProductDisplaySection.SeasonPasses, kept.Section);
+        Assert.Equal(SourceCategory.SeasonPasses, kept.Product.Category);
+    }
+
+    [Fact]
+    public void ResolveAll_MilitaryGoldPassWithNoNativeSeasonPassesCounterpart_StillAppearsOnce()
+    {
+        var militaryGoldPass = Product(SourceCategory.MilitaryFirstResponder, "Military Gold Pass");
+        var dailyTicket = Product(SourceCategory.MilitaryFirstResponder, "Military & First Responder Tickets");
+
+        var resolved = ProductDisplaySectionResolver.ResolveAll([militaryGoldPass, dailyTicket]);
+
+        Assert.Equal(2, resolved.Count);
+        Assert.Contains(resolved, entry => entry.Product.DisplayName == "Military Gold Pass" && entry.Section == ProductDisplaySection.SeasonPasses);
+        Assert.Contains(resolved, entry => entry.Product.DisplayName == "Military & First Responder Tickets" && entry.Section == ProductDisplaySection.DailyAdmission);
+    }
+
+    [Fact]
+    public void ResolveAll_NoCollisions_ReturnsEveryProductUnchanged()
+    {
+        var products = new[]
+        {
+            Product(SourceCategory.SeasonPasses, "Gold Pass"),
+            Product(SourceCategory.AddOns, "Preferred Parking"),
+            Product(SourceCategory.Promotions, "Bring-A-Friend Ticket"),
+        };
+
+        var resolved = ProductDisplaySectionResolver.ResolveAll(products);
+
+        Assert.Equal(3, resolved.Count);
+    }
+
+    [Fact]
+    public void ResolveAll_ExcludesCategoriesWithNoDedicatedSection()
+    {
+        var resolved = ProductDisplaySectionResolver.ResolveAll(
+        [
+            Product(SourceCategory.BringAFriendDuo, "Celebrate America! Bring-A-Friend Duo Offer"),
+            Product(SourceCategory.SeasonPasses, "Gold Pass"),
+        ]);
+
+        var kept = Assert.Single(resolved);
+        Assert.Equal("Gold Pass", kept.Product.DisplayName);
+    }
+
     [Fact]
     public void Resolve_EveryNonNullCategory_ResolvesToExactlyOneSection()
     {

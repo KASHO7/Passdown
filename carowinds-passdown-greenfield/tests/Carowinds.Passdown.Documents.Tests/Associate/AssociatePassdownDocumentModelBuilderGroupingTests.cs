@@ -84,6 +84,47 @@ public sealed class AssociatePassdownDocumentModelBuilderGroupingTests
         Assert.Contains(model.ProductCategories, c => c.CategoryName == "Promotions" && c.Products.Any(r => r.DisplayName == "Totally New Limited-Time Summer Splash Offer"));
     }
 
+    /// <summary>Phase 17A §6/§14: "Military Gold Pass" renders under Season Passes, not Daily Admission, even though it's scraped under SourceCategory.MilitaryFirstResponder.</summary>
+    [Fact]
+    public void MilitaryGoldPass_RendersUnderSeasonPasses_NotDailyAdmission()
+    {
+        var product = CatalogProduct(SourceCategory.MilitaryFirstResponder, "catalog|military|gold-pass", "Military Gold Pass");
+
+        var model = BuildModelWith(product);
+
+        Assert.Contains(model.ProductCategories, c => c.CategoryName == "Season Passes" && c.Products.Any(r => r.DisplayName == "Military Gold Pass"));
+        Assert.DoesNotContain(model.ProductCategories, c => c.CategoryName == "Daily Admission" && c.Products.Any(r => r.DisplayName == "Military Gold Pass"));
+    }
+
+    /// <summary>Phase 17A §6: an ordinary Military daily ticket (no season-pass wording) is unaffected and still renders under Daily Admission.</summary>
+    [Fact]
+    public void MilitaryDailyTicket_StaysUnderDailyAdmission()
+    {
+        var product = CatalogProduct(SourceCategory.MilitaryFirstResponder, "catalog|military|ticket", "Military & First Responder Tickets", comparison: 80m, qualifier: "Starting From");
+
+        var model = BuildModelWith(product);
+
+        Assert.Contains(model.ProductCategories, c => c.CategoryName == "Daily Admission" && c.Products.Any(r => r.DisplayName == "Military & First Responder Tickets"));
+    }
+
+    /// <summary>
+    /// Phase 17A §9/§10: "2027 Gold Pass" is tracked as two independent catalog rows (native
+    /// SeasonPasses, and a Promotions-category duplicate discovered on the same promoted-offer page).
+    /// Once both reclassify into Season Passes, the PDF must print it once, not twice.
+    /// </summary>
+    [Fact]
+    public void SameNamedPassAcrossTwoCategories_PrintsOnceUnderSeasonPasses()
+    {
+        var nativeSeasonPass = CatalogProduct(SourceCategory.SeasonPasses, "catalog|season|2027-gold", "2027 Gold Pass");
+        var promotionsDuplicate = CatalogProduct(SourceCategory.Promotions, "catalog|promotions|2027-gold", "2027 Gold Pass", qualifier: "Starting From");
+
+        var model = BuildModelWith(nativeSeasonPass, promotionsDuplicate);
+
+        var seasonPasses = Assert.Single(model.ProductCategories, c => c.CategoryName == "Season Passes");
+        Assert.Single(seasonPasses.Products, r => r.DisplayName == "2027 Gold Pass");
+        Assert.DoesNotContain(model.ProductCategories, c => c.CategoryName == "Promotions");
+    }
+
     /// <summary>Every rendered product appears in exactly one section — proven across one composition spanning every category, not one example at a time.</summary>
     [Fact]
     public void EveryRenderedProduct_AppearsInExactlyOneSection()

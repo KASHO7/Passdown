@@ -261,7 +261,7 @@ public sealed class OperationsDashboardService(
         // The three status-tracked dated categories only carry AssociateProductCategoryStatus.LastCheckedAt
         // (most recent attempt of any outcome, per its own doc comment) — never presented as "verified".
         entries.AddRange(workspace.CategoryStatuses.Select(status =>
-            new DashboardSourceStatusEntry(status.Category, Classify(status.State), LastVerifiedAt: null, status.LastCheckedAt)));
+            new DashboardSourceStatusEntry(status.Category, ClassifyDatedCategory(status.Category, status.State), LastVerifiedAt: null, status.LastCheckedAt)));
 
         // Catalog categories have no category-level status record at all (unlike dated categories) —
         // every persisted CatalogProductRecord is always Verified with a real success-only
@@ -289,6 +289,7 @@ public sealed class OperationsDashboardService(
         var verificationIssueCount = entries.Count(e => e.Status == DashboardSourceStatus.VerificationIssue);
         var notPublishedCount = entries.Count(e => e.Status == DashboardSourceStatus.NotPublished);
         var notCheckedCount = entries.Count(e => e.Status == DashboardSourceStatus.NotChecked);
+        var notApplicableCount = entries.Count(e => e.Status == DashboardSourceStatus.NotApplicable);
 
         // Deterministic precedence (Phase 10D Part C), worst first. NotPublished/NotChecked never
         // degrade the overall state on their own (Part E) — they only surface as NoPublishedData
@@ -308,8 +309,31 @@ public sealed class OperationsDashboardService(
 
         return new DashboardDataHealthSummary(
             overallStatus, currentCount, staleCount, unavailableCount, verificationIssueCount, notPublishedCount, notCheckedCount,
-            entries, latestSuccessfulVerification);
+            entries, latestSuccessfulVerification, notApplicableCount);
     }
+
+    /// <summary>
+    /// Spec Phase 17A §3: dated categories whose confirmed "no value for this date" outcome is a
+    /// normal business condition — a seasonal/promotional keyword simply not running on the requested
+    /// date — not a source problem. Both are already excluded from
+    /// <c>DashboardDataHealthPresentation</c>'s own visible source rows (represented, when relevant,
+    /// by their Promotions catalog counterpart instead per <see cref="ProductDisplaySectionResolver"/>),
+    /// so before this fix their <see cref="AssociateVerificationState.Unavailable"/> outcome could
+    /// silently degrade the overall Dashboard headline to "Some data unavailable" with no visible row
+    /// explaining why. A genuine retrieval failure on either category still reports
+    /// <see cref="AssociateVerificationState.Error"/> and is unaffected by this — it still counts via
+    /// <see cref="DashboardSourceStatus.VerificationIssue"/> exactly as before.
+    /// </summary>
+    private static readonly SourceCategory[] OptionalPromotionalDatedCategories =
+    [
+        SourceCategory.BringAFriendDuo,
+        SourceCategory.DatedBringAFriend,
+    ];
+
+    private static DashboardSourceStatus ClassifyDatedCategory(SourceCategory category, AssociateVerificationState state) =>
+        state == AssociateVerificationState.Unavailable && OptionalPromotionalDatedCategories.Contains(category)
+            ? DashboardSourceStatus.NotApplicable
+            : Classify(state);
 
     private static DashboardSourceStatus Classify(AssociateVerificationState state) => state switch
     {

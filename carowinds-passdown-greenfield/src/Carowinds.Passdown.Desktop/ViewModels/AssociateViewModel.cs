@@ -1165,11 +1165,8 @@ public partial class AssociateViewModel : ViewModelBase
             .Where(entry => entry.Section is not null)
             .ToDictionary(entry => entry.Section!.Value, entry => entry.Status);
 
-        var officialBySection = workspace.Products
-            .Where(product => !product.IsCustom)
-            .Select(product => (Product: product, Section: ProductDisplaySectionResolver.Resolve(product)))
-            .Where(entry => entry.Section is not null)
-            .GroupBy(entry => entry.Section!.Value, entry => entry.Product)
+        var officialBySection = ProductDisplaySectionResolver.ResolveAll(workspace.Products.Where(product => !product.IsCustom))
+            .GroupBy(entry => entry.Section, entry => entry.Product)
             .ToDictionary(group => group.Key, group => (IReadOnlyList<AssociateProduct>)group.ToList());
 
         var sections = officialBySection.Keys.Concat(statusBySection.Keys).Distinct().OrderBy(section => (int)section);

@@ -132,6 +132,59 @@ public class CatalogProductLifecycleTests
             () => product.MarkExplicitlyUnavailable(Evidence(RetrievalStatus.Error, Day2), "reason"));
     }
 
+    // Phase 17A §2/§22: end-date semantics are inclusive — the product is still valid ON its own
+    // valid-through date, expiring only the day after.
+    [Fact]
+    public void MarkExpired_OnTheValidThroughDateItself_IsRejected_StillValidThatDay()
+    {
+        var product = CatalogProductLifecycle.FirstObserved(Key, Evidence(RetrievalStatus.Verified, Day1));
+        var validThrough = DateOnly.FromDateTime(Day2.DateTime);
+
+        var exception = Assert.Throws<ArgumentException>(
+            () => product.MarkExpired(Evidence(RetrievalStatus.Verified, Day2), validThrough));
+
+        Assert.Contains("has not yet passed", exception.Message);
+    }
+
+    [Fact]
+    public void MarkExpired_TheDayAfterTheValidThroughDate_ArchivesImmediately()
+    {
+        var product = CatalogProductLifecycle.FirstObserved(Key, Evidence(RetrievalStatus.Verified, Day1));
+        var validThrough = DateOnly.FromDateTime(Day2.DateTime);
+
+        var expired = product.MarkExpired(Evidence(RetrievalStatus.Verified, Day3), validThrough);
+
+        Assert.Equal(ProductLifecycleState.Expired, expired.State);
+        Assert.Equal(Day3, expired.ArchivedAt);
+        Assert.Equal(0, expired.ConsecutiveConfirmedAbsenceCount); // no confirmation retries needed, mirrors MarkExplicitlyUnavailable
+        Assert.Contains(validThrough.ToString("yyyy-MM-dd"), expired.ArchivedReason);
+    }
+
+    [Fact]
+    public void MarkExpired_ErrorEvidenceIsRejected_NeverEvidenceOfExpiration()
+    {
+        var product = CatalogProductLifecycle.FirstObserved(Key, Evidence(RetrievalStatus.Verified, Day1));
+        var validThrough = DateOnly.FromDateTime(Day1.DateTime);
+
+        Assert.Throws<ArgumentException>(
+            () => product.MarkExpired(Evidence(RetrievalStatus.Error, Day3), validThrough));
+    }
+
+    [Fact]
+    public void MarkExpired_IsDistinctFromConfirmedAbsence_NoAbsenceRetryNeeded()
+    {
+        // A product that is still observed on the page (never missing at all) can still expire purely
+        // from its own valid-through date passing — this never routes through ConfirmAbsent's
+        // two-check delay.
+        var product = CatalogProductLifecycle.FirstObserved(Key, Evidence(RetrievalStatus.Verified, Day1));
+        var validThrough = DateOnly.FromDateTime(Day1.DateTime);
+
+        var expired = product.MarkExpired(Evidence(RetrievalStatus.Verified, Day2), validThrough);
+
+        Assert.NotEqual(ProductLifecycleState.PendingConfirmation, expired.State);
+        Assert.Equal(ProductLifecycleState.Expired, expired.State);
+    }
+
     [Fact]
     public void Rehydrate_ReproducesEveryPersistedField()
     {

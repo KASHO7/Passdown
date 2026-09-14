@@ -360,6 +360,65 @@ public class OperationsDashboardServiceTests
         Assert.True(snapshot.DataHealth.UnavailableCount > 0);
     }
 
+    // Phase 17A §3/§24: a seasonal promotional keyword (Bring-A-Friend Duo/dated ordinary
+    // Bring-A-Friend) confirming "not running for this date" is a normal business outcome, never a
+    // source problem — it must not inflate UnavailableCount or degrade the overall status, unlike a
+    // genuine retrieval failure (Error) on the very same category.
+    [Theory]
+    [InlineData(SourceCategory.BringAFriendDuo)]
+    [InlineData(SourceCategory.DatedBringAFriend)]
+    public async Task LoadAsync_SeasonalPromotionUnavailableForThisDate_DoesNotReportSomeUnavailable(SourceCategory category)
+    {
+        var env = CreateEnvironment();
+        await env.DatedResults.RecordFailedAttemptAsync(
+            new DatedResultKey(category, Date),
+            Evidence(RetrievalStatus.Unavailable));
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(DashboardOverallDataStatus.NoPublishedData, snapshot.DataHealth.OverallStatus);
+        Assert.Equal(0, snapshot.DataHealth.UnavailableCount);
+        Assert.Equal(1, snapshot.DataHealth.NotApplicableCount);
+        var entry = Assert.Single(snapshot.DataHealth.Sources, s => s.Category == category);
+        Assert.Equal(DashboardSourceStatus.NotApplicable, entry.Status);
+    }
+
+    // A genuine retrieval failure on the very same seasonal categories must still surface as a real
+    // problem — this fix narrows only the "confirmed not applicable" outcome, never Error.
+    [Theory]
+    [InlineData(SourceCategory.BringAFriendDuo)]
+    [InlineData(SourceCategory.DatedBringAFriend)]
+    public async Task LoadAsync_SeasonalPromotionRetrievalError_StillReportsVerificationIssue(SourceCategory category)
+    {
+        var env = CreateEnvironment();
+        await env.DatedResults.RecordFailedAttemptAsync(
+            new DatedResultKey(category, Date),
+            Evidence(RetrievalStatus.Error));
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(DashboardOverallDataStatus.VerificationIssue, snapshot.DataHealth.OverallStatus);
+        Assert.Equal(1, snapshot.DataHealth.VerificationIssueCount);
+        Assert.Equal(0, snapshot.DataHealth.NotApplicableCount);
+    }
+
+    // An Unavailable outcome on an operational (non-seasonal) dated category must still behave exactly
+    // as before this phase — this fix is scoped to Bring-A-Friend Duo/dated ordinary Bring-A-Friend only.
+    [Fact]
+    public async Task LoadAsync_DailyAdmissionUnavailable_StillReportsSomeUnavailable_FixIsScopedNarrowly()
+    {
+        var env = CreateEnvironment();
+        await env.DatedResults.RecordFailedAttemptAsync(
+            new DatedResultKey(SourceCategory.DatedAdmissionTickets, Date),
+            Evidence(RetrievalStatus.Unavailable));
+
+        var snapshot = await env.Service.LoadAsync(Date);
+
+        Assert.Equal(DashboardOverallDataStatus.SomeUnavailable, snapshot.DataHealth.OverallStatus);
+        Assert.Equal(1, snapshot.DataHealth.UnavailableCount);
+        Assert.Equal(0, snapshot.DataHealth.NotApplicableCount);
+    }
+
     // Phase 10D Part B/Q: nothing has ever been checked -> the overall status must never fabricate
     // "Current" (a real gap in Phase 10A/B's original 3-state model, fixed here) — it honestly reports
     // that nothing is currently confirmed.

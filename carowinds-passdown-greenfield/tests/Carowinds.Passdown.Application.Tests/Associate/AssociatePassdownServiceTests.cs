@@ -743,6 +743,22 @@ public class AssociatePassdownServiceTests
         Assert.Equal("Active Pass", product.DisplayName);
     }
 
+    // Phase 17A §1/§11: an expired product is hidden from normal operational display exactly like an
+    // archived one, but remains a distinct lifecycle reason — never deleted, never confused with a
+    // confirmed-absence archive.
+    [Fact]
+    public async Task ExpiredCatalogProducts_AreExcludedFromDefaultProjection()
+    {
+        var env = CreateEnvironment();
+        SeedCatalogProduct(env.CatalogProducts, SourceCategory.Promotions, "Ended Promotion", 20m, FixedNow, lifecycle: ProductLifecycleState.Expired);
+        SeedCatalogProduct(env.CatalogProducts, SourceCategory.Promotions, "Active Promotion", 20m, FixedNow, lifecycle: ProductLifecycleState.Active);
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+
+        var product = Assert.Single(workspace.Products);
+        Assert.Equal("Active Promotion", product.DisplayName);
+    }
+
     [Fact]
     public async Task CustomProducts_AreDraftLocal_NeverWrittenToOfficialCache_AndSurviveSaveLoadRoundTrip()
     {

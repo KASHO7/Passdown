@@ -412,4 +412,121 @@ public class AssociatePassdownServicePriceSemanticsTests
         Assert.Equal(2, duo.BundleQuantity);
         Assert.Equal(25.00m, duo.PerPersonPriceAmount);
     }
+
+    /// <summary>
+    /// Phase 17A §7/§9: the real "Park Ticket" naming collision — <c>DatedAdmissionSource</c>'s exact
+    /// dated admission product and <c>PromotionsCatalogSource</c>'s generic "Starting From" catalog
+    /// card (both scraped from the official daily-tickets page — see
+    /// docs/retrieval/dated-admission-source.md and fixtures/promotions/daily-tickets-page.html —
+    /// happen to share the exact same official display name, "Park Ticket") must not both appear for
+    /// the selected date; the exact dated row wins and the generic fallback is dropped entirely.
+    /// </summary>
+    [Fact]
+    public async Task LoadAssociateDateAsync_ExactDatedParkTicket_SuppressesGenericStartingFromEquivalent()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var catalogProducts = new InMemoryCatalogProductRepository();
+
+        await datedResults.RecordSuccessAsync(
+            new DatedResultKey(SourceCategory.DatedAdmissionTickets, Aug29),
+            Evidence(Aug29),
+            JsonSerializer.Serialize(new DatedAdmissionPayload(
+            [
+                new DatedAdmissionProduct("park-ticket-2026-08-29", "Park Ticket", 42.99m, null, null, Aug29),
+            ])));
+
+        await catalogProducts.UpsertAsync(new CatalogProductUpsert(
+            CatalogProductKey.FromOfficialId(SourceCategory.Promotions, "9d0d1234-park-ticket"),
+            "Park Ticket", ProductLifecycleState.Active, FixedNow, FixedNow, FixedNow,
+            ConsecutiveConfirmedAbsenceCount: 0, ArchivedAt: null, ArchivedReason: null,
+            CurrentPriceAmount: 39.99m, CurrentDisplayPrice: "$39.99", ComparisonPriceAmount: 55.00m, PriceQualifier: "Starting From",
+            DateSpecific: false, ApplicableDate: null, LastEvidence: Evidence()));
+
+        var service = CreateService(datedResults, catalogProducts);
+        var workspace = await service.LoadAssociateDateAsync(Aug29);
+
+        var parkTicketRows = workspace.Products.Where(p => p.DisplayName == "Park Ticket").ToList();
+        var kept = Assert.Single(parkTicketRows);
+        Assert.Equal(42.99m, kept.OfficialPriceAmount);
+        Assert.Equal(PriceKind.ExactDated, kept.PriceKind);
+    }
+
+    /// <summary>Selecting a date with no exact dated admission leaves the generic catalog fallback visible (spec §23H).</summary>
+    [Fact]
+    public async Task LoadAssociateDateAsync_NoExactDatedAdmission_GenericParkTicketRemainsVisible()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var catalogProducts = new InMemoryCatalogProductRepository();
+        await catalogProducts.UpsertAsync(new CatalogProductUpsert(
+            CatalogProductKey.FromOfficialId(SourceCategory.Promotions, "9d0d1234-park-ticket"),
+            "Park Ticket", ProductLifecycleState.Active, FixedNow, FixedNow, FixedNow,
+            ConsecutiveConfirmedAbsenceCount: 0, ArchivedAt: null, ArchivedReason: null,
+            CurrentPriceAmount: 39.99m, CurrentDisplayPrice: "$39.99", ComparisonPriceAmount: 55.00m, PriceQualifier: "Starting From",
+            DateSpecific: false, ApplicableDate: null, LastEvidence: Evidence()));
+
+        var service = CreateService(datedResults, catalogProducts);
+        var workspace = await service.LoadAssociateDateAsync(Aug29);
+
+        var generic = Assert.Single(workspace.Products, p => p.DisplayName == "Park Ticket");
+        Assert.Equal(PriceKind.StartingFrom, generic.PriceKind);
+    }
+
+    /// <summary>Spec §23G: suppression recalculates per selected date — a different date's own exact admission price governs, never Aug 29's.</summary>
+    [Fact]
+    public async Task LoadAssociateDateAsync_ExactDatedParkTicket_SuppressionIsScopedToItsOwnDate()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var catalogProducts = new InMemoryCatalogProductRepository();
+
+        await datedResults.RecordSuccessAsync(
+            new DatedResultKey(SourceCategory.DatedAdmissionTickets, Aug29),
+            Evidence(Aug29),
+            JsonSerializer.Serialize(new DatedAdmissionPayload(
+            [
+                new DatedAdmissionProduct("park-ticket-2026-08-29", "Park Ticket", 42.99m, null, null, Aug29),
+            ])));
+
+        await catalogProducts.UpsertAsync(new CatalogProductUpsert(
+            CatalogProductKey.FromOfficialId(SourceCategory.Promotions, "9d0d1234-park-ticket"),
+            "Park Ticket", ProductLifecycleState.Active, FixedNow, FixedNow, FixedNow,
+            ConsecutiveConfirmedAbsenceCount: 0, ArchivedAt: null, ArchivedReason: null,
+            CurrentPriceAmount: 39.99m, CurrentDisplayPrice: "$39.99", ComparisonPriceAmount: 55.00m, PriceQualifier: "Starting From",
+            DateSpecific: false, ApplicableDate: null, LastEvidence: Evidence()));
+
+        var service = CreateService(datedResults, catalogProducts);
+        var workspace = await service.LoadAssociateDateAsync(Aug30); // no exact result recorded for Aug 30
+
+        var generic = Assert.Single(workspace.Products, p => p.DisplayName == "Park Ticket");
+        Assert.Equal(PriceKind.StartingFrom, generic.PriceKind);
+        Assert.Equal(39.99m, generic.OfficialPriceAmount);
+    }
+
+    /// <summary>Spec §8/§23D: a distinct bundle (different official name) is never suppressed just because the base admission's exact price is known for the same date.</summary>
+    [Fact]
+    public async Task LoadAssociateDateAsync_ExactDatedParkTicket_DoesNotSuppressADistinctMealBundle()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var catalogProducts = new InMemoryCatalogProductRepository();
+
+        await datedResults.RecordSuccessAsync(
+            new DatedResultKey(SourceCategory.DatedAdmissionTickets, Aug29),
+            Evidence(Aug29),
+            JsonSerializer.Serialize(new DatedAdmissionPayload(
+            [
+                new DatedAdmissionProduct("park-ticket-2026-08-29", "Park Ticket", 42.99m, null, null, Aug29),
+            ])));
+
+        await catalogProducts.UpsertAsync(new CatalogProductUpsert(
+            CatalogProductKey.FromOfficialId(SourceCategory.Promotions, "meal-bundle-id"),
+            "Ticket + Meal, Snack & Drink Bundle", ProductLifecycleState.Active, FixedNow, FixedNow, FixedNow,
+            ConsecutiveConfirmedAbsenceCount: 0, ArchivedAt: null, ArchivedReason: null,
+            CurrentPriceAmount: 59.99m, CurrentDisplayPrice: "$59.99", ComparisonPriceAmount: null, PriceQualifier: "Starting From",
+            DateSpecific: false, ApplicableDate: null, LastEvidence: Evidence()));
+
+        var service = CreateService(datedResults, catalogProducts);
+        var workspace = await service.LoadAssociateDateAsync(Aug29);
+
+        Assert.Contains(workspace.Products, p => p.DisplayName == "Park Ticket" && p.PriceKind == PriceKind.ExactDated);
+        Assert.Contains(workspace.Products, p => p.DisplayName == "Ticket + Meal, Snack & Drink Bundle" && p.PriceKind == PriceKind.StartingFrom);
+    }
 }

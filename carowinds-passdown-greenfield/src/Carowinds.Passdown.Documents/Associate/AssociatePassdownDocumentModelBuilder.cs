@@ -184,11 +184,9 @@ public static class AssociatePassdownDocumentModelBuilder
     {
         var categories = new List<PdfProductCategory>();
 
-        var officialBySection = workspace.Products
-            .Where(product => !product.IsCustom && product.IncludeOnPdf)
-            .Select(product => (Product: product, Section: ProductDisplaySectionResolver.Resolve(product)))
-            .Where(entry => entry.Section is not null && IsSectionIncluded(entry.Section!.Value, workspace.Draft.SectionSelection))
-            .GroupBy(entry => entry.Section!.Value, entry => entry.Product)
+        var officialBySection = ProductDisplaySectionResolver.ResolveAll(workspace.Products.Where(product => !product.IsCustom && product.IncludeOnPdf))
+            .Where(entry => IsSectionIncluded(entry.Section, workspace.Draft.SectionSelection))
+            .GroupBy(entry => entry.Section, entry => entry.Product)
             .OrderBy(group => (int)group.Key);
 
         foreach (var group in officialBySection)

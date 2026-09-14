@@ -299,6 +299,7 @@ public sealed class AssociatePassdownService(
         }
 
         MergeExactDatedBringAFriend(products, datedByCategory.GetValueOrDefault(SourceCategory.DatedBringAFriend), operatingDate, asOf);
+        SuppressGenericFallbacksSupersededByExactDated(products, operatingDate);
 
         products.AddRange(ComposeCustomProducts(draft));
 
@@ -401,9 +402,9 @@ public sealed class AssociatePassdownService(
     {
         foreach (var record in records)
         {
-            if (record.LifecycleState == ProductLifecycleState.Archived)
+            if (record.LifecycleState is ProductLifecycleState.Archived or ProductLifecycleState.Expired)
             {
-                continue; // spec §7.3: archived products don't print/show by default (recoverable only for diagnostics/history).
+                continue; // spec §7.3/Phase 17A §1: archived/expired products don't print/show by default (recoverable only for diagnostics/history).
             }
 
             var identity = AssociateProductIdentity.ForCatalogProduct(record.ProductKey);
@@ -488,6 +489,39 @@ public sealed class AssociatePassdownService(
             Verification = verification,
             PriceKind = PriceKind.ExactDated,
         };
+    }
+
+    /// <summary>
+    /// Spec Phase 17A §7/§8/§9: when an exact dated price already answers a generic "Starting From"
+    /// catalog card for <paramref name="operatingDate"/> — e.g. Daily Admission's dated "Park Ticket"
+    /// (<see cref="SourceCategory.DatedAdmissionTickets"/>) superseding the identically-named
+    /// Promotions catalog card scraped from the same official page (see
+    /// docs/retrieval/dated-admission-source.md/docs/retrieval/catalog-source-inventory.md) — the
+    /// generic fallback is redundant and is dropped from display entirely, never shown twice for the
+    /// same real-world product. Matched by <see cref="ProductDisplayIdentity"/> (normalized display
+    /// name), the same equivalence signal <see cref="MergeExactDatedBringAFriend"/> already relies on,
+    /// generalized here to a removal rather than an in-place merge because an exact dated product in
+    /// this position already gets its own composed row (unlike Bring-A-Friend's dated category, which
+    /// never resolves to a display section of its own). Scoped to <see cref="PriceKind.StartingFrom"/>
+    /// generics only, so a distinct bundle with its own name (e.g. "Ticket + Meal, Snack &amp; Drink
+    /// Bundle") is never touched (spec §8) — it simply never matches any exact row's name.
+    /// </summary>
+    private static void SuppressGenericFallbacksSupersededByExactDated(List<AssociateProduct> products, DateOnly operatingDate)
+    {
+        var exactIdentitiesForDate = products
+            .Where(p => p.PriceKind == PriceKind.ExactDated && p.ApplicableDate == operatingDate)
+            .Select(p => ProductDisplayIdentity.FromDisplayName(p.DisplayName))
+            .ToHashSet();
+
+        if (exactIdentitiesForDate.Count == 0)
+        {
+            return;
+        }
+
+        products.RemoveAll(p =>
+            !p.IsCustom &&
+            p.PriceKind == PriceKind.StartingFrom &&
+            exactIdentitiesForDate.Contains(ProductDisplayIdentity.FromDisplayName(p.DisplayName)));
     }
 
     /// <summary>

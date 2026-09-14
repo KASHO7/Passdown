@@ -59,6 +59,17 @@ public enum DashboardSourceStatus
     NotPublished,
     Unavailable,
     VerificationIssue,
+
+    /// <summary>
+    /// Spec Phase 17A §3: the source was reached and gave a definitive, confirmed answer that this
+    /// optional/seasonal offer simply is not expected for the requested date (e.g. a date-specific
+    /// promotional keyword outside its running window) — never a retrieval problem, and never counted
+    /// toward <see cref="DashboardDataHealthSummary.UnavailableCount"/> or the overall data-health
+    /// status, the same way <see cref="DashboardParkStatus.Closed"/> does not degrade park status.
+    /// Distinct from <see cref="Unavailable"/>, which still means "we expected an answer here and
+    /// didn't get a usable one."
+    /// </summary>
+    NotApplicable,
 }
 
 /// <summary>
@@ -107,6 +118,15 @@ public enum DashboardOverallDataStatus
 /// <see cref="DashboardSourceStatusEntry.LastCheckedAt"/>, so this can never be a failed attempt's
 /// time.
 /// </summary>
+/// <param name="NotApplicableCount">
+/// Count of <see cref="DashboardSourceStatus.NotApplicable"/> entries (spec Phase 17A §3) — kept
+/// separate from every other count so it is provably excluded from
+/// <see cref="DashboardOverallDataStatus"/>'s precedence and from <see cref="UnavailableCount"/>.
+/// Neither of the two categories that can currently produce it (Bring-A-Friend Duo, dated ordinary
+/// Bring-A-Friend) has its own visible row in <c>DashboardDataHealthPresentation</c> today, so this
+/// exists for correctness/testability rather than driving new UI in this phase (spec §15 "do not
+/// redesign").
+/// </param>
 public sealed record DashboardDataHealthSummary(
     DashboardOverallDataStatus OverallStatus,
     int CurrentCount,
@@ -116,7 +136,8 @@ public sealed record DashboardDataHealthSummary(
     int NotPublishedCount,
     int NotCheckedCount,
     IReadOnlyList<DashboardSourceStatusEntry> Sources,
-    DateTimeOffset? LatestSuccessfulVerification);
+    DateTimeOffset? LatestSuccessfulVerification,
+    int NotApplicableCount = 0);
 
 /// <summary>A read-only preview of today's operational notes (Phase 10A Part H) — never a second notes persistence model; <see cref="PreviewLines"/> is a prefix of the same <see cref="AssociateDraftPayload.OperationalNotes"/> list the Associate Notes screen edits.</summary>
 public sealed record DashboardNotesSummary(bool HasNotes, IReadOnlyList<string> PreviewLines, int TotalLineCount)
