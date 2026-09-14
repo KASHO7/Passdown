@@ -2976,3 +2976,41 @@ ZIP-only convenience for now: a single-file user who wants it runs
 ZIP (no new script or in-app feature was built for this, per the brief's explicit "no new feature work"
 scope for 15F).
 
+## Phase 16G — Personal Sync release closure
+
+Full narrative in `docs/personal-sync-architecture.md`'s "Phase 16G — Final Real-World Validation and
+Release Closure" section; exact artifact hashes in `docs/release-manifest.md`'s Phase 16G rebuild entry.
+Summary for this document's own release-strategy lens:
+
+- **Packaging strategy unchanged.** Multi-file ZIP remains primary, single-file EXE remains
+  experimental/deferred — no new Windows-launch evidence was gathered this phase (no Windows host was
+  available in this session), so there was nothing to weigh against the Phase 15F decision. Neither the
+  publish flags, the staging layout, nor `Publish-Windows.ps1`/`Build-PortableRelease.ps1` themselves
+  changed.
+- **Both release forms rebuilt** against the post-Phase-16F working tree (Personal Sync feature complete)
+  and re-hashed; structural validation (publish content audit, forbidden-pattern check, ZIP round-trip
+  byte-identity) passed for both, same as every prior rebuild.
+- **Real Windows/OneDrive-client validation of either release form — including the single-file promotion
+  gate itself — remains NOT EXECUTED**, carried forward from Phase 7E/15F, now compounded by Personal
+  Sync's own real-client validation being entirely outstanding too. §16G.7 of
+  `docs/personal-sync-architecture.md` is the concrete procedure for closing this on real hardware.
+- No packaging-strategy decision in this document changed as a result of this phase — this is a rebuild
+  and re-validation entry, not a strategy revision.
+
+## Phase 17C — release rebuild for Associate PDF templates and UI density pass
+
+Rebuilt from commit `0c2e4fa` ("Phase 17C: Associate UI density pass + Classic/Compact/Modern PDF
+templates") to package the Phase 17A/17B/17C work. Exact hashes/sizes in `docs/release-manifest.md`'s
+Phase 17C rebuild entry.
+
+- **Packaging strategy unchanged.** Same publish flags, same staging layout, same
+  `Publish-Windows.ps1`/`Build-PortableRelease.ps1` logic (run manually via shell, no `pwsh` available
+  on this dev host, same limitation as every prior rebuild). Multi-file ZIP remains primary, single-file
+  EXE remains experimental/deferred — no new Windows-launch evidence was gathered this phase.
+- Deterministic test baseline confirmed at 2110/2110 via the same isolated-partition approach documented
+  in the Phase 15F/16G entries (the pre-existing Phase 6D Avalonia headless flake reproduced in the same
+  38 real-`Window` tests when run in the same process as the rest of the suite; each partition is clean
+  alone).
+- Real Windows/OneDrive-client validation remains **NOT EXECUTED**, carried forward unchanged from every
+  prior rebuild.
+
