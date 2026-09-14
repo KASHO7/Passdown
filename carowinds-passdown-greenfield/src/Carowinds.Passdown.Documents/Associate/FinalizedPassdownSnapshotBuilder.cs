@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Finalization;
+using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Domain.Ert;
 
 namespace Carowinds.Passdown.Documents.Associate;
@@ -28,16 +29,18 @@ public sealed class FinalizedPassdownSnapshotBuilder(IAssociatePassdownPdfGenera
         return MapSnapshot(model);
     }
 
-    public FinalizedPassdownProjection BuildProjection(AssociateWorkspace workspace, DateTimeOffset asOf)
+    public FinalizedPassdownProjection BuildProjection(AssociateWorkspace workspace, DateTimeOffset asOf, AssociatePassdownTemplate template = AssociatePassdownTemplate.Classic)
     {
         ArgumentNullException.ThrowIfNull(workspace);
 
         // Built exactly once (spec Part E) — both the snapshot mapping below and the PDF generation
         // read from this same in-memory model, never from two independent builds of the workspace.
+        // The document model itself is template-neutral (spec §21); only the renderer selected below
+        // varies by template.
         var model = AssociatePassdownDocumentModelBuilder.Build(workspace, asOf);
         var snapshot = MapSnapshot(model);
 
-        var pdfResult = _pdfGenerator.Generate(model);
+        var pdfResult = _pdfGenerator.Generate(model, template);
         if (pdfResult.Status != AssociatePassdownPdfStatus.Generated || pdfResult.PdfBytes is not { } pdfBytes)
         {
             // Part I: a PDF-generation failure must fail finalization outright rather than produce a

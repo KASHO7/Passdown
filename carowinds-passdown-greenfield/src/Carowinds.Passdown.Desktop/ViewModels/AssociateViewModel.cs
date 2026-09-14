@@ -4,6 +4,7 @@ using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Diagnostics;
 using Carowinds.Passdown.Application.Ert;
 using Carowinds.Passdown.Application.OperationalNotes;
+using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Presentation;
@@ -12,6 +13,7 @@ using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Ert;
 using Carowinds.Passdown.Domain.Hours;
+using Carowinds.Passdown.Infrastructure.Preferences;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -65,6 +67,7 @@ public partial class AssociateViewModel : ViewModelBase
     private readonly IPdfSaveFilePicker _pdfSavePicker;
     private readonly IDiagnosticExportService _diagnosticExportService;
     private readonly IDiagnosticExportFilePicker _diagnosticExportPicker;
+    private readonly IAssociatePassdownTemplatePreferenceStore _templatePreferenceStore;
     private readonly ILogger<AssociateViewModel>? _logger;
     private readonly TimeSpan _autosaveDebounce;
     private readonly Func<TimeSpan, CancellationToken, Task> _autosaveDelay;
@@ -73,6 +76,9 @@ public partial class AssociateViewModel : ViewModelBase
     private int _loadVersion;
     private Task _pendingLoad = Task.CompletedTask;
     private Task _pendingAutosave = Task.CompletedTask;
+    private Task _pendingTemplatePreferenceLoad = Task.CompletedTask;
+    private Task _pendingTemplatePreferenceSave = Task.CompletedTask;
+    private bool _isLoadingTemplatePreference;
     private CancellationTokenSource? _debounceCts;
 
     /// <summary>The operating date the current editable fields belong to — distinct from <see cref="SelectedDate"/>, which may already hold a newer date while a flush-then-load is still switching over (Part H).</summary>
@@ -321,6 +327,16 @@ public partial class AssociateViewModel : ViewModelBase
     public partial string? DailyFeatureText { get; set; }
 
     /// <summary>
+    /// The currently selected Associate Passdown PDF template (Phase 17C §12/§15) — a local
+    /// device/presentation preference, never draft data (see <see cref="AssociatePassdownTemplatePreference"/>).
+    /// Loaded once at construction (<see cref="PendingTemplatePreferenceLoad"/>) and persisted on every
+    /// change; switching it never touches <see cref="Workspace"/> or triggers autosave (spec §17:
+    /// "changing draft data" and "changing the template" are deliberately independent).
+    /// </summary>
+    [ObservableProperty]
+    public partial AssociatePassdownTemplateOption SelectedTemplateOption { get; set; } = AssociatePassdownTemplateOption.For(AssociatePassdownTemplate.Classic);
+
+    /// <summary>
     /// Optional-section visibility for the Passdown Builder (Phase 8A) — all default to included,
     /// mirroring <see cref="PassdownSectionSelection.AllIncluded"/>. Day of week, date, Park Hours,
     /// Attendance, Early Ride Time, and Daily Feature are mandatory and have no corresponding
@@ -392,7 +408,8 @@ public partial class AssociateViewModel : ViewModelBase
         IPdfSaveFilePicker? pdfSavePicker = null,
         IDiagnosticExportService? diagnosticExportService = null,
         IDiagnosticExportFilePicker? diagnosticExportPicker = null,
-        IErtConfigurationService? ertConfigurationService = null)
+        IErtConfigurationService? ertConfigurationService = null,
+        IAssociatePassdownTemplatePreferenceStore? templatePreferenceStore = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -406,10 +423,55 @@ public partial class AssociateViewModel : ViewModelBase
         _pdfSavePicker = pdfSavePicker ?? new UnavailablePdfSaveFilePicker();
         _diagnosticExportService = diagnosticExportService ?? new UnavailableDiagnosticExportService();
         _diagnosticExportPicker = diagnosticExportPicker ?? new UnavailableDiagnosticExportFilePicker();
+        _templatePreferenceStore = templatePreferenceStore ?? new FileAssociatePassdownTemplatePreferenceStore(FileAssociatePassdownTemplatePreferenceStore.DefaultPath);
 
         // "Today" in the park's own wall-clock time (spec §6.5/§6.6 use the same Eastern
         // convention for "today") rather than the host machine's arbitrary local time zone.
         SelectedDate = DateOnly.FromDateTime(EasternTimeZone.ConvertFromUtc(clock.UtcNow).DateTime);
+
+        // Phase 17C §15: loaded once here, independent of the date-load pipeline above — the
+        // template preference is device/presentation state, never part of a date's workspace.
+        _pendingTemplatePreferenceLoad = LoadTemplatePreferenceAsync();
+    }
+
+    private async Task LoadTemplatePreferenceAsync()
+    {
+        var preference = await _templatePreferenceStore.LoadAsync().ConfigureAwait(true);
+
+        // Guards against OnSelectedTemplateOptionChanged immediately re-saving the value it was just
+        // loaded with — a redundant but otherwise harmless write this avoids purely for cleanliness.
+        _isLoadingTemplatePreference = true;
+        try
+        {
+            SelectedTemplateOption = AssociatePassdownTemplateOption.For(preference.Template);
+        }
+        finally
+        {
+            _isLoadingTemplatePreference = false;
+        }
+    }
+
+    /// <summary>Lets a test await the initial template-preference load deterministically instead of racing the constructor's fire-and-forget task.</summary>
+    public Task PendingTemplatePreferenceLoad => _pendingTemplatePreferenceLoad;
+
+    /// <summary>Lets a test await the most recently triggered template-preference save deterministically.</summary>
+    public Task PendingTemplatePreferenceSave => _pendingTemplatePreferenceSave;
+
+    public IReadOnlyList<AssociatePassdownTemplateOption> TemplateOptions => AssociatePassdownTemplateOption.All;
+
+    /// <summary>
+    /// Persists the new choice immediately (spec §15 "should persist locally") — never queued through
+    /// the draft autosave debounce, since this is not draft data (spec §17: switching the template
+    /// must never mark the draft unsaved or touch <see cref="Workspace"/>).
+    /// </summary>
+    partial void OnSelectedTemplateOptionChanged(AssociatePassdownTemplateOption value)
+    {
+        if (_isLoadingTemplatePreference)
+        {
+            return;
+        }
+
+        _pendingTemplatePreferenceSave = _templatePreferenceStore.SaveAsync(new AssociatePassdownTemplatePreference(value.Value));
     }
 
     public bool IsBusy => IsLoadingDate || IsCheckingOnline;
@@ -696,7 +758,7 @@ public partial class AssociateViewModel : ViewModelBase
                 return;
             }
 
-            var result = _pdfExportService.GeneratePdf(workspace, DateTimeOffset.Now);
+            var result = _pdfExportService.GeneratePdf(workspace, DateTimeOffset.Now, SelectedTemplateOption.Value);
 
             // Phase 13D Part AA/AB: reflects the real generated page count whenever a document was
             // actually produced — including an overflow that still generated onto extra pages.

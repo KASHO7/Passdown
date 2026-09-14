@@ -14,6 +14,7 @@ using Carowinds.Passdown.Application.History;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.PersonalSync;
+using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Retrieval.Browser;
@@ -30,6 +31,7 @@ using Carowinds.Passdown.Infrastructure.Concurrency;
 using Carowinds.Passdown.Infrastructure.Diagnostics;
 using Carowinds.Passdown.Infrastructure.Logging;
 using Carowinds.Passdown.Infrastructure.PersonalSync;
+using Carowinds.Passdown.Infrastructure.Preferences;
 using Carowinds.Passdown.Infrastructure.Retrieval.Browser;
 using Carowinds.Passdown.Infrastructure.Retrieval.Http;
 using Carowinds.Passdown.Infrastructure.Retrieval.Sources;
@@ -324,6 +326,12 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IAssociatePassdownPdfGenerator, AssociatePassdownPdfGenerator>();
         services.AddSingleton<IAssociatePassdownPdfExportService, AssociatePassdownPdfExportService>();
         services.AddSingleton<IPdfSaveFilePicker, AvaloniaPdfSaveFilePicker>();
+
+        // Phase 17C §15/§39: the local Associate Passdown template preference (Classic/Compact/
+        // Modern) — one flat JSON file, mirroring the PersonalSync file-based stores below. Consumed
+        // by both AssociateViewModel (for Preview PDF) and FinalizedPassdownFinalizationService (so a
+        // scheduled finalization freezes whatever template was selected at that moment).
+        services.AddSingleton<IAssociatePassdownTemplatePreferenceStore>(_ => new FileAssociatePassdownTemplatePreferenceStore(FileAssociatePassdownTemplatePreferenceStore.DefaultPath));
 
         // Phase 9A: the immutable finalized-passdown foundation.
         services.AddSingleton<IFinalizedPassdownRepository, SqliteFinalizedPassdownRepository>();

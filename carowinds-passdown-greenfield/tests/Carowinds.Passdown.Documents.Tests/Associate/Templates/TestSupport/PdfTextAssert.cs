@@ -1,0 +1,20 @@
+using System.Text.RegularExpressions;
+
+namespace Carowinds.Passdown.Documents.Tests.Associate.Templates.TestSupport;
+
+/// <summary>
+/// Whitespace-normalized substring assertion for PdfPig-extracted PDF text. QuestPDF wraps long
+/// strings onto multiple visual lines with no explicit space glyph at the wrap point, so PdfPig's
+/// per-line text extraction can join two wrapped words with no space between them (e.g. "day in
+/// enough" extracts as "day inenough") — a text-extraction artifact of long/wrapping content, not a
+/// missing-content bug. Collapsing all whitespace on both sides before comparing makes the assertion
+/// robust to exactly where a wrap happened to land, while still failing if the content is genuinely
+/// different or missing.
+/// </summary>
+internal static class PdfTextAssert
+{
+    private static string Collapse(string value) => Regex.Replace(value, @"\s+", "");
+
+    public static void ContainsIgnoringWhitespace(string expectedSubstring, string actualText) =>
+        Assert.Contains(Collapse(expectedSubstring), Collapse(actualText));
+}

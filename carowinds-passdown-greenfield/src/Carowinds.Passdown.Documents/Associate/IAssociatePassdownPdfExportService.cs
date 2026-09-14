@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.Preferences;
 
 namespace Carowinds.Passdown.Documents.Associate;
 
@@ -10,18 +11,18 @@ namespace Carowinds.Passdown.Documents.Associate;
 /// </summary>
 public interface IAssociatePassdownPdfExportService
 {
-    /// <summary>Builds the print-ready <see cref="AssociatePassdownDocumentModel"/> from <paramref name="workspace"/> and generates the PDF in one call.</summary>
-    AssociatePassdownPdfResult GeneratePdf(AssociateWorkspace workspace, DateTimeOffset generatedAt, CancellationToken cancellationToken = default);
+    /// <summary>Builds the print-ready <see cref="AssociatePassdownDocumentModel"/> from <paramref name="workspace"/> and generates the PDF in one call, using <paramref name="template"/> (Phase 17C; defaults to Classic).</summary>
+    AssociatePassdownPdfResult GeneratePdf(AssociateWorkspace workspace, DateTimeOffset generatedAt, AssociatePassdownTemplate template = AssociatePassdownTemplate.Classic, CancellationToken cancellationToken = default);
 }
 
 /// <inheritdoc cref="IAssociatePassdownPdfExportService"/>
 public sealed class AssociatePassdownPdfExportService(IAssociatePassdownPdfGenerator generator) : IAssociatePassdownPdfExportService
 {
-    public AssociatePassdownPdfResult GeneratePdf(AssociateWorkspace workspace, DateTimeOffset generatedAt, CancellationToken cancellationToken = default)
+    public AssociatePassdownPdfResult GeneratePdf(AssociateWorkspace workspace, DateTimeOffset generatedAt, AssociatePassdownTemplate template = AssociatePassdownTemplate.Classic, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(workspace);
 
         var model = AssociatePassdownDocumentModelBuilder.Build(workspace, generatedAt);
-        return generator.Generate(model, cancellationToken);
+        return generator.Generate(model, template, cancellationToken);
     }
 }

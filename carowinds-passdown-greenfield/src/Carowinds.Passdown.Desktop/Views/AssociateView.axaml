@@ -82,10 +82,14 @@
       <Setter Property="FontSize" Value="13" />
     </Style>
 
-    <!-- Panels: one restrained, brand-tinted container style used everywhere instead of nested cards. -->
+    <!-- Panels: one restrained, brand-tinted container style used everywhere instead of nested cards.
+         Phase 17C §4/§32: tightened from the original 18/12px padding as part of the Associate
+         density pass — a shared style change (deliberately not a per-view override) so Products/
+         Notes/other consumers of the same style stay visually consistent (spec §2's "unless a shared
+         style causes an obvious inconsistency"). -->
     <Style Selector="Border.panel">
-      <Setter Property="Padding" Value="18" />
-      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="14" />
+      <Setter Property="CornerRadius" Value="7" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
       <Setter Property="Background" Value="{DynamicResource PassdownSurfaceTintBrush}" />
@@ -96,8 +100,8 @@
       <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
     </Style>
     <Style Selector="Border.inset">
-      <Setter Property="Padding" Value="12" />
-      <Setter Property="Margin" Value="0,10,0,0" />
+      <Setter Property="Padding" Value="10" />
+      <Setter Property="Margin" Value="0,8,0,0" />
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
@@ -149,14 +153,17 @@
       <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
     </Style>
 
-    <!-- Hours headline: large when hours are known, quiet when not (Part D — "Not checked yet" must never be a giant headline). -->
+    <!-- Hours headline: large when hours are known, quiet when not (Part D — "Not checked yet" must
+         never be a giant headline). Phase 17C §4: reduced from 30px as part of the density pass —
+         still the single largest text on Overview, just no longer disproportionate to the rest of
+         the merged Day &amp; Operating Hours panel. -->
     <Style Selector="TextBlock.hoursHeadline">
-      <Setter Property="FontSize" Value="30" />
+      <Setter Property="FontSize" Value="22" />
       <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="Margin" Value="0,4,0,6" />
+      <Setter Property="Margin" Value="0,2,0,4" />
     </Style>
     <Style Selector="TextBlock.hoursHeadline.subtle">
-      <Setter Property="FontSize" Value="16" />
+      <Setter Property="FontSize" Value="14" />
       <Setter Property="FontWeight" Value="Normal" />
       <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
     </Style>
@@ -300,6 +307,24 @@
                   AutomationProperties.Name="Export Diagnostics"
                   AutomationProperties.HelpText="Saves a support diagnostic ZIP with version, source status, and recent log information. Contains no drafts or personal data." />
 
+          <!-- Phase 17C §12/§37: PDF Style selector, placed right next to Create PDF since template
+               choice is scoped to PDF generation, not an app-wide setting — switching it affects the
+               very next Create PDF/finalization, with no separate Settings screen to navigate to. -->
+          <StackPanel Orientation="Horizontal" Spacing="6" Margin="16,0,0,6" VerticalAlignment="Center">
+            <TextBlock Text="PDF Style" Classes="muted" VerticalAlignment="Center" />
+            <ComboBox ItemsSource="{Binding TemplateOptions}"
+                      SelectedItem="{Binding SelectedTemplateOption}"
+                      MinWidth="110"
+                      AutomationProperties.Name="PDF Style"
+                      AutomationProperties.HelpText="Chooses the visual template used by Preview PDF and the next finalized PDF. Never changes passdown data.">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="presentation:AssociatePassdownTemplateOption">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+
           <Button Content="Create PDF"
                   Margin="8,0,0,6"
                   Command="{Binding CreatePdfCommand}"
@@ -351,15 +376,20 @@
         </StackPanel>
       </Border>
 
-      <ScrollViewer Grid.Column="1" Padding="24,20,24,24"
+      <ScrollViewer Grid.Column="1" Padding="20,16,20,20"
                     IsVisible="{Binding IsOverviewSectionSelected}">
-          <StackPanel Spacing="16">
+          <StackPanel Spacing="10">
 
-            <Grid ColumnDefinitions="*,1.4*" ColumnSpacing="16">
+            <!-- Phase 17C card audit: Park Hours and Today at a Glance merged into one "Day &amp;
+                 Operating Hours" panel (previously two separate hero/plain panels) — one card
+                 boundary instead of two, with a single vertical divider between the two content
+                 groups, matching the "compact aligned rows" density target (spec §1/§3/§6). No
+                 binding changed; only the surrounding Border/Grid container did. -->
+            <Border Classes="panel heroPanel">
+            <Grid ColumnDefinitions="*,Auto,1.35*">
 
               <!-- Park hours (Part D): the strongest single operational summary on the page. -->
-              <Border Grid.Column="0" Classes="panel heroPanel">
-                <StackPanel Spacing="2">
+              <StackPanel Grid.Column="0" Spacing="2">
                   <TextBlock Text="Park Hours" Classes="sectionTitle" />
 
                   <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -483,14 +513,14 @@
                       </Grid>
                     </StackPanel>
                   </Border>
-                </StackPanel>
-              </Border>
+              </StackPanel>
+
+              <Rectangle Grid.Column="1" Classes="glanceDivider" />
 
               <!-- Today at a Glance (Part E): Attendance, Early Ride Time, and Daily Fun read as one
                    compact operational summary block with consistent sub-headers, rather than three
                    unrelated stacked forms. -->
-              <Border Grid.Column="1" Classes="panel">
-                <StackPanel Spacing="2">
+              <StackPanel Grid.Column="2" Spacing="2">
                   <TextBlock Text="Today at a Glance" Classes="sectionTitle" />
 
                   <Grid ColumnDefinitions="0.7*,Auto,1.2*,Auto,1.2*">
@@ -650,18 +680,22 @@
                                AutomationProperties.Name="Daily Feature text" />
                     </StackPanel>
                   </Grid>
-                </StackPanel>
-              </Border>
+              </StackPanel>
 
             </Grid>
+            </Border>
 
-            <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+            <!-- Phase 17C card audit: Verification &amp; Save Status and Operational Notes summary
+                 merged into one compact status strip — both were "poor card candidates" per spec §3
+                 (a chip plus a line or two of text each), so they now share one card boundary with a
+                 vertical divider instead of two full panels. -->
+            <Border Classes="panel">
+            <Grid ColumnDefinitions="*,Auto,*">
 
               <!-- Verification / refresh status (Part 2): the save/refresh lifecycle gathered into
                    its own compact dashboard card instead of only a header chip and stray messages. -->
-              <Border Grid.Column="0" Classes="panel">
-                <StackPanel Spacing="8">
-                  <TextBlock Text="Verification &amp; Save Status" Classes="sectionTitle" Margin="0,0,0,4" />
+              <StackPanel Grid.Column="0" Spacing="6">
+                  <TextBlock Text="Verification &amp; Save Status" Classes="sectionTitle" Margin="0,0,0,2" />
 
                   <Grid ColumnDefinitions="Auto,*">
                     <TextBlock Grid.Column="0" Text="Draft" Classes="muted" Margin="0,0,10,0" />
@@ -682,14 +716,14 @@
                              IsVisible="{Binding PdfExportMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                   <TextBlock Text="{Binding DiagnosticsExportMessage}"
                              IsVisible="{Binding DiagnosticsExportMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                </StackPanel>
-              </Border>
+              </StackPanel>
+
+              <Rectangle Grid.Column="1" Classes="glanceDivider" />
 
               <!-- Operational Notes summary (Part 2): a read-only preview on the dashboard; the
                    full editable notes field lives on the Notes tab so Overview stays short. -->
-              <Border Grid.Column="1" Classes="panel">
-                <StackPanel Spacing="8">
-                  <TextBlock Text="Operational Notes" Classes="sectionTitle" Margin="0,0,0,4" />
+              <StackPanel Grid.Column="2" Spacing="6">
+                  <TextBlock Text="Operational Notes" Classes="sectionTitle" Margin="0,0,0,2" />
 
                   <TextBlock Text="{Binding OperationalNotesText}"
                              IsVisible="{Binding OperationalNotesText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
@@ -699,10 +733,10 @@
                              IsVisible="{Binding OperationalNotesText, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
 
                   <TextBlock Text="Open the Notes tab to add or edit notes." Classes="fieldHint" Margin="0" />
-                </StackPanel>
-              </Border>
+              </StackPanel>
 
             </Grid>
+            </Border>
 
             <!-- Passdown Builder section selection (Phase 8A; SCarowinds/Haunt added Phase 8B): Day
                  of week, Date, Park Hours, Attendance, Early Ride Time, and Daily Feature above

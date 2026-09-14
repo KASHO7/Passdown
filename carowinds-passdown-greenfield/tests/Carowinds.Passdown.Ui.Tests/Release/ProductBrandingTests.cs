@@ -16,7 +16,10 @@ public class ProductBrandingTests
     private static string MainWindowAxamlText => File.ReadAllText(Path.Combine(RepoRoot, "src", "Carowinds.Passdown.Desktop", "Views", "MainWindow.axaml"));
     private static string DesktopCsprojText => File.ReadAllText(Path.Combine(RepoRoot, "src", "Carowinds.Passdown.Desktop", "Carowinds.Passdown.Desktop.csproj"));
     private static string DirectoryBuildPropsText => File.ReadAllText(Path.Combine(RepoRoot, "Directory.Build.props"));
-    private static string PdfGeneratorText => File.ReadAllText(Path.Combine(RepoRoot, "src", "Carowinds.Passdown.Documents", "Associate", "AssociatePassdownPdfGenerator.cs"));
+    // Phase 17C: the brand header text moved from AssociatePassdownPdfGenerator (now a thin
+    // orchestrator) into the Classic template renderer — Classic being the one that preserves the
+    // pre-17C recognizable style this test guards.
+    private static string PdfGeneratorText => File.ReadAllText(Path.Combine(RepoRoot, "src", "Carowinds.Passdown.Documents", "Associate", "Templates", "ClassicAssociatePassdownTemplateRenderer.cs"));
     private static string AppPathsText => File.ReadAllText(Path.Combine(RepoRoot, "src", "Carowinds.Passdown.Infrastructure", "AppPaths.cs"));
     private static string ScheduledTaskPlanText => File.ReadAllText(Path.Combine(RepoRoot, "src", "Carowinds.Passdown.Desktop", "ScheduledRefresh", "ScheduledTaskPlan.cs"));
 

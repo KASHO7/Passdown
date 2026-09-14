@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.Preferences;
 
 namespace Carowinds.Passdown.Application.Finalization;
 
@@ -27,7 +28,15 @@ public interface IFinalizedPassdownSnapshotBuilder
     /// I) — callers must treat that as "finalization failed" and write no row, exactly like a
     /// serialization/hash failure.
     /// </summary>
-    FinalizedPassdownProjection BuildProjection(AssociateWorkspace workspace, DateTimeOffset asOf);
+    /// <param name="template">
+    /// Phase 17C: which visual template renders the frozen PDF — the current
+    /// <see cref="AssociatePassdownTemplatePreference"/> at the moment of finalization, frozen forever
+    /// once written (spec §18/§31: switching the preference afterward never alters an already-finalized
+    /// PDF). Defaults to <see cref="AssociatePassdownTemplate.Classic"/> for any caller that does not
+    /// pass one explicitly (e.g. existing tests), matching Classic's status as the safe default
+    /// (spec §38).
+    /// </param>
+    FinalizedPassdownProjection BuildProjection(AssociateWorkspace workspace, DateTimeOffset asOf, AssociatePassdownTemplate template = AssociatePassdownTemplate.Classic);
 }
 
 /// <summary>

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Persistence;
+using Carowinds.Passdown.Application.Preferences;
 
 namespace Carowinds.Passdown.Application.Finalization;
 
@@ -43,7 +44,8 @@ public interface IFinalizedPassdownFinalizationService
 /// <inheritdoc cref="IFinalizedPassdownFinalizationService"/>
 public sealed class FinalizedPassdownFinalizationService(
     IFinalizedPassdownRepository repository,
-    IFinalizedPassdownSnapshotBuilder snapshotBuilder) : IFinalizedPassdownFinalizationService
+    IFinalizedPassdownSnapshotBuilder snapshotBuilder,
+    IAssociatePassdownTemplatePreferenceStore? templatePreferenceStore = null) : IFinalizedPassdownFinalizationService
 {
     public async Task<FinalizationResult> FinalizeAsync(
         DateOnly passdownDate,
@@ -62,6 +64,15 @@ public sealed class FinalizedPassdownFinalizationService(
             return new FinalizationResult(FinalizationOutcome.AlreadyFinalized, existing);
         }
 
+        // Phase 17C §18/§31: finalization freezes whatever template is currently selected at this
+        // exact moment — read once here, never re-read later, so an associate switching the
+        // preference afterward can never alter an already-written row. No store registered (e.g.
+        // most existing tests construct this service with two arguments) falls back to Classic, the
+        // documented safe default (spec §38).
+        var template = templatePreferenceStore is null
+            ? AssociatePassdownTemplate.Classic
+            : (await templatePreferenceStore.LoadAsync(cancellationToken).ConfigureAwait(false)).Template;
+
         // Building the projection (document model built once, per Part E), serializing, and hashing
         // all happen before any write (Part H/O: "if serialization/hash creation fails: no row should
         // be inserted"). This now includes PDF generation (Part I): if BuildProjection throws because
@@ -69,7 +80,7 @@ public sealed class FinalizedPassdownFinalizationService(
         // ever inserted — indistinguishable to callers from any other pre-insert failure. A single
         // subsequent AddAsync is itself one atomic SQLite statement, so there is no window where a
         // partially-written row (e.g. snapshot without its PDF) could exist.
-        var projection = snapshotBuilder.BuildProjection(workspace, finalizedAt);
+        var projection = snapshotBuilder.BuildProjection(workspace, finalizedAt, template);
         var snapshotJson = FinalizedPassdownSnapshotSerializer.Serialize(projection.Snapshot);
         var contentHash = FinalizedPassdownSnapshotSerializer.ComputeContentHash(snapshotJson);
         var pdfHash = Convert.ToHexStringLower(SHA256.HashData(projection.PdfBytes));
