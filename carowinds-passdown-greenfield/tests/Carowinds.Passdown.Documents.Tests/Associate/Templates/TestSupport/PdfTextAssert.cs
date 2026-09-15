@@ -17,4 +17,8 @@ internal static class PdfTextAssert
 
     public static void ContainsIgnoringWhitespace(string expectedSubstring, string actualText) =>
         Assert.Contains(Collapse(expectedSubstring), Collapse(actualText));
+
+    /// <summary>Boolean form of <see cref="ContainsIgnoringWhitespace"/> for callers that need to branch (e.g. scanning which page a snippet landed on) rather than assert directly.</summary>
+    public static bool TextContainsIgnoringWhitespace(string actualText, string expectedSubstring) =>
+        Collapse(actualText).Contains(Collapse(expectedSubstring));
 }

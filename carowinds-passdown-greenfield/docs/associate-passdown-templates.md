@@ -1,10 +1,16 @@
-# Associate Passdown PDF templates — Phase 17C
+# Associate Passdown PDF templates — Phase 17C (superseded in part by Phase 17D — see §12)
 
 Adds three selectable Associate Passdown PDF visual templates (Classic/Compact/Modern) and a density
 pass over the Associate Overview UI. Baseline this phase was built against: Phase 17B complete, DB
 schema 15, Draft schema 4, Snapshot schema 2, SyncSchemaVersion 1, 2059/2059 deterministic tests.
 
-## 1. The three templates
+**Phase 17D note:** §1's per-template visual descriptions below (tile/card grids, Modern's two-column
+rail body) describe the *Phase 17C* implementation and are kept for history. Phase 17D replaced all
+three templates' product rendering with one shared master layout (no cards, no rail) — see §15 for
+the current, authoritative visual definition. The architecture in §2-§11 (document model, orchestrator,
+one renderer per template, template preference, finalization/immutability) is unchanged by Phase 17D.
+
+## 1. The three templates (Phase 17C shape — see §15 for the current visual definition)
 
 | Template | Intent | Notes |
 |---|---|---|
@@ -247,3 +253,176 @@ code.
 - DPI scaling validation (100%/125%/150%) — NOT EXECUTED, no Windows host available.
 - The native Avalonia `ComboBox` dropdown's own visual chrome was not screenshot-verified on a real
   Windows renderer (same standing headless-only limitation as every prior UI phase).
+
+## 15. Phase 17D: approved master layout, branding/pricing cleanup, pagination fix
+
+Baseline this phase was built against: Phase 17C complete (as documented above), DB schema 15, Draft
+schema 4, Snapshot schema 2, SyncSchemaVersion 1, 2113/2113 deterministic tests (up from 2110/2110).
+
+### 15.1 Why
+
+Phase 17C gave every template a genuinely different visual treatment (Classic's price tiles/promo
+cards, Compact's dense rows, Modern's two-column rail). In real use this proved to be more redesign
+than the passdown needed: Classic/Modern's tile and rail treatments cost far more vertical space than
+a plain aligned row for the same information, the app-branding header ("CAROWINDS OPERATIONS" /
+"Associate Passdown") took real space to say something the reader already knows from holding the
+paper, and the printed ERT/pricing carried information (start time, "was $X", raw qualifier text) an
+associate does not need on a shift reference sheet. Phase 17D is a corrective pass: same architecture,
+same three named templates, one shared content structure ("the approved master layout"), restyled per
+template rather than restructured per template.
+
+### 15.2 The approved master structure
+
+Every template, every page, in this order:
+
+```
+{DAY, MONTH DATE, YEAR}                                    <- primary heading, no app branding above it
+─────────────────────────────────────────────────────────
+PARK HOURS        <headline>
+North Gate        <time>                   Avenue          <time>
+Attendance         <count or —>            Pre-solds       <count or —>
+Early Ride         <rides, bullet-separated, or None/Not configured>
+
+{FEATURE TYPE, e.g. "USELESS FACT OF THE DAY"}
+──────────────────────────────────────────────────────────
+{feature text}
+
+{DAILY ADMISSION}                              {FAST LANE}
+───────────────────                            ───────────────────
+{rows: name ................ price}            {rows: name ... price}
+
+{PROMOTIONS}                                   {SEASON PASSES}
+───────────────────                            ───────────────────
+{rows}                                         {rows}
+
+{SCAROWINDS / ADD-ONS / CUSTOM-INTERNAL, each full width when present}
+──────────────────────────────────────────────────────────
+{rows}
+
+OPERATIONAL NOTES
+──────────────────────────────────────────────────────────
+• {note}
+• {note}
+
+                                                    {Mon d} • {h:mm tt}
+```
+
+Implemented as `MasterProductLayout.Compose` (`Documents/Associate/Templates/MasterProductLayout.cs`,
+new this phase) for the product-pairing/full-width part of this structure, called identically by all
+three renderers; the header/summary-grid/Daily-Feature/Notes/footer are each renderer's own code
+(same content and order, different typography per §15.7), not shared, since their visual treatment is
+genuinely template-specific and there was little duplication to remove.
+
+### 15.3 Product pairing (spec §12)
+
+`MasterProductLayout` identifies a category by `PdfProductCategory.Section` (a new field this phase
+added to that record — a nullable `ProductDisplaySection`, `null` only for the Custom/Internal
+pseudo-category) — never by the category's display-name string, so pairing can never silently break if
+a heading's wording changes. Daily Admission pairs with Fast Lane; Promotions pairs with Season Passes;
+every other category (SCarowinds, Add-Ons, Custom/Internal, and anything not covered by an explicit
+pairing) renders full width, in whatever order the categories already arrived in. A pairing with only
+one side present renders that side alone at full row width (QuestPDF's own `RelativeItem` already
+fills the row — no extra logic needed); a pairing with both sides absent contributes nothing.
+
+### 15.4 What was removed from the PDF
+
+- **App branding / document title** (spec §7): "CAROWINDS OPERATIONS" and "Associate Passdown" no
+  longer print anywhere, in any template. The date is the page's primary heading, printed upper-case.
+- **Comparison ("was $x") pricing** (spec §8): `PdfProductRow.ComparisonPriceText` is always `null`
+  from `AssociatePassdownDocumentModelBuilder.BuildOfficialRow` onward — no renderer reads it any more,
+  though the field itself stays on the record (and on `FinalizedProductRowSnapshot`) for schema
+  compatibility with rows already frozen before this phase. Comparison pricing remains fully visible
+  in the Products screen and product history — only the printed handoff stops carrying it.
+- **Raw ecommerce qualifier text** (spec §9): "Only", "Online Price", "Sale Price", and any other raw
+  `PriceQualifier` string no longer print — `PdfProductRow.Qualifier` is always `null` from the builder
+  onward, for the same reason/compatibility shape as comparison pricing above. The one exception that
+  materially changes the number's meaning, `PriceKind.StartingFrom`, is preserved by folding "From "
+  into the price text itself (`AssociatePassdownDocumentModelBuilder.FormatPrice`) — "From $37" in the
+  price column, never a separate qualifier line, matching spec §9's exact example row ("Military /
+  First Responder   From $37").
+- **Early Ride Time start time** (spec §10): see `docs/ert-configuration.md` §12 — rides only,
+  bullet-separated, no time, no "Start" label, no explanatory note/reason line either (the approved
+  master structure has no line for it).
+- **Product tiles/cards/rail** (spec §12-14, §18): every product is one aligned row (name left, price
+  right) in every template — no price tiles, no promo cards, no Modern rail/sidebar. `AdaptiveGridLayout`
+  (the Phase 8B tile-grid row-chunking helper) was deleted; nothing replaced it, since nothing renders
+  a grid of tiles any more.
+
+### 15.5 Footer (spec §19)
+
+`AssociatePassdownDocumentModelBuilder.FormatTimestamp` now produces `"Sep 15 • 1:52 PM"` (month/day,
+bullet, time — no "Generated", no "at") instead of the old `"Aug 21 at 6:08 AM"`. Every renderer's
+footer prints `model.GeneratedAtText` directly with no verb/prefix; the previously-shown "Generated "
+prefix is gone from all three templates.
+
+### 15.6 Pagination: the "isolated tiny page 2" fix (spec §16/§17/§25)
+
+Before this phase's fix, a genuinely busy day (enough content that the last section barely didn't fit
+page 1) could split Operational Notes mid-list — most notes on page 1, one or two orphaned notes alone
+on an otherwise-empty page 2. Each renderer's `ComposeNotes` now wraps its notes block in QuestPDF's
+`ShowEntire()`: if the whole Operational Notes block does not fit in the space remaining on the current
+page, it moves *entirely* to the next page rather than splitting — the block that does land on page 2
+is always the complete, real Operational Notes section, never a tiny fragment. The same wrapping was
+applied to each renderer's Daily Feature block (always small/bounded, confirmed safe against a
+realistic long-feature-text fixture during this phase's visual review — see §15.9).
+
+**Product categories are deliberately NOT wrapped in `ShowEntire()`** — this was tried first and
+reverted after it broke `Phase9EIntegrationTests.ExcessiveDraftContent_NoLongerBlocksScheduledFinalization_ProducesMultiPageFrozenPdf`:
+a manager can add an unbounded number of custom/internal products, and `ShowEntire()` throws
+`QuestPDF.Drawing.Exceptions.DocumentLayoutException` outright for any block taller than one entire
+page — turning "a lot of custom products" into a hard generation failure instead of the required
+graceful multi-page overflow (spec §17's "never truncate content" applies to *generation succeeding*,
+not just to not dropping data within a successful generation). A product category is allowed to split
+across a page boundary in the genuinely-excessive case; the specific "isolated tiny page 2" failure
+this phase needed to fix was Operational Notes, not product categories, and the regression test added
+(`TemplateOutputTests.ExcessiveDay_OperationalNotes_NeverSplitAcrossPages`) asserts exactly that scope.
+
+### 15.7 Template visual definitions (current, supersedes §1's table)
+
+| Template | Header | Body typography | Section heading | Notes |
+|---|---|---|---|---|
+| **Classic** | Large date + thin accent rule, no band | Medium (9-13pt), conservative | Small caps + thin hairline rule | Closest to the pre-17D feel in spacing/restraint, but no longer preserves Phase 17C's tile grid — spec §18's "no product cards, no app branding header" applies to Classic too. |
+| **Compact** | Small date + ink rule | Smallest safe (6.5-9.5pt) | Small caps, no rule under Daily Admission/Fast Lane label row (space-saving) | Tightest spacing everywhere; the hours/attendance/ERT summary collapses onto 2-3 lines instead of a label/value grid. Meets or beats Classic's page count in every measured scenario. |
+| **Modern** | Largest date (22pt) + crisp accent rule | 8-13.5pt, navy accent on prices | Small caps + accent-tinted hairline | No sidebar/rail, no giant dark header, no decorative cards (all explicitly removed this phase) — same single-column master structure as Classic/Compact, tuned to stay nearly as pagination-efficient as Compact despite the larger type scale. |
+
+### 15.8 Document model additions
+
+- `PdfProductCategory` gained `Section` (`ProductDisplaySection?`) — see §15.3.
+- `AssociatePassdownDocumentModelBuilder.BuildOfficialRow`/`FormatPrice` — see §15.4's pricing rules.
+- `PdfFormatting.FormatCount` now returns "—" (em dash) instead of "Not entered" for a null count, and
+  gained `ErtLineText` (the one shared "rides only" ERT display-text rule every renderer calls, so the
+  three templates can never drift on ERT wording).
+- `AssociatePassdownPreflightService`'s line-budget estimate was recalibrated for the new one-row-per-product
+  layout (previously estimated Key Selling/Promotional categories as multi-line tile/card grids via the
+  now-deleted `AdaptiveGridLayout`) — still advisory-only, still not template-aware (§14's pre-existing
+  limitation, unchanged).
+
+No `PdfProductRow`/`FinalizedProductRowSnapshot`/`FinalizedEarlyRideTimeSnapshot` field was removed —
+see §15.4/`docs/ert-configuration.md` §12 for why. Snapshot schema stays at 2; no DB/Draft migration.
+
+### 15.9 Visual QA process used this phase
+
+Spec §23 required visual review, not test-only sign-off. A throwaway console harness (outside the
+solution, not committed) built representative `AssociateWorkspace` fixtures for all eight scenarios
+spec §24 lists (normal day; busy product day; SCarowinds day; season-pass-heavy day; operational-notes
+day; Add-Ons-enabled day; long Daily Feature day; ERT override day) plus a genuinely-excessive stress
+scenario (40 custom products + 6 notes, the scenario that found the §15.6 pagination bug), generated
+each through all three templates, and rendered the PDFs to PNG with Ghostscript
+(`gs -sDEVICE=png16m -r150`) under `artifacts/pdf-preview/` (gitignored, not committed — matches spec
+§23's "do not commit preview PNGs") for direct visual inspection. Every representative scenario
+rendered as exactly one page except the genuinely-excessive stress scenario (Classic/Modern: 2 pages,
+Compact: 1 page — consistent with §5's Phase 17C table, Compact still meeting or beating Classic).
+
+### 15.10 Known limitations added this phase
+
+- The visual QA harness (§15.9) is not a committed, re-runnable test fixture — it was a one-off tool
+  for this phase's review pass. Any future phase touching template visuals should rebuild an equivalent
+  harness rather than relying on this one having persisted.
+- Real pixel-level screenshots of the Associate Overview *screen* (as opposed to the PDF output) were
+  not obtainable in this environment — the test assembly's shared Avalonia headless setup
+  (`HeadlessTestSetup.cs`) does not enable Skia/`GetLastRenderedFrame()`, and changing that shared,
+  assembly-wide module initializer for one phase's visual check was judged too invasive/risky (it is
+  used by all ~650 other UI tests). Structural real-`Window` layout tests (`Phase15ERealWindowLayoutTests`,
+  `OperationsCalendarViewTests`, and friends — real `Measure`/`Arrange`, real control bounds, asserting
+  no clipping/overlap) remain the available evidence, matching the precedent already set in Phase 17C
+  §12/§14 for DPI scaling and native `ComboBox` chrome.

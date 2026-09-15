@@ -62,15 +62,18 @@ resolver... never duplicate precedence logic").
 
 ## 4. Time format and ride identity
 
-ERT time entry reuses `Domain.Hours.OperationalTimeParser`/`OperationalTimeFormatter` exactly — the
-same grammar as Manual Hours/Private Buyout (`9`, `9am`, `9:00`, `930am`, `10:30 PM`, etc.). No
-second parser was introduced.
+**Superseded by Phase 17D — see §12.** Through Phase 17C, ERT time entry reused
+`Domain.Hours.OperationalTimeParser`/`OperationalTimeFormatter` exactly — the same grammar as Manual
+Hours/Private Buyout (`9`, `9am`, `9:00`, `930am`, `10:30 PM`, etc.). Phase 17D removes the routine
+ERT start-time field from normal configuration and display entirely (§12) — `StartTime` remains a
+nullable, never-required field on the persisted records for backward compatibility, but no
+Phase 17D+ UI or PDF collects, requires, or prints it.
 
 Rides are free text (`IReadOnlyList<string>`), matching the pre-existing
 `EarlyRideTimeDetails.ParticipatingAttractions` precedent — no attraction catalog with stable IDs
 exists anywhere in this codebase to key against, and inventing one was out of scope for this phase
 (spec Part 10/36). `ErtConfigurationService` trims, drops blank entries, and de-duplicates
-case-insensitively on save.
+case-insensitively on save. This remains unchanged by Phase 17D.
 
 ## 5. Persistence
 
@@ -183,3 +186,73 @@ monthly records lying around.
   section — a deliberate choice (spec Part 13) since this is an Associate-to-Associate operational
   document, not guest-facing, and ops staff need to know ERT was never set up for the month rather
   than have the section silently vanish.
+
+## 12. Phase 17D: rides-only display/configuration
+
+Baseline this phase was built against: Phase 17C complete, DB schema 15, Draft schema 4, Snapshot
+schema 2, SyncSchemaVersion 1, 2113/2113 deterministic tests (up from 2110/2110 — 24 tests changed to
+reflect the new behavior below, plus new coverage).
+
+### Why
+
+Real associates already know Early Ride happens roughly 30 minutes before park open — every prior
+phase's own start-time field only ever restated that same fact in a slightly different form each
+month, never carried genuinely new information, and added a required field to fill in for no
+operational benefit. Phase 17D corrects this: ERT configuration and display are about rides only.
+
+### What changed
+
+- **`ErtConfigurationService.SaveMonthlyAsync`/`SaveOverrideAsync`** (`Application/Ert/ErtConfigurationService.cs`)
+  no longer require a start time for a `Configured` state — the only precondition previously enforced
+  (`ArgumentException` when `StartTime` was null) is gone. `StartTime` is still accepted and persisted
+  when a caller supplies one (e.g. a legacy value already on a record, or a not-yet-migrated remote
+  sync payload), but nothing in the application requires, edits, or displays it going forward.
+- **`AssociateViewModel`** (`Desktop/ViewModels/AssociateViewModel.cs`): `MonthlyErtStartTimeText`/
+  `OverrideStartTimeText` and their `TryBuildErtDraftFields` time-parsing path are gone entirely — the
+  shared `BuildErtDraftFields` helper only ever produces `(State, Rides)`, never a `TimeOnly`.
+  `EarlyRideTimeStatusText` no longer formats a start time; it shows the ride list (comma-joined) or
+  "None"/"Configured"/"Not configured for {Month Year}".
+- **The Associate Overview screen** (`Desktop/Views/AssociateView.axaml`, spec §2/§3): the old pair of
+  independently-opened "Configure Monthly ERT"/"Override for this date" panels and buttons is replaced
+  by one compact `Early Ride    <rides>    [ Edit ]` row plus a single combined editor panel
+  (`IsErtEditorOpen`) containing a MONTHLY DEFAULT section and a DATE OVERRIDE section (revealed by a
+  "Use override for {date}" checkbox) together — opened, closed, and pre-filled as one unit
+  (`OpenErtEditorCommand`/`CancelErtEditorCommand`), with three independent actions inside it: Save
+  Monthly, Save Override, Remove Override. None of the three time fields (Configure/Override/either)
+  exist in this panel any more.
+- **The PDF** (`Documents/Associate/Templates/`, spec §10): every template's Early Ride row shows
+  rides only, bullet-separated ("Thunderstriker • Sky Tower") — see
+  `docs/associate-passdown-templates.md` §Early Ride Time for the full PDF-side writeup, including why
+  the ERT note/reason is no longer printed either (the approved master layout has no line for it).
+
+### Legacy `StartTime` compatibility decision
+
+`MonthlyErtConfiguration.StartTime`/`ErtDateOverride.StartTime` (`TimeOnly?`) are **not removed** from
+the Application-layer records, the SQLite schema (`monthly_ert_configurations.start_time`,
+`ert_date_overrides.start_time`), or the Personal Sync payloads — deleting a column/field for pure
+cleanup is explicitly against CLAUDE.md's "do not delete legacy data just for cleanliness," and every
+one of these fields was already nullable from Phase 17B onward, so no migration is needed either way.
+Concretely:
+
+- A record saved before Phase 17D with a real `StartTime` keeps it, byte-for-byte, through any number
+  of future reads — nothing in this phase touches existing rows.
+- A record saved by Phase 17D+ always has `StartTime = null`, because nothing in the UI collects a
+  value for it any more.
+- `AssociatePassdownDocumentModelBuilder.BuildEarlyRideTime` still computes `PdfEarlyRideTime.StartTimeText`
+  when a start time happens to be present (so `FinalizedEarlyRideTimeSnapshot.StartTimeText` keeps
+  working exactly as before for any historical/diagnostic reader) — no Phase 17D+ renderer reads or
+  prints that field, but it is not deleted from the model either. Tests confirm both halves: a legacy
+  start time is preserved when saved, and no template ever prints it (Phase 17D §33's "tests should
+  confirm it is no longer required for normal display").
+- No `SchemaVersion`/`SyncSchemaVersion` bump was needed anywhere — every touched shape (`MonthlyErtConfiguration`,
+  `ErtDateOverride`, `MonthlyErtSyncPayload`, `ErtDateOverrideSyncPayload`, `FinalizedEarlyRideTimeSnapshot`)
+  already had `StartTime`/`StartTimeText` as an optional field before this phase.
+
+### Known limitations added this phase
+
+- The compact editor's "Use override for {date}" checkbox only controls whether the override
+  fields/Save Override action are visible and easy to reach — it does not itself gate whether Save
+  Override can be pressed (the same as before Phase 17D, just now inside one shared panel instead of
+  a separately-opened one).
+- `NoErt`/`NotConfigured` display text is unchanged from Phase 17B/17C (spec Part 13's PDF wording,
+  and "None"/"Not configured for {Month Year}" in the UI) — only the `Configured` case's text changed.

@@ -58,21 +58,21 @@ public sealed class AssociatePassdownDocumentModelBuilderPriceSemanticsTests
     }
 
     [Fact]
-    public void Build_BundleProduct_PreservesTotalPriceAndRawQualifier_AndAddsDerivedPerPersonNote()
+    public void Build_BundleProduct_PreservesTotalPriceAndDropsRawQualifier_AndAddsDerivedPerPersonNote()
     {
         var model = BuildModelWith(BundleProduct());
 
         var row = model.ProductCategories.SelectMany(c => c.Products).Single(r => r.DisplayName == "Celebrate America! Bring-A-Friend Duo");
 
         Assert.Equal("$50.00", row.EffectivePriceText); // the bundle total — never collapsed to per-person
-        Assert.Equal("Two Friends Just", row.Qualifier); // raw source qualifier, never stripped
+        Assert.Null(row.Qualifier); // Phase 17D §9: raw source qualifier text no longer prints on the PDF
         Assert.Null(row.ComparisonPriceText); // no fabricated "was" price
         Assert.Equal("2 for $50.00 — $25.00 per person", row.Notes);
     }
 
-    /// <summary>Phase 15A §13: once ordinary Bring-A-Friend has an Exact Dated price (post-merge — see AssociatePassdownServicePriceSemanticsTests), the PDF must never print "Starting From" alongside it, while the "$80 was" comparison still renders.</summary>
+    /// <summary>Phase 15A §13 (revised Phase 17D §8): once ordinary Bring-A-Friend has an Exact Dated price (post-merge — see AssociatePassdownServicePriceSemanticsTests), the PDF must never print "Starting From"/"From" alongside it, and — since Phase 17D — never a comparison price either.</summary>
     [Fact]
-    public void Build_ExactDatedBringAFriendProduct_NeverPrintsStartingFrom_ButKeepsComparisonPrice()
+    public void Build_ExactDatedBringAFriendProduct_NeverPrintsStartingFromOrComparisonPrice()
     {
         var exactDated = new AssociateProduct(
             "catalog|promotions|baf",
@@ -94,13 +94,13 @@ public sealed class AssociatePassdownDocumentModelBuilderPriceSemanticsTests
 
         var row = model.ProductCategories.SelectMany(c => c.Products).Single(r => r.DisplayName == "Bring-A-Friend Ticket");
         Assert.Equal("$39.00", row.EffectivePriceText);
-        Assert.Equal("$80.00", row.ComparisonPriceText);
+        Assert.Null(row.ComparisonPriceText); // Phase 17D §8: comparison ("was") pricing never prints on the PDF
         Assert.Null(row.Qualifier); // never "Starting From" for an Exact Dated price
     }
 
-    /// <summary>Phase 15A §13 (fallback side): with only the generic catalog value, "Starting From" still prints exactly as before.</summary>
+    /// <summary>Phase 15A §13 (fallback side, revised Phase 17D §9): with only the generic catalog value, the price prints as "From $x" — "Starting From" folded into the price text rather than a separate qualifier line — and no comparison price prints.</summary>
     [Fact]
-    public void Build_StartingFromBringAFriendProduct_StillPrintsStartingFromQualifier()
+    public void Build_StartingFromBringAFriendProduct_PrintsFromPricePrefix()
     {
         var startingFrom = new AssociateProduct(
             "catalog|promotions|baf",
@@ -121,21 +121,21 @@ public sealed class AssociatePassdownDocumentModelBuilderPriceSemanticsTests
         var model = BuildModelWith(startingFrom);
 
         var row = model.ProductCategories.SelectMany(c => c.Products).Single(r => r.DisplayName == "Bring-A-Friend Ticket");
-        Assert.Equal("$35.00", row.EffectivePriceText);
-        Assert.Equal("$80.00", row.ComparisonPriceText);
-        Assert.Equal("Starting From", row.Qualifier);
+        Assert.Equal("From $35.00", row.EffectivePriceText);
+        Assert.Null(row.ComparisonPriceText);
+        Assert.Null(row.Qualifier);
     }
 
     [Fact]
-    public void Build_MilitaryFirstResponderProduct_PreservesStartingFromQualifierAndGatePriceComparison()
+    public void Build_MilitaryFirstResponderProduct_PrintsFromPricePrefix_NoComparisonOrQualifier()
     {
         var model = BuildModelWith(MilitaryProduct());
 
         var row = model.ProductCategories.SelectMany(c => c.Products).Single(r => r.DisplayName == "Military & First Responder Tickets");
 
-        Assert.Equal("$37.00", row.EffectivePriceText);
-        Assert.Equal("$80.00", row.ComparisonPriceText);
-        Assert.Equal("Starting From", row.Qualifier);
+        Assert.Equal("From $37.00", row.EffectivePriceText);
+        Assert.Null(row.ComparisonPriceText);
+        Assert.Null(row.Qualifier);
         Assert.Null(row.Notes); // no bundle fields set — no fabricated note
     }
 

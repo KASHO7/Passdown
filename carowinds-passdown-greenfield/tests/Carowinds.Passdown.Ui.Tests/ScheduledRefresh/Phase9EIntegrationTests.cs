@@ -158,6 +158,9 @@ public class Phase9EIntegrationTests
             LastEvidence: evidence));
     }
 
+    // Pins SectionSelection to AllIncluded (Phase 17D §6 changed CreateDefault's own default to a
+    // partial selection) — this fixture exercises the full pipeline across every section, independent
+    // of whatever the production "new draft" default happens to be.
     private static AssociateDraftPayload RepresentativeDraft() => AssociateDraftPayload.CreateDefault() with
     {
         ProjectedAttendance = 18500,
@@ -166,6 +169,7 @@ public class Phase9EIntegrationTests
         DailyFeatureType = DailyFeatureType.QuestionOfTheDay,
         DailyFeatureText = "What year did Carowinds open?",
         CustomProducts = [new CustomProductEntry("meal-voucher", "Team Member Meal Voucher", 8.00m, "One per shift.", IncludeOnPdf: true)],
+        SectionSelection = PassdownSectionSelection.AllIncluded,
     };
 
     // ==================================================================
@@ -215,7 +219,7 @@ public class Phase9EIntegrationTests
             Assert.Equal("What year did Carowinds open?", detail.Snapshot.DailyFeature.Text);
             var goldPass = detail.Snapshot.ProductCategories.SelectMany(c => c.Products).Single(p => p.DisplayName == "Gold Pass");
             Assert.Equal("$149.99", goldPass.EffectivePriceText);
-            Assert.Equal("$199.99", goldPass.ComparisonPriceText);
+            Assert.Null(goldPass.ComparisonPriceText); // Phase 17D §8: comparison pricing no longer freezes into the snapshot.
             var voucher = detail.Snapshot.ProductCategories.SelectMany(c => c.Products).Single(p => p.DisplayName == "Team Member Meal Voucher");
             Assert.Equal("$8.00", voucher.EffectivePriceText);
 

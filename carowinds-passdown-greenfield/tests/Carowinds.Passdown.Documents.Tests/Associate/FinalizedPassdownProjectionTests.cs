@@ -65,9 +65,10 @@ public class FinalizedPassdownProjectionTests
         Assert.Contains("Fury 325 closed for scheduled maintenance until 11 AM.", text);
     }
 
-    // Part P: a representative product's frozen display name/effective price/comparison price.
+    // Part P (revised Phase 17D §8): a representative product's frozen display name/effective price —
+    // the comparison price is never frozen or printed any more.
     [Fact]
-    public void BuildProjection_NormalDay_ProductPriceAndComparisonPriceFrozenInSnapshotAndPdf()
+    public void BuildProjection_NormalDay_ProductPriceFrozenInSnapshotAndPdf_NeverComparisonPrice()
     {
         var projection = Builder.BuildProjection(AssociateWorkspaceFixtures.NormalDay(), AsOf);
         var text = PdfInspector.ExtractAllText(projection.PdfBytes);
@@ -75,11 +76,11 @@ public class FinalizedPassdownProjectionTests
         var admission = projection.Snapshot.ProductCategories.Single(c => c.CategoryName == "Daily Admission");
         var oneDay = admission.Products.Single(p => p.DisplayName == "1-Day Ticket");
         Assert.Equal("$64.99", oneDay.EffectivePriceText);
-        Assert.Equal("$79.99", oneDay.ComparisonPriceText);
+        Assert.Null(oneDay.ComparisonPriceText);
 
         Assert.Contains("1-Day Ticket", text);
         Assert.Contains("$64.99", text);
-        Assert.Contains("$79.99", text);
+        Assert.DoesNotContain("$79.99", text);
     }
 
     // Part P: a custom/internal product is frozen exactly like an official one.

@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Domain.Ert;
 
 namespace Carowinds.Passdown.Documents.Associate;
@@ -29,11 +30,12 @@ public sealed record PdfParkHours(
 public sealed record PdfAttendance(int? ProjectedAttendance, int? PreSolds);
 
 /// <summary>
-/// Early Ride Time content (Phase 17B spec Part 13) — built directly from
-/// <c>Application.Associate.AssociateWorkspace.EarlyRideTime</c>, the one resolver-produced value;
-/// the PDF never derives ERT independently. <see cref="StartTimeText"/> is already formatted
-/// (<c>OperationalTimeFormatter</c>-produced upstream) — Documents does no time arithmetic here, same
-/// convention as <see cref="PdfParkHours"/>.
+/// Early Ride Time content (Phase 17B spec Part 13; revised Phase 17D Part 2/10 — rides only, no
+/// time) — built directly from <c>Application.Associate.AssociateWorkspace.EarlyRideTime</c>, the one
+/// resolver-produced value; the PDF never derives ERT independently. <see cref="StartTimeText"/> is
+/// kept populated (when a legacy/compat start time exists) for any historical/diagnostic reader, but
+/// no Phase 17D+ renderer prints it — associates already know Early Ride happens 30 minutes before
+/// park open, so the PDF shows rides only.
 /// </summary>
 public sealed record PdfEarlyRideTime(
     EffectiveErtKind Kind,
@@ -52,7 +54,14 @@ public sealed record PdfDailyFeature(string? TypeLabel, string? Text)
 /// One printable product row. Only ever built for a product the draft marked included (spec Part C)
 /// — an excluded product never reaches this model at all, so there is no "excluded" flag to check
 /// here. <see cref="EffectivePriceText"/> already reflects the display-price override when one
-/// exists, or the official price otherwise (spec Part C) — never both.
+/// exists, or the official price otherwise (spec Part C) — never both; a "Starting From"-classified
+/// price already carries its "From $x" prefix (Phase 17D Part 9) rather than a separate qualifier.
+/// <see cref="ComparisonPriceText"/> and <see cref="Qualifier"/> are retained on the shape (and on
+/// <c>Application.Finalization.FinalizedProductRowSnapshot</c>) for schema compatibility with rows
+/// finalized before Phase 17D, but are always <see langword="null"/> going forward — Phase 17D §8/9
+/// removes comparison ("was $x") pricing and ecommerce qualifier wording ("Only", "Online Price",
+/// "Sale Price") from the PDF entirely; that information remains available in the Products screen and
+/// product history, never on the printed handoff.
 /// </summary>
 public sealed record PdfProductRow(
     string DisplayName,
@@ -78,8 +87,15 @@ public enum PdfProductSectionTier
     Reference,
 }
 
-/// <summary>One product category section (spec §11.2's "grouped cleanly by category"). Only built when it has at least one included row — an empty category never appears (spec Part B/§11.2's "do not reserve empty space for hidden categories").</summary>
-public sealed record PdfProductCategory(string CategoryName, PdfProductSectionTier Tier, IReadOnlyList<PdfProductRow> Products);
+/// <summary>
+/// One product category section (spec §11.2's "grouped cleanly by category"). Only built when it has
+/// at least one included row — an empty category never appears (spec Part B/§11.2's "do not reserve
+/// empty space for hidden categories"). <see cref="Section"/> is <see langword="null"/> only for the
+/// custom/internal-items pseudo-category (no official display section); every renderer uses it —
+/// never <see cref="CategoryName"/> string matching — to place a category in the Phase 17D §11/§12
+/// master layout's Daily Admission/Fast Lane and Promotions/Season Passes pairings.
+/// </summary>
+public sealed record PdfProductCategory(string CategoryName, ProductDisplaySection? Section, PdfProductSectionTier Tier, IReadOnlyList<PdfProductRow> Products);
 
 /// <summary>
 /// The complete, print-ready content for one Associate Passdown PDF (spec §11.2) — everything

@@ -96,14 +96,15 @@ public class AssociateViewAccessibilityTests
         Assert.Contains("Private Buyout Open", names);
         Assert.Contains("Private Buyout Close", names);
 
-        // Phase 17B: the Configure Monthly ERT / Override for this date actions carry static
-        // accessible names, present in the logical tree regardless of the panels' current IsVisible
-        // state — the resolver-driven status line's own accessible name is a data-bound ViewModel
-        // property (a StringFormat binding) and, like the per-row product/custom-item template names
-        // above, is not reliably realized by this unattached headless container — guarded directly
-        // against the markup instead, see <see cref="ProductRowAndCustomItemTemplates_DeclareAccessibleNamePatterns"/>.
-        Assert.Contains("Configure Monthly Early Ride Time", names);
-        Assert.Contains("Override Early Ride Time for this date", names);
+        // Phase 17D §3: the single compact Early Ride Time [Edit] action, and the fields inside its
+        // one combined Monthly Default/Date Override panel, carry static accessible names, present in
+        // the logical tree regardless of the panel's current IsVisible state — the resolver-driven
+        // status line's own accessible name is a data-bound ViewModel property (a StringFormat
+        // binding) and, like the per-row product/custom-item template names above, is not reliably
+        // realized by this unattached headless container — guarded directly against the markup
+        // instead, see <see cref="ProductRowAndCustomItemTemplates_DeclareAccessibleNamePatterns"/>.
+        Assert.Contains("Edit Early Ride Time", names);
+        Assert.Contains("Use an Early Ride Time override for this date", names);
         Assert.Contains("Monthly Early Ride Time rides", names);
 
         // Phase 11D Part AS: the two persistent-note section headings are always present, regardless
@@ -228,8 +229,8 @@ public class AssociateViewAccessibilityTests
         Assert.Contains("StringFormat='Replace {0} with current version'", markup);
         Assert.Contains("StringFormat='Add note {0}'", markup);
 
-        // Phase 17B: the resolver-driven Early Ride Time status line's accessible name.
-        Assert.Contains("StringFormat='Early Ride Time: {0}'", markup);
+        // Phase 17D §2: the resolver-driven, rides-only Early Ride status line's accessible name.
+        Assert.Contains("StringFormat='Early Ride: {0}'", markup);
     }
 
     private static string FindRepoFile(string relativePath)

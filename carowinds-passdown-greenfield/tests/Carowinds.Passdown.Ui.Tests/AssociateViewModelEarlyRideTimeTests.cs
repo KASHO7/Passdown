@@ -10,7 +10,10 @@ namespace Carowinds.Passdown.Ui.Tests;
 /// Phase 17B: <see cref="AssociateViewModel"/>-level coverage for the persistent monthly Early Ride
 /// Time configuration + optional per-date override, resolved via <see cref="EffectiveErt"/> — replaces
 /// the Phase 13F derived-from-park-hours suite this file used to carry (the coupling to
-/// <c>EffectiveHours.NorthGateOpening</c>/"North Gate" no longer exists at all). Complements
+/// <c>EffectiveHours.NorthGateOpening</c>/"North Gate" no longer exists at all). Revised Phase 17D §1/
+/// §2/§3: no routine ERT start time is collected/displayed anywhere any more, and the Configure
+/// Monthly/Override editors are one single compact panel (<see cref="AssociateViewModel.IsErtEditorOpen"/>)
+/// opened by one [Edit] action, rather than two independently-opened panels. Complements
 /// <c>ErtPrecedenceResolverTests</c> (pure Domain precedence, no ViewModel) and
 /// <c>EffectiveErtResolverTests</c> (Application-layer resolution against real repositories).
 /// </summary>
@@ -53,9 +56,10 @@ public class AssociateViewModelEarlyRideTimeTests
         Assert.Equal("Not configured for August 2026", viewModel.EarlyRideTimeStatusText);
     }
 
-    // Spec Part 4/12: a monthly default in effect for the selected date.
+    // Spec Part 4/12, revised Phase 17D §2: a monthly default in effect for the selected date shows
+    // rides only, never a start time.
     [Fact]
-    public async Task MonthlyConfigured_ShowsStartTimeAndRides()
+    public async Task MonthlyConfigured_ShowsRidesOnly_NeverAStartTime()
     {
         var (service, ertService) = CreateFakes();
         ertService.SeedMonthly(new MonthlyErtConfiguration(2026, 8, ErtConfigurationState.Configured, new TimeOnly(9, 30), ["Fury 325", "Copperhead Strike"], null, FixedNow));
@@ -64,7 +68,7 @@ public class AssociateViewModelEarlyRideTimeTests
 
         Assert.True(viewModel.EarlyRideTimeIsConfigured);
         Assert.False(viewModel.EarlyRideTimeIsOverride);
-        Assert.Equal("9:30 AM — Fury 325, Copperhead Strike", viewModel.EarlyRideTimeStatusText);
+        Assert.Equal("Fury 325, Copperhead Strike", viewModel.EarlyRideTimeStatusText);
     }
 
     // Spec Part 11: a month explicitly confirmed to have no ERT is distinct from NotConfigured.
@@ -92,7 +96,7 @@ public class AssociateViewModelEarlyRideTimeTests
         await viewModel.PendingLoad;
 
         Assert.True(viewModel.EarlyRideTimeIsOverride);
-        Assert.Equal("10:00 AM — Copperhead Strike", viewModel.EarlyRideTimeStatusText);
+        Assert.Equal("Copperhead Strike", viewModel.EarlyRideTimeStatusText);
     }
 
     // Spec Part 38.I: an override may exist even when no monthly configuration exists for its month.
@@ -105,7 +109,7 @@ public class AssociateViewModelEarlyRideTimeTests
         await viewModel.PendingLoad;
 
         Assert.True(viewModel.EarlyRideTimeIsOverride);
-        Assert.Equal("10:00 AM — Copperhead Strike", viewModel.EarlyRideTimeStatusText);
+        Assert.Equal("Copperhead Strike", viewModel.EarlyRideTimeStatusText);
     }
 
     // Spec Part 32 (maintenance-exception scenario): the day after an override reverts to the
@@ -123,7 +127,7 @@ public class AssociateViewModelEarlyRideTimeTests
         await viewModel.PendingLoad;
 
         Assert.False(viewModel.EarlyRideTimeIsOverride);
-        Assert.Equal("9:30 AM — Fury 325, Copperhead Strike", viewModel.EarlyRideTimeStatusText);
+        Assert.Equal("Fury 325, Copperhead Strike", viewModel.EarlyRideTimeStatusText);
     }
 
     // Spec Part 29: switching to a new month never inherits the prior month's configuration.
@@ -158,8 +162,10 @@ public class AssociateViewModelEarlyRideTimeTests
         Assert.True(viewModel.EarlyRideTimeIsNotConfigured);
     }
 
-    // Spec Part 7/9: Save Monthly ERT validates via OperationalTimeParser, persists through
-    // IErtConfigurationService, and refreshes the resolved display — all without a debounce round trip.
+    // Spec Part 7/9, revised Phase 17D §1: Save Monthly persists rides only (no start time collected
+    // or sent) through IErtConfigurationService and refreshes the resolved display — all without a
+    // debounce round trip. Phase 17D §3: the single compact editor panel stays open after Save so the
+    // associate can also use the Date Override section in the same panel.
     [Fact]
     public async Task SaveMonthlyErtCommand_ValidInput_SavesAndRefreshesDisplay()
     {
@@ -167,8 +173,7 @@ public class AssociateViewModelEarlyRideTimeTests
         var viewModel = CreateViewModel(service, ertService);
         await viewModel.PendingLoad;
 
-        await viewModel.OpenMonthlyErtEditorCommand.ExecuteAsync(null);
-        viewModel.MonthlyErtStartTimeText = "9:30 AM";
+        await viewModel.OpenErtEditorCommand.ExecuteAsync(null);
         viewModel.MonthlyErtRidesText = "Fury 325\nCopperhead Strike";
         await viewModel.SaveMonthlyErtCommand.ExecuteAsync(null);
 
@@ -176,31 +181,14 @@ public class AssociateViewModelEarlyRideTimeTests
         Assert.Equal(2026, call.Year);
         Assert.Equal(8, call.Month);
         Assert.Equal(ErtConfigurationState.Configured, call.State);
-        Assert.Equal(new TimeOnly(9, 30), call.StartTime);
+        Assert.Null(call.StartTime);
         Assert.Equal(["Fury 325", "Copperhead Strike"], call.Rides);
 
-        Assert.False(viewModel.IsMonthlyErtEditorOpen);
-        Assert.Equal("9:30 AM — Fury 325, Copperhead Strike", viewModel.EarlyRideTimeStatusText);
+        Assert.True(viewModel.IsErtEditorOpen); // the panel stays open — it is one shared panel with independent Save actions.
+        Assert.Equal("Fury 325, Copperhead Strike", viewModel.EarlyRideTimeStatusText);
     }
 
-    // Spec Part 9/33: an invalid start time never saves — reuses OperationalTimeParser's own message.
-    [Fact]
-    public async Task SaveMonthlyErtCommand_InvalidStartTime_ShowsErrorAndDoesNotSave()
-    {
-        var (service, ertService) = CreateFakes();
-        var viewModel = CreateViewModel(service, ertService);
-        await viewModel.PendingLoad;
-
-        await viewModel.OpenMonthlyErtEditorCommand.ExecuteAsync(null);
-        viewModel.MonthlyErtStartTimeText = "not a time";
-        await viewModel.SaveMonthlyErtCommand.ExecuteAsync(null);
-
-        Assert.Empty(ertService.SaveMonthlyCalls);
-        Assert.NotNull(viewModel.MonthlyErtSaveError);
-        Assert.True(viewModel.IsMonthlyErtEditorOpen); // stays open so the associate can correct it.
-    }
-
-    // Spec Part 11: "No ERT this month" saves without requiring a start time.
+    // Spec Part 11: "No ERT this month" saves without requiring (or sending) a start time.
     [Fact]
     public async Task SaveMonthlyErtCommand_NoErtChecked_SavesWithoutAStartTime()
     {
@@ -208,16 +196,18 @@ public class AssociateViewModelEarlyRideTimeTests
         var viewModel = CreateViewModel(service, ertService);
         await viewModel.PendingLoad;
 
-        await viewModel.OpenMonthlyErtEditorCommand.ExecuteAsync(null);
+        await viewModel.OpenErtEditorCommand.ExecuteAsync(null);
         viewModel.MonthlyErtNoErt = true;
         await viewModel.SaveMonthlyErtCommand.ExecuteAsync(null);
 
         var call = Assert.Single(ertService.SaveMonthlyCalls);
         Assert.Equal(ErtConfigurationState.NoErt, call.State);
+        Assert.Null(call.StartTime);
         Assert.True(viewModel.EarlyRideTimeIsNoErt);
     }
 
-    // Spec Part 8: Save Override persists a date-scoped record independent of the monthly one.
+    // Spec Part 8, revised Phase 17D §1/§3: Save Override persists a date-scoped record (rides only,
+    // no start time) independent of the monthly one, from the same compact editor panel.
     [Fact]
     public async Task SaveOverrideCommand_ValidInput_SavesAndShowsOverride()
     {
@@ -226,21 +216,21 @@ public class AssociateViewModelEarlyRideTimeTests
         var viewModel = CreateViewModel(service, ertService);
         await viewModel.PendingLoad;
 
-        await viewModel.OpenOverrideEditorCommand.ExecuteAsync(null);
-        viewModel.OverrideStartTimeText = "10:00 AM";
+        await viewModel.OpenErtEditorCommand.ExecuteAsync(null);
+        viewModel.ErtUseOverrideForDate = true;
         viewModel.OverrideRidesText = "Copperhead Strike";
         viewModel.OverrideReasonText = "Fury maintenance";
         await viewModel.SaveOverrideCommand.ExecuteAsync(null);
 
         var call = Assert.Single(ertService.SaveOverrideCalls);
         Assert.Equal(Today, call.OperatingDate);
-        Assert.Equal(new TimeOnly(10, 0), call.StartTime);
+        Assert.Null(call.StartTime);
         Assert.Equal(["Copperhead Strike"], call.Rides);
         Assert.Equal("Fury maintenance", call.Reason);
 
-        Assert.False(viewModel.IsOverrideEditorOpen);
+        Assert.True(viewModel.IsErtEditorOpen); // the panel stays open, same as Save Monthly.
         Assert.True(viewModel.EarlyRideTimeIsOverride);
-        Assert.Equal("10:00 AM — Copperhead Strike", viewModel.EarlyRideTimeStatusText);
+        Assert.Equal("Copperhead Strike", viewModel.EarlyRideTimeStatusText);
     }
 
     // Spec Part 8/28: removing an override immediately falls back to the monthly default.
@@ -258,13 +248,15 @@ public class AssociateViewModelEarlyRideTimeTests
 
         Assert.Equal(Today, Assert.Single(ertService.RemoveOverrideCalls));
         Assert.False(viewModel.EarlyRideTimeIsOverride);
-        Assert.Equal("9:30 AM — Fury 325", viewModel.EarlyRideTimeStatusText);
+        Assert.Equal("Fury 325", viewModel.EarlyRideTimeStatusText);
     }
 
-    // Spec Part 7: opening the Configure panel pre-fills from the month's own saved record, not from
-    // whatever is currently in effect (which may be coming from a date override).
+    // Spec Part 7, revised Phase 17D §3: opening the single compact editor pre-fills the Monthly
+    // Default section from the month's own saved record — not from whatever is currently in effect
+    // (which may be coming from a date override) — and pre-fills/pre-checks the Date Override section
+    // from any existing override, in the same open operation.
     [Fact]
-    public async Task OpenMonthlyErtEditor_PreFillsFromTheMonthsOwnRecord_NotFromAnActiveOverride()
+    public async Task OpenErtEditor_PreFillsMonthlyFromItsOwnRecord_AndOverrideFromTheExistingOverride()
     {
         var (service, ertService) = CreateFakes();
         ertService.SeedMonthly(new MonthlyErtConfiguration(2026, 8, ErtConfigurationState.Configured, new TimeOnly(9, 30), ["Fury 325"], null, FixedNow));
@@ -272,10 +264,27 @@ public class AssociateViewModelEarlyRideTimeTests
         var viewModel = CreateViewModel(service, ertService);
         await viewModel.PendingLoad;
 
-        await viewModel.OpenMonthlyErtEditorCommand.ExecuteAsync(null);
+        await viewModel.OpenErtEditorCommand.ExecuteAsync(null);
 
-        Assert.Equal("9:30 AM", viewModel.MonthlyErtStartTimeText);
         Assert.Contains("Fury 325", viewModel.MonthlyErtRidesText);
+        Assert.True(viewModel.ErtUseOverrideForDate);
+        Assert.Contains("Copperhead Strike", viewModel.OverrideRidesText);
+        Assert.Equal("Fury maintenance", viewModel.OverrideReasonText);
+    }
+
+    // Phase 17D §3: with no existing override, opening the editor leaves the "Use override" checkbox
+    // unchecked rather than pre-selecting it.
+    [Fact]
+    public async Task OpenErtEditor_NoExistingOverride_LeavesUseOverrideUnchecked()
+    {
+        var (service, ertService) = CreateFakes();
+        ertService.SeedMonthly(new MonthlyErtConfiguration(2026, 8, ErtConfigurationState.Configured, new TimeOnly(9, 30), ["Fury 325"], null, FixedNow));
+        var viewModel = CreateViewModel(service, ertService);
+        await viewModel.PendingLoad;
+
+        await viewModel.OpenErtEditorCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.ErtUseOverrideForDate);
     }
 
     // Reading/editing ERT-related properties is local composition only — never a network call.

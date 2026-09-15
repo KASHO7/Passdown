@@ -3,6 +3,7 @@ using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Documents.Tests.Associate.TestSupport;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Catalog;
 using Carowinds.Passdown.Domain.Ert;
 using Carowinds.Passdown.Domain.Hours;
 
@@ -114,9 +115,9 @@ public sealed class AssociatePassdownPdfGeneratorTests
         }
     }
 
-    // Spec Phase 8B polish Part 2: Promotion callout cards adapt the same way — 1 promotion should
-    // no longer be stranded as a narrow card, 2 split roughly in half, 3 roughly in thirds. Preserve
-    // the current price/comparison-price/qualifier hierarchy regardless of count.
+    // Spec Phase 8B polish Part 2 (revised Phase 17D §8/§9/§14): every promotion renders as one
+    // aligned row regardless of count — no comparison ("was") price and no raw ecommerce qualifier
+    // ("Online only") print any more, only the current price.
     [Theory]
     [InlineData(1)]
     [InlineData(2)]
@@ -138,9 +139,10 @@ public sealed class AssociatePassdownPdfGeneratorTests
         {
             Assert.Contains($"Promo {i}", text);
             Assert.Contains($"${20 + i}.00", text);
-            Assert.Contains($"${60 + i}.00", text); // comparison ("was") price.
-            Assert.Contains("Online only", text); // qualifier, preserved for every card.
+            Assert.DoesNotContain($"${60 + i}.00", text); // comparison ("was") price never prints.
         }
+
+        Assert.DoesNotContain("Online only", text); // raw qualifier text never prints.
     }
 
     private static List<AssociateProduct> KeySellingProducts(int count) =>
@@ -335,14 +337,15 @@ public sealed class AssociatePassdownPdfGeneratorTests
         }
     }
 
-    // 3. Operating date appears.
+    // 3. Operating date appears — the primary page heading (spec Phase 17D §7/§11), printed in
+    // upper case, so this is matched case-insensitively rather than against the mixed-case model text.
     [Fact]
     public void OperatingDate_Appears()
     {
         var model = BuildModel(AssociateWorkspaceFixtures.NormalDay());
         var text = GenerateText(model);
 
-        Assert.Contains(model.OperatingDateText, text);
+        Assert.Contains(model.OperatingDateText, text, StringComparison.OrdinalIgnoreCase);
     }
 
     // 4. Effective park hours appear.
@@ -388,7 +391,10 @@ public sealed class AssociatePassdownPdfGeneratorTests
         Assert.Contains("4,200", text);
     }
 
-    // 8. Early Ride Time content appears when configured.
+    // 8. Early Ride Time content appears when configured — rides only (Phase 17D §10: no start time,
+    // no note/reason line). NormalDay's own North Gate opening coincidentally formats identically to
+    // its ERT start time ("8:30 AM"), so absence-of-time is proven separately, with a deliberately
+    // non-colliding time, by EarlyRideTimeLine_ShowsRidesOnly_IndependentOfNorthGate_NeverAStartTime.
     [Fact]
     public void EarlyRideTimeDetails_AppearWhenConfigured()
     {
@@ -396,23 +402,17 @@ public sealed class AssociatePassdownPdfGeneratorTests
         var text = GenerateText(model);
 
         Assert.Equal(EffectiveErtKind.Configured, model.EarlyRideTime.Kind);
-        Assert.Contains("8:30 AM", text);
-        // Not asserted as one contiguous string: the narrow ERT box word-wraps this note, and
-        // PdfPig's text extraction joins wrapped lines with no inserted space ("...the" + "benefit."
-        // -> "...thebenefit."), an extraction artifact unrelated to what the PDF actually renders.
-        Assert.Contains("For pass members", text);
-        Assert.Contains("benefit.", text);
+        Assert.Contains("Fury 325", text);
+        Assert.Contains("Intimidator", text);
+        Assert.Contains("Copperhead Strike", text);
     }
 
-    // Phase 17B spec Part 31: ERT is a monthly/override configuration, never derived from park hours
-    // — the Early Ride Time box's start time no longer matches (or depends on) the Park Hours box's
-    // "North Gate" value.
+    // Phase 17B spec Part 31, revised Phase 17D §10: ERT is a monthly/override configuration, never
+    // derived from park hours, and never prints a start time at all — the rendered Early Ride line
+    // shows only rides, independent of the Park Hours box's "North Gate" value.
     [Fact]
-    public void EarlyRideTimeBox_ShowsResolvedStartTime_IndependentOfNorthGate()
+    public void EarlyRideTimeLine_ShowsRidesOnly_IndependentOfNorthGate_NeverAStartTime()
     {
-        // NormalDay's fixture ERT start (8:30 AM) happens to equal North Gate's derived value for
-        // that same fixture (park opens 9:00 AM) — overridden here to a deliberately different time
-        // so the assertion proves independence rather than relying on that coincidence.
         var workspace = AssociateWorkspaceFixtures.NormalDay() with
         {
             EarlyRideTime = new EffectiveErt(EffectiveErtKind.Configured, EffectiveErtSource.Monthly, new TimeOnly(7, 45), ["Fury 325"], null),
@@ -421,13 +421,13 @@ public sealed class AssociatePassdownPdfGeneratorTests
         var text = GenerateText(model);
 
         Assert.NotNull(model.ParkHours.NorthGateText);
-        Assert.NotEqual(model.EarlyRideTime.StartTimeText, model.ParkHours.NorthGateText);
-        Assert.Contains("Start", text);
-        Assert.Contains(model.EarlyRideTime.StartTimeText!, text);
+        Assert.Contains("Fury 325", text);
+        Assert.DoesNotContain("7:45 AM", text);
+        Assert.DoesNotContain("Start", text);
     }
 
     // Phase 17B spec Part 31/32 (park-hours independence regression): a Closed park day never
-    // changes or erases the resolved ERT — rides/start time still print exactly as configured.
+    // changes or erases the resolved ERT — rides still print exactly as configured, never a time.
     [Fact]
     public void EarlyRideTimeBox_ClosedParkDay_ErtUnaffected()
     {
@@ -444,7 +444,7 @@ public sealed class AssociatePassdownPdfGeneratorTests
         Assert.Equal(EffectiveErtKind.Configured, model.EarlyRideTime.Kind);
         Assert.Equal(PdfParkHoursStatus.Closed, model.ParkHours.Status);
         Assert.Contains("Fury 325", text); // rides preserved, never silently erased.
-        Assert.Contains("8:30 AM", text); // ERT start time preserved, independent of park status.
+        Assert.DoesNotContain("8:30 AM", text); // never a start time, independent of park status.
         Assert.Contains("park is closed", text, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -524,23 +524,24 @@ public sealed class AssociatePassdownPdfGeneratorTests
         Assert.DoesNotContain("$54.99", text);
     }
 
-    // 16. Source-backed comparison price behavior.
+    // 16. Comparison price never prints, source-backed or not (Phase 17D §8).
     [Fact]
-    public void ComparisonPrice_AppearsOnlyWhenSourceBacked()
+    public void ComparisonPrice_NeverAppears()
     {
         var workspace = AssociateWorkspaceFixtures.SparseDay();
         var withComparison = workspace.Products[0] with { OfficialPriceAmount = 54.99m, ComparisonPriceAmount = 69.99m };
-        var withoutComparison = workspace.Products[0] with { ProductIdentity = "dated|DatedAdmissionTickets|no-comparison", DisplayName = "Plain Ticket", OfficialPriceAmount = 44.99m, ComparisonPriceAmount = null };
-        workspace = workspace with { Products = [withComparison, withoutComparison] };
+        workspace = workspace with { Products = [withComparison] };
 
         var text = GenerateText(BuildModel(workspace));
 
-        Assert.Contains("$69.99", text);
+        Assert.Contains("$54.99", text);
+        Assert.DoesNotContain("$69.99", text);
     }
 
-    // 17. Source-backed qualifier behavior.
+    // 17. Raw ecommerce qualifier text never prints (Phase 17D §9) — only the "From $x" price prefix
+    // survives for a Starting-From-classified price.
     [Fact]
-    public void Qualifier_AppearsOnlyWhenSourceBacked()
+    public void RawQualifier_NeverAppears()
     {
         var workspace = AssociateWorkspaceFixtures.SparseDay();
         var withQualifier = workspace.Products[0] with { PriceQualifier = "Through Labor Day" };
@@ -548,7 +549,27 @@ public sealed class AssociatePassdownPdfGeneratorTests
 
         var text = GenerateText(BuildModel(workspace));
 
-        Assert.Contains("Through Labor Day", text);
+        Assert.DoesNotContain("Through Labor Day", text);
+    }
+
+    // Phase 17D §9: a "Starting From"-classified price prints as "From $x" in the price column
+    // rather than a separate qualifier line.
+    [Fact]
+    public void StartingFromPrice_PrintsFromPricePrefix()
+    {
+        var workspace = AssociateWorkspaceFixtures.SparseDay();
+        var startingFrom = workspace.Products[0] with
+        {
+            OfficialPriceAmount = 37.00m,
+            PriceQualifier = "Starting From",
+            PriceKind = PriceKind.StartingFrom,
+        };
+        workspace = workspace with { Products = [startingFrom] };
+
+        var text = GenerateText(BuildModel(workspace));
+
+        Assert.Contains("From $37.00", text);
+        Assert.DoesNotContain("Starting From", text);
     }
 
     // 18. Custom included product appears. 20. Custom product Notes appear appropriately.
@@ -782,10 +803,10 @@ public sealed class AssociatePassdownPdfGeneratorTests
         var model = BuildModel(workspace);
         var text = GenerateText(model);
 
-        Assert.Contains(model.OperatingDateText, text);
+        Assert.Contains(model.OperatingDateText, text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(model.ParkHours.HeadlineText, text);
         Assert.Contains("18,500", text); // attendance
-        Assert.Contains("8:30 AM", text); // Early Ride Time start
+        Assert.Contains("Fury 325", text); // Early Ride Time rides
         Assert.Contains("QUESTION OF THE DAY", text); // Daily Feature
     }
 

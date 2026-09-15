@@ -118,14 +118,15 @@ public sealed class ErtConfigurationService(
     }
 
     /// <summary>
-    /// Spec Part 33: a configuration must never be simultaneously "no ERT" and carry a start
-    /// time/rides. Rather than reject an inconsistent caller-supplied combination outright (a remote
-    /// sync payload must never crash reconciliation), this normalizes: <see cref="ErtConfigurationState.NoErt"/>
-    /// always clears <see cref="TimeOnly"/>/rides; <see cref="ErtConfigurationState.Configured"/>
-    /// requires a start time. Rides are trimmed, blank entries dropped, and case-insensitive
-    /// duplicates collapsed to the first occurrence — an empty ride list is otherwise allowed (spec
-    /// Part 33's "empty ride selection if allowed": allowed, since a start time alone is still
-    /// meaningful operational content).
+    /// Spec Part 33 (revised Phase 17D Part 1): a configuration must never be simultaneously "no ERT"
+    /// and carry a start time/rides, so <see cref="ErtConfigurationState.NoErt"/> always clears
+    /// <see cref="TimeOnly"/>/rides. <see cref="ErtConfigurationState.Configured"/> no longer requires
+    /// a start time (Phase 17D removes the routine ERT time field from normal configuration/display —
+    /// associates already know Early Ride happens 30 minutes before park open) — <paramref name="startTime"/>
+    /// is accepted only for backward compatibility with any value a caller still supplies (e.g. a
+    /// pre-17D remote sync payload) and is never required. Rides are trimmed, blank entries dropped,
+    /// and case-insensitive duplicates collapsed to the first occurrence — an empty ride list is
+    /// otherwise allowed, since a month/date can legitimately be marked Configured with only a note.
     /// </summary>
     private static (ErtConfigurationState State, TimeOnly? StartTime, IReadOnlyList<string> Rides) Normalize(
         ErtConfigurationState state, TimeOnly? startTime, IReadOnlyList<string>? rides)
@@ -133,11 +134,6 @@ public sealed class ErtConfigurationService(
         if (state == ErtConfigurationState.NoErt)
         {
             return (state, null, []);
-        }
-
-        if (startTime is null)
-        {
-            throw new ArgumentException("A configured Early Ride Time requires a start time.", nameof(startTime));
         }
 
         var normalizedRides = (rides ?? [])

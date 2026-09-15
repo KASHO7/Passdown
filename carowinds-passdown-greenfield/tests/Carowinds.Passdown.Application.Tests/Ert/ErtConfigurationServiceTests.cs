@@ -70,13 +70,30 @@ public class ErtConfigurationServiceTests
         Assert.Empty(saved.Rides);
     }
 
+    // Phase 17D Part 1: a routine ERT start time is no longer required — associates configure rides
+    // only. StartTime remains a nullable, never-required field for backward compatibility.
     [Fact]
-    public async Task SaveMonthlyAsync_ConfiguredWithoutStartTime_Throws()
+    public async Task SaveMonthlyAsync_ConfiguredWithoutStartTime_Succeeds()
     {
         var env = CreateEnvironment();
 
-        await Assert.ThrowsAsync<ArgumentException>(() =>
-            env.Service.SaveMonthlyAsync(new MonthlyErtDraft(2026, 8, ErtConfigurationState.Configured, null, ["Fury 325"], null)));
+        var saved = await env.Service.SaveMonthlyAsync(new MonthlyErtDraft(2026, 8, ErtConfigurationState.Configured, null, ["Fury 325"], null));
+
+        Assert.Equal(ErtConfigurationState.Configured, saved.State);
+        Assert.Null(saved.StartTime);
+        Assert.Equal(["Fury 325"], saved.Rides);
+    }
+
+    // Phase 17D compatibility: a caller that still supplies a start time (e.g. a pre-17D remote sync
+    // payload) has it preserved rather than rejected or silently stripped.
+    [Fact]
+    public async Task SaveMonthlyAsync_ConfiguredWithLegacyStartTime_IsPreservedButNotRequired()
+    {
+        var env = CreateEnvironment();
+
+        var saved = await env.Service.SaveMonthlyAsync(new MonthlyErtDraft(2026, 8, ErtConfigurationState.Configured, new TimeOnly(9, 30), ["Fury 325"], null));
+
+        Assert.Equal(new TimeOnly(9, 30), saved.StartTime);
     }
 
     [Theory]

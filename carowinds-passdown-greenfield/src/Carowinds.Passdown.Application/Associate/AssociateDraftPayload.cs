@@ -31,8 +31,23 @@ public sealed record PassdownSectionSelection(
     bool IncludeOperationalNotes,
     bool IncludeHauntedAttractions)
 {
-    /// <summary>Every optional section included — the default for a new draft and for a schema-v1 draft migrated forward, matching what the PDF already rendered before Phase 8A existed.</summary>
+    /// <summary>
+    /// Every optional section included — used only as the fallback for a legacy draft whose persisted
+    /// JSON predates this concept entirely (spec Phase 8A; see
+    /// <see cref="AssociateDraftPayloadSerializer.Deserialize"/>), so an existing user's already-saved
+    /// draft never silently loses a section it always used to print. No longer the default for a
+    /// brand-new draft — see <see cref="Default"/> (Phase 17D §6).
+    /// </summary>
     public static PassdownSectionSelection AllIncluded { get; } = new(true, true, true, true, true, true, true);
+
+    /// <summary>
+    /// The default for a brand-new draft (Phase 17D §6's "normal intent"): Daily Admission, Fast Lane,
+    /// and Promotions checked — the sections normally relevant to a typical shift; Season Passes,
+    /// Add-Ons, SCarowinds/Haunt, and Operational Notes unchecked, since those are seasonal/occasional
+    /// rather than everyday content. Add-Ons remain fully available for price/history/reference
+    /// elsewhere in the app (Products screen) regardless of this PDF-inclusion default.
+    /// </summary>
+    public static PassdownSectionSelection Default { get; } = new(true, true, true, false, false, false, false);
 }
 
 /// <summary>Manual correction to the official park hours (spec §8.1/§8.2) — distinct from a private-buyout override, see <see cref="PrivateBuyoutOverride"/>.</summary>
@@ -129,6 +144,6 @@ public sealed record AssociateDraftPayload(
         DailyFeatureText: null,
         ProductOverrides: new Dictionary<string, ProductDraftOverride>(),
         CustomProducts: [],
-        SectionSelection: PassdownSectionSelection.AllIncluded,
+        SectionSelection: PassdownSectionSelection.Default,
         SelectedOperationalNotes: []);
 }

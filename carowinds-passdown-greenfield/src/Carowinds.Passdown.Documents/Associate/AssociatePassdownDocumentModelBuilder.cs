@@ -2,6 +2,7 @@ using System.Globalization;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Catalog;
 using Carowinds.Passdown.Domain.Ert;
 using Carowinds.Passdown.Domain.Hours;
 
@@ -197,7 +198,7 @@ public static class AssociatePassdownDocumentModelBuilder
             var rows = group.Select(BuildOfficialRow).ToList();
             if (rows.Count > 0)
             {
-                categories.Add(new PdfProductCategory(PdfCategoryDisplayNames.For(group.Key), TierFor(group.Key), rows));
+                categories.Add(new PdfProductCategory(PdfCategoryDisplayNames.For(group.Key), group.Key, TierFor(group.Key), rows));
             }
         }
 
@@ -208,7 +209,7 @@ public static class AssociatePassdownDocumentModelBuilder
 
         if (customRows.Count > 0)
         {
-            categories.Add(new PdfProductCategory(CustomProductCategoryName, PdfProductSectionTier.Reference, customRows));
+            categories.Add(new PdfProductCategory(CustomProductCategoryName, Section: null, PdfProductSectionTier.Reference, customRows));
         }
 
         return categories;
@@ -231,12 +232,29 @@ public static class AssociatePassdownDocumentModelBuilder
         _ => PdfProductSectionTier.Reference,
     };
 
+    /// <summary>
+    /// Phase 17D §8/9: the PDF prints the operational current price only — no comparison ("was $x")
+    /// price and no ecommerce qualifier wording ("Only", "Online Price", "Sale Price"). The one
+    /// qualifier semantics that materially changes the number's meaning, "Starting From"
+    /// (<see cref="PriceKind.StartingFrom"/>), is preserved by folding it into the price text itself
+    /// ("From $37") rather than a separate qualifier line (spec §9's "Preferred row: Military / First
+    /// Responder   From $37"). Comparison pricing and raw qualifier text remain fully available in the
+    /// Products screen/product history (<see cref="AssociateProduct.ComparisonPriceAmount"/>/
+    /// <see cref="AssociateProduct.PriceQualifier"/> themselves are untouched) — only the PDF's own
+    /// row stops carrying them.
+    /// </summary>
     private static PdfProductRow BuildOfficialRow(AssociateProduct product) => new(
         product.DisplayName,
-        FormatMoney(product.EffectiveDisplayPrice),
-        FormatMoney(product.ComparisonPriceAmount),
-        string.IsNullOrWhiteSpace(product.PriceQualifier) ? null : product.PriceQualifier.Trim(),
+        FormatPrice(product.PriceKind, product.EffectiveDisplayPrice),
+        ComparisonPriceText: null,
+        Qualifier: null,
         Notes: BundleNote(product));
+
+    private static string? FormatPrice(PriceKind kind, decimal? amount)
+    {
+        var formatted = FormatMoney(amount);
+        return formatted is null ? null : kind == PriceKind.StartingFrom ? $"From {formatted}" : formatted;
+    }
 
     /// <summary>
     /// Phase 13C Part I/W: a source-described bundle (e.g. "Two Friends Just $50") carries its
@@ -269,5 +287,7 @@ public static class AssociatePassdownDocumentModelBuilder
 
     private static string FormatTime(TimeOnly? time) => time?.ToString("h:mm tt", CultureInfo.InvariantCulture) ?? "-";
 
-    private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d 'at' h:mm tt", CultureInfo.InvariantCulture);
+    /// <summary>"Sep 15 • 1:52 PM" (Phase 17D §19 — replaces the old "Generated Sep 15 at 1:52 PM"; no app name, no "Generated" verb, kept small and quiet by every renderer's footer).</summary>
+    private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d", CultureInfo.InvariantCulture)
+        + " • " + value.ToLocalTime().ToString("h:mm tt", CultureInfo.InvariantCulture);
 }

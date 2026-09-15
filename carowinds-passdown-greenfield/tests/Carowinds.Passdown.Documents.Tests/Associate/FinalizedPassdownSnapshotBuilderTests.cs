@@ -208,14 +208,17 @@ public class FinalizedPassdownSnapshotBuilderTests
         Assert.Equal("$64.99", oneDay.EffectivePriceText);
     }
 
+    // Phase 17D §8: comparison ("was") pricing no longer prints on the PDF — the finalized snapshot's
+    // ComparisonPriceText field stays present for schema compatibility with pre-17D rows, but a
+    // snapshot built now never populates it, even for a source-backed comparison price.
     [Fact]
-    public void Build_NormalDay_FreezesComparisonPrice()
+    public void Build_NormalDay_NeverFreezesComparisonPrice()
     {
         var snapshot = Builder.Build(AssociateWorkspaceFixtures.NormalDay(), AsOf);
 
         var admission = snapshot.ProductCategories.Single(c => c.CategoryName == "Daily Admission");
         var oneDay = admission.Products.Single(p => p.DisplayName == "1-Day Ticket");
-        Assert.Equal("$79.99", oneDay.ComparisonPriceText);
+        Assert.Null(oneDay.ComparisonPriceText);
     }
 
     [Fact]

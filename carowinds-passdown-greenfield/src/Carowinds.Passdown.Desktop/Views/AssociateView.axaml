@@ -380,362 +380,279 @@
                     IsVisible="{Binding IsOverviewSectionSelected}">
           <StackPanel Spacing="10">
 
-            <!-- Phase 17C card audit: Park Hours and Today at a Glance merged into one "Day &amp;
-                 Operating Hours" panel (previously two separate hero/plain panels) — one card
-                 boundary instead of two, with a single vertical divider between the two content
-                 groups, matching the "compact aligned rows" density target (spec §1/§3/§6). No
-                 binding changed; only the surrounding Border/Grid container did. -->
+            <!-- Phase 17D §4: single compact "Day & Operations" panel — replaces the Phase 17C
+                 two-column "Day & Operating Hours" / "Today at a Glance" split with one Grid of
+                 aligned label/value rows (spec's approved layout direction). No narrow independent
+                 vertical columns for Attendance/Early Ride/Daily Feature — every operational field
+                 reads as one row within one shared panel. -->
             <Border Classes="panel heroPanel">
-            <Grid ColumnDefinitions="*,Auto,1.35*">
+            <StackPanel Spacing="10">
+              <TextBlock Text="Day &amp; Operations" Classes="sectionTitle" />
 
-              <!-- Park hours (Part D): the strongest single operational summary on the page. -->
-              <StackPanel Grid.Column="0" Spacing="2">
-                  <TextBlock Text="Park Hours" Classes="sectionTitle" />
+              <Grid ColumnDefinitions="110,*,90,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="8">
 
-                  <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Ellipse Width="9" Height="9"
-                             Fill="{Binding ParkHours.BadgeKind, Converter={StaticResource BadgeBrushConverter}}" />
-                    <Border Classes="chip">
-                      <TextBlock Text="{Binding ParkHours.BadgeText, FallbackValue='Not checked yet'}" />
-                    </Border>
-                  </StackPanel>
-
-                  <TextBlock Text="{Binding ParkHours.HeadlineText}"
-                             Classes="hoursHeadline"
-                             IsVisible="{Binding !ParkHours.IsHoursUnknown}" />
+                <!-- Park Hours row. -->
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Park Hours" Classes="fieldLabel" VerticalAlignment="Center" />
+                <StackPanel Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="3" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                  <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                           Fill="{Binding ParkHours.BadgeKind, Converter={StaticResource BadgeBrushConverter}}" />
                   <TextBlock Text="{Binding ParkHours.HeadlineText, FallbackValue='Hours not checked yet'}"
-                             Classes="hoursHeadline subtle"
-                             IsVisible="{Binding ParkHours.IsHoursUnknown}" />
+                             Classes="hoursHeadline" TextWrapping="Wrap"
+                             Classes.subtle="{Binding ParkHours.IsHoursUnknown}" />
+                  <Border Classes="chip" IsVisible="{Binding ParkHours.BadgeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                    <TextBlock Text="{Binding ParkHours.BadgeText}" />
+                  </Border>
+                </StackPanel>
 
-                  <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" Margin="0,0,0,4">
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="North Gate" Classes="muted" Margin="0,0,12,2" />
-                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding ParkHours.NorthGateText, FallbackValue='—'}" FontWeight="Medium" />
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Avenue" Classes="muted" Margin="0,0,12,0" />
-                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ParkHours.AvenueText, FallbackValue='—'}" FontWeight="Medium" />
-                  </Grid>
+                <!-- Gates row: North Gate | Avenue. -->
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="North Gate" Classes="fieldLabel" VerticalAlignment="Center" />
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ParkHours.NorthGateText, FallbackValue='—'}" FontWeight="Medium" VerticalAlignment="Center" />
+                <TextBlock Grid.Row="1" Grid.Column="2" Text="Avenue" Classes="fieldLabel" VerticalAlignment="Center" />
+                <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding ParkHours.AvenueText, FallbackValue='—'}" FontWeight="Medium" VerticalAlignment="Center" />
 
-                  <!-- Carolina Harbor / waterpark hours (spec Phase 13D Part H) — omitted cleanly
-                       whenever not published for this date, never a separate card. -->
+                <!-- Waterpark hours / verification / stale note — full width, collapses to zero space when absent. -->
+                <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="4" Spacing="2">
                   <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ParkHours.HasWaterparkHours}">
                     <TextBlock Text="Carolina Harbor" Classes="muted" />
                     <TextBlock Text="{Binding ParkHours.WaterparkHeadlineText}" FontWeight="Medium"
                                AutomationProperties.Name="{Binding ParkHours.WaterparkHeadlineText, StringFormat='Carolina Harbor hours: {0}'}" />
                   </StackPanel>
-
                   <TextBlock Text="{Binding ParkHours.VerificationText}"
                              IsVisible="{Binding ParkHours.VerificationText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                              Classes="muted" />
-
                   <TextBlock Text="{Binding ParkHours.StaleNoteText}"
                              IsVisible="{Binding ParkHours.StaleNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                              Classes="fieldWarning" TextWrapping="Wrap" />
+                </StackPanel>
 
-                  <!-- Manual hours override + private buyout (Part D/I/J, Phase 13E): one shared,
-                       compact override area instead of two oversized standalone bordered blocks.
-                       Time entry is a typable TextBox (Phase 13E — replaces the stock click-and-spin
-                       TimePicker, spec docs/phase13-hardening.md Phase 13E) bound with
-                       UpdateSourceTrigger=LostFocus so parsing/normalization commits once per
-                       Tab/click-away/Enter, not per keystroke (Part O/P). -->
-                  <Border Classes="inset">
-                    <StackPanel Spacing="10">
-                      <Grid ColumnDefinitions="*,*">
-                        <StackPanel Grid.Column="0" Spacing="6">
-                          <CheckBox Content="Manual hours override"
-                                    IsChecked="{Binding ManualHoursOverrideEnabled}"
-                                    AutomationProperties.Name="Use a manual hours override" />
-                          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="2"
-                                IsVisible="{Binding ManualHoursOverrideEnabled}">
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Open" Classes="fieldLabel" VerticalAlignment="Center" />
-                            <StackPanel Grid.Row="0" Grid.Column="1" Spacing="0">
-                              <TextBox Text="{Binding ManualOpeningTimeText, UpdateSourceTrigger=LostFocus}"
-                                       PlaceholderText="9:00 AM" MinWidth="110" HorizontalAlignment="Left"
-                                       KeyDown="TimeTextBox_OnKeyDown"
-                                       AutomationProperties.Name="Manual Hours Open" />
-                              <TextBlock Text="{Binding ManualOpeningTimeError}"
-                                         IsVisible="{Binding ManualOpeningTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                         Classes="fieldError" TextWrapping="Wrap"
-                                         AutomationProperties.Name="{Binding ManualOpeningTimeError}" />
-                            </StackPanel>
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Close" Classes="fieldLabel" VerticalAlignment="Center" />
-                            <StackPanel Grid.Row="1" Grid.Column="1" Spacing="0">
-                              <TextBox Text="{Binding ManualClosingTimeText, UpdateSourceTrigger=LostFocus}"
-                                       PlaceholderText="10:00 PM" MinWidth="110" HorizontalAlignment="Left"
-                                       KeyDown="TimeTextBox_OnKeyDown"
-                                       AutomationProperties.Name="Manual Hours Close" />
-                              <TextBlock Text="{Binding ManualClosingTimeError}"
-                                         IsVisible="{Binding ManualClosingTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                         Classes="fieldError" TextWrapping="Wrap"
-                                         AutomationProperties.Name="{Binding ManualClosingTimeError}" />
-                            </StackPanel>
-                          </Grid>
-                          <TextBlock Text="{Binding ManualHoursWarningText}"
-                                     IsVisible="{Binding ManualHoursWarningText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                     Classes="fieldWarning" TextWrapping="Wrap" />
+                <!-- Attendance | Pre-solds row. -->
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="Attendance" Classes="fieldLabel" VerticalAlignment="Center" />
+                <StackPanel Grid.Row="3" Grid.Column="1" Spacing="0" Margin="0,0,10,0">
+                  <TextBox Text="{Binding ProjectedAttendanceText}" PlaceholderText="Not entered"
+                           AutomationProperties.Name="Projected attendance" />
+                  <TextBlock Text="{Binding ProjectedAttendanceError}"
+                             IsVisible="{Binding ProjectedAttendanceError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                             Classes="fieldError" />
+                </StackPanel>
+                <TextBlock Grid.Row="3" Grid.Column="2" Text="Pre-solds" Classes="fieldLabel" VerticalAlignment="Center" />
+                <StackPanel Grid.Row="3" Grid.Column="3" Spacing="0">
+                  <TextBox Text="{Binding PreSoldsText}" PlaceholderText="Not entered"
+                           AutomationProperties.Name="Pre-solds" />
+                  <TextBlock Text="{Binding PreSoldsError}"
+                             IsVisible="{Binding PreSoldsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                             Classes="fieldError" />
+                </StackPanel>
+
+                <!-- Early Ride row (Phase 17D §2: rides only, one compact Edit action — never a
+                     routine start-time field, never a permanent pair of large buttons). -->
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="Early Ride" Classes="fieldLabel" VerticalAlignment="Center" />
+                <TextBlock Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding EarlyRideTimeStatusText}"
+                           FontWeight="Medium" TextWrapping="Wrap" VerticalAlignment="Center"
+                           AutomationProperties.Name="{Binding EarlyRideTimeStatusText, StringFormat='Early Ride: {0}'}" />
+                <Button Grid.Row="4" Grid.Column="3" Content="Edit" Classes="secondaryAction" HorizontalAlignment="Right"
+                        Command="{Binding OpenErtEditorCommand}"
+                        AutomationProperties.Name="Edit Early Ride Time" />
+
+                <!-- Daily Feature row. -->
+                <TextBlock Grid.Row="5" Grid.Column="0" Text="Daily Feature" Classes="fieldLabel" VerticalAlignment="Top" Margin="0,4,0,0" />
+                <StackPanel Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3" Spacing="6">
+                  <ComboBox ItemsSource="{Binding DailyFeatureTypeOptions}"
+                            SelectedItem="{Binding SelectedDailyFeatureTypeOption}"
+                            HorizontalAlignment="Left" MinWidth="220"
+                            AutomationProperties.Name="Daily Feature type">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="presentation:DailyFeatureTypeOption">
+                        <TextBlock Text="{Binding Label}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <TextBox Text="{Binding DailyFeatureText}"
+                           AcceptsReturn="True" TextWrapping="Wrap" MinHeight="48"
+                           PlaceholderText="Enter the question, fact, or quote"
+                           AutomationProperties.Name="Daily Feature text" />
+                </StackPanel>
+              </Grid>
+
+              <!-- Compact Early Ride Time editor (Phase 17D §3) — one panel with the Monthly Default
+                   and Date Override sections together, opened by the single [Edit] action above. No
+                   time controls anywhere in this editor. -->
+              <Border Classes="inset" IsVisible="{Binding IsErtEditorOpen}">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="MONTHLY DEFAULT" Classes="subsectionTitle" Margin="0" />
+                  <TextBlock Text="{Binding SelectedMonthLabel}" Classes="fieldLabel" />
+                  <CheckBox Content="No ERT this month"
+                            IsChecked="{Binding MonthlyErtNoErt}"
+                            AutomationProperties.Name="No Early Ride Time this month" />
+                  <StackPanel Spacing="0" IsVisible="{Binding !MonthlyErtNoErt}">
+                    <TextBox Text="{Binding MonthlyErtRidesText}"
+                             AcceptsReturn="True" TextWrapping="Wrap" MinHeight="48"
+                             PlaceholderText="Participating rides, one per line"
+                             AutomationProperties.Name="Monthly Early Ride Time rides" />
+                    <TextBlock Text="One ride per line." Classes="fieldHint" />
+                  </StackPanel>
+                  <TextBox Text="{Binding MonthlyErtNoteText}"
+                           PlaceholderText="Note (optional)"
+                           AutomationProperties.Name="Monthly Early Ride Time note" />
+                  <TextBlock Text="{Binding MonthlyErtSaveError}"
+                             IsVisible="{Binding MonthlyErtSaveError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                             Classes="fieldError" TextWrapping="Wrap" />
+                  <Button Content="Save Monthly" Classes="primaryAction"
+                          Command="{Binding SaveMonthlyErtCommand}"
+                          AutomationProperties.Name="Save Monthly Early Ride Time" />
+
+                  <Rectangle Height="1" Fill="{DynamicResource PassdownDividerBrush}" Margin="0,2,0,2" />
+
+                  <TextBlock Text="DATE OVERRIDE" Classes="subsectionTitle" Margin="0" />
+                  <CheckBox Content="{Binding SelectedDate, StringFormat='Use override for {0:MMM d}'}"
+                            IsChecked="{Binding ErtUseOverrideForDate}"
+                            AutomationProperties.Name="Use an Early Ride Time override for this date" />
+                  <StackPanel Spacing="8" IsVisible="{Binding ErtUseOverrideForDate}">
+                    <CheckBox Content="No ERT this date"
+                              IsChecked="{Binding OverrideNoErt}"
+                              AutomationProperties.Name="No Early Ride Time this date" />
+                    <StackPanel Spacing="0" IsVisible="{Binding !OverrideNoErt}">
+                      <TextBox Text="{Binding OverrideRidesText}"
+                               AcceptsReturn="True" TextWrapping="Wrap" MinHeight="48"
+                               PlaceholderText="Override rides, one per line"
+                               AutomationProperties.Name="Early Ride Time override rides" />
+                      <TextBlock Text="One ride per line." Classes="fieldHint" />
+                    </StackPanel>
+                    <TextBox Text="{Binding OverrideReasonText}"
+                             PlaceholderText="Reason (optional) — e.g. maintenance"
+                             AutomationProperties.Name="Early Ride Time override reason" />
+                    <TextBlock Text="{Binding OverrideSaveError}"
+                               IsVisible="{Binding OverrideSaveError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               Classes="fieldError" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <Button Content="Save Override" Classes="primaryAction"
+                              Command="{Binding SaveOverrideCommand}"
+                              AutomationProperties.Name="Save Early Ride Time override" />
+                      <Button Content="Remove Override"
+                              IsVisible="{Binding EarlyRideTimeIsOverride}"
+                              Command="{Binding RemoveOverrideCommand}"
+                              AutomationProperties.Name="Remove Early Ride Time override for this date" />
+                    </StackPanel>
+                  </StackPanel>
+
+                  <Button Content="Close" HorizontalAlignment="Left"
+                          Command="{Binding CancelErtEditorCommand}"
+                          AutomationProperties.Name="Close Early Ride Time editor" />
+                </StackPanel>
+              </Border>
+
+              <!-- Manual hours override + private buyout (Part D/I/J, Phase 13E): one shared,
+                   compact override area. Time entry is a typable TextBox (Phase 13E — replaces the
+                   stock click-and-spin TimePicker) bound with UpdateSourceTrigger=LostFocus so
+                   parsing/normalization commits once per Tab/click-away/Enter, not per keystroke
+                   (Part O/P). -->
+              <Border Classes="inset">
+                <StackPanel Spacing="10">
+                  <Grid ColumnDefinitions="*,*">
+                    <StackPanel Grid.Column="0" Spacing="6">
+                      <CheckBox Content="Manual hours override"
+                                IsChecked="{Binding ManualHoursOverrideEnabled}"
+                                AutomationProperties.Name="Use a manual hours override" />
+                      <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="2"
+                            IsVisible="{Binding ManualHoursOverrideEnabled}">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Open" Classes="fieldLabel" VerticalAlignment="Center" />
+                        <StackPanel Grid.Row="0" Grid.Column="1" Spacing="0">
+                          <TextBox Text="{Binding ManualOpeningTimeText, UpdateSourceTrigger=LostFocus}"
+                                   PlaceholderText="9:00 AM" MinWidth="110" HorizontalAlignment="Left"
+                                   KeyDown="TimeTextBox_OnKeyDown"
+                                   AutomationProperties.Name="Manual Hours Open" />
+                          <TextBlock Text="{Binding ManualOpeningTimeError}"
+                                     IsVisible="{Binding ManualOpeningTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                     Classes="fieldError" TextWrapping="Wrap"
+                                     AutomationProperties.Name="{Binding ManualOpeningTimeError}" />
                         </StackPanel>
-
-                        <StackPanel Grid.Column="1" Spacing="6" Margin="16,0,0,0">
-                          <CheckBox Content="Private buyout / custom hours"
-                                    IsChecked="{Binding PrivateBuyoutEnabled}"
-                                    AutomationProperties.Name="Private buyout or custom hours" />
-                          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="2"
-                                IsVisible="{Binding PrivateBuyoutEnabled}">
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Open" Classes="fieldLabel" VerticalAlignment="Center" />
-                            <StackPanel Grid.Row="0" Grid.Column="1" Spacing="0">
-                              <TextBox Text="{Binding PrivateBuyoutOpeningTimeText, UpdateSourceTrigger=LostFocus}"
-                                       PlaceholderText="6:00 PM" MinWidth="110" HorizontalAlignment="Left"
-                                       KeyDown="TimeTextBox_OnKeyDown"
-                                       AutomationProperties.Name="Private Buyout Open" />
-                              <TextBlock Text="{Binding PrivateBuyoutOpeningTimeError}"
-                                         IsVisible="{Binding PrivateBuyoutOpeningTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                         Classes="fieldError" TextWrapping="Wrap"
-                                         AutomationProperties.Name="{Binding PrivateBuyoutOpeningTimeError}" />
-                            </StackPanel>
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Close" Classes="fieldLabel" VerticalAlignment="Center" />
-                            <StackPanel Grid.Row="1" Grid.Column="1" Spacing="0">
-                              <TextBox Text="{Binding PrivateBuyoutClosingTimeText, UpdateSourceTrigger=LostFocus}"
-                                       PlaceholderText="11:00 PM" MinWidth="110" HorizontalAlignment="Left"
-                                       KeyDown="TimeTextBox_OnKeyDown"
-                                       AutomationProperties.Name="Private Buyout Close" />
-                              <TextBlock Text="{Binding PrivateBuyoutClosingTimeError}"
-                                         IsVisible="{Binding PrivateBuyoutClosingTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                         Classes="fieldError" TextWrapping="Wrap"
-                                         AutomationProperties.Name="{Binding PrivateBuyoutClosingTimeError}" />
-                            </StackPanel>
-                          </Grid>
-                          <TextBox Text="{Binding PrivateBuyoutDetails}"
-                                   IsVisible="{Binding PrivateBuyoutEnabled}"
-                                   PlaceholderText="Group name, contact, or other details"
-                                   AutomationProperties.Name="Private buyout details" />
-                          <TextBlock Text="{Binding PrivateBuyoutHoursWarningText}"
-                                     IsVisible="{Binding PrivateBuyoutHoursWarningText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                     Classes="fieldWarning" TextWrapping="Wrap" />
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Close" Classes="fieldLabel" VerticalAlignment="Center" />
+                        <StackPanel Grid.Row="1" Grid.Column="1" Spacing="0">
+                          <TextBox Text="{Binding ManualClosingTimeText, UpdateSourceTrigger=LostFocus}"
+                                   PlaceholderText="10:00 PM" MinWidth="110" HorizontalAlignment="Left"
+                                   KeyDown="TimeTextBox_OnKeyDown"
+                                   AutomationProperties.Name="Manual Hours Close" />
+                          <TextBlock Text="{Binding ManualClosingTimeError}"
+                                     IsVisible="{Binding ManualClosingTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                     Classes="fieldError" TextWrapping="Wrap"
+                                     AutomationProperties.Name="{Binding ManualClosingTimeError}" />
                         </StackPanel>
                       </Grid>
-                    </StackPanel>
-                  </Border>
-              </StackPanel>
-
-              <Rectangle Grid.Column="1" Classes="glanceDivider" />
-
-              <!-- Today at a Glance (Part E): Attendance, Early Ride Time, and Daily Fun read as one
-                   compact operational summary block with consistent sub-headers, rather than three
-                   unrelated stacked forms. -->
-              <StackPanel Grid.Column="2" Spacing="2">
-                  <TextBlock Text="Today at a Glance" Classes="sectionTitle" />
-
-                  <Grid ColumnDefinitions="0.7*,Auto,1.2*,Auto,1.2*">
-
-                    <!-- Attendance -->
-                    <StackPanel Grid.Column="0" Spacing="10">
-                      <TextBlock Text="ATTENDANCE" Classes="subsectionTitle" />
-                      <StackPanel Spacing="0">
-                        <TextBlock Text="Projected attendance" Classes="fieldLabel" />
-                        <TextBox Text="{Binding ProjectedAttendanceText}"
-                                 PlaceholderText="Not entered"
-                                 AutomationProperties.Name="Projected attendance" />
-                        <TextBlock Text="{Binding ProjectedAttendanceError}"
-                                   IsVisible="{Binding ProjectedAttendanceError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                   Classes="fieldError" />
-                      </StackPanel>
-                      <StackPanel Spacing="0">
-                        <TextBlock Text="Pre-solds" Classes="fieldLabel" />
-                        <TextBox Text="{Binding PreSoldsText}"
-                                 PlaceholderText="Not entered"
-                                 AutomationProperties.Name="Pre-solds" />
-                        <TextBlock Text="{Binding PreSoldsError}"
-                                   IsVisible="{Binding PreSoldsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                   Classes="fieldError" />
-                      </StackPanel>
+                      <TextBlock Text="{Binding ManualHoursWarningText}"
+                                 IsVisible="{Binding ManualHoursWarningText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                 Classes="fieldWarning" TextWrapping="Wrap" />
                     </StackPanel>
 
-                    <Rectangle Grid.Column="1" Classes="glanceDivider" />
-
-                    <!-- Early Ride Time (Phase 17B: a persistent monthly default plus an optional
-                         per-date override, resolved by the same effective-ERT value the Dashboard/PDF/
-                         finalized snapshot all read — never derived from park hours/North Gate. -->
-                    <StackPanel Grid.Column="2" Spacing="8">
-                      <TextBlock Text="EARLY RIDE TIME" Classes="subsectionTitle" />
-
-                      <StackPanel Spacing="0">
-                        <TextBlock Text="{Binding EarlyRideTimeStatusText}"
-                                   FontWeight="Medium" TextWrapping="Wrap"
-                                   AutomationProperties.Name="{Binding EarlyRideTimeStatusText, StringFormat='Early Ride Time: {0}'}" />
-                        <TextBlock Text="Date override"
-                                   IsVisible="{Binding EarlyRideTimeIsOverride}"
-                                   Classes="fieldHint" />
-                      </StackPanel>
-
-                      <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Content="Configure Monthly ERT"
-                                Classes="secondaryAction"
-                                Command="{Binding OpenMonthlyErtEditorCommand}"
-                                AutomationProperties.Name="Configure Monthly Early Ride Time" />
-                        <Button Content="Override for this date"
-                                Classes="secondaryAction"
-                                IsVisible="{Binding !EarlyRideTimeIsOverride}"
-                                Command="{Binding OpenOverrideEditorCommand}"
-                                AutomationProperties.Name="Override Early Ride Time for this date" />
-                        <Button Content="Remove override"
-                                Classes="secondaryAction"
-                                IsVisible="{Binding EarlyRideTimeIsOverride}"
-                                Command="{Binding RemoveOverrideCommand}"
-                                AutomationProperties.Name="Remove Early Ride Time override for this date" />
-                      </StackPanel>
-
-                      <!-- Configure Monthly ERT panel (spec Part 7) -->
-                      <StackPanel Spacing="6" IsVisible="{Binding IsMonthlyErtEditorOpen}">
-                        <TextBlock Text="{Binding SelectedMonthLabel}" Classes="fieldLabel" />
-                        <CheckBox Content="No ERT this month"
-                                  IsChecked="{Binding MonthlyErtNoErt}"
-                                  AutomationProperties.Name="No Early Ride Time this month" />
-                        <StackPanel Spacing="0" IsVisible="{Binding !MonthlyErtNoErt}">
-                          <TextBlock Text="Start time" Classes="fieldLabel" />
-                          <TextBox Text="{Binding MonthlyErtStartTimeText}"
-                                   PlaceholderText="9:30 AM"
-                                   MinWidth="110" HorizontalAlignment="Left"
-                                   AutomationProperties.Name="Monthly Early Ride Time start" />
+                    <StackPanel Grid.Column="1" Spacing="6" Margin="16,0,0,0">
+                      <CheckBox Content="Private buyout / custom hours"
+                                IsChecked="{Binding PrivateBuyoutEnabled}"
+                                AutomationProperties.Name="Private buyout or custom hours" />
+                      <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="2"
+                            IsVisible="{Binding PrivateBuyoutEnabled}">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Open" Classes="fieldLabel" VerticalAlignment="Center" />
+                        <StackPanel Grid.Row="0" Grid.Column="1" Spacing="0">
+                          <TextBox Text="{Binding PrivateBuyoutOpeningTimeText, UpdateSourceTrigger=LostFocus}"
+                                   PlaceholderText="6:00 PM" MinWidth="110" HorizontalAlignment="Left"
+                                   KeyDown="TimeTextBox_OnKeyDown"
+                                   AutomationProperties.Name="Private Buyout Open" />
+                          <TextBlock Text="{Binding PrivateBuyoutOpeningTimeError}"
+                                     IsVisible="{Binding PrivateBuyoutOpeningTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                     Classes="fieldError" TextWrapping="Wrap"
+                                     AutomationProperties.Name="{Binding PrivateBuyoutOpeningTimeError}" />
                         </StackPanel>
-                        <StackPanel Spacing="0" IsVisible="{Binding !MonthlyErtNoErt}">
-                          <TextBox Text="{Binding MonthlyErtRidesText}"
-                                   AcceptsReturn="True" TextWrapping="Wrap" MinHeight="56"
-                                   PlaceholderText="Participating rides, one per line"
-                                   AutomationProperties.Name="Monthly Early Ride Time rides" />
-                          <TextBlock Text="One ride per line." Classes="fieldHint" />
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Close" Classes="fieldLabel" VerticalAlignment="Center" />
+                        <StackPanel Grid.Row="1" Grid.Column="1" Spacing="0">
+                          <TextBox Text="{Binding PrivateBuyoutClosingTimeText, UpdateSourceTrigger=LostFocus}"
+                                   PlaceholderText="11:00 PM" MinWidth="110" HorizontalAlignment="Left"
+                                   KeyDown="TimeTextBox_OnKeyDown"
+                                   AutomationProperties.Name="Private Buyout Close" />
+                          <TextBlock Text="{Binding PrivateBuyoutClosingTimeError}"
+                                     IsVisible="{Binding PrivateBuyoutClosingTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                     Classes="fieldError" TextWrapping="Wrap"
+                                     AutomationProperties.Name="{Binding PrivateBuyoutClosingTimeError}" />
                         </StackPanel>
-                        <TextBox Text="{Binding MonthlyErtNoteText}"
-                                 PlaceholderText="Note (optional)"
-                                 AutomationProperties.Name="Monthly Early Ride Time note" />
-                        <TextBlock Text="{Binding MonthlyErtSaveError}"
-                                   IsVisible="{Binding MonthlyErtSaveError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                   Classes="fieldError" TextWrapping="Wrap" />
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                          <Button Content="Save Monthly ERT"
-                                  Classes="primaryAction"
-                                  Command="{Binding SaveMonthlyErtCommand}"
-                                  AutomationProperties.Name="Save Monthly Early Ride Time" />
-                          <Button Content="Cancel"
-                                  Command="{Binding CancelMonthlyErtEditorCommand}"
-                                  AutomationProperties.Name="Cancel Monthly Early Ride Time editing" />
-                        </StackPanel>
-                      </StackPanel>
-
-                      <!-- Override for this date panel (spec Part 8) -->
-                      <StackPanel Spacing="6" IsVisible="{Binding IsOverrideEditorOpen}">
-                        <TextBlock Text="{Binding SelectedDate, StringFormat='Override for {0:MMM d, yyyy}'}" Classes="fieldLabel" />
-                        <CheckBox Content="No ERT this date"
-                                  IsChecked="{Binding OverrideNoErt}"
-                                  AutomationProperties.Name="No Early Ride Time this date" />
-                        <StackPanel Spacing="0" IsVisible="{Binding !OverrideNoErt}">
-                          <TextBlock Text="Start time" Classes="fieldLabel" />
-                          <TextBox Text="{Binding OverrideStartTimeText}"
-                                   PlaceholderText="10:00 AM"
-                                   MinWidth="110" HorizontalAlignment="Left"
-                                   AutomationProperties.Name="Early Ride Time override start" />
-                        </StackPanel>
-                        <StackPanel Spacing="0" IsVisible="{Binding !OverrideNoErt}">
-                          <TextBox Text="{Binding OverrideRidesText}"
-                                   AcceptsReturn="True" TextWrapping="Wrap" MinHeight="56"
-                                   PlaceholderText="Participating rides, one per line"
-                                   AutomationProperties.Name="Early Ride Time override rides" />
-                          <TextBlock Text="One ride per line." Classes="fieldHint" />
-                        </StackPanel>
-                        <TextBox Text="{Binding OverrideReasonText}"
-                                 PlaceholderText="Reason (optional) — e.g. maintenance"
-                                 AutomationProperties.Name="Early Ride Time override reason" />
-                        <TextBlock Text="{Binding OverrideSaveError}"
-                                   IsVisible="{Binding OverrideSaveError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                   Classes="fieldError" TextWrapping="Wrap" />
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                          <Button Content="Save Override"
-                                  Classes="primaryAction"
-                                  Command="{Binding SaveOverrideCommand}"
-                                  AutomationProperties.Name="Save Early Ride Time override" />
-                          <Button Content="Cancel"
-                                  Command="{Binding CancelOverrideEditorCommand}"
-                                  AutomationProperties.Name="Cancel Early Ride Time override editing" />
-                        </StackPanel>
-                      </StackPanel>
-                    </StackPanel>
-
-                    <Rectangle Grid.Column="3" Classes="glanceDivider" />
-
-                    <!-- Daily Feature (Phase 8A; formerly "Daily Fun") -->
-                    <StackPanel Grid.Column="4" Spacing="8">
-                      <TextBlock Text="DAILY FEATURE" Classes="subsectionTitle" />
-                      <ComboBox ItemsSource="{Binding DailyFeatureTypeOptions}"
-                                SelectedItem="{Binding SelectedDailyFeatureTypeOption}"
-                                HorizontalAlignment="Stretch"
-                                AutomationProperties.Name="Daily Feature type">
-                        <ComboBox.ItemTemplate>
-                          <DataTemplate x:DataType="presentation:DailyFeatureTypeOption">
-                            <TextBlock Text="{Binding Label}" />
-                          </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                      </ComboBox>
-                      <TextBox Text="{Binding DailyFeatureText}"
-                               AcceptsReturn="True"
-                               TextWrapping="Wrap"
-                               MinHeight="56"
-                               PlaceholderText="Enter the question, fact, or quote"
-                               AutomationProperties.Name="Daily Feature text" />
+                      </Grid>
+                      <TextBox Text="{Binding PrivateBuyoutDetails}"
+                               IsVisible="{Binding PrivateBuyoutEnabled}"
+                               PlaceholderText="Group name, contact, or other details"
+                               AutomationProperties.Name="Private buyout details" />
+                      <TextBlock Text="{Binding PrivateBuyoutHoursWarningText}"
+                                 IsVisible="{Binding PrivateBuyoutHoursWarningText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                 Classes="fieldWarning" TextWrapping="Wrap" />
                     </StackPanel>
                   </Grid>
-              </StackPanel>
-
-            </Grid>
+                </StackPanel>
+              </Border>
+            </StackPanel>
             </Border>
 
-            <!-- Phase 17C card audit: Verification &amp; Save Status and Operational Notes summary
-                 merged into one compact status strip — both were "poor card candidates" per spec §3
-                 (a chip plus a line or two of text each), so they now share one card boundary with a
-                 vertical divider instead of two full panels. -->
+            <!-- Phase 17D §5: a single lightweight status strip — "Draft: Saved | Last checked: ... |
+                 Notes: N" — replacing the Phase 17C two-column status card. Warnings/errors are the
+                 only thing allowed to expand this into more than one line; normal healthy status stays
+                 a single compact line, never a large card. -->
             <Border Classes="panel">
-            <Grid ColumnDefinitions="*,Auto,*">
-
-              <!-- Verification / refresh status (Part 2): the save/refresh lifecycle gathered into
-                   its own compact dashboard card instead of only a header chip and stray messages. -->
-              <StackPanel Grid.Column="0" Spacing="6">
-                  <TextBlock Text="Verification &amp; Save Status" Classes="sectionTitle" Margin="0,0,0,2" />
-
-                  <Grid ColumnDefinitions="Auto,*">
-                    <TextBlock Grid.Column="0" Text="Draft" Classes="muted" Margin="0,0,10,0" />
-                    <Border Grid.Column="1" Classes="chip" HorizontalAlignment="Left"
-                            Background="{Binding AutosaveState, Converter={x:Static converters:SaveStatusBrushConverter.Instance}}">
-                      <TextBlock Text="{Binding SaveStatusText, FallbackValue='Not saved yet'}" />
-                    </Border>
-                  </Grid>
-
-                  <TextBlock Text="{Binding RefreshResultMessage}"
-                             IsVisible="{Binding RefreshResultMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                             TextWrapping="Wrap" />
-                  <TextBlock Text="Use Check Online (above) to verify current park hours and pricing."
-                             Classes="muted" TextWrapping="Wrap"
-                             IsVisible="{Binding RefreshResultMessage, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
-
-                  <TextBlock Text="{Binding PdfExportMessage}"
-                             IsVisible="{Binding PdfExportMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                  <TextBlock Text="{Binding DiagnosticsExportMessage}"
-                             IsVisible="{Binding DiagnosticsExportMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <StackPanel Spacing="4">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Draft: " Classes="muted" />
+                <TextBlock Text="{Binding SaveStatusText, FallbackValue='Not saved yet'}" FontWeight="Medium"
+                           AutomationProperties.Name="{Binding SaveStatusText, StringFormat='Draft status: {0}'}" />
+                <TextBlock Text="   |   " Classes="muted" />
+                <TextBlock Text="{Binding ParkHours.VerificationText, FallbackValue='Not checked yet'}" Classes="muted" />
+                <TextBlock Text="   |   " Classes="muted" />
+                <TextBlock Text="Notes: " Classes="muted" />
+                <TextBlock Text="{Binding OperationalNotesCount}" FontWeight="Medium"
+                           AutomationProperties.Name="{Binding OperationalNotesCount, StringFormat='Operational notes: {0}'}" />
               </StackPanel>
 
-              <Rectangle Grid.Column="1" Classes="glanceDivider" />
-
-              <!-- Operational Notes summary (Part 2): a read-only preview on the dashboard; the
-                   full editable notes field lives on the Notes tab so Overview stays short. -->
-              <StackPanel Grid.Column="2" Spacing="6">
-                  <TextBlock Text="Operational Notes" Classes="sectionTitle" Margin="0,0,0,2" />
-
-                  <TextBlock Text="{Binding OperationalNotesText}"
-                             IsVisible="{Binding OperationalNotesText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                             TextWrapping="Wrap" MaxLines="4" TextTrimming="CharacterEllipsis" />
-                  <TextBlock Text="No operational notes yet."
-                             Classes="muted"
-                             IsVisible="{Binding OperationalNotesText, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
-
-                  <TextBlock Text="Open the Notes tab to add or edit notes." Classes="fieldHint" Margin="0" />
-              </StackPanel>
-
-            </Grid>
+              <!-- Expands only when attention is needed (spec §5) — a failed Check Online, or a PDF/
+                   diagnostics export message. -->
+              <TextBlock Text="{Binding RefreshResultMessage}"
+                         IsVisible="{Binding RefreshHadFailures}"
+                         Classes="fieldWarning" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding PdfExportMessage}"
+                         IsVisible="{Binding PdfExportMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <TextBlock Text="{Binding DiagnosticsExportMessage}"
+                         IsVisible="{Binding DiagnosticsExportMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
             </Border>
 
             <!-- Passdown Builder section selection (Phase 8A; SCarowinds/Haunt added Phase 8B): Day

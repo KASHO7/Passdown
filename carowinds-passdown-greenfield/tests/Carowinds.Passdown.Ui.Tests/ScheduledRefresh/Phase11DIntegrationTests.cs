@@ -88,8 +88,14 @@ public class Phase11DIntegrationTests
                 "South Gate scanner #3 out of service", "Direct guests to gate 2.",
                 OperationalNoteCategory.Equipment, OperationalNotePriority.Normal, passdownDate.AddDays(-6), null));
 
-            // 2. Load/save the Aug 26 Associate draft.
-            await associateService.SaveDraftAsync(passdownDate, AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 12000 });
+            // 2. Load/save the Aug 26 Associate draft. SectionSelection pinned to AllIncluded (Phase
+            // 17D §6 changed CreateDefault's own default to exclude Operational Notes) so this test's
+            // selected note still reaches the PDF/finalized snapshot it verifies below.
+            await associateService.SaveDraftAsync(passdownDate, AssociateDraftPayload.CreateDefault() with
+            {
+                ProjectedAttendance = 12000,
+                SectionSelection = PassdownSectionSelection.AllIncluded,
+            });
 
             // 3. Select the persistent note for Aug 26.
             var afterSelection = await associateService.SelectOperationalNoteAsync(passdownDate, note.Id);

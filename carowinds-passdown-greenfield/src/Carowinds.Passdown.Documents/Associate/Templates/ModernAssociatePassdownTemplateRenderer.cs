@@ -1,5 +1,4 @@
 using Carowinds.Passdown.Application.Preferences;
-using Carowinds.Passdown.Domain.Ert;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -7,248 +6,168 @@ using QuestPDF.Infrastructure;
 namespace Carowinds.Passdown.Documents.Associate.Templates;
 
 /// <summary>
-/// Phase 17C §13's "Modern" template — a distinct professional section composition from Classic
-/// (spec §13: "different section composition"), not merely a recolor: a two-column body with a
-/// narrow left rail (Park Hours/Attendance/ERT/Daily Feature — the "what's happening today" facts)
-/// and a wide right column for products, rather than Classic's stacked full-width sections. Section
-/// labels use a left accent rule instead of a filled band, and the header is a slim rule rather than
-/// a full-bleed colored band — still operational, not decorative (spec §13's "never a web dashboard"),
-/// and grayscale/photocopy-safe (spec §14).
+/// Phase 17D's "Modern" template — the strongest typographic hierarchy of the three (spec §18): a
+/// large date, restrained navy accents, small uppercase section headings, crisp rules, and intentional
+/// whitespace, but on the exact same single-column master structure as Classic/Compact (spec §18's
+/// explicit "NO sidebar/rail layout, NO giant dark header, NO decorative cards" — this template no
+/// longer uses the Phase 17C two-column rail body, which is precisely the layout that made Modern less
+/// pagination-efficient than Classic/Compact with no compensating benefit). Tuned to stay nearly as
+/// space-efficient as Compact despite its larger type scale, by keeping spacing tight everywhere except
+/// the date/section-label treatment itself.
 /// </summary>
 public sealed class ModernAssociatePassdownTemplateRenderer : IAssociatePassdownTemplateRenderer
 {
     public AssociatePassdownTemplate Template => AssociatePassdownTemplate.Modern;
 
-    private const float PageMargin = 30f;
-    private const float RailWidth = 165f;
+    private const float PageMargin = 28f;
+    private const float PairColumnGap = 16f;
 
     private static readonly string InkColor = "#111318";
     private static readonly string AccentColor = "#1E5AA8";
     private static readonly string MutedTextColor = "#5B6470";
     private static readonly string HairlineColor = "#C7CDD6";
-    private static readonly string ComparePriceColor = "#5C6673";
 
     public void Compose(PageDescriptor page, AssociatePassdownDocumentModel model, CancellationToken cancellationToken)
     {
         page.Size(PageSizes.Letter);
         page.Margin(PageMargin);
-        page.DefaultTextStyle(x => x.FontSize(9.5f).FontColor(Colors.Black));
+        page.DefaultTextStyle(x => x.FontSize(9.25f).FontColor(Colors.Black));
 
         page.Header().Element(header => ComposeHeader(header, model));
 
-        page.Content().PaddingTop(10).Row(row =>
+        page.Content().PaddingTop(8).Column(column =>
         {
-            row.ConstantItem(RailWidth).Element(rail => ComposeRail(rail, model, cancellationToken));
-            row.ConstantItem(16);
-            row.RelativeItem().Element(main => ComposeMain(main, model, cancellationToken));
+            column.Spacing(8);
+
+            ComposeSummaryGrid(column, model);
+            ComposeDailyFeature(column, model);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            MasterProductLayout.Compose(column, model.ProductCategories, PairColumnGap, 7f, ComposeCategory);
+            ComposeNotes(column, model.OperationalNotes);
         });
 
         page.Footer().Element(footer => ComposeFooter(footer, model));
     }
 
-    private static void ComposeHeader(IContainer container, AssociatePassdownDocumentModel model)
-    {
-        container.BorderBottom(2f).BorderColor(AccentColor).PaddingBottom(8).Row(row =>
+    /// <summary>A large date is Modern's strongest single element (spec §18/§7) — a crisp accent rule underneath, no filled band, no app-branding line above it.</summary>
+    private static void ComposeHeader(IContainer container, AssociatePassdownDocumentModel model) =>
+        container.Column(column =>
         {
-            row.RelativeItem().Column(left =>
-            {
-                left.Item().Text("CAROWINDS OPERATIONS").FontSize(8).Bold().LetterSpacing(0.16f).FontColor(AccentColor);
-                left.Item().PaddingTop(1).Text("Associate Passdown").FontSize(19).Bold().FontColor(InkColor);
-            });
-
-            row.ConstantItem(180).AlignRight().AlignMiddle().Text(model.OperatingDateText).FontSize(13).Bold().FontColor(InkColor);
+            column.Item().Text(model.OperatingDateText.ToUpperInvariant()).FontSize(22).Bold().FontColor(InkColor);
+            column.Item().PaddingTop(5).Height(1.5f).Background(AccentColor);
         });
-    }
 
     private static void SectionLabel(ColumnDescriptor column, string text) =>
-        column.Item().BorderLeft(2.5f).BorderColor(AccentColor).PaddingLeft(6)
-            .Text(text.ToUpperInvariant()).Bold().FontSize(8.5f).LetterSpacing(0.08f).FontColor(AccentColor);
-
-    /// <summary>The narrow left rail: every "what's happening today" fact, top to bottom, in reading-priority order — a genuinely different composition from Classic's horizontal summary row.</summary>
-    private static void ComposeRail(IContainer container, AssociatePassdownDocumentModel model, CancellationToken cancellationToken) =>
-        container.Column(rail =>
+        column.Item().Column(heading =>
         {
-            rail.Spacing(10);
-
-            rail.Item().Column(section =>
-            {
-                section.Spacing(3);
-                SectionLabel(section, "Park Hours");
-                section.Item().Text(model.ParkHours.HeadlineText).FontSize(15).Bold();
-
-                if (model.ParkHours.BadgeText is { } badge)
-                {
-                    section.Item().Text(badge).FontSize(8).Italic().FontColor(MutedTextColor);
-                }
-
-                section.Item().Text(text =>
-                {
-                    text.Span("North Gate ").FontSize(8.5f).FontColor(MutedTextColor);
-                    text.Span(model.ParkHours.NorthGateText ?? "-").FontSize(8.5f).Bold();
-                });
-                section.Item().Text(text =>
-                {
-                    text.Span("Avenue ").FontSize(8.5f).FontColor(MutedTextColor);
-                    text.Span(model.ParkHours.AvenueText ?? "-").FontSize(8.5f).Bold();
-                });
-
-                if (model.ParkHours.VerificationText is { } verification)
-                {
-                    section.Item().Text(verification).FontSize(7.5f).FontColor(MutedTextColor);
-                }
-
-                if (model.ParkHours.PrivateBuyoutDetails is { } details)
-                {
-                    section.Item().Text($"Buyout: {details}").FontSize(8);
-                }
-            });
-
-            rail.Item().Column(section =>
-            {
-                section.Spacing(3);
-                SectionLabel(section, "Attendance");
-                section.Item().Text(text =>
-                {
-                    text.Span("Projected ").FontSize(8.5f).FontColor(MutedTextColor);
-                    text.Span(PdfFormatting.FormatCount(model.Attendance.ProjectedAttendance)).FontSize(12).Bold();
-                });
-                section.Item().Text(text =>
-                {
-                    text.Span("Pre-solds ").FontSize(8.5f).FontColor(MutedTextColor);
-                    text.Span(PdfFormatting.FormatCount(model.Attendance.PreSolds)).FontSize(12).Bold();
-                });
-            });
-
-            rail.Item().Column(section =>
-            {
-                section.Spacing(3);
-                SectionLabel(section, "Early Ride Time");
-                ComposeErtBody(section, model);
-            });
-
-            rail.Item().Column(section =>
-            {
-                section.Spacing(3);
-                SectionLabel(section, model.DailyFeature.TypeLabel ?? "Daily Feature");
-
-                if (!model.DailyFeature.HasContent)
-                {
-                    section.Item().Text("Not entered.").FontSize(9).Italic().FontColor(MutedTextColor);
-                }
-                else if (model.DailyFeature.Text is { } text)
-                {
-                    section.Item().Text(text).FontSize(10).Italic();
-                }
-            });
-
-            cancellationToken.ThrowIfCancellationRequested();
+            heading.Item().Text(text.ToUpperInvariant()).Bold().FontSize(8.25f).LetterSpacing(0.09f).FontColor(AccentColor);
+            heading.Item().PaddingTop(1.5f).Height(0.75f).Background(HairlineColor);
         });
 
-    private static void ComposeErtBody(ColumnDescriptor column, AssociatePassdownDocumentModel model)
+    private static void ComposeSummaryGrid(ColumnDescriptor column, AssociatePassdownDocumentModel model)
     {
-        switch (model.EarlyRideTime.Kind)
+        column.Item().Column(grid =>
         {
-            case EffectiveErtKind.NotConfigured:
-                column.Item().Text(PdfFormatting.NotConfiguredText(model.OperatingDate)).FontSize(8.5f).Italic().FontColor(MutedTextColor);
-                return;
+            grid.Spacing(3.5f);
 
-            case EffectiveErtKind.NoErt:
-                column.Item().Text("No Early Ride Time today.").FontSize(8.5f).Italic().FontColor(MutedTextColor);
-                if (model.EarlyRideTime.Note is { } noErtNote)
-                {
-                    column.Item().Text(noErtNote).FontSize(8);
-                }
-                return;
-
-            default:
-                column.Item().Text(model.EarlyRideTime.StartTimeText ?? "-").FontSize(12).Bold();
-
-                if (model.EarlyRideTime.Rides.Count > 0)
-                {
-                    column.Item().Text(string.Join(", ", model.EarlyRideTime.Rides)).FontSize(8.5f);
-                }
-
-                if (model.EarlyRideTime.Source == EffectiveErtSource.Override)
-                {
-                    column.Item().Text("Date override").FontSize(7.5f).Italic().FontColor(MutedTextColor);
-                }
-
-                if (model.EarlyRideTime.Note is { } note)
-                {
-                    column.Item().Text(note).FontSize(8);
-                }
-
-                return;
-        }
-    }
-
-    /// <summary>The wide right column: products, then Operational Notes — the content an associate scans repeatedly through the shift.</summary>
-    private static void ComposeMain(IContainer container, AssociatePassdownDocumentModel model, CancellationToken cancellationToken) =>
-        container.Column(main =>
-        {
-            main.Spacing(10);
-
-            ComposeProducts(main, model.ProductCategories);
-            cancellationToken.ThrowIfCancellationRequested();
-            ComposeNotes(main, model.OperationalNotes);
-        });
-
-    private static void ComposeProducts(ColumnDescriptor column, IReadOnlyList<PdfProductCategory> categories)
-    {
-        if (categories.Count == 0)
-        {
-            return;
-        }
-
-        column.Item().Column(section =>
-        {
-            section.Spacing(9);
-
-            foreach (var category in categories)
+            grid.Item().Row(row =>
             {
-                section.Item().Column(cat =>
+                row.ConstantItem(90).Text("PARK HOURS").FontSize(8).Bold().FontColor(MutedTextColor);
+                row.RelativeItem().Text(text =>
                 {
-                    cat.Spacing(2);
-                    SectionLabel(cat, category.CategoryName);
+                    text.Span(model.ParkHours.HeadlineText).FontSize(13.5f).Bold().FontColor(InkColor);
 
-                    foreach (var product in category.Products)
+                    if (model.ParkHours.BadgeText is { } badge)
                     {
-                        cat.Item().BorderBottom(0.6f).BorderColor(HairlineColor).PaddingVertical(2).Row(row =>
-                        {
-                            row.RelativeItem().Column(left =>
-                            {
-                                left.Item().Text(product.DisplayName).FontSize(9.5f).Bold();
-
-                                if (product.Qualifier is { } qualifier)
-                                {
-                                    left.Item().Text(qualifier).FontSize(7.5f).Italic().FontColor(ComparePriceColor);
-                                }
-
-                                if (product.Notes is { } notes)
-                                {
-                                    left.Item().Text(notes).FontSize(7.5f).Italic().FontColor(MutedTextColor);
-                                }
-                            });
-
-                            row.ConstantItem(110).AlignRight().Column(right =>
-                            {
-                                right.Item().AlignRight().Text(product.EffectivePriceText ?? "-").FontSize(12).Bold().FontColor(AccentColor);
-
-                                if (product.ComparisonPriceText is { } comparison)
-                                {
-                                    right.Item().AlignRight().Text(text =>
-                                    {
-                                        text.Span("was ").FontSize(7.5f).FontColor(ComparePriceColor);
-                                        text.Span(comparison).FontSize(7.5f).FontColor(ComparePriceColor).Strikethrough();
-                                    });
-                                }
-                            });
-                        });
+                        text.Span($"   ({badge})").FontSize(8).Italic().FontColor(MutedTextColor);
                     }
                 });
+            });
+
+            grid.Item().Row(row =>
+            {
+                row.RelativeItem().Row(pair =>
+                {
+                    pair.ConstantItem(90).Text("North Gate").FontSize(8.5f).FontColor(MutedTextColor);
+                    pair.RelativeItem().Text(model.ParkHours.NorthGateText ?? "-").FontSize(8.5f).Bold();
+                });
+                row.ConstantItem(14);
+                row.RelativeItem().Row(pair =>
+                {
+                    pair.ConstantItem(55).Text("Avenue").FontSize(8.5f).FontColor(MutedTextColor);
+                    pair.RelativeItem().Text(model.ParkHours.AvenueText ?? "-").FontSize(8.5f).Bold();
+                });
+            });
+
+            if (model.ParkHours.PrivateBuyoutDetails is { } details)
+            {
+                grid.Item().PaddingLeft(90).Text($"Buyout details: {details}").FontSize(8).FontColor(MutedTextColor);
+            }
+
+            grid.Item().Row(row =>
+            {
+                row.RelativeItem().Row(pair =>
+                {
+                    pair.ConstantItem(90).Text("Attendance").FontSize(8.5f).FontColor(MutedTextColor);
+                    pair.RelativeItem().Text(PdfFormatting.FormatCount(model.Attendance.ProjectedAttendance)).FontSize(8.5f).Bold();
+                });
+                row.ConstantItem(14);
+                row.RelativeItem().Row(pair =>
+                {
+                    pair.ConstantItem(55).Text("Pre-solds").FontSize(8.5f).FontColor(MutedTextColor);
+                    pair.RelativeItem().Text(PdfFormatting.FormatCount(model.Attendance.PreSolds)).FontSize(8.5f).Bold();
+                });
+            });
+
+            grid.Item().Row(row =>
+            {
+                row.ConstantItem(90).Text("Early Ride").FontSize(8.5f).FontColor(MutedTextColor);
+                row.RelativeItem().Text(PdfFormatting.ErtLineText(model.EarlyRideTime.Kind, model.EarlyRideTime.Rides, model.OperatingDate)).FontSize(8.5f).Bold();
+            });
+        });
+    }
+
+    /// <summary>Mandatory content (spec §15), always present — a left-accent uppercase label, no shaded card.</summary>
+    private static void ComposeDailyFeature(ColumnDescriptor column, AssociatePassdownDocumentModel model)
+    {
+        column.Item().ShowEntire().Column(section =>
+        {
+            section.Spacing(2);
+            SectionLabel(section, model.DailyFeature.TypeLabel ?? "Daily Feature");
+
+            if (model.DailyFeature.Text is { } featureText)
+            {
+                section.Item().PaddingTop(1).Text(featureText).FontSize(10).Italic();
+            }
+            else
+            {
+                section.Item().PaddingTop(1).Text("Not entered.").FontSize(10).Italic().FontColor(MutedTextColor);
             }
         });
     }
+
+    private static void ComposeCategory(IContainer container, PdfProductCategory category) =>
+        container.Column(section =>
+        {
+            section.Spacing(2);
+            SectionLabel(section, category.CategoryName);
+
+            foreach (var product in category.Products)
+            {
+                section.Item().PaddingTop(2).BorderBottom(0.6f).BorderColor(HairlineColor).PaddingBottom(2).Row(row =>
+                {
+                    row.RelativeItem().Text(product.DisplayName).FontSize(9.25f).Bold();
+                    row.ConstantItem(68).AlignRight().Text(product.EffectivePriceText ?? "-").FontSize(9.25f).Bold().FontColor(AccentColor);
+                });
+
+                if (product.Notes is { } notes)
+                {
+                    section.Item().Text(notes).FontSize(7.75f).Italic().FontColor(MutedTextColor);
+                }
+            }
+        });
 
     private static void ComposeNotes(ColumnDescriptor column, IReadOnlyList<string> notes)
     {
@@ -257,9 +176,9 @@ public sealed class ModernAssociatePassdownTemplateRenderer : IAssociatePassdown
             return;
         }
 
-        column.Item().Column(section =>
+        column.Item().ShowEntire().Column(section =>
         {
-            section.Spacing(3);
+            section.Spacing(2.5f);
             SectionLabel(section, "Operational Notes");
 
             foreach (var note in notes)
@@ -274,13 +193,11 @@ public sealed class ModernAssociatePassdownTemplateRenderer : IAssociatePassdown
     }
 
     private static void ComposeFooter(IContainer container, AssociatePassdownDocumentModel model) =>
-        container.PaddingTop(4).BorderTop(1).BorderColor(HairlineColor).PaddingTop(4).Text(text =>
+        container.PaddingTop(4).BorderTop(0.75f).BorderColor(HairlineColor).PaddingTop(4).Row(row =>
         {
-            text.Span($"Generated {model.GeneratedAtText}").FontSize(7.5f).FontColor(MutedTextColor);
+            row.RelativeItem().Text(model.HasUnverifiedProductPricing ? "Some product pricing has not been recently verified." : string.Empty)
+                .FontSize(7.25f).FontColor(MutedTextColor);
 
-            if (model.HasUnverifiedProductPricing)
-            {
-                text.Span("  -  Some product pricing has not been recently verified.").FontSize(7.5f).FontColor(MutedTextColor);
-            }
+            row.ConstantItem(115).AlignRight().Text(model.GeneratedAtText).FontSize(7.25f).FontColor(MutedTextColor);
         });
 }

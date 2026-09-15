@@ -5,7 +5,14 @@ using Carowinds.Passdown.Domain.Hours;
 
 namespace Carowinds.Passdown.Documents.Tests.Associate.TestSupport;
 
-/// <summary>Hand-built <see cref="AssociateWorkspace"/> fixtures for Documents.Tests (spec Phase 4E Part K's sample-day set), independent of any real repository/refresh plumbing.</summary>
+/// <summary>
+/// Hand-built <see cref="AssociateWorkspace"/> fixtures for Documents.Tests (spec Phase 4E Part K's
+/// sample-day set), independent of any real repository/refresh plumbing. Every fixture pins
+/// <see cref="PassdownSectionSelection.AllIncluded"/> explicitly (Phase 17D §6 changed
+/// <see cref="AssociateDraftPayload.CreateDefault"/>'s own default to a partial selection) — these
+/// fixtures exist to exercise PDF/grouping/pricing behavior across every section, independent of
+/// whatever the production "new draft" default happens to be.
+/// </summary>
 internal static class AssociateWorkspaceFixtures
 {
     private static readonly DateOnly Date = new(2026, 8, 21);
@@ -13,7 +20,7 @@ internal static class AssociateWorkspaceFixtures
     /// <summary>The absolute minimum a workspace can carry — no draft entries, no products, hours never checked.</summary>
     public static AssociateWorkspace MinimalValid() => new(
         Date,
-        AssociateDraftPayload.CreateDefault(),
+        AssociateDraftPayload.CreateDefault() with { SectionSelection = PassdownSectionSelection.AllIncluded },
         new AssociateParkHoursView(
             ParkHoursCalculator.Calculate(false, null, null, false, null, null, false, null, null),
             AssociateVerificationInfo.NotCheckedYet,
@@ -30,7 +37,7 @@ internal static class AssociateWorkspaceFixtures
         var effective = ParkHoursCalculator.Calculate(false, new TimeOnly(10, 0), new TimeOnly(19, 0), false, null, null, false, null, null);
         var verification = Verified();
 
-        var draft = AssociateDraftPayload.CreateDefault();
+        var draft = AssociateDraftPayload.CreateDefault() with { SectionSelection = PassdownSectionSelection.AllIncluded };
 
         var products = new List<AssociateProduct>
         {
@@ -65,6 +72,7 @@ internal static class AssociateWorkspaceFixtures
             [
                 new CustomProductEntry("c1", "Team Member Meal Voucher", 8.00m, "Cafeteria only, associates present ID.", true),
             ],
+            SectionSelection = PassdownSectionSelection.AllIncluded,
         };
 
         var products = new List<AssociateProduct>
@@ -102,6 +110,7 @@ internal static class AssociateWorkspaceFixtures
             ],
             DailyFeatureType = DailyFeatureType.UselessFactOfTheDay,
             DailyFeatureText = "Fury 325 is one of the tallest and fastest giga coasters in the world.",
+            SectionSelection = PassdownSectionSelection.AllIncluded,
         };
 
         var products = new List<AssociateProduct>();
@@ -127,6 +136,7 @@ internal static class AssociateWorkspaceFixtures
             PrivateBuyout = new PrivateBuyoutOverride(true, new TimeOnly(18, 0), new TimeOnly(23, 0), "Corporate buyout - Acme Corp. Gates open to badge holders only."),
             ProjectedAttendance = 5000,
             OperationalNotes = ["Public not admitted. All guests must present an Acme Corp event badge at the gate."],
+            SectionSelection = PassdownSectionSelection.AllIncluded,
         };
 
         var effective = ParkHoursCalculator.Calculate(true, null, null, false, null, null, true, new TimeOnly(18, 0), new TimeOnly(23, 0));
@@ -148,6 +158,7 @@ internal static class AssociateWorkspaceFixtures
         var draft = AssociateDraftPayload.CreateDefault() with
         {
             ProjectedAttendance = 12000,
+            SectionSelection = PassdownSectionSelection.AllIncluded,
         };
 
         var products = new List<AssociateProduct>
@@ -174,6 +185,7 @@ internal static class AssociateWorkspaceFixtures
             OperationalNotes = Enumerable.Range(1, 6).Select(i => $"Operational note number {i} describing a staffing or guest-service situation for the day in enough detail to take up a full line.").ToList(),
             DailyFeatureType = DailyFeatureType.QuoteOfTheDay,
             DailyFeatureText = "\"The best way to predict the future is to create it.\"",
+            SectionSelection = PassdownSectionSelection.AllIncluded,
         };
 
         var products = new List<AssociateProduct>();

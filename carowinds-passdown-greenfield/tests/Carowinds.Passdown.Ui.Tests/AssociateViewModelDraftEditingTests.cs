@@ -104,28 +104,28 @@ public class AssociateViewModelDraftEditingTests
 
         var selection = service.SaveCalls.Last().Draft.SectionSelection;
         Assert.False(selection.IncludeFastLane);
-        Assert.False(selection.IncludeOperationalNotes);
-        Assert.True(selection.IncludeDailyAdmission); // every other section stays included by default.
+        Assert.False(selection.IncludeOperationalNotes); // already false by default (Phase 17D §6) — explicit edit is idempotent here.
+        Assert.True(selection.IncludeDailyAdmission); // Phase 17D §6's "normal intent" defaults: Daily Admission/Promotions stay included.
         Assert.True(selection.IncludePromotions);
-        Assert.True(selection.IncludeSeasonPasses);
-        Assert.True(selection.IncludeAddOns);
-        Assert.True(selection.IncludeHauntedAttractions);
+        Assert.False(selection.IncludeSeasonPasses); // Season Passes/Add-Ons/SCarowinds are unchecked by default.
+        Assert.False(selection.IncludeAddOns);
+        Assert.False(selection.IncludeHauntedAttractions);
     }
 
-    // Phase 8B: SCarowinds/Haunt behaves exactly like the other optional sections — defaults to
-    // included, and hiding it persists.
+    // Phase 8B, revised Phase 17D §6: SCarowinds/Haunt behaves exactly like the other optional
+    // sections that default to unchecked — hiding/showing it still persists either way.
     [Fact]
     public async Task SCarowinds_Edit_PersistsToDraft()
     {
         var (viewModel, service, scheduler) = CreateViewModel();
         await viewModel.PendingLoad;
 
-        Assert.True(viewModel.IncludeHauntedAttractions); // default before any edit.
+        Assert.False(viewModel.IncludeHauntedAttractions); // default before any edit (Phase 17D §6).
 
-        viewModel.IncludeHauntedAttractions = false;
+        viewModel.IncludeHauntedAttractions = true;
         await ElapseAndAwaitSaveAsync(viewModel, scheduler);
 
-        Assert.False(service.SaveCalls.Last().Draft.SectionSelection.IncludeHauntedAttractions);
+        Assert.True(service.SaveCalls.Last().Draft.SectionSelection.IncludeHauntedAttractions);
     }
 
     // Phase 8B: reopening a saved date restores its SCarowinds/Haunt selection, matching every other

@@ -62,17 +62,11 @@ public interface IAssociatePassdownPreflightService
 /// </summary>
 public sealed class AssociatePassdownPreflightService : IAssociatePassdownPreflightService
 {
-    /// <summary>Estimated printable body lines available on one Letter page beneath the fixed header/hours/attendance/ERT/Daily Feature block, tuned so the associate/dense fixtures in Documents.Tests render as exactly one real QuestPDF page.</summary>
-    private const int TotalBodyLineBudget = 55;
+    /// <summary>Estimated printable body lines available on one Letter page beneath the fixed header/hours/attendance/ERT/Daily Feature block, tuned so the associate/dense fixtures in Documents.Tests render as exactly one real QuestPDF page under the Phase 17D master layout (every product is one row, never a tile/card).</summary>
+    private const int TotalBodyLineBudget = 70;
 
     private const int WrapCharsPerLine = 95;
     private const int ProductNoteWrapCharsPerLine = 70;
-
-    /// <summary>Estimated line-equivalent height of one row of Key Selling price tiles (spec Part 3) — row *count* comes from the shared <see cref="AdaptiveGridLayout"/> (so preflight and the generator can never disagree about how many rows a given product count produces), but the per-row height stays a preflight-only estimate, tuned against real rendered output same as <see cref="TotalBodyLineBudget"/>.</summary>
-    private const int KeySellingRowLines = 4;
-
-    /// <summary>Same idea as <see cref="KeySellingRowLines"/> but for Promotions' taller callout cards (spec Part 4).</summary>
-    private const int PromotionalRowLines = 5;
 
     /// <summary>
     /// Shared with <see cref="AssociatePassdownPdfGenerator"/>'s post-generation page-count safety
@@ -104,53 +98,33 @@ public sealed class AssociatePassdownPreflightService : IAssociatePassdownPrefli
 
     private static int EstimateFixedLines(AssociatePassdownDocumentModel model)
     {
-        var lines = 2; // header block: title line + date line
+        var lines = 1; // header: date heading + rule, one line-equivalent.
 
-        lines += 1; // "Park Hours" heading
-        lines += 1; // headline
-        lines += model.ParkHours.BadgeText is null ? 0 : 1;
-        lines += 1; // North Gate / Avenue line
-        lines += model.ParkHours.VerificationText is null ? 0 : 1;
+        lines += 1; // Park Hours row (headline + badge on one line).
+        lines += 1; // North Gate / Avenue row.
         lines += EstimateWrappedLines(model.ParkHours.PrivateBuyoutDetails, WrapCharsPerLine);
 
-        lines += 2; // "Attendance" heading + combined projected/pre-sold line
+        lines += 1; // Attendance / Pre-solds row.
 
         lines += EstimateEarlyRideTimeLines(model.EarlyRideTime);
 
-        lines += model.DailyFeature.HasContent
-            ? 1 + Math.Max(1, EstimateWrappedLines(model.DailyFeature.Text, WrapCharsPerLine))
-            : 0;
+        // Daily Feature is mandatory content (spec Phase 17D §15) — always one heading line plus at
+        // least one content/"Not entered." line, regardless of whether text was actually entered.
+        lines += 1 + Math.Max(1, EstimateWrappedLines(model.DailyFeature.Text, WrapCharsPerLine));
 
         return lines;
     }
 
-    /// <summary>Phase 17B: mirrors <c>AssociatePassdownPdfGenerator.ComposeEarlyRideTimeBox</c>'s per-<see cref="EffectiveErtKind"/> line shape so the preflight estimate never drifts from what actually renders.</summary>
-    private static int EstimateEarlyRideTimeLines(PdfEarlyRideTime earlyRideTime)
+    /// <summary>Phase 17D §10: the PDF shows rides only, on one row of the summary grid — mirrors <see cref="Templates.PdfFormatting.ErtLineText"/>'s shape so the estimate never drifts from what actually renders.</summary>
+    private static int EstimateEarlyRideTimeLines(PdfEarlyRideTime earlyRideTime) => earlyRideTime.Kind switch
     {
-        const int heading = 1;
-
-        switch (earlyRideTime.Kind)
-        {
-            case EffectiveErtKind.NotConfigured:
-                return heading + 1; // "Not configured for <Month Year>."
-
-            case EffectiveErtKind.NoErt:
-                return heading + 1 + EstimateWrappedLines(earlyRideTime.Note, WrapCharsPerLine); // "No Early Ride Time today." + optional note
-
-            default:
-                return heading
-                    + 1 // Start line
-                    + (earlyRideTime.Rides.Count > 0 ? EstimateWrappedLines(string.Join(", ", earlyRideTime.Rides), WrapCharsPerLine) : 0)
-                    + (earlyRideTime.Source == EffectiveErtSource.Override ? 1 : 0) // "Date override" caption
-                    + EstimateWrappedLines(earlyRideTime.Note, WrapCharsPerLine);
-        }
-    }
+        EffectiveErtKind.NotConfigured or EffectiveErtKind.NoErt => 1,
+        _ => Math.Max(1, EstimateWrappedLines(string.Join(" • ", earlyRideTime.Rides), WrapCharsPerLine)),
+    };
 
     /// <summary>
-    /// Total estimated line-equivalent cost of every product category (spec Parts 3/4/5). Key
-    /// Selling/Promotional categories render as tile/card grids rather than one row per product, so
-    /// their cost is estimated per grid row (<see cref="EstimateGridCategoryLines"/>) rather than per
-    /// item; Reference categories are still a compact one-line-per-item list.
+    /// Total estimated line-equivalent cost of every product category (Phase 17D §14 — every template
+    /// now renders every product as one aligned row, never a tile/card, regardless of tier).
     /// </summary>
     private static int EstimateProductLines(IReadOnlyList<PdfProductCategory> categories)
     {
@@ -158,28 +132,10 @@ public sealed class AssociatePassdownPreflightService : IAssociatePassdownPrefli
 
         foreach (var category in categories)
         {
-            total += IsGridTier(category.Tier)
-                ? EstimateGridCategoryLines(category)
-                : 1 + category.Products.Sum(product => 1 + EstimateWrappedLines(product.Notes, ProductNoteWrapCharsPerLine));
+            total += 1 + category.Products.Sum(product => 1 + EstimateWrappedLines(product.Notes, ProductNoteWrapCharsPerLine));
         }
 
         return total;
-    }
-
-    private static bool IsGridTier(PdfProductSectionTier tier) =>
-        tier is PdfProductSectionTier.KeySelling or PdfProductSectionTier.Promotional;
-
-    private static int EstimateGridCategoryLines(PdfProductCategory category)
-    {
-        var rowLines = category.Tier switch
-        {
-            PdfProductSectionTier.KeySelling => KeySellingRowLines,
-            PdfProductSectionTier.Promotional => PromotionalRowLines,
-            _ => throw new ArgumentOutOfRangeException(nameof(category), category.Tier, "Not a grid tier."),
-        };
-
-        var rows = AdaptiveGridLayout.RowCount(category.Products.Count);
-        return 1 + (rows * rowLines); // +1 for the category heading/band line.
     }
 
     private static int EstimateNotesLines(IReadOnlyList<string> notes)
