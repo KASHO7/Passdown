@@ -504,3 +504,151 @@ Classic/Compact/Modern). Schema is unchanged (DB 15 / Draft 4 / Snapshot 2 / Syn
 no migration was added since Phase 17B. No Personal Sync or Manager-workflow code changed since
 Phase 16G — real Windows/OneDrive-client validation and Windows DPI validation both remain
 outstanding exactly as recorded there.
+
+---
+
+# Release manifest — Phase 17E rebuild (Classic/Compact/Modern redesigned as genuinely distinct PDF compositions)
+
+Rebuilt from the Phase 17E tree — a pure release-packaging task (no code changes made during this
+rebuild). Packaging strategy, publish flags, and staging layout are unchanged from the Phase 17D
+rebuild above; this is a rebuild/re-hash entry only.
+
+| | |
+|---|---|
+| Product (visible) | Carowinds Operations |
+| Version | `0.1.0-dev` (unchanged — still an explicit pre-release development version) |
+| Target | Windows 11 x64 (`win-x64`), self-contained, R2R |
+| Build commit | `72ed424184a2048f3f88f05f17fafffa13333640` (HEAD, "Phase 17E: redesign Classic/Compact/Modern as genuinely distinct PDF compositions") |
+| Working tree at build time | Clean except macOS Finder `.DS_Store` noise (`../.DS_Store`, `.DS_Store`, `.claude/.DS_Store`, `.claude/skills/.DS_Store`, `.claude/skills/pdf-design/`) — no source changes |
+| DB schema version | 15 (`Migration0015CreateErtDateOverridesTable`, unchanged since Phase 17B) |
+| AssociateDraftPayload schema version | 4 (unchanged since Phase 17C) |
+| Snapshot schema version | 2 (unchanged since Phase 17C) |
+| SyncSchemaVersion | 1 (unchanged since Phase 16) |
+| Deterministic test count | **2137/2137** — 116 Domain + 642 Application + 178 Documents + 545
+  Infrastructure + 656 Ui.Tests, confirmed clean via the same documented partition prior rebuilds
+  used: the 38 real-`Window`-constructing tests (`OperationsCalendarViewTests`,
+  `Phase15ERealWindowLayoutTests`, `RealWindowStartupTimingTests`) pass 100% clean run alone; the
+  remaining 618 `Ui.Tests` pass 100% clean run alone. The full-process combined run hit the same
+  pre-existing Phase 6D Avalonia cross-thread headless flake documented in every prior rebuild
+  (`System.InvalidOperationException: The calling thread cannot access this object because a
+  different thread owns it.`), confined to those same 38 tests — not a new failure, and not
+  investigated/fixed per CLAUDE.md's explicit instruction not to chase this flake during release
+  packaging. |
+| Build | `dotnet build CarowindsPassdown.slnx -c Release` — 0 warnings, 0 errors |
+| ReadyToRun | Enabled for both release forms (unchanged since Phase 15D) |
+| Windows validation | **NOT EXECUTED.** No Windows host or VM was available this session
+  (macOS/Darwin dev host) — same limitation recorded in every prior rebuild since Phase 7A. |
+| PDF smoke check | Existing deterministic `TemplateCompositionTests` (8 tests, added this phase)
+  run against the current packaged source tree — **8/8 PASS**. These assert real glyph Y-positions
+  to structurally prove Classic (single-column), Compact (paired two-column), and Modern (editorial/
+  numbered) are different compositions, not just different styling — direct evidence, not a new
+  packaging-time PDF dump. |
+| Known limitations | Same standing gaps as the Phase 16G/17C/17D entries above (Personal Sync
+  real-client validation, single-file EXE Windows-launch validation, Windows DPI validation).
+  Manager workflow (Phase 5/14+) remains explicitly deferred per CLAUDE.md and was not started. |
+
+## Primary release: multi-file portable ZIP
+
+| | |
+|---|---|
+| Artifact | `Carowinds-Operations-0.1.0-dev-win-x64.zip` |
+| Path | `artifacts/releases/Carowinds-Operations-0.1.0-dev-win-x64.zip` |
+| SHA-256 | `cb47a6cb035cdbd453469a18a180ed402709289c509aa6e7da18d293ad2346f6` |
+| Size | 70,611,885 bytes (67.3 MiB) |
+| File count | 258 files (261 zip entries: 258 files + 3 directory entries — release root, `LatoFont\`, `tools\`) |
+| Executable | `Carowinds.Passdown.Desktop.exe` (internal identity intentionally retained, unchanged) |
+| Delivery | Portable — extract and run; no installer, no admin rights |
+| Automatic refresh | Supported via included `Enable Automatic Refresh.cmd` / `Disable Automatic Refresh.cmd` (unchanged since Phase 7C) |
+
+Extraction round-trip verified this rebuild: the built ZIP was extracted to an isolated scratch
+directory outside `artifacts/` and `diff -rq`'d byte-for-byte identical against the staging folder;
+the `.exe`'s SHA-256 inside the extraction independently matched the staged copy. Content confirmed
+post-Phase-17E (not a stale reuse of the Phase 17D build): a UTF-16LE string search of the packaged
+`Carowinds.Passdown.Documents.dll` confirms the new `SingleColumnProductLayout` type (introduced this
+phase, used by Classic and Modern) is present alongside the pre-existing `MasterProductLayout` type
+(still used by Compact alone), and all three renderer types
+(`ClassicAssociatePassdownTemplateRenderer`, `CompactAssociatePassdownTemplateRenderer`,
+`ModernAssociatePassdownTemplateRenderer`) are present. A forbidden-pattern check (`.git`,
+`.db`/`-wal`/`-shm`, `CLAUDE.md`, `AGENT_BUILD_SPEC.md`, `.pdb`, `.DS_Store`) over the staged folder —
+clean.
+
+## Single-file release (experimental / deferred — status unchanged)
+
+| | |
+|---|---|
+| Artifact | `Carowinds-Operations-0.1.0-dev-win-x64.exe` |
+| Path | `artifacts/releases/Carowinds-Operations-0.1.0-dev-win-x64.exe` |
+| SHA-256 | `a766368f0755f791ad53f6efc9ccfec8ee268734f9d25113cf4fbcb1261f5b0c` |
+| Size | 185,750,330 bytes (177.1 MiB) |
+| File count | **1** (unchanged — see the Phase 15F entry above for why) |
+| Publish flags | `-r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:PublishTrimmed=false -p:IncludeNativeLibrariesForSelfExtract=true -p:PlaywrightPlatform=win-x64` (unchanged) |
+| Delivery | Copy the one `.exe`, double-click it — no extraction, no companion files required to launch |
+| **Status** | **Still EXPERIMENTAL / DEFERRED — not promoted this phase.** No new Windows-launch
+  evidence was gathered (no Windows host available), so there is nothing to weigh against the
+  standing Phase 15F decision. Publish-and-inspect verified clean (exactly two files before `.pdb`
+  removal — `Carowinds.Passdown.Desktop.exe` + `LatoFont/OFL.txt`); actually launching this exe
+  remains **NOT EXECUTED**. Do not distribute as the sole release form until a future phase
+  validates a real Windows launch. A UTF-16LE string search of this single-file exe also confirms
+  `SingleColumnProductLayout` and the `Carowinds Operations` product attribute are present (not a
+  stale reuse). |
+
+## Release content cleanliness note
+
+A byte-string scan of both release forms found the build host's absolute repository path
+(`/Users/kashyap/Documents/Passdown/carowinds-passdown-greenfield/...`) embedded once per managed
+assembly, as the PE CodeView debug-directory's `.pdb` path — standard compiler-emitted build
+metadata (present even though no `.pdb` file itself is shipped), not user data, credentials, or a
+new regression: every prior rebuild since Phase 15F was built on this same host and carries the
+identical class of reference. No `.db`/`-wal`/`-shm`, log, sync-folder, draft, or credential content
+was found in either release form.
+
+## Release output location
+
+Both final artifacts are in `artifacts/releases/` — the directory this repository's own scripts
+(`Build-PortableRelease.ps1`) and every prior manifest entry already treat as canonical.
+
+## How this rebuild's artifacts were produced
+
+Built on this (non-Windows, macOS) dev host — no `pwsh` runtime available (same limitation recorded
+in every prior rebuild since Phase 7A), mirroring `packaging/windows/Publish-Windows.ps1` /
+`Build-PortableRelease.ps1`'s own logic exactly (their publish/staging/zip steps were run manually
+via shell + `dotnet publish` + `zip`, not via `pwsh`, which is unavailable in this session):
+
+1. Removed stale `artifacts/publish/`, `artifacts/release-staging/`, `artifacts/releases/` output
+   left over from the Phase 17D rebuild (dated Sep 15) before building, so nothing new could mix
+   with stale content.
+2. `dotnet build CarowindsPassdown.slnx -c Release` — 0 warnings, 0 errors.
+3. `dotnet test CarowindsPassdown.slnx -c Release --filter "Category!=LiveSmoke"` plus the isolated-
+   partition reruns described above — 2137/2137 confirmed clean.
+4. `dotnet publish src/Carowinds.Passdown.Desktop/Carowinds.Passdown.Desktop.csproj -c Release -r
+   win-x64 --self-contained true -p:PlaywrightPlatform=win-x64 -o artifacts/publish/win-x64` — the
+   multi-file (ZIP) form. 252 files, 154 MB after `.pdb` removal (0 stray `.pdb`, `.dylib`, `.so`, or
+   Playwright files found).
+5. `dotnet publish src/Carowinds.Passdown.Desktop/Carowinds.Passdown.Desktop.csproj -c Release -r
+   win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true
+   -p:PublishTrimmed=false -p:IncludeNativeLibrariesForSelfExtract=true -p:PlaywrightPlatform=win-x64
+   -o artifacts/publish/win-x64-singlefile` — the single-file (experimental) form. Exactly two files
+   before `.pdb` removal (`Carowinds.Passdown.Desktop.exe` + `LatoFont/OFL.txt`).
+6. Multi-file output staged into `artifacts/release-staging/Carowinds-Operations-0.1.0-dev-win-x64/`
+   (publish output + `tools/Install-ScheduledRefresh.ps1`/`Uninstall-ScheduledRefresh.ps1` + both
+   `.cmd` helpers + `README.txt` + `TESTER-GUIDE.txt`, matching `Build-PortableRelease.ps1`'s layout
+   exactly); forbidden-pattern check — clean.
+7. `zip -r -X -9` into `artifacts/releases/Carowinds-Operations-0.1.0-dev-win-x64.zip`;
+   `shasum -a 256` the result.
+8. Extracted fresh to an isolated scratch directory outside `artifacts/`; `diff -rq` against the
+   staging folder reported byte-for-byte identical content; the `.exe`'s SHA-256 inside the
+   extraction independently matched the staged copy.
+9. Single-file output copied directly to
+   `artifacts/releases/Carowinds-Operations-0.1.0-dev-win-x64.exe`; `shasum -a 256`'d directly.
+10. `file` confirmed both executables are `PE32+ executable (GUI) x86-64, for MS Windows`. A UTF-16LE
+    string search of the multi-file build's `Carowinds.Passdown.Documents.dll` confirmed the
+    Phase 17E-specific `SingleColumnProductLayout` type is present, ruling out a stale-build reuse of
+    the Phase 17D artifact.
+
+This supersedes the Phase 17D artifacts above as the current release; the functional delta is Phase
+17E (Classic redesigned as a single-column operations sheet, Compact retained as the paired
+two-column density benchmark, Modern redesigned with an editorial metadata grid and numbered-section
+system — composition changes, not just styling). Schema is unchanged (DB 15 / Draft 4 / Snapshot 2 /
+SyncSchemaVersion 1) — no migration was added since Phase 17B. No Personal Sync or Manager-workflow
+code changed since Phase 16G — real Windows/OneDrive-client validation and Windows DPI validation
+both remain outstanding exactly as recorded there.
