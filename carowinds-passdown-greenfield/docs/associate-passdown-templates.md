@@ -1,4 +1,4 @@
-# Associate Passdown PDF templates — Phase 17C (superseded in part by Phase 17D — see §12)
+# Associate Passdown PDF templates — Phase 17C (superseded in part by Phase 17D and Phase 17E — see §16)
 
 Adds three selectable Associate Passdown PDF visual templates (Classic/Compact/Modern) and a density
 pass over the Associate Overview UI. Baseline this phase was built against: Phase 17B complete, DB
@@ -426,3 +426,189 @@ Compact: 1 page — consistent with §5's Phase 17C table, Compact still meeting
   `OperationsCalendarViewTests`, and friends — real `Measure`/`Arrange`, real control bounds, asserting
   no clipping/overlap) remain the available evidence, matching the precedent already set in Phase 17C
   §12/§14 for DPI scaling and native `ComboBox` chrome.
+
+## 16. Phase 17E: genuinely distinct compositions
+
+Baseline this phase was built against: Phase 17D complete (as documented above), DB schema 15, Draft
+schema 4, Snapshot schema 2, SyncSchemaVersion 1, 2125/2125 deterministic tests.
+
+### 16.1 Root cause of the Phase 17D similarity problem
+
+Phase 17D's corrective pass (§15) fixed real content problems (branding, comparison pricing, ERT
+time, pagination) but left all three templates sharing one structural algorithm,
+`MasterProductLayout.Compose` (§15.2/§15.3): Daily Admission paired with Fast Lane on one row,
+Promotions paired with Season Passes on a second row, everything else full width — called identically
+by Classic, Compact, and Modern. Each renderer's summary block was also the same label/value grid
+shape, just at different font sizes. The result: restyled type scales and colors on one shared
+composition, not three different documents — exactly what spec Part 16 calls out as a failure
+condition ("only font-size/padding differences").
+
+### 16.2 What changed structurally
+
+`MasterProductLayout` (paired, two-per-row) now belongs to **Compact alone**. A new
+`SingleColumnProductLayout` (`Documents/Associate/Templates/SingleColumnProductLayout.cs`) — every
+category full width, one after another, in the same fixed display order (Daily Admission, Fast Lane,
+Promotions, Season Passes, then everything else in arrival order) — is used by **Classic and Modern**.
+The two layouts never disagree on section *order*, only on whether two sections ever share a row; this
+keeps the reading order (`TemplateOutputTests.EveryTemplate_ReadingOrderIsSingleColumn...`) identical
+across all three despite the compositional difference. `SingleColumnProductLayout.Compose` returns how
+many categories it rendered, so Modern can continue its running section-number gutter from the last
+product category into Operational Notes without either renderer needing to recompute the other's
+ordering logic.
+
+### 16.3 Classic — operations sheet (single column)
+
+- **Top summary**: fully vertical label/value list (`ComposeSummaryList`) — Park Hours headline, then
+  North Gate, Avenue, Attendance, Pre-solds, and Early Ride each on their own row under a consistent
+  ~100pt label column. Previously (Phase 17D) these were paired two-per-row, visually closer to
+  Modern's later grid; Phase 17E's fully vertical stack is what a reviewer now reads as "traditional
+  handout" at a glance, and is the one thing in this phase captioned literally "PARK HOURS" (Compact
+  says "HOURS"; Modern has no caption at all — `TemplateCompositionTests.TopSummaryCaption_DiffersByTemplate`).
+- **Products**: `SingleColumnProductLayout`, one category per row, conservative gray/blue hairlines
+  under each category heading, moderate row padding.
+- **Daily Feature / Notes**: unchanged from Phase 17D — plain heading + hairline, plain bullets.
+- **Typography**: 9.75pt body, 19pt date — restrained, no letter-spacing tricks.
+
+### 16.4 Compact — dense two-column (unchanged structurally, retuned)
+
+Compact keeps `MasterProductLayout`'s pairing — this is now Compact's *defining* trait rather than
+something all three templates happened to share. Top summary stays the tight inline strip
+(`ComposeSummaryStrip`, 2-3 lines total) introduced in Phase 17D; body/row typography and spacing were
+left essentially as-is, since Compact was already the tightest of the three and remains the density
+benchmark this phase measures the other two against (§16.7).
+
+### 16.5 Modern — editorial/Swiss hybrid (single column, numbered)
+
+The largest rewrite. Still single column (via `SingleColumnProductLayout`, sharing Classic's
+non-pairing trait) but composed nothing like Classic:
+
+- **Header**: a large (23pt), letter-spaced, bold date under a thicker accent rule than Classic's.
+- **Top summary**: an editorial metadata grid (`ComposeSummaryGrid`/`MetadataColumn`) — Park Hours
+  headline on its own line, then North Gate/Avenue/Attendance/Pre-solds as four true side-by-side
+  columns (uppercase label above a larger bold value in each), then a dedicated Early Ride block
+  (label above value, not inline). Genuinely different shape from Classic's vertical list and
+  Compact's inline strip — proven structurally, not just visually, by
+  `TemplateCompositionTests.TopSummaryCaption_DiffersByTemplate`.
+- **Numbered sections**: every product category and Operational Notes gets a small accent-colored
+  gutter number (`NumberedSectionLabel` — "01", "02", ...), continuing sequentially from the last
+  product category into Notes. Classic and Compact never print a numbered gutter at all
+  (`TemplateCompositionTests.ClassicAndCompact_NeverPrintNumberedSectionGutters`). Daily Feature stays
+  unnumbered (a stronger editorial heading than Classic/Compact, but not part of the numbered system)
+  — the mockup's own "target structure" leaves it unnumbered too.
+- **Typography**: 9.25pt body, restrained navy accent on prices and gutter numbers, no sidebar/rail, no
+  shaded cards — the Phase 17D §18 constraints ("no giant dark header", "no decorative cards") still
+  hold, they just now sit on a composition that is not Classic-with-bigger-type.
+
+### 16.6 Shared business-model boundary (unchanged)
+
+`AssociatePassdownDocumentModel` (§3) is untouched by this phase. Every renderer still receives the
+exact same `ProductCategories`, `EarlyRideTime`, `OperationalNotes`, and pricing text the builder
+already resolved; `SingleColumnProductLayout`/`MasterProductLayout` only decide **whether two
+categories share a row**, never which products exist, which tier a category is, or how a price is
+worded. `FinalizedPassdownSnapshotBuilderTemplateTests.BuildProjection_EveryTemplate_ProducesTheIdenticalSnapshot`
+(unchanged, still passing) continues to prove the model itself never diverges by template.
+
+### 16.7 Pagination philosophy
+
+Compact remains the density benchmark — every representative scenario and the pagination stress
+scenario below still shows Compact meeting or beating Classic
+(`RepresentativePageCountTests.EveryScenario_GeneratesSuccessfullyUnderEveryTemplate_AndNeverDropsContent`'s
+`Compact <= Classic` assertion, now exercised over ten scenarios instead of six — see §16.9). Classic's
+move to a single-column product layout inherently costs more vertical space than the Phase 17D paired
+layout it replaced (a category that used to share a row with its pairing partner now takes a full row
+of its own); row padding inside `ClassicAssociatePassdownTemplateRenderer.ComposeCategory` was
+retightened (2pt → 1.5pt top/bottom) specifically to keep the busy-product-day scenario
+(`AssociateWorkspaceFixtures.DenseDay`) on one page under Classic, matching the pre-existing
+`AssociatePassdownPdfGeneratorTests.RealisticWorkspaces_RenderExactlyOnePage` guarantee. Modern made
+the identical structural move (paired → single column) and absorbs it the same way its Phase 17D
+tuning already did — staying close to Classic's page count rather than Compact's. The one scenario that
+still spills to two pages under Classic/Modern (many operational notes + heavy products — the same
+stress fixture Phase 17D called "genuinely excessive") produces a fully-populated second page in both
+cases (verified visually — §16.8), never an isolated near-empty one; Compact still renders it on a
+single page.
+
+### 16.8 Visual review process used this phase
+
+Spec Part 13 required visual review, not test-only sign-off. A throwaway console harness (outside the
+solution, not committed — same approach as Phase 17D §15.9, since the prior phase's own harness was
+explicitly not persisted) built the eight representative `AssociateWorkspace` fixtures spec Part 14
+lists (normal day; busy product day; season-pass-heavy day; SCarowinds day; operational-notes day;
+Add-Ons-enabled day; long Daily Feature day; minimal/light day) plus the Phase 17D "genuinely
+excessive" stress fixture, generated each through all three templates, and rendered the PDFs to PNG
+with Ghostscript (`gs -sDEVICE=png16m -r150`) under `artifacts/pdf-preview/` (gitignored, not
+committed). Every representative scenario's three templates were inspected side by side per spec Part
+15: Classic, Compact, and Modern are immediately distinguishable at a glance in every scenario checked
+— vertical list vs. paired two-column grid vs. numbered editorial grid — with no shared top-summary
+shape, no shared product-grid shape, and no reintroduced branding/comparison-pricing/ERT-time clutter.
+The stress scenario's page 2 was inspected explicitly under Classic and Modern to rule out spec Part 16's
+"isolated tiny page 2" failure mode — both land a fully-populated page 2 (remaining Season Passes rows,
+all Add-Ons rows, and every Operational Note), not a stranded fragment.
+
+### 16.9 Representative page-count results (this phase)
+
+| Scenario | Classic | Compact | Modern |
+|---|---|---|---|
+| A. Light day | 1 | 1 | 1 |
+| B. Normal day | 1 | 1 | 1 |
+| C. Busy product day | 1 | 1 | 1 |
+| D. Many notes (stress) | 2 | **1** | 2 |
+| E. ERT override day | 1 | 1 | 1 |
+| F. NoERT day | 1 | 1 | 1 |
+| G. Season-pass-heavy day | 1 | 1 | 1 |
+| H. SCarowinds day | 1 | 1 | 1 |
+| I. Add-Ons enabled day | 1 | 1 | 1 |
+| J. Long Daily Feature day | 1 | 1 | 1 |
+
+Identical to the Phase 17D baseline on every scenario the two phases share — moving Classic and Modern
+to a single-column product layout did not cost either of them a page on any of the eight new
+representative scenarios or the two original stress/busy scenarios, only on the deliberately excessive
+stress fixture (unchanged from Phase 17D: Classic/Modern 2 pages, Compact 1).
+
+### 16.10 Tests added
+
+`tests/Carowinds.Passdown.Documents.Tests/Associate/Templates/TemplateCompositionTests.cs` (new) —
+structural proof, not just semantic content, that the three templates differ:
+
+- `Compact_DailyAdmissionAndFastLane_ShareTheSamePhysicalRow` / `Classic_..._RenderOnSeparateRows_NoPairing`
+  / `Modern_..._RenderOnSeparateRows_NoPairing` — real glyph Y-positions (`PdfInspector.FindWordTop`,
+  new) prove pairing vs. single-column composition from rendered coordinates, not merely from linear
+  text order (which paired and stacked layouts could otherwise produce identically).
+- `Modern_NumbersSectionsSequentially_ThroughProductsAndIntoOperationalNotes` /
+  `ClassicAndCompact_NeverPrintNumberedSectionGutters` — the numbered/accented section system is
+  Modern-only.
+- `TopSummaryCaption_DiffersByTemplate` — Classic's "PARK HOURS", Compact's "HOURS" (never the longer
+  phrase), and Modern's absence of either caption are mutually exclusive per template.
+- `AllThreeTemplates_AreStructurallyDistinctFromOneAnother` — combines the pairing signal across all
+  three in one assertion, the direct regression test for the Phase 17D failure mode this phase fixes.
+
+`AssociateWorkspaceFixtures` gained four fixtures (`SeasonPassHeavyDay`, `ScarowindsDay`,
+`AddOnsEnabledDay`, `LongDailyFeatureDay`) feeding four new `RepresentativePageCountTests` scenarios
+(§16.9's G-J), so the `Compact <= Classic` pagination guarantee is now exercised over every spec Part
+14 scenario, not just the original six.
+
+### 16.11 Regression
+
+- 17A product semantics, 17B rides-only ERT, 17D PDF content cleanup (no branding, no comparison
+  pricing, no ERT time) — unchanged, still enforced by the unmodified Phase 17D tests, all still
+  passing.
+- Personal Sync, finalized History immutability, template selection/preference persistence — untouched
+  by this phase (no file outside `Documents/Associate/Templates/*` and its own tests was changed).
+- `AssociatePassdownPdfGeneratorTests.RealisticWorkspaces_RenderExactlyOnePage` (Classic-default,
+  `DenseDay` included) still passes — this is what drove the §16.7 Classic row-padding retightening.
+
+### 16.12 Schema impact
+
+Unchanged: DB schema 15, Draft schema 4, Snapshot schema 2, SyncSchemaVersion 1. This phase touched
+only renderer composition (`Documents/Associate/Templates/*`) and tests/docs — no model, persistence,
+or sync code.
+
+### 16.13 Known limitations
+
+- The visual QA harness (§16.8) is not a committed, re-runnable test fixture, matching the Phase 17D
+  §15.10 precedent and for the same reason — it is a one-off review tool, not a regression guard (the
+  new `TemplateCompositionTests` structural tests are the committed regression guard instead).
+- As in Phase 17D, real pixel-level screenshots of the Avalonia *screen* (as opposed to PDF output)
+  remain unavailable in this environment (§15.10); this phase does not touch the Desktop/Avalonia
+  project at all, so that limitation is unchanged and not newly relevant here.
+- Preflight's one-page-fit estimate remains not template-aware (§14's pre-existing limitation,
+  unchanged again this phase).

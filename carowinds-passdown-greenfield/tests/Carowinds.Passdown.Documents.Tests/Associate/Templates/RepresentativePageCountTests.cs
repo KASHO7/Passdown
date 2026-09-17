@@ -29,6 +29,12 @@ public sealed class RepresentativePageCountTests(ITestOutputHelper output)
         yield return ["D. Many notes", (Func<AssociateWorkspace>)ManyNotesDay];
         yield return ["E. ERT override day", (Func<AssociateWorkspace>)ErtOverrideDay];
         yield return ["F. NoERT day", (Func<AssociateWorkspace>)NoErtDay];
+
+        // Phase 17E spec §14/§25's additional representative scenarios.
+        yield return ["G. Season-pass-heavy day", (Func<AssociateWorkspace>)AssociateWorkspaceFixtures.SeasonPassHeavyDay];
+        yield return ["H. SCarowinds day", (Func<AssociateWorkspace>)AssociateWorkspaceFixtures.ScarowindsDay];
+        yield return ["I. Add-Ons enabled day", (Func<AssociateWorkspace>)AssociateWorkspaceFixtures.AddOnsEnabledDay];
+        yield return ["J. Long Daily Feature day", (Func<AssociateWorkspace>)AssociateWorkspaceFixtures.LongDailyFeatureDay];
     }
 
     private static AssociateWorkspace ManyNotesDay() => AssociateWorkspaceFixtures.ExcessiveDay();
