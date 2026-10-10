@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Retrieval;
 
 namespace Carowinds.Passdown.Application.Persistence;
@@ -25,6 +26,14 @@ public interface IDatedResultRepository
 
     /// <summary>Cached results for one requested date, across every category with a cached result. Useful for later rolling-window orchestration (spec §6.5).</summary>
     Task<IReadOnlyList<DatedResultRecord>> GetByRequestedDateAsync(DateOnly requestedDate, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cached results for one <paramref name="category"/> across every requested date in
+    /// <paramref name="startDate"/>..<paramref name="endDateInclusive"/> (spec Phase 12B Part N/O) —
+    /// one query for an entire Operations Calendar month grid's visible range, rather than one
+    /// <see cref="GetAsync"/> call per day.
+    /// </summary>
+    Task<IReadOnlyList<DatedResultRecord>> GetByCategoryAndDateRangeAsync(SourceCategory category, DateOnly startDate, DateOnly endDateInclusive, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Records a successful completion: <paramref name="evidence"/> and

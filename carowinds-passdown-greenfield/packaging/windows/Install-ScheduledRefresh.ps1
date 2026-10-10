@@ -55,6 +55,11 @@ $ErrorActionPreference = 'Stop'
 # (src/Carowinds.Passdown.Desktop/ScheduledRefresh/ScheduledTaskPlan.cs) — the C# constant is the
 # one exercised by automated tests (ScheduledTaskPlanTests); this literal is this script's copy of
 # the same value. Registration/removal must only ever target this exact name (Part I).
+#
+# Phase 13G: the app's visible product name is now "Carowinds Operations," but this Task Scheduler
+# task name is intentionally NOT renamed — it is an internal compatibility identifier so an
+# upgrading user's existing scheduled task is found/updated in place rather than duplicated or
+# orphaned (docs/phase13-hardening.md "Phase 13G" Task Scheduler decision).
 $TaskName = 'Carowinds Passdown Daily Refresh'
 $ScheduledRefreshArgument = '--scheduled-refresh'
 
@@ -115,7 +120,7 @@ $settings = New-ScheduledTaskSettingsSet `
 # logged on; a full sign-out does not) — documented in docs/scheduled-refresh-task-scheduler.md.
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
 
-$description = "Runs the Carowinds Passdown unattended source refresh ($ScheduledRefreshArgument). " +
+$description = "Runs the Carowinds Operations unattended source refresh ($ScheduledRefreshArgument). " +
     "Task Scheduler is only the trigger; the app decides what is actually due. " +
     "See docs/scheduled-refresh-task-scheduler.md. Managed by Install-ScheduledRefresh.ps1 / Uninstall-ScheduledRefresh.ps1."
 

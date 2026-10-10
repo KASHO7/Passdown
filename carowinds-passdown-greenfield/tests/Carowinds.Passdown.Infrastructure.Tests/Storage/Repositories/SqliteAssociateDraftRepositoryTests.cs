@@ -35,6 +35,28 @@ public class SqliteAssociateDraftRepositoryTests : IDisposable
         Assert.Equal(draft, loaded);
     }
 
+    /// <summary>Phase 16D §13: the sync engine's tombstone primitive — never wired to any product UI (§12), only exercised directly here.</summary>
+    [Fact]
+    public async Task DeleteAsync_RemovesTheDraftRow()
+    {
+        var repository = CreateRepository();
+        await repository.SaveAsync(new AssociateDraft(Halloween, 1, "{}", new DateTimeOffset(2026, 8, 19, 6, 0, 0, TimeSpan.Zero)));
+
+        await repository.DeleteAsync(Halloween);
+
+        Assert.Null(await repository.GetAsync(Halloween));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenNoRowExists_IsANoOp()
+    {
+        var repository = CreateRepository();
+
+        await repository.DeleteAsync(Halloween);
+
+        Assert.Null(await repository.GetAsync(Halloween));
+    }
+
     [Fact]
     public async Task SaveAsync_CalledTwiceForSameDate_UpsertsRatherThanDuplicating()
     {
@@ -73,5 +95,42 @@ public class SqliteAssociateDraftRepositoryTests : IDisposable
         var loaded = await repository.GetAsync(Halloween);
 
         Assert.Equal(maliciousLookingPayload, loaded!.PayloadJson);
+    }
+
+    [Fact]
+    public async Task ListSavedDraftDatesAsync_NoDraftsSaved_ReturnsEmpty()
+    {
+        var repository = CreateRepository();
+
+        var dates = await repository.ListSavedDraftDatesAsync();
+
+        Assert.Empty(dates);
+    }
+
+    [Fact]
+    public async Task ListSavedDraftDatesAsync_ReturnsEverySavedDate_AscendingOrder()
+    {
+        var repository = CreateRepository();
+        var earlier = new DateOnly(2026, 8, 24);
+        var later = new DateOnly(2026, 8, 26);
+        await repository.SaveAsync(new AssociateDraft(Halloween, 1, "{}", DateTimeOffset.UtcNow));
+        await repository.SaveAsync(new AssociateDraft(later, 1, "{}", DateTimeOffset.UtcNow));
+        await repository.SaveAsync(new AssociateDraft(earlier, 1, "{}", DateTimeOffset.UtcNow));
+
+        var dates = await repository.ListSavedDraftDatesAsync();
+
+        Assert.Equal([earlier, later, Halloween], dates);
+    }
+
+    [Fact]
+    public async Task ListSavedDraftDatesAsync_UpsertedDate_AppearsOnlyOnce()
+    {
+        var repository = CreateRepository();
+        await repository.SaveAsync(new AssociateDraft(Halloween, 1, "{}", new DateTimeOffset(2026, 8, 19, 6, 0, 0, TimeSpan.Zero)));
+        await repository.SaveAsync(new AssociateDraft(Halloween, 2, """{"notes":"updated"}""", new DateTimeOffset(2026, 8, 20, 6, 0, 0, TimeSpan.Zero)));
+
+        var dates = await repository.ListSavedDraftDatesAsync();
+
+        Assert.Equal([Halloween], dates);
     }
 }

@@ -103,7 +103,7 @@ Confirmed via direct `curl` (no Playwright) — this is a case where §6.4's
         }
         // a second entry with "operatingTypeName": "Waterpark" (id 70) appears
         // on dates the water park is separately open, e.g. 08/22–08/23/2026;
-        // not read by this adapter — spec §8.1 only requires the main gate.
+        // Phase 13D: now also read — see "Phase 13D update — waterpark hours now read" below.
       ]
     }
   ]
@@ -164,11 +164,23 @@ are both read directly from the response — no derived heuristic (e.g. "most
 common ride time") is used anywhere in the final adapter, unlike the
 rejected `venues[]`-aggregation approach above.
 
+## Phase 13D update — waterpark hours now read
+
+Traced (not guessed) directly from this same response: on dates Carolina Harbor is separately open,
+`operatings[]` carries a second entry, `operatingTypeName == "Waterpark"` (id 70), with the identical
+`items[].timeFrom`/`timeTo` shape the `"Park"` entry uses. `ParkHoursSource` (Infrastructure) now
+reads it via the same defensive lookup pattern as the main gate — lenient rather than strict: an
+absent, blank, or unparseable waterpark entry yields `null`/`null` (no waterpark hours) rather than
+failing the whole retrieval, since the main gate's hours remain the critical data this source exists
+for. `ParkHoursPayload.WaterparkOpeningTime`/`WaterparkClosingTime` (both nullable) carry the result
+through persistence unchanged (JSON-serialized into the existing `dated_results` value column — no
+schema migration). See `docs/phase13-hardening.md`'s Phase 13D section for the full presentation
+flow (Calendar day cell/selected panel, Associate Overview). Never hardcodes a season-end date —
+absence of the entry is read directly from the source every time, not inferred from a fixed calendar
+assumption.
+
 ## Known limitations
 
-- Only the main gate (`operatingTypeName == "Park"`) is read. `Waterpark`
-  hours exist in the same payload but aren't part of spec §8.1's required
-  fields for this phase, so `ParkHoursPayload` deliberately omits them.
 - Time zone is assumed, not asserted by the API (see above).
 - The monthly (`yyyyMM`) form of this endpoint was observed but is not used
   by this adapter — only documented for completeness, since Phase 3B asks

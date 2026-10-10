@@ -34,6 +34,11 @@ public partial class ProductRowViewModel : ObservableObject
 
     public bool HasPriceQualifier => !string.IsNullOrWhiteSpace(PriceQualifier);
 
+    /// <summary>Phase 13C Part W: a source-described bundle's per-person breakdown (e.g. "2 for $50.00 — $25.00 per person"), derived and clearly labeled — never replacing <see cref="OfficialPriceText"/> (the bundle total).</summary>
+    public string? BundleNoteText { get; }
+
+    public bool HasBundleNote => !string.IsNullOrWhiteSpace(BundleNoteText);
+
     /// <summary>Only set for the two states worth flagging on a per-row basis; every other state is already covered by the category-level status banner or is unremarkable (spec Part C).</summary>
     public string? VerificationNoteText { get; }
 
@@ -66,6 +71,9 @@ public partial class ProductRowViewModel : ObservableObject
         OfficialPriceText = PriceFormatting.FormatOrNull(product.OfficialPriceAmount) ?? product.OfficialDisplayPrice ?? "Not priced";
         ComparisonPriceText = PriceFormatting.FormatOrNull(product.ComparisonPriceAmount);
         PriceQualifier = product.PriceQualifier;
+        BundleNoteText = product is { BundleQuantity: { } quantity, PerPersonPriceAmount: { } perPerson }
+            ? $"{quantity} for {PriceFormatting.FormatOrNull(product.BundleTotalPriceAmount)} — {PriceFormatting.FormatOrNull(perPerson)} per person"
+            : null;
         VerificationNoteText = BuildVerificationNote(product.Verification);
         OverridePlaceholderText = $"Use official ({OfficialPriceText})";
 

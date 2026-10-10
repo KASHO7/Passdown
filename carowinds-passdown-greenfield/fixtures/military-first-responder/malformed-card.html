@@ -1,0 +1,21 @@
+<!--
+  SYNTHETIC defensive fixture (not a real capture): a card whose title marker is present but whose
+  price content is truncated/missing, mirroring the role of catalog-source/malformed-card.html and
+  general-add-ons/malformed-card.html for this page's own dedicated parser. Must be rejected via
+  FormatException, not silently treated as a priceless product.
+-->
+<div class="w-full min-h-0" role="tabpanel">
+  <div class="flex flex-wrap items-stretch justify-center gap-6">
+    <div class="flex w-[380px] flex-col min-h-0">
+      <div class="rounded-2xl shadow-card relative">
+        <div class="mt-2 flex flex-col justify-between gap-4 px-6 pt-6 text-left text-black">
+          <div class="flex h-full flex-col md:flex-row items-start gap-2">
+            <div class="flex-1">
+              <h3 class="font-medium text-blue-dark type-20-600 break-words">Military &amp; First Responder Tickets</h3>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

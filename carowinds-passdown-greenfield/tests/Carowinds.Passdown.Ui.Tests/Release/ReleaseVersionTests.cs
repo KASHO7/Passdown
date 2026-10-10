@@ -43,6 +43,6 @@ public class ReleaseVersionTests
 
         var productName = FileVersionInfo.GetVersionInfo(location).ProductName;
 
-        Assert.Equal("Carowinds Passdown", productName);
+        Assert.Equal("Carowinds Operations", productName);
     }
 }

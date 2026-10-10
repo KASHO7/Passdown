@@ -20,6 +20,9 @@ public enum ReconciliationOutcome
 
     /// <summary>Was PendingConfirmation or Archived and is present again; moved back to Active.</summary>
     Reactivated,
+
+    /// <summary>An authoritative valid-through date has passed (spec Phase 17A §2); archived immediately as <see cref="Domain.Catalog.ProductLifecycleState.Expired"/>, distinct from a confirmed-absent or explicitly-unavailable archive.</summary>
+    Expired,
 }
 
 public sealed record ReconciledProduct(string ProductKey, ReconciliationOutcome Outcome, bool HistoryAppended);

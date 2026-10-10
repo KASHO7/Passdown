@@ -1,6 +1,7 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Desktop.ViewModels;
+using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Domain.Hours;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
 
@@ -74,69 +75,103 @@ public class AssociateViewModelDraftEditingTests
             service.SaveCalls.Single().Draft.OperationalNotes);
     }
 
-    // 4. Daily Fun fields persist.
+    // 4. Daily Feature fields persist.
     [Fact]
-    public async Task DailyFun_Edit_PersistsTypeAndText()
+    public async Task DailyFeature_Edit_PersistsTypeAndText()
     {
         var (viewModel, service, scheduler) = CreateViewModel();
         await viewModel.PendingLoad;
 
-        viewModel.SelectedDailyFunTypeOption = DailyFunTypeOption.For(DailyFunType.QuoteOfTheDay);
-        viewModel.DailyFunText = "\"Ride on!\" — Park motto";
+        viewModel.SelectedDailyFeatureTypeOption = DailyFeatureTypeOption.For(DailyFeatureType.QuoteOfTheDay);
+        viewModel.DailyFeatureText = "\"Ride on!\" — Park motto";
         await ElapseAndAwaitSaveAsync(viewModel, scheduler);
 
         var draft = service.SaveCalls.Last().Draft;
-        Assert.Equal(DailyFunType.QuoteOfTheDay, draft.DailyFunType);
-        Assert.Equal("\"Ride on!\" — Park motto", draft.DailyFunText);
+        Assert.Equal(DailyFeatureType.QuoteOfTheDay, draft.DailyFeatureType);
+        Assert.Equal("\"Ride on!\" — Park motto", draft.DailyFeatureText);
     }
 
-    // 5. Early Ride Time fields persist.
+    // Phase 8A: optional-section selection persists.
     [Fact]
-    public async Task EarlyRideTime_Edit_PersistsDetails()
+    public async Task SectionSelection_Edit_PersistsToDraft()
     {
         var (viewModel, service, scheduler) = CreateViewModel();
         await viewModel.PendingLoad;
 
-        viewModel.IsEarlyRideTimeEnabled = true;
-        viewModel.EarlyRideTimeDetailsText = "9:00 AM – 10:00 AM, first two rows only";
+        viewModel.IncludeFastLane = false;
+        viewModel.IncludeOperationalNotes = false;
         await ElapseAndAwaitSaveAsync(viewModel, scheduler);
 
-        Assert.Equal("9:00 AM – 10:00 AM, first two rows only", service.SaveCalls.Last().Draft.EarlyRideTime.Details);
+        var selection = service.SaveCalls.Last().Draft.SectionSelection;
+        Assert.False(selection.IncludeFastLane);
+        Assert.False(selection.IncludeOperationalNotes); // already false by default (Phase 17D §6) — explicit edit is idempotent here.
+        Assert.True(selection.IncludeDailyAdmission); // Phase 17D §6's "normal intent" defaults: Daily Admission/Promotions stay included.
+        Assert.True(selection.IncludePromotions);
+        Assert.False(selection.IncludeSeasonPasses); // Season Passes/Add-Ons/SCarowinds are unchecked by default.
+        Assert.False(selection.IncludeAddOns);
+        Assert.False(selection.IncludeHauntedAttractions);
     }
 
-    // 6. Participating attractions persist.
+    // Phase 8B, revised Phase 17D §6: SCarowinds/Haunt behaves exactly like the other optional
+    // sections that default to unchecked — hiding/showing it still persists either way.
     [Fact]
-    public async Task ParticipatingAttractions_Edit_PersistsAsList()
+    public async Task SCarowinds_Edit_PersistsToDraft()
     {
         var (viewModel, service, scheduler) = CreateViewModel();
         await viewModel.PendingLoad;
 
-        viewModel.IsEarlyRideTimeEnabled = true;
-        viewModel.ParticipatingAttractionsText = "Fury 325\nCopperhead Strike\n";
+        Assert.False(viewModel.IncludeHauntedAttractions); // default before any edit (Phase 17D §6).
+
+        viewModel.IncludeHauntedAttractions = true;
         await ElapseAndAwaitSaveAsync(viewModel, scheduler);
 
-        Assert.Equal(["Fury 325", "Copperhead Strike"], service.SaveCalls.Last().Draft.EarlyRideTime.ParticipatingAttractions);
+        Assert.True(service.SaveCalls.Last().Draft.SectionSelection.IncludeHauntedAttractions);
     }
 
-    /// <summary>Turning Early Ride Time off clears its detail fields back to "not applicable" (spec Part D).</summary>
+    // Phase 8B: reopening a saved date restores its SCarowinds/Haunt selection, matching every other
+    // optional section.
     [Fact]
-    public async Task EarlyRideTime_Disabled_ClearsDetailsAndAttractions()
+    public async Task SCarowinds_SurvivesDateSwitchAndReload()
     {
-        var (viewModel, service, scheduler) = CreateViewModel();
+        var (viewModel, _, scheduler) = CreateViewModel();
         await viewModel.PendingLoad;
 
-        viewModel.IsEarlyRideTimeEnabled = true;
-        viewModel.EarlyRideTimeDetailsText = "9:00 AM – 10:00 AM";
-        viewModel.ParticipatingAttractionsText = "Fury 325";
+        viewModel.IncludeHauntedAttractions = false;
         await ElapseAndAwaitSaveAsync(viewModel, scheduler);
 
-        viewModel.IsEarlyRideTimeEnabled = false;
-        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+        var otherDate = Today.AddDays(1);
+        viewModel.SelectedDate = otherDate;
+        await viewModel.PendingLoad;
+        viewModel.SelectedDate = Today;
+        await viewModel.PendingLoad;
 
-        var draft = service.SaveCalls.Last().Draft;
-        Assert.Null(draft.EarlyRideTime.Details);
-        Assert.Empty(draft.EarlyRideTime.ParticipatingAttractions);
+        Assert.False(viewModel.IncludeHauntedAttractions);
+        Assert.False(viewModel.Workspace!.Draft.SectionSelection.IncludeHauntedAttractions);
     }
+
+    // Phase 8A: reopening a saved date restores its section selection.
+    [Fact]
+    public async Task SectionSelection_SurvivesDateSwitchAndReload()
+    {
+        var (viewModel, _, scheduler) = CreateViewModel();
+        await viewModel.PendingLoad;
+
+        viewModel.IncludeSeasonPasses = false;
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var otherDate = Today.AddDays(1);
+        viewModel.SelectedDate = otherDate;
+        await viewModel.PendingLoad;
+        viewModel.SelectedDate = Today;
+        await viewModel.PendingLoad;
+
+        Assert.False(viewModel.IncludeSeasonPasses);
+        Assert.False(viewModel.Workspace!.Draft.SectionSelection.IncludeSeasonPasses);
+    }
+
+    // Phase 17B: Early Ride Time is no longer part of the draft (moved to monthly/override
+    // configuration, its own repositories) — see AssociateViewModelEarlyRideTimeTests.cs for its
+    // coverage instead of the draft-editing tests this file used to carry.
 
     // 7. Manual hours override persists.
     [Fact]
@@ -146,8 +181,8 @@ public class AssociateViewModelDraftEditingTests
         await viewModel.PendingLoad;
 
         viewModel.ManualHoursOverrideEnabled = true;
-        viewModel.ManualOpeningTime = new TimeSpan(11, 0, 0);
-        viewModel.ManualClosingTime = new TimeSpan(22, 0, 0);
+        viewModel.ManualOpeningTimeText = "11:00 AM";
+        viewModel.ManualClosingTimeText = "10:00 PM";
         await ElapseAndAwaitSaveAsync(viewModel, scheduler);
 
         var manualOverride = service.SaveCalls.Last().Draft.ManualHoursOverride;
@@ -164,8 +199,8 @@ public class AssociateViewModelDraftEditingTests
         await viewModel.PendingLoad;
 
         viewModel.PrivateBuyoutEnabled = true;
-        viewModel.PrivateBuyoutOpeningTime = new TimeSpan(18, 0, 0);
-        viewModel.PrivateBuyoutClosingTime = new TimeSpan(23, 0, 0);
+        viewModel.PrivateBuyoutOpeningTimeText = "6:00 PM";
+        viewModel.PrivateBuyoutClosingTimeText = "11:00 PM";
         viewModel.PrivateBuyoutDetails = "Acme Corp holiday party";
         await ElapseAndAwaitSaveAsync(viewModel, scheduler);
 
@@ -187,13 +222,167 @@ public class AssociateViewModelDraftEditingTests
         Assert.Equal(ParkHoursBadgeKind.NotChecked, viewModel.ParkHours!.BadgeKind); // official hours were never checked in the fake default workspace.
 
         viewModel.ManualHoursOverrideEnabled = true;
-        viewModel.ManualOpeningTime = new TimeSpan(11, 0, 0);
-        viewModel.ManualClosingTime = new TimeSpan(22, 0, 0);
+        viewModel.ManualOpeningTimeText = "11:00 AM";
+        viewModel.ManualClosingTimeText = "10:00 PM";
 
         Assert.Equal(ParkHoursBadgeKind.ManualOverride, viewModel.ParkHours!.BadgeKind);
         Assert.Equal("11:00 AM – 10:00 PM", viewModel.ParkHours.HeadlineText);
         Assert.Equal("10:30 AM", viewModel.ParkHours.NorthGateText);
         Assert.Equal("10:15 AM", viewModel.ParkHours.AvenueText);
+    }
+
+    // Regression (Part G/H): Workspace.ParkHours.Effective — not just the live ParkHours getter
+    // above — must reflect a manual override immediately once autosave completes, with no date
+    // switch or Check Online in between. CreatePdfCommand (via
+    // AssociatePassdownDocumentModelBuilder) builds straight from Workspace.ParkHours and never
+    // recomputes it itself, so before this was fixed, enabling an override and immediately creating
+    // a PDF silently produced official-only hours.
+    [Fact]
+    public async Task ManualHoursOverride_Autosave_UpdatesWorkspaceParkHoursEffective_Immediately()
+    {
+        var (viewModel, _, scheduler) = CreateViewModel();
+        await viewModel.PendingLoad;
+
+        viewModel.ManualHoursOverrideEnabled = true;
+        viewModel.ManualOpeningTimeText = "11:00 AM";
+        viewModel.ManualClosingTimeText = "10:00 PM";
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var effective = viewModel.Workspace!.ParkHours.Effective;
+        Assert.Equal(EffectiveHoursStatus.Open, effective.Status);
+        Assert.True(effective.IsManualOverrideApplied);
+        Assert.Equal(new TimeOnly(11, 0), effective.Opening);
+        Assert.Equal(new TimeOnly(22, 0), effective.Closing);
+    }
+
+    [Fact]
+    public async Task PrivateBuyout_Autosave_UpdatesWorkspaceParkHoursEffective_Immediately()
+    {
+        var (viewModel, _, scheduler) = CreateViewModel();
+        await viewModel.PendingLoad;
+
+        viewModel.PrivateBuyoutEnabled = true;
+        viewModel.PrivateBuyoutOpeningTimeText = "6:00 PM";
+        viewModel.PrivateBuyoutClosingTimeText = "11:00 PM";
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var effective = viewModel.Workspace!.ParkHours.Effective;
+        Assert.Equal(EffectiveHoursStatus.Open, effective.Status);
+        Assert.True(effective.IsPrivateBuyoutApplied);
+        Assert.Equal(new TimeOnly(18, 0), effective.Opening);
+        Assert.Equal(new TimeOnly(23, 0), effective.Closing);
+    }
+
+    [Fact]
+    public async Task ManualHoursOverride_Disabled_RevertsWorkspaceParkHoursEffective_ToOfficial()
+    {
+        var (viewModel, _, scheduler) = CreateViewModel();
+        await viewModel.PendingLoad;
+
+        viewModel.ManualHoursOverrideEnabled = true;
+        viewModel.ManualOpeningTimeText = "11:00 AM";
+        viewModel.ManualClosingTimeText = "10:00 PM";
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+        Assert.True(viewModel.Workspace!.ParkHours.Effective.IsManualOverrideApplied);
+
+        viewModel.ManualHoursOverrideEnabled = false;
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var effective = viewModel.Workspace!.ParkHours.Effective;
+        Assert.False(effective.IsManualOverrideApplied);
+        Assert.Equal(EffectiveHoursStatus.NotCheckedYet, effective.Status); // no official hours in the fake default workspace.
+    }
+
+    // Part H #5: an override is date-specific — switching away and back must reload the correct
+    // date's own override (or lack of one), not leak the previous date's edit.
+    [Fact]
+    public async Task ManualHoursOverride_SurvivesDateSwitchAndReload()
+    {
+        var (viewModel, _, scheduler) = CreateViewModel();
+        await viewModel.PendingLoad;
+
+        viewModel.ManualHoursOverrideEnabled = true;
+        viewModel.ManualOpeningTimeText = "11:00 AM";
+        viewModel.ManualClosingTimeText = "10:00 PM";
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var otherDate = Today.AddDays(1);
+        viewModel.SelectedDate = otherDate;
+        await viewModel.PendingLoad;
+        Assert.False(viewModel.ManualHoursOverrideEnabled); // the other date has no override of its own.
+
+        viewModel.SelectedDate = Today;
+        await viewModel.PendingLoad;
+
+        Assert.True(viewModel.ManualHoursOverrideEnabled);
+        Assert.Equal("11:00 AM", viewModel.ManualOpeningTimeText);
+        Assert.Equal("10:00 PM", viewModel.ManualClosingTimeText);
+        Assert.True(viewModel.Workspace!.ParkHours.Effective.IsManualOverrideApplied);
+    }
+
+    [Fact]
+    public async Task PrivateBuyout_SurvivesDateSwitchAndReload()
+    {
+        var (viewModel, _, scheduler) = CreateViewModel();
+        await viewModel.PendingLoad;
+
+        viewModel.PrivateBuyoutEnabled = true;
+        viewModel.PrivateBuyoutOpeningTimeText = "6:00 PM";
+        viewModel.PrivateBuyoutClosingTimeText = "11:00 PM";
+        viewModel.PrivateBuyoutDetails = "Acme Corp holiday party";
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var otherDate = Today.AddDays(1);
+        viewModel.SelectedDate = otherDate;
+        await viewModel.PendingLoad;
+
+        viewModel.SelectedDate = Today;
+        await viewModel.PendingLoad;
+
+        Assert.True(viewModel.PrivateBuyoutEnabled);
+        Assert.Equal("6:00 PM", viewModel.PrivateBuyoutOpeningTimeText);
+        Assert.Equal("11:00 PM", viewModel.PrivateBuyoutClosingTimeText);
+        Assert.Equal("Acme Corp holiday party", viewModel.PrivateBuyoutDetails);
+        Assert.True(viewModel.Workspace!.ParkHours.Effective.IsPrivateBuyoutApplied);
+    }
+
+    // Part G/H #7: the PDF document model — built exactly the way CreatePdfCommand builds it, from
+    // Workspace directly — must carry the effective/manual hours immediately after autosave, with no
+    // date switch or Check Online needed first.
+    [Fact]
+    public async Task ManualHoursOverride_PdfDocumentModel_UsesEffectiveHours_ImmediatelyAfterAutosave()
+    {
+        var (viewModel, _, scheduler) = CreateViewModel();
+        await viewModel.PendingLoad;
+
+        viewModel.ManualHoursOverrideEnabled = true;
+        viewModel.ManualOpeningTimeText = "9:00 AM";
+        viewModel.ManualClosingTimeText = "11:00 PM";
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var model = AssociatePassdownDocumentModelBuilder.Build(viewModel.Workspace!, FixedNow);
+
+        Assert.Equal("9:00 AM - 11:00 PM", model.ParkHours.HeadlineText);
+        Assert.Equal("Manual Override", model.ParkHours.BadgeText);
+    }
+
+    [Fact]
+    public async Task PrivateBuyout_PdfDocumentModel_UsesBuyoutHours_ImmediatelyAfterAutosave()
+    {
+        var (viewModel, _, scheduler) = CreateViewModel();
+        await viewModel.PendingLoad;
+
+        viewModel.PrivateBuyoutEnabled = true;
+        viewModel.PrivateBuyoutOpeningTimeText = "6:00 PM";
+        viewModel.PrivateBuyoutClosingTimeText = "11:00 PM";
+        viewModel.PrivateBuyoutDetails = "Acme Corp holiday party";
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var model = AssociatePassdownDocumentModelBuilder.Build(viewModel.Workspace!, FixedNow);
+
+        Assert.Equal("6:00 PM - 11:00 PM", model.ParkHours.HeadlineText);
+        Assert.Equal("Private Buyout", model.ParkHours.BadgeText);
+        Assert.Equal("Acme Corp holiday party", model.ParkHours.PrivateBuyoutDetails);
     }
 
     // 11. An edit marks the state unsaved immediately.

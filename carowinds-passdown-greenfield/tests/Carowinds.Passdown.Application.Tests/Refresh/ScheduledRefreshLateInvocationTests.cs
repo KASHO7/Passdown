@@ -106,16 +106,17 @@ public class ScheduledRefreshLateInvocationTests
         Assert.Equal(1, summary.Succeeded);
     }
 
-    // Part M "weekly catalog already fresh": season passes succeeded 2 days ago (well within the
-    // 7-day cadence) — a late invocation must not refresh them merely because the process ran.
+    // Phase 13C Part R: season passes moved from a 7-day rolling cadence to the same daily cadence
+    // as every other commercial category — a late invocation must still not refresh them merely
+    // because the process ran, if they already succeeded earlier today (after today's 6 AM).
     [Fact]
-    public async Task LateInvocation_SeasonPassesAlreadyFreshWithinSevenDays_StaysSkipped()
+    public async Task LateInvocation_SeasonPassesAlreadySucceededEarlierToday_StaysSkipped()
     {
         var reconciliation = CreateReconciliationService();
         var clock = new FakeClock(SixAmEastern.AddHours(9)); // 3:00 PM Eastern, late invocation
         var registration = AlwaysSucceedsCatalog("season-passes", SourceCategory.SeasonPasses, reconciliation);
         var env = CreateEnvironment([registration], clock);
-        var lastSuccess = clock.UtcNow.AddDays(-2);
+        var lastSuccess = SixAmEastern.AddHours(1); // 7:00 AM Eastern today — already ran today
         await env.SourceStates.SaveAsync(new SourceStateRecord("season-passes", SourceCategory.SeasonPasses, lastSuccess, lastSuccess, null, null, 0));
 
         var summary = await env.Orchestrator.RunScheduledRefreshAsync();
@@ -123,16 +124,15 @@ public class ScheduledRefreshLateInvocationTests
         Assert.Equal(0, summary.OperationsAttempted);
     }
 
-    // Part M "biweekly catalog already fresh": add-ons succeeded 5 days ago (well within the
-    // 14-day cadence) — same guarantee for the longer cadence.
+    // Same guarantee for add-ons, also moved to daily cadence.
     [Fact]
-    public async Task LateInvocation_AddOnsAlreadyFreshWithinFourteenDays_StaysSkipped()
+    public async Task LateInvocation_AddOnsAlreadySucceededEarlierToday_StaysSkipped()
     {
         var reconciliation = CreateReconciliationService();
         var clock = new FakeClock(SixAmEastern.AddHours(9)); // 3:00 PM Eastern, late invocation
         var registration = AlwaysSucceedsCatalog("add-ons", SourceCategory.AddOns, reconciliation);
         var env = CreateEnvironment([registration], clock);
-        var lastSuccess = clock.UtcNow.AddDays(-5);
+        var lastSuccess = SixAmEastern.AddHours(1); // 7:00 AM Eastern today — already ran today
         await env.SourceStates.SaveAsync(new SourceStateRecord("add-ons", SourceCategory.AddOns, lastSuccess, lastSuccess, null, null, 0));
 
         var summary = await env.Orchestrator.RunScheduledRefreshAsync();

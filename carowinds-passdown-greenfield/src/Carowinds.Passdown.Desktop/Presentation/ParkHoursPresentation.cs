@@ -26,8 +26,13 @@ public sealed record ParkHoursPresentation(
     string? NorthGateText,
     string? AvenueText,
     string? VerificationText,
-    string? StaleNoteText)
+    string? StaleNoteText,
+    string? WaterparkHeadlineText = null)
 {
+    /// <summary>Phase 13D Part E/G/H: only true when the source published Carolina Harbor's hours for this date — omitted cleanly (no placeholder row) otherwise.</summary>
+    public bool HasWaterparkHours => WaterparkHeadlineText is not null;
+
+
     /// <summary>
     /// True when there are no actual hours to show yet (spec Part D: "Not checked yet" must not
     /// appear as a giant headline) — used purely to pick a quieter headline style, never to change
@@ -84,6 +89,10 @@ public sealed record ParkHoursPresentation(
                 ? "Official hours could not be rechecked. Showing the last verified information."
                 : null;
 
+        string? waterparkHeadline = view.HasWaterparkHours
+            ? $"{FormatTime(view.WaterparkOpening)} – {FormatTime(view.WaterparkClosing)}"
+            : null;
+
         return new ParkHoursPresentation(
             headline,
             badgeKind,
@@ -91,7 +100,8 @@ public sealed record ParkHoursPresentation(
             FormatTime(effective.NorthGateOpening),
             FormatTime(effective.AvenueOpening),
             verificationText,
-            staleNote);
+            staleNote,
+            waterparkHeadline);
     }
 
     private static string? FormatTime(TimeOnly? time) => time?.ToString("h:mm tt");

@@ -236,6 +236,95 @@ public class ProductReconciliationServiceTests
         Assert.Equal(2, history.Count); // "New product observed." + the single archive entry, no repeat
     }
 
+    // Phase 17A §1/§2: an authoritative valid-through date is a lifecycle fact, never a retrieval
+    // failure — expiring immediately, distinct from both ConfirmAbsent's two-check delay and
+    // MarkExplicitlyUnavailable's "source flags it right now" reason text.
+    [Fact]
+    public async Task ValidThroughDatePassed_ExpiresImmediately_StillObservedOnThePage()
+    {
+        var h = Harness.Create();
+        await h.Service.ReconcileAsync(SourceCategory.SeasonPasses, Evidence(Day1), [GoldPass()]);
+        var stillListedButExpired = GoldPass() with { ValidThroughDate = DateOnly.FromDateTime(Day1.DateTime) };
+
+        var result = await h.Service.ReconcileAsync(SourceCategory.SeasonPasses, Evidence(Day2), [stillListedButExpired]);
+
+        var stored = await h.Catalog.GetAsync(GoldPass().Key);
+        Assert.Equal(ProductLifecycleState.Expired, stored!.LifecycleState);
+        Assert.Equal(0, stored.ConsecutiveConfirmedAbsenceCount); // no confirmation retries needed
+        Assert.Equal(ReconciliationOutcome.Expired, result.Products.Single().Outcome);
+    }
+
+    [Fact]
+    public async Task ValidThroughDate_NotYetPassed_ProductStaysActive()
+    {
+        var h = Harness.Create();
+        var notYetExpired = GoldPass() with { ValidThroughDate = DateOnly.FromDateTime(Day2.DateTime) };
+
+        await h.Service.ReconcileAsync(SourceCategory.SeasonPasses, Evidence(Day1), [notYetExpired]);
+
+        var stored = await h.Catalog.GetAsync(GoldPass().Key);
+        Assert.Equal(ProductLifecycleState.Active, stored!.LifecycleState);
+    }
+
+    [Fact]
+    public async Task ValidThroughDate_OnTheValidThroughDateItself_StillVisible()
+    {
+        // Inclusive end-date semantics (spec §22B): valid ON the end date, expires the day after.
+        var h = Harness.Create();
+        var onLastValidDay = GoldPass() with { ValidThroughDate = DateOnly.FromDateTime(Day1.DateTime) };
+
+        await h.Service.ReconcileAsync(SourceCategory.SeasonPasses, Evidence(Day1), [onLastValidDay]);
+
+        var stored = await h.Catalog.GetAsync(GoldPass().Key);
+        Assert.Equal(ProductLifecycleState.Active, stored!.LifecycleState);
+    }
+
+    [Fact]
+    public async Task NewProduct_ObservedAlreadyPastItsValidThroughDate_IsExpiredOnFirstSight()
+    {
+        var h = Harness.Create();
+        var alreadyExpired = GoldPass() with { ValidThroughDate = DateOnly.FromDateTime(Day1.DateTime) };
+
+        var result = await h.Service.ReconcileAsync(SourceCategory.SeasonPasses, Evidence(Day2), [alreadyExpired]);
+
+        var stored = await h.Catalog.GetAsync(GoldPass().Key);
+        Assert.Equal(ProductLifecycleState.Expired, stored!.LifecycleState);
+        Assert.Equal(ReconciliationOutcome.Expired, result.Products.Single().Outcome);
+        Assert.Single(await h.History.GetHistoryAsync(GoldPass().Key.ToString()));
+    }
+
+    [Fact]
+    public async Task ValidThroughDatePassed_RepeatedAcrossChecks_DoesNotAddDuplicateHistory()
+    {
+        var h = Harness.Create();
+        var expired = GoldPass() with { ValidThroughDate = DateOnly.FromDateTime(Day1.DateTime) };
+        await h.Service.ReconcileAsync(SourceCategory.SeasonPasses, Evidence(Day1), [GoldPass()]);
+        await h.Service.ReconcileAsync(SourceCategory.SeasonPasses, Evidence(Day2), [expired]);
+
+        var result = await h.Service.ReconcileAsync(SourceCategory.SeasonPasses, Evidence(Day3), [expired]);
+
+        Assert.False(result.Products.Single().HistoryAppended);
+        var history = await h.History.GetHistoryAsync(GoldPass().Key.ToString());
+        Assert.Equal(2, history.Count); // "New product observed." + the single expiration entry, no repeat
+    }
+
+    [Fact]
+    public async Task RetrievalError_NeverExpiresAProduct_EvenPastItsValidThroughDate()
+    {
+        // Spec §1: Error must never be evidence of absence/expiration — reconciliation itself never
+        // runs at all for a failed retrieval (ReconcileAsync's own guard), so this proves the
+        // guarantee holds regardless of ValidThroughDate.
+        var h = Harness.Create();
+        await h.Service.ReconcileAsync(SourceCategory.SeasonPasses, Evidence(Day1), [GoldPass()]);
+
+        var errorEvidence = new SourceEvidence("Season passes", SampleUrl, Day2, RetrievalStatus.Error, "Timed out.", RetrievalStrategy.Html);
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => h.Service.ReconcileAsync(SourceCategory.SeasonPasses, errorEvidence, [GoldPass() with { ValidThroughDate = DateOnly.FromDateTime(Day1.DateTime) }]));
+
+        var stored = await h.Catalog.GetAsync(GoldPass().Key);
+        Assert.Equal(ProductLifecycleState.Active, stored!.LifecycleState);
+    }
+
     [Fact]
     public async Task ArchivedProduct_ReturningBecomesActive()
     {

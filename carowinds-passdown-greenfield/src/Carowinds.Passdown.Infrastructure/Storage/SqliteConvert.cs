@@ -39,6 +39,16 @@ internal static class SqliteConvert
 
     public static DateOnly ReadDateOnly(SqliteDataReader reader, int ordinal) => ToDateOnly(reader.GetString(ordinal));
 
+    public static string ToText(TimeOnly value) => value.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+
+    public static object ToParameter(TimeOnly? value) =>
+        value is { } present ? ToText(present) : DBNull.Value;
+
+    public static TimeOnly ToTimeOnly(string text) => TimeOnly.ParseExact(text, "HH:mm:ss", CultureInfo.InvariantCulture);
+
+    public static TimeOnly? ReadNullableTimeOnly(SqliteDataReader reader, int ordinal) =>
+        reader.IsDBNull(ordinal) ? null : ToTimeOnly(reader.GetString(ordinal));
+
     public static string? ReadNullableString(SqliteDataReader reader, int ordinal) =>
         reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
 

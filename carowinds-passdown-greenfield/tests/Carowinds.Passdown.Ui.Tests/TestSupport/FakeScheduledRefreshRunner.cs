@@ -9,13 +9,16 @@ internal sealed class FakeScheduledRefreshRunner : IScheduledRefreshRunner
 
     public int CallCount { get; private set; }
 
+    public List<RefreshMode> ModesInvoked { get; } = [];
+
     public Func<CancellationToken, Task<ScheduledRefreshResult>>? OnRun { get; set; }
 
     public ScheduledRefreshResult ResultToReturn { get; set; } = EmptySuccess();
 
-    public Task<ScheduledRefreshResult> RunAsync(CancellationToken cancellationToken = default)
+    public Task<ScheduledRefreshResult> RunAsync(RefreshMode mode, CancellationToken cancellationToken = default)
     {
         CallCount++;
+        ModesInvoked.Add(mode);
         return OnRun is not null ? OnRun(cancellationToken) : Task.FromResult(ResultToReturn);
     }
 

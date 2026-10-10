@@ -37,6 +37,7 @@ public class Phase2SchemaMigrationTests : IDisposable
         new Migration0005CreateProductHistoryTable(),
         new Migration0006CreateAssociateDraftsTable(),
         new Migration0007CreateManagerDraftsTable(),
+        new Migration0008CreateFinalizedPassdownsTable(),
     ];
 
     private MigrationRunner CreateRunner(IReadOnlyList<IMigration> migrations) =>
@@ -49,7 +50,7 @@ public class Phase2SchemaMigrationTests : IDisposable
     {
         var appliedVersion = CreateRunner(AllMigrations()).Run();
 
-        Assert.Equal(7, appliedVersion);
+        Assert.Equal(8, appliedVersion);
     }
 
     [Fact]
@@ -60,15 +61,15 @@ public class Phase2SchemaMigrationTests : IDisposable
         var firstRun = runner.Run();
         var secondRun = runner.Run();
 
-        Assert.Equal(7, firstRun);
-        Assert.Equal(7, secondRun);
+        Assert.Equal(8, firstRun);
+        Assert.Equal(8, secondRun);
 
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM schema_version;";
         var rowCount = Convert.ToInt64(command.ExecuteScalar());
 
-        Assert.Equal(7, rowCount);
+        Assert.Equal(8, rowCount);
     }
 
     [Theory]
@@ -78,6 +79,7 @@ public class Phase2SchemaMigrationTests : IDisposable
     [InlineData("product_history")]
     [InlineData("associate_drafts")]
     [InlineData("manager_drafts")]
+    [InlineData("finalized_passdowns")]
     public void Run_CreatesExpectedTable(string tableName)
     {
         CreateRunner(AllMigrations()).Run();
@@ -95,6 +97,7 @@ public class Phase2SchemaMigrationTests : IDisposable
     [InlineData("dated_results", "ix_dated_results_requested_date")]
     [InlineData("catalog_products", "ix_catalog_products_category_state")]
     [InlineData("product_history", "ix_product_history_product_key")]
+    [InlineData("finalized_passdowns", "ux_finalized_passdowns_passdown_date")]
     public void Run_CreatesExpectedIndex(string tableName, string indexName)
     {
         CreateRunner(AllMigrations()).Run();
@@ -197,6 +200,17 @@ public class Phase2SchemaMigrationTests : IDisposable
     }
 
     [Fact]
+    public void FinalizedPassdowns_DuplicatePassdownDate_ViolatesUniqueIndex()
+    {
+        CreateRunner(AllMigrations()).Run();
+        using var connection = OpenConnection();
+
+        InsertFinalizedPassdown(connection, Guid.NewGuid(), "2026-10-31");
+
+        Assert.Throws<SqliteException>(() => InsertFinalizedPassdown(connection, Guid.NewGuid(), "2026-10-31"));
+    }
+
+    [Fact]
     public void Run_UpgradingFromPhase1Schema_AppliesOnlyTheNewMigrationsAndPreservesExistingHistory()
     {
         // Simulate a database left over from Phase 1, where only migration 1 had shipped.
@@ -204,7 +218,7 @@ public class Phase2SchemaMigrationTests : IDisposable
 
         var upgradedVersion = CreateRunner(AllMigrations()).Run();
 
-        Assert.Equal(7, upgradedVersion);
+        Assert.Equal(8, upgradedVersion);
 
         using var connection = OpenConnection();
         using var versionsCommand = connection.CreateCommand();
@@ -216,7 +230,7 @@ public class Phase2SchemaMigrationTests : IDisposable
             versions.Add(reader.GetInt64(0));
         }
 
-        Assert.Equal([1L, 2L, 3L, 4L, 5L, 6L, 7L], versions);
+        Assert.Equal([1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L], versions);
 
         // The Phase 2 tables must exist alongside the Phase 1 schema_version table.
         using var tableCommand = connection.CreateCommand();
@@ -232,7 +246,7 @@ public class Phase2SchemaMigrationTests : IDisposable
         var appliedVersion = CreateRunner(AllMigrations()).Run();
 
         Assert.True(File.Exists(_databasePath));
-        Assert.Equal(7, appliedVersion);
+        Assert.Equal(8, appliedVersion);
     }
 
     [Fact]
@@ -312,6 +326,17 @@ public class Phase2SchemaMigrationTests : IDisposable
             "VALUES ($operatingDate, $shift, 1, '{}', '2026-08-20T10:00:00Z');";
         command.Parameters.AddWithValue("$operatingDate", operatingDate);
         command.Parameters.AddWithValue("$shift", shift);
+        command.ExecuteNonQuery();
+    }
+
+    private static void InsertFinalizedPassdown(SqliteConnection connection, Guid id, string passdownDate)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "INSERT INTO finalized_passdowns (id, passdown_date, finalized_at_utc, snapshot_schema_version, snapshot_json, content_hash, origin) " +
+            "VALUES ($id, $passdownDate, '2026-08-20T10:00:00Z', 1, '{}', 'deadbeef', 'Scheduled');";
+        command.Parameters.AddWithValue("$id", id.ToString());
+        command.Parameters.AddWithValue("$passdownDate", passdownDate);
         command.ExecuteNonQuery();
     }
 }

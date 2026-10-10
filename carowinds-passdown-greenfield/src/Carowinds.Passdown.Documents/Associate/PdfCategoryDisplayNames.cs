@@ -1,24 +1,25 @@
-using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Application.Associate;
 
 namespace Carowinds.Passdown.Documents.Associate;
 
 /// <summary>
-/// Human-readable <see cref="SourceCategory"/> labels for the PDF's product section headings.
-/// Deliberately duplicated from <c>Desktop.Presentation.SourceCategoryDisplay</c> rather than
-/// shared: Documents must not depend on Desktop (project rule), and this is a two-line lookup
-/// table, not logic worth an extra shared project for.
+/// Human-readable <see cref="ProductDisplaySection"/> labels for the PDF's product section headings
+/// (Phase 15A — previously keyed by <see cref="Carowinds.Passdown.Domain.SourceCategory"/> directly,
+/// which is what let the same real-world product appear under two differently-named headings).
+/// Deliberately duplicated from <c>Desktop.Presentation.ProductDisplaySectionDisplay</c> rather than
+/// shared: Documents must not depend on Desktop (project rule), and this is a two-line lookup table,
+/// not logic worth an extra shared project for.
 /// </summary>
 internal static class PdfCategoryDisplayNames
 {
-    public static string For(SourceCategory category) => category switch
+    public static string For(ProductDisplaySection section) => section switch
     {
-        SourceCategory.ParkHours => "Park Hours",
-        SourceCategory.DatedAdmissionTickets => "Daily Admission",
-        SourceCategory.DatedFastLane => "Fast Lane",
-        SourceCategory.HauntedAttractions => "SCarowinds",
-        SourceCategory.SeasonPasses => "Season Passes",
-        SourceCategory.AddOns => "Add-Ons",
-        SourceCategory.Promotions => "Promotions",
-        _ => category.ToString(),
+        ProductDisplaySection.DailyAdmission => "Daily Admission",
+        ProductDisplaySection.FastLane => "Fast Lane",
+        ProductDisplaySection.SCarowinds => "SCarowinds",
+        ProductDisplaySection.SeasonPasses => "Season Passes",
+        ProductDisplaySection.AddOns => "Add-Ons",
+        ProductDisplaySection.Promotions => "Promotions",
+        _ => section.ToString(),
     };
 }

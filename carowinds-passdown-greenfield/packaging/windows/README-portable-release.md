@@ -1,5 +1,5 @@
-Carowinds Passdown
-==================
+Carowinds Operations
+====================
 
 What this is
 -------------
@@ -19,6 +19,48 @@ Getting started
 
 That's it — no setup screen, no sign-in, no separate download.
 
+The Dashboard
+--------------
+The app opens on the Dashboard — a one-screen summary of today's park status,
+passdown status, and data freshness, built from what's already saved on your
+computer (it loads instantly and never needs the internet on its own). Use
+"Open Passdown", "Open Notes", and "Open History" on the Dashboard to jump to the
+matching screen. "Check Online" on the Dashboard explicitly contacts the official
+Carowinds sources, the same as "Check Online" on the Associate Passdown screen.
+The Dashboard also shows an "Active Operational Notes" summary — see "Operational
+Notes" below.
+
+Operations Calendar
+---------------------
+Next to "Dashboard" at the top of the window is an "Operations Calendar" section —
+a month-grid view for planning and jumping to a specific date, built entirely from
+what's already saved on your computer (it never needs the internet on its own, and
+selecting a date or changing months never changes any saved data). Each day cell
+shows a compact summary: park hours (or Closed/Custom Hours/Private Buyout/Not
+Published/Unavailable), whether that date's passdown is a draft or finalized, and a
+count of relevant Operational Notes. Use Previous/Next Month, "Today", and
+Previous/Next Day to move around, then "Open Passdown", "Open History" (once that
+date is finalized), or "Open Operational Notes" to jump to the matching screen for
+the selected date.
+
+Operational Notes
+-------------------
+Next to "Associate Passdown" at the top of the window is an "Operational Notes"
+section. This is where a supervisor manages notes that can span multiple days —
+for example, "South Gate scanner #3 out of service" for the length of a repair
+window — separately from any single day's Associate passdown. Create, edit, and
+resolve notes here; filter by lifecycle (Active/Upcoming/Expired/Resolved),
+category, and priority.
+
+Persistent Operational Notes are never automatically added to a daily passdown.
+On the Associate Passdown screen's Notes area, relevant persistent notes appear as
+available suggestions for the selected date; a supervisor explicitly adds the ones
+that belong in that day's passdown. Once added, the included copy is frozen — if
+the original note is edited afterward, the passdown keeps showing what was
+selected, with a "source has changed" indicator and an explicit "Replace with
+Current Version" button if you want to pull in the update. Removing a note from a
+passdown does not delete or resolve the original persistent note.
+
 Where your data is stored
 --------------------------
 Everything you enter (drafts, cached park data) is stored on your own computer at:
@@ -34,6 +76,14 @@ Logs live at:
 
 New to testing this app? See TESTER-GUIDE.txt in this same folder for a short
 step-by-step walkthrough.
+
+Passdown History
+-----------------
+Next to "Associate Passdown" at the top of the window is a "History" section. Each
+day's passdown finalizes automatically the morning after it happens (after 6:00 AM
+the following day) and is stored exactly as associates saw it, including the exact
+PDF — nothing in History can be edited or deleted, and nothing is ever regenerated.
+Use it to look up or re-print an exact past passdown at any time.
 
 Something not working?
 ------------------------

@@ -74,6 +74,42 @@ public class AssociateViewModelTests
         Assert.Equal(newDate, viewModel.Workspace!.OperatingDate);
     }
 
+    // Phase 15C (spec §20): a failed local load must not leave the previous date's workspace looking
+    // "current" for the newly selected (failed) date. Two concrete risks this closes: (1)
+    // ScheduleAutosave keys off the internal "date currently in edit", not SelectedDate — left
+    // pointing at the stale date, a keystroke made right after this failure would silently autosave
+    // onto the wrong date's record; (2) CanCreatePdf/CreatePdfAsync read Workspace directly — left
+    // non-null, "Create PDF" would silently stay enabled and export the stale prior date instead of
+    // the one currently selected.
+    [Fact]
+    public async Task SelectedDateChange_LoadFailure_ClearsStaleWorkspaceAndNeverAutosavesOntoThePreviousDate()
+    {
+        var failDate = Today.AddDays(1);
+        var service = new FakeAssociatePassdownService
+        {
+            WorkspaceFactory = date => date == failDate
+                ? throw new InvalidOperationException("simulated local load failure")
+                : FakeAssociatePassdownService.DefaultWorkspace(date),
+        };
+        var viewModel = CreateViewModel(service);
+        await viewModel.PendingLoad;
+
+        viewModel.SelectedDate = failDate;
+        await viewModel.PendingLoad;
+
+        Assert.NotNull(viewModel.LoadErrorMessage);
+        Assert.False(viewModel.HasWorkspace);
+        Assert.Null(viewModel.Workspace);
+        Assert.False(viewModel.CreatePdfCommand.CanExecute(null));
+
+        // An edit made after the failed load has nothing to attach to — no autosave is scheduled at
+        // all, so it can never land on Today's (the previous, stale) record.
+        viewModel.ProjectedAttendanceText = "1234";
+        Assert.Equal(AssociateAutosaveState.Unsaved, viewModel.AutosaveState);
+        Assert.True(viewModel.PendingAutosave.IsCompletedSuccessfully);
+        Assert.Empty(service.SaveCalls);
+    }
+
     // 5. Check Online invokes CheckAssociateDateOnlineAsync.
     [Fact]
     public async Task CheckOnlineCommand_InvokesCheckAssociateDateOnlineAsync_ForSelectedDate()
@@ -300,6 +336,69 @@ public class AssociateViewModelTests
         await viewModel.PendingLoad;
 
         Assert.Contains("Saved on this computer at", viewModel.SaveStatus!.Text);
+    }
+
+    // Phase 10C Part F: the internal section rail is view-model-owned so a caller (MainViewModel) can
+    // set it directly for a Dashboard deep link, without touching any view/ToggleButton state.
+    [Fact]
+    public void SelectedSection_DefaultsToOverview()
+    {
+        var viewModel = CreateViewModel();
+
+        Assert.Equal(AssociateSection.Overview, viewModel.SelectedSection);
+        Assert.True(viewModel.IsOverviewSectionSelected);
+        Assert.False(viewModel.IsProductsSectionSelected);
+        Assert.False(viewModel.IsNotesSectionSelected);
+    }
+
+    [Fact]
+    public void ShowNotesSectionCommand_SelectsNotesSection()
+    {
+        var viewModel = CreateViewModel();
+
+        viewModel.ShowNotesSectionCommand.Execute(null);
+
+        Assert.Equal(AssociateSection.Notes, viewModel.SelectedSection);
+        Assert.True(viewModel.IsNotesSectionSelected);
+        Assert.False(viewModel.IsOverviewSectionSelected);
+    }
+
+    [Fact]
+    public void ShowProductsSectionCommand_SelectsProductsSection()
+    {
+        var viewModel = CreateViewModel();
+
+        viewModel.ShowProductsSectionCommand.Execute(null);
+
+        Assert.Equal(AssociateSection.Products, viewModel.SelectedSection);
+        Assert.True(viewModel.IsProductsSectionSelected);
+    }
+
+    [Fact]
+    public void ShowOverviewSectionCommand_SelectsOverviewSection()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.SelectedSection = AssociateSection.Notes;
+
+        viewModel.ShowOverviewSectionCommand.Execute(null);
+
+        Assert.Equal(AssociateSection.Overview, viewModel.SelectedSection);
+        Assert.True(viewModel.IsOverviewSectionSelected);
+    }
+
+    // Switching the internal section is pure UI state — it must never touch SelectedDate or trigger a load.
+    [Fact]
+    public async Task ChangingSelectedSection_NeverChangesSelectedDateOrTriggersLoad()
+    {
+        var service = new FakeAssociatePassdownService();
+        var viewModel = CreateViewModel(service);
+        await viewModel.PendingLoad;
+        service.LoadCalls.Clear();
+
+        viewModel.SelectedSection = AssociateSection.Notes;
+
+        Assert.Equal(Today, viewModel.SelectedDate);
+        Assert.Empty(service.LoadCalls);
     }
 
     private static FakeAssociatePassdownService WithParkHours(EffectiveHours effective, AssociateVerificationInfo verification, bool officialIsClosed = false, TimeOnly? officialOpening = null, TimeOnly? officialClosing = null) => new()

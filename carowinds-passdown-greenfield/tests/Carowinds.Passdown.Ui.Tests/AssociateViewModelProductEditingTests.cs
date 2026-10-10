@@ -77,6 +77,34 @@ public class AssociateViewModelProductEditingTests
         Assert.Equal("Totally Unexpected Brand New Attraction Pass", row.DisplayName);
     }
 
+    // Phase 15A §16: the Associate Products screen groups by the same ProductDisplaySectionResolver
+    // the PDF uses — Military/First Responder folds into Daily Admission rather than getting its own
+    // section.
+    [Fact]
+    public async Task MilitaryFirstResponderProduct_RendersUnderDailyAdmission_NotItsOwnSection()
+    {
+        var product = SampleProduct(name: "Military & First Responder Tickets", category: SourceCategory.MilitaryFirstResponder);
+        var (viewModel, _, _) = CreateViewModel(date => FakeAssociatePassdownService.DefaultWorkspace(date) with { Products = [product] });
+        await viewModel.PendingLoad;
+
+        var section = Assert.Single(viewModel.ProductSections);
+        Assert.Equal("Daily Admission", section.CategoryDisplayName);
+        Assert.Contains(section.Products, r => r.DisplayName == "Military & First Responder Tickets");
+    }
+
+    // Phase 15A §16: Bring-A-Friend Duo's own dated category never gets a section (product row or
+    // status banner) on the Associate Products screen — its real-world offer is represented by its
+    // Promotions catalog counterpart instead.
+    [Fact]
+    public async Task BringAFriendDuoDatedProduct_NeverRendersItsOwnSection()
+    {
+        var product = SampleProduct(name: "Celebrate America! Bring-A-Friend Duo Offer", category: SourceCategory.BringAFriendDuo);
+        var (viewModel, _, _) = CreateViewModel(date => FakeAssociatePassdownService.DefaultWorkspace(date) with { Products = [product] });
+        await viewModel.PendingLoad;
+
+        Assert.Empty(viewModel.ProductSections);
+    }
+
     // 26. An empty category (no rows, no status entry) is not built as a section at all.
     [Fact]
     public async Task EmptyCategory_WithNoStatus_DoesNotAppearAsASection()
@@ -269,6 +297,45 @@ public class AssociateViewModelProductEditingTests
         Assert.DoesNotContain("catalog|", id, StringComparison.Ordinal);
     }
 
+    // Phase 13D Part AC/AD/AG: a saved price override must reach Workspace.Products immediately — this
+    // is what AssociatePassdownDocumentModelBuilder (and therefore the generated PDF) actually reads
+    // via AssociateProduct.EffectiveDisplayPrice, not Draft.ProductOverrides directly. Before the 13D
+    // fix, SaveDraftNowAsync updated Draft/SaveStatus/ParkHours but left Products holding whatever the
+    // last full compose produced, so CreatePdfAsync's PDF (built from Workspace) silently kept showing
+    // the official price even though the draft itself was saved correctly.
+    [Fact]
+    public async Task PriceOverride_AfterAutosave_FlowsIntoWorkspaceProducts_ForPdfGeneration()
+    {
+        var product = SampleProduct(price: 60m);
+        var (viewModel, _, scheduler) = CreateViewModel(date => FakeAssociatePassdownService.DefaultWorkspace(date) with { Products = [product] });
+        await viewModel.PendingLoad;
+
+        var row = viewModel.ProductSections.Single().Products.Single();
+        row.DisplayPriceOverrideText = "45.00";
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var workspaceProduct = Assert.Single(viewModel.Workspace!.Products);
+        Assert.Equal(45.00m, workspaceProduct.DisplayPriceOverride);
+        Assert.Equal(45.00m, workspaceProduct.EffectiveDisplayPrice);
+    }
+
+    // Same fix, generic second product (not Bring-A-Friend/any specific name) proving the fix is not
+    // product-name-specific, plus proves IncludeOnPdf flows through the same path.
+    [Fact]
+    public async Task IncludeToggle_AfterAutosave_FlowsIntoWorkspaceProducts_ForPdfGeneration()
+    {
+        var product = SampleProduct(identitySuffix: "PKG-B", name: "Ordinary Season Pass", category: SourceCategory.SeasonPasses);
+        var (viewModel, _, scheduler) = CreateViewModel(date => FakeAssociatePassdownService.DefaultWorkspace(date) with { Products = [product] });
+        await viewModel.PendingLoad;
+
+        var row = viewModel.ProductSections.Single().Products.Single();
+        row.IncludeOnPdf = false;
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var workspaceProduct = Assert.Single(viewModel.Workspace!.Products);
+        Assert.False(workspaceProduct.IncludeOnPdf);
+    }
+
     // 27. A product edit made while a save is already in flight is not lost.
     [Fact]
     public async Task ProductEditDuringActiveSave_IsEventuallyPersisted()
@@ -315,5 +382,63 @@ public class AssociateViewModelProductEditingTests
         Assert.Contains(
             service.SaveCalls,
             call => call.OperatingDate == Today && call.Draft.ProductOverrides[product.ProductIdentity].IncludeOnPdf == false);
+    }
+
+    // Phase 15C: high-priority regression (spec §12) — a product's include/price override is
+    // date-specific. Switching to another date must never show that override, and returning to the
+    // original date must reload it exactly as saved — mirroring the existing
+    // ManualHoursOverride_SurvivesDateSwitchAndReload/DateSwitch_ReturningToThePreviousDate_RestoresItsEdits
+    // coverage this same regression already has for Manual Hours and manual Operational Notes text.
+    // The custom WorkspaceFactory recomposes each date's product list from whatever was actually
+    // saved for it via SaveDraftAsync, the same way the real AssociatePassdownService applies
+    // Draft.ProductOverrides onto AssociateProduct before handing the workspace back.
+    [Fact]
+    public async Task ProductOverride_DoesNotLeakAcrossDates_AndReloadsCorrectlyOnReturn()
+    {
+        var product = SampleProduct();
+
+        // Constructed (and WorkspaceFactory assigned) before AssociateViewModel, so the
+        // constructor's own synchronous initial load can safely call back into service.SaveCalls
+        // (already an initialized empty list at that point, never null).
+        var service = new FakeAssociatePassdownService();
+        AssociateProduct BuildEffectiveProduct(DateOnly date)
+        {
+            var saved = service.SaveCalls.LastOrDefault(call => call.OperatingDate == date);
+            var draftOverride = saved.Draft?.ProductOverrides.GetValueOrDefault(product.ProductIdentity, ProductDraftOverride.Default)
+                ?? ProductDraftOverride.Default;
+
+            return product with
+            {
+                IncludeOnPdf = draftOverride.IncludeOnPdf,
+                DisplayPriceOverride = draftOverride.DisplayPriceOverride,
+            };
+        }
+
+        service.WorkspaceFactory = date => FakeAssociatePassdownService.DefaultWorkspace(date) with { Products = [BuildEffectiveProduct(date)] };
+        var scheduler = new ManualDebounceScheduler();
+        var viewModel = new AssociateViewModel(service, new FakeClock(FixedNow), autosaveDelay: scheduler.Delay);
+        await viewModel.PendingLoad;
+
+        var row = viewModel.ProductSections.Single().Products.Single();
+        row.IncludeOnPdf = false;
+        row.DisplayPriceOverrideText = "45.00";
+        await ElapseAndAwaitSaveAsync(viewModel, scheduler);
+
+        var otherDate = Today.AddDays(1);
+        viewModel.SelectedDate = otherDate;
+        await viewModel.PendingLoad;
+
+        var otherRow = viewModel.ProductSections.Single().Products.Single();
+        Assert.False(otherRow.HasOverride); // Today's override must never leak onto otherDate.
+        Assert.True(otherRow.IncludeOnPdf);
+        Assert.Equal("$60.00", otherRow.EffectivePriceText); // official price, not the overridden one.
+
+        viewModel.SelectedDate = Today;
+        await viewModel.PendingLoad;
+
+        var reloadedRow = viewModel.ProductSections.Single().Products.Single();
+        Assert.True(reloadedRow.HasOverride);
+        Assert.False(reloadedRow.IncludeOnPdf);
+        Assert.Equal("$45.00", reloadedRow.EffectivePriceText);
     }
 }

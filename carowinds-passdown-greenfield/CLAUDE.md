@@ -83,6 +83,10 @@ A failed retrieval must not overwrite last-known-good data.
 
 Manual draft changes must never modify official cached values.
 
+Live SQLite databases (including WAL/SHM files) must never reside in a
+cloud-sync folder (e.g. OneDrive). See `docs/personal-sync-architecture.md`
+for the personal-sync design that depends on this invariant.
+
 ## Testing
 
 Do not report a task complete while relevant tests are failing.

@@ -177,6 +177,42 @@ public sealed record CatalogProductLifecycle
             lastEvidence: evidence);
     }
 
+    /// <summary>
+    /// Archives immediately because an authoritative valid-through/end date has passed (spec Phase
+    /// 17A §2) — distinct from <see cref="MarkExplicitlyUnavailable"/> (the source itself flags,
+    /// right now, that the product is gone/sold out) and from <see cref="ConfirmAbsent"/> (the source
+    /// simply stopped listing the product at all). Both this and
+    /// <see cref="MarkExplicitlyUnavailable"/> skip <see cref="ConfirmAbsent"/>'s two-check
+    /// confirmation delay, because the evidence for "not valid anymore" is already conclusive —
+    /// waiting for a second check would only delay hiding a product an associate should not be
+    /// offered today. Inclusive of <paramref name="validThroughDate"/> itself: the product is still
+    /// valid ON that date and only becomes expired the day after (spec Phase 17A §22 end-date
+    /// semantics).
+    /// </summary>
+    public CatalogProductLifecycle MarkExpired(SourceEvidence evidence, DateOnly validThroughDate)
+    {
+        RequireNotError(evidence);
+
+        var currentDate = DateOnly.FromDateTime(evidence.TimeChecked.DateTime);
+        if (currentDate <= validThroughDate)
+        {
+            throw new ArgumentException(
+                $"Cannot mark expired: {validThroughDate:yyyy-MM-dd} has not yet passed as of {currentDate:yyyy-MM-dd} (spec §22 inclusive end-date semantics).",
+                nameof(validThroughDate));
+        }
+
+        return new CatalogProductLifecycle(
+            Key,
+            ProductLifecycleState.Expired,
+            FirstSeenAt,
+            LastSeenAt,
+            LastVerifiedAt,
+            ConsecutiveConfirmedAbsenceCount,
+            archivedAt: evidence.TimeChecked,
+            archivedReason: $"Promotion expired: valid through {validThroughDate:yyyy-MM-dd}.",
+            lastEvidence: evidence);
+    }
+
     private static void RequireVerified(SourceEvidence evidence, string message)
     {
         ArgumentNullException.ThrowIfNull(evidence);

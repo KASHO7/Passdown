@@ -122,13 +122,20 @@ public class FreshnessPlannerTests
         Assert.Equal(expectedDue, decision.IsDue);
     }
 
+    /// <summary>
+    /// Phase 13C Part R: SeasonPasses/AddOns moved from a rolling interval to the same daily cadence
+    /// as every other commercial category — measured page-fetch cost was well under 1.2s each (Part
+    /// AL), so daily unattended refresh was judged reasonably cheap. <see cref="FreshnessPolicyTests"/>
+    /// (Domain) still independently covers <c>RollingInterval</c> semantics in the abstract, so that
+    /// coverage is not lost — only these two categories' own cadence assignment changed.
+    /// </summary>
     [Fact]
-    public async Task EvaluateAsync_SeasonPasses_NotDueBeforeSevenDaysElapse()
+    public async Task EvaluateAsync_SeasonPasses_NotDueBeforeSixAmEastern_WhenLastSuccessWasYesterday()
     {
         var repository = new InMemorySourceStateRepository();
-        var lastSuccess = new DateTimeOffset(2026, 8, 14, 10, 0, 0, Edt);
+        var lastSuccess = new DateTimeOffset(2026, 8, 19, 22, 0, 0, Est);
         await repository.SaveAsync(StateWithLastSuccess("season-passes", SourceCategory.SeasonPasses, lastSuccess));
-        var clock = new FakeClock(lastSuccess.AddDays(6).ToUniversalTime());
+        var clock = new FakeClock(new DateTimeOffset(2026, 8, 20, 9, 59, 0, TimeSpan.Zero));
 
         var decision = await CreatePlanner(repository, clock).EvaluateAsync("season-passes", SourceCategory.SeasonPasses);
 
@@ -136,12 +143,12 @@ public class FreshnessPlannerTests
     }
 
     [Fact]
-    public async Task EvaluateAsync_SeasonPasses_DueOnceSevenDaysElapse()
+    public async Task EvaluateAsync_SeasonPasses_DueAtSixAmEasternTheNextDay()
     {
         var repository = new InMemorySourceStateRepository();
-        var lastSuccess = new DateTimeOffset(2026, 8, 14, 10, 0, 0, Edt);
+        var lastSuccess = new DateTimeOffset(2026, 8, 19, 22, 0, 0, Est);
         await repository.SaveAsync(StateWithLastSuccess("season-passes", SourceCategory.SeasonPasses, lastSuccess));
-        var clock = new FakeClock(lastSuccess.AddDays(7).ToUniversalTime());
+        var clock = new FakeClock(new DateTimeOffset(2026, 8, 20, 11, 0, 0, TimeSpan.Zero)); // 7 AM Eastern
 
         var decision = await CreatePlanner(repository, clock).EvaluateAsync("season-passes", SourceCategory.SeasonPasses);
 
@@ -149,12 +156,12 @@ public class FreshnessPlannerTests
     }
 
     [Fact]
-    public async Task EvaluateAsync_AddOns_NotDueBeforeFourteenDaysElapse()
+    public async Task EvaluateAsync_AddOns_NotDueBeforeSixAmEastern_WhenLastSuccessWasYesterday()
     {
         var repository = new InMemorySourceStateRepository();
-        var lastSuccess = new DateTimeOffset(2026, 8, 1, 10, 0, 0, Edt);
+        var lastSuccess = new DateTimeOffset(2026, 8, 19, 22, 0, 0, Est);
         await repository.SaveAsync(StateWithLastSuccess("add-ons", SourceCategory.AddOns, lastSuccess));
-        var clock = new FakeClock(lastSuccess.AddDays(13).ToUniversalTime());
+        var clock = new FakeClock(new DateTimeOffset(2026, 8, 20, 9, 59, 0, TimeSpan.Zero));
 
         var decision = await CreatePlanner(repository, clock).EvaluateAsync("add-ons", SourceCategory.AddOns);
 
@@ -162,12 +169,12 @@ public class FreshnessPlannerTests
     }
 
     [Fact]
-    public async Task EvaluateAsync_AddOns_DueOnceFourteenDaysElapse()
+    public async Task EvaluateAsync_AddOns_DueAtSixAmEasternTheNextDay()
     {
         var repository = new InMemorySourceStateRepository();
-        var lastSuccess = new DateTimeOffset(2026, 8, 1, 10, 0, 0, Edt);
+        var lastSuccess = new DateTimeOffset(2026, 8, 19, 22, 0, 0, Est);
         await repository.SaveAsync(StateWithLastSuccess("add-ons", SourceCategory.AddOns, lastSuccess));
-        var clock = new FakeClock(lastSuccess.AddDays(14).ToUniversalTime());
+        var clock = new FakeClock(new DateTimeOffset(2026, 8, 20, 11, 0, 0, TimeSpan.Zero)); // 7 AM Eastern
 
         var decision = await CreatePlanner(repository, clock).EvaluateAsync("add-ons", SourceCategory.AddOns);
 
@@ -188,16 +195,16 @@ public class FreshnessPlannerTests
     }
 
     [Fact]
-    public async Task EvaluateAsync_ComputesNextDueAt_ForARollingIntervalSource()
+    public async Task EvaluateAsync_ComputesNextDueAt_ForSeasonPasses_NowDailyLikeEveryOtherCategory()
     {
         var repository = new InMemorySourceStateRepository();
-        var lastSuccess = new DateTimeOffset(2026, 8, 14, 10, 0, 0, Edt);
+        var lastSuccess = new DateTimeOffset(2026, 8, 20, 10, 5, 0, Edt); // succeeded just after 6 AM today
         await repository.SaveAsync(StateWithLastSuccess("season-passes", SourceCategory.SeasonPasses, lastSuccess));
-        var clock = new FakeClock(lastSuccess.AddDays(1).ToUniversalTime());
+        var clock = new FakeClock(new DateTimeOffset(2026, 8, 20, 22, 0, 0, TimeSpan.Zero));
 
         var decision = await CreatePlanner(repository, clock).EvaluateAsync("season-passes", SourceCategory.SeasonPasses);
 
-        Assert.Equal(lastSuccess.AddDays(7), decision.NextDueAt);
+        Assert.Equal(new DateTimeOffset(2026, 8, 21, 6, 0, 0, Edt), decision.NextDueAt);
     }
 
     [Fact]
@@ -249,13 +256,15 @@ public class FreshnessPlannerTests
     }
 
     [Fact]
-    public async Task EvaluateAsync_StableCatalogCadence_IsUnaffectedByAnUnrelatedDailySourceBeingDue()
+    public async Task EvaluateAsync_OneCategorysDueness_IsUnaffectedByAnUnrelatedSourceBeingDue()
     {
         var repository = new InMemorySourceStateRepository();
-        var seasonPassSuccess = new DateTimeOffset(2026, 8, 14, 10, 0, 0, Edt); // within its 7-day window
+        var seasonPassSuccess = new DateTimeOffset(2026, 8, 20, 7, 0, 0, Edt); // succeeded earlier today
         await repository.SaveAsync(StateWithLastSuccess("season-passes", SourceCategory.SeasonPasses, seasonPassSuccess));
-        // park-hours has never succeeded, so it's due — this must not affect season-passes.
-        var clock = new FakeClock(seasonPassSuccess.AddDays(2).ToUniversalTime());
+        // park-hours has never succeeded, so it's due — this must not affect season-passes, even
+        // though both now share the same daily cadence (Phase 13C Part R) — due-ness is still
+        // computed per source id/category, never shared state.
+        var clock = new FakeClock(new DateTimeOffset(2026, 8, 20, 15, 0, 0, TimeSpan.Zero)); // 11 AM Eastern, same day
         var planner = CreatePlanner(repository, clock);
 
         var seasonPasses = await planner.EvaluateAsync("season-passes", SourceCategory.SeasonPasses);

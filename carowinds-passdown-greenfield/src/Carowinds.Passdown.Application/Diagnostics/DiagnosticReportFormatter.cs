@@ -13,7 +13,7 @@ public static class DiagnosticReportFormatter
     public static string BuildSummaryText(DiagnosticReport report)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Carowinds Passdown — Diagnostic Summary");
+        sb.AppendLine("Carowinds Operations — Diagnostic Summary");
         sb.AppendLine(CultureInfo.InvariantCulture, $"Generated (UTC): {report.GeneratedAtUtc:O}");
         sb.AppendLine(CultureInfo.InvariantCulture, $"Application version: {report.AppVersion}");
         sb.AppendLine();

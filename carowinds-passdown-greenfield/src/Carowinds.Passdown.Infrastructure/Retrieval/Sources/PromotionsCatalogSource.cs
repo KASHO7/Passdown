@@ -31,15 +31,27 @@ namespace Carowinds.Passdown.Infrastructure.Retrieval.Sources;
 /// instance with a title but genuinely no price content at all (a "Passholders save more!" marketing
 /// CTA card, not a real product) — <see cref="ProductCardHtmlParser"/>'s all-or-nothing
 /// title/price requirement would reject that as malformed and turn an otherwise-successful page load
-/// into an <see cref="RetrievalStatus.Error"/>. That is out of scope for this phase (only
-/// `special-offers` was asked for) and is not addressed here; see this phase's report for the full
-/// finding.
+/// into an <see cref="RetrievalStatus.Error"/>. Not addressed here; see this phase's report.
+///
+/// Phase 13C Part O/AG: also fetches `https://www.sixflags.com/carowinds/daily-tickets` — live
+/// investigation (2026-08-27) found "Celebrate America! Bring-A-Friend Duo" (and, incidentally,
+/// "Park Ticket"/"SCarowinds Bundles"/"2027 Gold Pass") only there, not on `special-offers`. Both
+/// pages' cards are parsed by the same unmodified, name-agnostic <see cref="ProductCardHtmlParser"/>
+/// and mapped together — no offer name is ever hardcoded, so a future new card on either page is
+/// discovered automatically on its next successful refresh. "2027 Gold Pass" carries the identical
+/// `data-ab-product` id on both pages (re-confirmed live), so <see cref="CatalogCardMapper"/>'s
+/// existing dedup naturally merges it into one row; "Park Ticket"/"SCarowinds Bundles" have no
+/// existing Promotions-category row, so they are accepted as new, additional rows under this
+/// category — the same accepted multi-category duplication already established for "2027 Gold Pass"
+/// appearing under both <see cref="SourceCategory.Promotions"/> and
+/// <see cref="SourceCategory.SeasonPasses"/> (see docs/retrieval/catalog-source-inventory.md).
 /// </summary>
 public sealed class PromotionsCatalogSource(IRetrievalHttpClient httpClient, IClock clock) : IOfficialDataSource<CatalogPayload>
 {
     private const string SourceName = "Carowinds Promotions";
 
     private static readonly Uri PageUrl = new("https://www.sixflags.com/carowinds/special-offers");
+    private static readonly Uri DailyTicketsPageUrl = new("https://www.sixflags.com/carowinds/daily-tickets");
 
     public string SourceId => "promotions.official";
 
@@ -51,31 +63,35 @@ public sealed class PromotionsCatalogSource(IRetrievalHttpClient httpClient, ICl
 
         var timeChecked = EasternTimeZone.ConvertFromUtc(clock.UtcNow);
 
-        RetrievalHttpResponse response;
-        try
+        var cards = new List<ParsedProductCard>();
+        foreach (var pageUrl in new[] { PageUrl, DailyTicketsPageUrl })
         {
-            response = await httpClient.GetAsync(PageUrl, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return Error(timeChecked, ex);
-        }
+            RetrievalHttpResponse response;
+            try
+            {
+                response = await httpClient.GetAsync(pageUrl, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return Error(timeChecked, pageUrl, ex);
+            }
 
-        if (!response.IsSuccessStatusCode)
-        {
-            return Error(
-                timeChecked,
-                new InvalidOperationException($"GET {PageUrl} returned {(int)response.StatusCode} {response.StatusCode}. Body: {Truncate(response.Body)}"));
-        }
+            if (!response.IsSuccessStatusCode)
+            {
+                return Error(
+                    timeChecked,
+                    pageUrl,
+                    new InvalidOperationException($"GET {pageUrl} returned {(int)response.StatusCode} {response.StatusCode}. Body: {Truncate(response.Body)}"));
+            }
 
-        IReadOnlyList<ParsedProductCard> cards;
-        try
-        {
-            cards = ProductCardHtmlParser.Parse(response.Body);
-        }
-        catch (FormatException ex)
-        {
-            return Error(timeChecked, ex);
+            try
+            {
+                cards.AddRange(ProductCardHtmlParser.Parse(response.Body));
+            }
+            catch (FormatException ex)
+            {
+                return Error(timeChecked, pageUrl, ex);
+            }
         }
 
         var products = CatalogCardMapper.ToObservedProducts(cards, Category, SourceName);
@@ -95,12 +111,12 @@ public sealed class PromotionsCatalogSource(IRetrievalHttpClient httpClient, ICl
             new CatalogPayload(products));
     }
 
-    private SourceResult<CatalogPayload> Error(DateTimeOffset timeChecked, Exception exception) =>
+    private SourceResult<CatalogPayload> Error(DateTimeOffset timeChecked, Uri pageUrl, Exception exception) =>
         SourceResult<CatalogPayload>.WithoutPayload(
             SourceId,
             RetrievalDiagnostics.Error(
                 SourceName,
-                PageUrl,
+                pageUrl,
                 timeChecked,
                 RetrievalStrategy.Html,
                 "We couldn't check promotions right now.",

@@ -1,3 +1,5 @@
+using Carowinds.Passdown.Application.Concurrency;
+
 namespace Carowinds.Passdown.Infrastructure.Concurrency;
 
 /// <summary>

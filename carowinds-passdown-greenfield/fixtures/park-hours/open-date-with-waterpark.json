@@ -1,0 +1,39 @@
+{
+  "parkId": 30,
+  "parkAbbreviation": "CA",
+  "parkName": "Carowinds",
+  "dates": [
+    {
+      "date": "08/22/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Park",
+          "items": [
+            {
+              "assignmentDisplayName": "Park",
+              "assignmentDescription": "",
+              "timeFrom": "10:00",
+              "timeTo": "19:00",
+              "isBuyout": false
+            }
+          ]
+        },
+        {
+          "operatingTypeId": 70,
+          "operatingTypeName": "Waterpark",
+          "items": [
+            {
+              "assignmentDisplayName": "Carolina Harbor",
+              "assignmentDescription": "",
+              "timeFrom": "11:00",
+              "timeTo": "18:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

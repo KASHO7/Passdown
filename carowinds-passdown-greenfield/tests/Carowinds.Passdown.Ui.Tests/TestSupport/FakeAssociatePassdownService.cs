@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Hours;
@@ -114,6 +115,91 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
         return new AssociateSaveStatus(AssociateSaveState.Saved, savedAt);
     }
 
+    /// <summary>Scripted persistent-note suggestions per date (Phase 11D) — a test seeds this the way it seeds <see cref="WorkspaceFactory"/>.</summary>
+    public Dictionary<DateOnly, List<OperationalNote>> RelevantOperationalNotesByDate { get; } = [];
+
+    /// <summary>
+    /// Every persistent note this fake knows about (Active and Resolved), mirroring what
+    /// <c>IOperationalNotesService.ListAsync</c> would return (Phase 11E Part G) — used to compute
+    /// <see cref="AssociateWorkspace.SelectedOperationalNoteSourceStates"/> and to resolve
+    /// <see cref="ReplaceOperationalNoteWithCurrentAsync"/>'s current source content. Unlike
+    /// <see cref="RelevantOperationalNotesByDate"/>, this is not per-date — real persistent notes
+    /// aren't either; only their relevance is date-dependent.
+    /// </summary>
+    public List<OperationalNote> AllOperationalNotes { get; } = [];
+
+    public List<(DateOnly OperatingDate, Guid OperationalNoteId)> SelectOperationalNoteCalls { get; } = [];
+
+    public List<(DateOnly OperatingDate, Guid OperationalNoteId)> DeselectOperationalNoteCalls { get; } = [];
+
+    public List<(DateOnly OperatingDate, Guid OperationalNoteId)> ReplaceOperationalNoteCalls { get; } = [];
+
+    public Task<IReadOnlyList<OperationalNote>> GetRelevantOperationalNoteSuggestionsAsync(DateOnly operatingDate, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<OperationalNote>>(RelevantOperationalNotesByDate.GetValueOrDefault(operatingDate, []));
+
+    /// <summary>Mirrors the real service's read-modify-write against the per-date draft store, including throwing for an id absent from <see cref="RelevantOperationalNotesByDate"/> (Part O).</summary>
+    public Task<AssociateWorkspace> SelectOperationalNoteAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken cancellationToken = default)
+    {
+        SelectOperationalNoteCalls.Add((operatingDate, operationalNoteId));
+
+        var draft = _savedDrafts.GetValueOrDefault(operatingDate, AssociateDraftPayload.CreateDefault());
+        if (!draft.SelectedOperationalNotes.Any(selection => selection.SourceOperationalNoteId == operationalNoteId))
+        {
+            var source = RelevantOperationalNotesByDate.GetValueOrDefault(operatingDate, []).FirstOrDefault(note => note.Id == operationalNoteId)
+                ?? throw new InvalidOperationException($"Operational note {operationalNoteId} is not available to select for {operatingDate:yyyy-MM-dd}.");
+
+            var selection = new AssociateOperationalNoteSelection(
+                source.Id, source.Title, source.Body, source.Category, source.Priority,
+                source.EffectiveFrom, source.EffectiveThrough, DateTimeOffset.UtcNow);
+
+            draft = draft with { SelectedOperationalNotes = [.. draft.SelectedOperationalNotes, selection] };
+            _savedDrafts[operatingDate] = draft;
+            _savedAt[operatingDate] = DateTimeOffset.UtcNow;
+        }
+
+        return Task.FromResult(BuildWorkspace(operatingDate));
+    }
+
+    public Task<AssociateWorkspace> DeselectOperationalNoteAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken cancellationToken = default)
+    {
+        DeselectOperationalNoteCalls.Add((operatingDate, operationalNoteId));
+
+        var draft = _savedDrafts.GetValueOrDefault(operatingDate, AssociateDraftPayload.CreateDefault());
+        draft = draft with
+        {
+            SelectedOperationalNotes = draft.SelectedOperationalNotes.Where(selection => selection.SourceOperationalNoteId != operationalNoteId).ToList(),
+        };
+        _savedDrafts[operatingDate] = draft;
+        _savedAt[operatingDate] = DateTimeOffset.UtcNow;
+
+        return Task.FromResult(BuildWorkspace(operatingDate));
+    }
+
+    /// <summary>Mirrors <c>AssociatePassdownService.ReplaceOperationalNoteWithCurrentAsync</c> (Phase 11E Part I/O): in-place replacement from <see cref="AllOperationalNotes"/>, preserving list position; a no-op when not currently selected.</summary>
+    public Task<AssociateWorkspace> ReplaceOperationalNoteWithCurrentAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken cancellationToken = default)
+    {
+        ReplaceOperationalNoteCalls.Add((operatingDate, operationalNoteId));
+
+        var draft = _savedDrafts.GetValueOrDefault(operatingDate, AssociateDraftPayload.CreateDefault());
+        var selections = draft.SelectedOperationalNotes.ToList();
+        var index = selections.FindIndex(selection => selection.SourceOperationalNoteId == operationalNoteId);
+        if (index >= 0)
+        {
+            var source = AllOperationalNotes.FirstOrDefault(note => note.Id == operationalNoteId)
+                ?? throw new InvalidOperationException($"Operational note {operationalNoteId} is no longer available to replace.");
+
+            selections[index] = new AssociateOperationalNoteSelection(
+                source.Id, source.Title, source.Body, source.Category, source.Priority,
+                source.EffectiveFrom, source.EffectiveThrough, DateTimeOffset.UtcNow);
+
+            draft = draft with { SelectedOperationalNotes = selections };
+            _savedDrafts[operatingDate] = draft;
+            _savedAt[operatingDate] = DateTimeOffset.UtcNow;
+        }
+
+        return Task.FromResult(BuildWorkspace(operatingDate));
+    }
+
     private AssociateWorkspace BuildWorkspace(DateOnly date)
     {
         if (WorkspaceFactory is { } factory)
@@ -125,14 +211,27 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
         var saveStatus = _savedAt.TryGetValue(date, out var savedAt)
             ? new AssociateSaveStatus(AssociateSaveState.Saved, savedAt)
             : AssociateSaveStatus.NeverSaved;
+        var sourceStates = OperationalNoteSourceComparison.ComputeAll(draft.SelectedOperationalNotes, AllOperationalNotes, date);
 
         return new AssociateWorkspace(
             date,
             draft,
-            new AssociateParkHoursView(NotCheckedHours, AssociateVerificationInfo.NotCheckedYet, OfficialIsClosed: false, OfficialOpening: null, OfficialClosing: null),
+            ComposeParkHoursFromDraft(draft),
             Products: [],
             CategoryStatuses: [],
-            saveStatus);
+            saveStatus,
+            sourceStates);
+    }
+
+    /// <summary>Mirrors production <c>AssociatePassdownService.ComposeParkHours</c>'s override precedence (no official hours ever set here — this fake has no dated-source data) so a test's saved-then-reloaded draft round-trips its manual/buyout override the same way the real service does, instead of always coming back "not checked yet".</summary>
+    private static AssociateParkHoursView ComposeParkHoursFromDraft(AssociateDraftPayload draft)
+    {
+        var effective = ParkHoursCalculator.Calculate(
+            officialIsClosed: false, officialOpening: null, officialClosing: null,
+            draft.ManualHoursOverride.Enabled, draft.ManualHoursOverride.OpeningTime, draft.ManualHoursOverride.ClosingTime,
+            draft.PrivateBuyout.Enabled, draft.PrivateBuyout.OpeningTime, draft.PrivateBuyout.ClosingTime);
+
+        return new AssociateParkHoursView(effective, AssociateVerificationInfo.NotCheckedYet, OfficialIsClosed: false, OfficialOpening: null, OfficialClosing: null);
     }
 
     public static AssociateWorkspace DefaultWorkspace(DateOnly date) => new(
@@ -149,12 +248,12 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
         privateBuyoutEnabled: false, null, null);
 
     public static RefreshSummary SuccessSummary(DateOnly date) => new(
-        RefreshJobType.ManualSingleDate, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
+        RefreshJobType.UserForced, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
         OperationsAttempted: 1, Succeeded: 1, Failed: 0, Cancelled: 0,
         Results: [SourceOperationResult.Success("fake-source", SourceCategory.ParkHours, date, RetrievalStatus.Verified, "Verified.")]);
 
     public static RefreshSummary PartialFailureSummary(DateOnly date) => new(
-        RefreshJobType.ManualSingleDate, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
+        RefreshJobType.UserForced, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
         OperationsAttempted: 2, Succeeded: 1, Failed: 1, Cancelled: 0,
         Results:
         [

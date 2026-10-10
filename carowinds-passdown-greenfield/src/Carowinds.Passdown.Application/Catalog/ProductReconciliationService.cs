@@ -70,6 +70,7 @@ public sealed class ProductReconciliationService(
         ObservedProduct observed, CatalogProductRecord? existing, SourceEvidence evidence, CancellationToken cancellationToken)
     {
         var keyText = observed.Key.ToString();
+        var expiredValidThrough = ExpiredValidThroughDate(observed, evidence);
 
         if (existing is null)
         {
@@ -77,7 +78,13 @@ public sealed class ProductReconciliationService(
             var outcome = ReconciliationOutcome.Added;
             var reason = "New product observed.";
 
-            if (observed.IsExplicitlyUnavailable)
+            if (expiredValidThrough is { } newValidThrough)
+            {
+                lifecycle = lifecycle.MarkExpired(evidence, newValidThrough);
+                outcome = ReconciliationOutcome.Expired;
+                reason = lifecycle.ArchivedReason!;
+            }
+            else if (observed.IsExplicitlyUnavailable)
             {
                 lifecycle = lifecycle.MarkExplicitlyUnavailable(evidence, observed.UnavailableReason ?? DefaultUnavailableReason);
                 outcome = ReconciliationOutcome.Archived;
@@ -90,6 +97,19 @@ public sealed class ProductReconciliationService(
         }
 
         var existingLifecycle = Rehydrate(existing);
+
+        if (expiredValidThrough is { } validThrough)
+        {
+            var expiredLifecycle = existingLifecycle.MarkExpired(evidence, validThrough);
+            var alreadyExpiredForTheSameReason =
+                existing.LifecycleState == ProductLifecycleState.Expired &&
+                existing.ArchivedReason == expiredLifecycle.ArchivedReason;
+
+            var expiredUpsert = BuildUpsert(expiredLifecycle, observed);
+            await PersistAsync(expiredUpsert, alreadyExpiredForTheSameReason ? null : expiredLifecycle.ArchivedReason, cancellationToken)
+                .ConfigureAwait(false);
+            return new ReconciledProduct(keyText, ReconciliationOutcome.Expired, HistoryAppended: !alreadyExpiredForTheSameReason);
+        }
 
         if (observed.IsExplicitlyUnavailable)
         {
@@ -174,6 +194,27 @@ public sealed class ProductReconciliationService(
         await historyRepository.AppendAsync(BuildHistoryEntry(upsert, changeReason), unitOfWork, cancellationToken).ConfigureAwait(false);
 
         await unitOfWork.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Spec Phase 17A §1/§2: an authoritative valid-through date is a lifecycle fact, never evidence
+    /// of a retrieval problem — it is checked independently of, and prior to,
+    /// <see cref="ObservedProduct.IsExplicitlyUnavailable"/> so a future adapter that populates both
+    /// signals for the same product still resolves to one clear reason. Returns the passed
+    /// valid-through date only once the current Eastern date (from <paramref name="evidence"/>'s own
+    /// check time — never a second clock read) is strictly after it; <see langword="null"/> when no
+    /// date was supplied or it has not passed yet, in which case the caller's normal
+    /// present/explicitly-unavailable handling proceeds unchanged.
+    /// </summary>
+    private static DateOnly? ExpiredValidThroughDate(ObservedProduct observed, SourceEvidence evidence)
+    {
+        if (observed.ValidThroughDate is not { } validThrough)
+        {
+            return null;
+        }
+
+        var currentEasternDate = DateOnly.FromDateTime(evidence.TimeChecked.DateTime);
+        return currentEasternDate > validThrough ? validThrough : null;
     }
 
     private static CatalogProductLifecycle Rehydrate(CatalogProductRecord record) =>

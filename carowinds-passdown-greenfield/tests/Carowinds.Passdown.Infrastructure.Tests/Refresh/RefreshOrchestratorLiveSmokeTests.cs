@@ -28,7 +28,7 @@ namespace Carowinds.Passdown.Infrastructure.Tests.Refresh;
 public class RefreshOrchestratorLiveSmokeTests(ITestOutputHelper output)
 {
     [Fact]
-    public async Task RunManualDateRefreshAsync_AcrossAllDatedSources_CompletesAndReportsTiming()
+    public async Task RunUserForcedRefreshAsync_AcrossAllDatedSources_CompletesAndReportsTiming()
     {
         var clock = new SystemClock();
         using var httpClient = new HttpClient();
@@ -56,7 +56,7 @@ public class RefreshOrchestratorLiveSmokeTests(ITestOutputHelper output)
         var requestedDate = DateOnly.FromDateTime(EasternTimeZone.ConvertFromUtc(clock.UtcNow).AddDays(1).DateTime);
 
         var stopwatch = Stopwatch.StartNew();
-        var summary = await orchestrator.RunManualDateRefreshAsync(requestedDate);
+        var summary = await orchestrator.RunUserForcedRefreshAsync(requestedDate);
         stopwatch.Stop();
 
         output.WriteLine($"Manual refresh for {requestedDate:yyyy-MM-dd} completed in {stopwatch.ElapsedMilliseconds} ms.");
@@ -78,6 +78,11 @@ public class RefreshOrchestratorLiveSmokeTests(ITestOutputHelper output)
 
         public Task<IReadOnlyList<DatedResultRecord>> GetByRequestedDateAsync(DateOnly requestedDate, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<DatedResultRecord>>(_records.Values.Where(r => r.Key.Date == requestedDate).ToList());
+
+        public Task<IReadOnlyList<DatedResultRecord>> GetByCategoryAndDateRangeAsync(SourceCategory category, DateOnly startDate, DateOnly endDateInclusive, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<DatedResultRecord>>(_records.Values
+                .Where(r => r.Key.Category == category && r.Key.Date >= startDate && r.Key.Date <= endDateInclusive)
+                .ToList());
 
         public Task RecordSuccessAsync(DatedResultKey key, SourceEvidence evidence, string? payloadJson, CancellationToken cancellationToken = default)
         {

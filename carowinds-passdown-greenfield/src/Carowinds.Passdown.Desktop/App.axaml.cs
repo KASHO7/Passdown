@@ -2,10 +2,19 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.Calendar;
 using Carowinds.Passdown.Application.Catalog;
+using Carowinds.Passdown.Application.Concurrency;
+using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Diagnostics;
+using Carowinds.Passdown.Application.Ert;
+using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Freshness;
+using Carowinds.Passdown.Application.History;
+using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
+using Carowinds.Passdown.Application.PersonalSync;
+using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Retrieval.Browser;
@@ -21,6 +30,8 @@ using Carowinds.Passdown.Infrastructure;
 using Carowinds.Passdown.Infrastructure.Concurrency;
 using Carowinds.Passdown.Infrastructure.Diagnostics;
 using Carowinds.Passdown.Infrastructure.Logging;
+using Carowinds.Passdown.Infrastructure.PersonalSync;
+using Carowinds.Passdown.Infrastructure.Preferences;
 using Carowinds.Passdown.Infrastructure.Retrieval.Browser;
 using Carowinds.Passdown.Infrastructure.Retrieval.Http;
 using Carowinds.Passdown.Infrastructure.Retrieval.Sources;
@@ -32,6 +43,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Carowinds.Passdown.Ui.Tests")]
@@ -42,10 +54,29 @@ public partial class App : global::Avalonia.Application
 {
     private IServiceProvider? _services;
 
+    /// <summary>
+    /// Phase 15D: process creation time, used as the fixed zero-point for the startup checkpoints
+    /// logged below. Captured once, as early as this type is first touched (<see cref="Initialize"/>
+    /// is the first thing <see cref="Program.Main"/>'s Avalonia branch calls), so the resulting
+    /// deltas include CLR/self-contained-runtime startup cost that happens before <c>Main</c>'s own
+    /// first line runs — the one phase of startup that cannot be measured any other way from managed
+    /// code, and the one the Phase 15D investigation needed evidence for (see
+    /// docs/phase13-hardening.md's Phase 15D section: "packaged EXE vs dotnet run").
+    /// </summary>
+    private static readonly DateTime ProcessStartUtc = Process.GetCurrentProcess().StartTime.ToUniversalTime();
+
+    private double _xamlLoadedMs;
+    private double _serviceProviderBuiltMs;
+
+    private static double ElapsedSinceProcessStartMs() => (DateTime.UtcNow - ProcessStartUtc).TotalMilliseconds;
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
+        _xamlLoadedMs = ElapsedSinceProcessStartMs();
+
         _services = BuildServiceProvider();
+        _serviceProviderBuiltMs = ElapsedSinceProcessStartMs();
     }
 
     public override void OnFrameworkInitializationCompleted()
@@ -55,19 +86,143 @@ public partial class App : global::Avalonia.Application
             var services = _services ?? throw new InvalidOperationException(
                 $"{nameof(_services)} was not initialized; {nameof(Initialize)} must run first.");
 
+            var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+
             // Storage must be ready (spec §17 Phase 1: "establish ... storage
             // migrations before building the production UI") before any
             // view model touches the database.
             services.GetRequiredService<MigrationRunner>().Run();
+            var migrationsRunMs = ElapsedSinceProcessStartMs();
 
             var mainWindow = services.GetRequiredService<MainWindow>();
-            mainWindow.DataContext = services.GetRequiredService<MainViewModel>();
+            var mainViewModel = services.GetRequiredService<MainViewModel>();
+            mainWindow.DataContext = mainViewModel;
+            var mainViewModelResolvedMs = ElapsedSinceProcessStartMs();
+
+            var syncCoordinator = services.GetRequiredService<IPersonalSyncCoordinator>();
+            AttachShutdownFlush(desktop, mainViewModel, syncCoordinator, logger);
+
+            // Phase 15D: the closest available cross-platform proxy for "the shell became visible" —
+            // Window.Opened fires once the platform has actually shown the window, well after
+            // desktop.MainWindow is merely assigned below. Debug-level only (see the class doc above)
+            // so this never appears in a normal Information-level launch; a developer/tester
+            // investigating a slow launch can temporarily raise Logging:LogLevel:Default to see it.
+            mainWindow.Opened += (_, _) => logger.LogDebug(
+                "Startup: MainWindow.Opened fired at {ElapsedMs:F1}ms since process start", ElapsedSinceProcessStartMs());
+
             desktop.MainWindow = mainWindow;
+            var mainWindowAssignedMs = ElapsedSinceProcessStartMs();
+
+            logger.LogDebug(
+                "Startup checkpoints (ms since process start): xamlLoaded={XamlLoadedMs:F1} " +
+                "serviceProviderBuilt={ServiceProviderBuiltMs:F1} migrationsRun={MigrationsRunMs:F1} " +
+                "mainViewModelResolved={MainViewModelResolvedMs:F1} mainWindowAssigned={MainWindowAssignedMs:F1}",
+                _xamlLoadedMs, _serviceProviderBuiltMs, migrationsRunMs, mainViewModelResolvedMs, mainWindowAssignedMs);
+
+            // Phase 16F §3: started after the window is already assigned/visible, before the catch-up
+            // refresh below (whose own finalization step may call IPersonalSyncCoordinator.RequestSync)
+            // — Start() itself returns immediately (the startup sync pass runs in the background), so
+            // this can never delay the first usable window the way a blocking bootstrap would.
+            syncCoordinator.Start();
 
             StartCatchUpRefresh(services);
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// Phase 15D: a committed edit made shortly before the window closes must not be silently lost
+    /// waiting on the Associate screen's 800ms autosave debounce (the audit found no flush-on-shutdown
+    /// path existed). The first <c>ShutdownRequested</c> is cancelled so the pending/in-flight save
+    /// can drain via <see cref="FlushPendingAutosaveBeforeShutdownAsync"/> — the same
+    /// <see cref="AssociateViewModel.FlushPendingAutosaveAsync"/> a date switch or Check Online
+    /// already uses — then <see cref="IClassicDesktopStyleApplicationLifetime.Shutdown"/> is called
+    /// again to actually close; the <c>flushed</c> guard prevents that second request from looping
+    /// back into this handler.
+    /// </summary>
+    private static void AttachShutdownFlush(IClassicDesktopStyleApplicationLifetime desktop, MainViewModel mainViewModel, IPersonalSyncCoordinator syncCoordinator, ILogger logger)
+    {
+        var flushed = false;
+
+        desktop.ShutdownRequested += (_, e) =>
+        {
+            if (flushed)
+            {
+                return;
+            }
+
+            e.Cancel = true;
+            _ = FlushThenShutdownAsync();
+        };
+
+        async Task FlushThenShutdownAsync()
+        {
+            await FlushPendingAutosaveBeforeShutdownAsync(mainViewModel, logger).ConfigureAwait(true);
+
+            // Phase 16F §23: stops the periodic loop and any pending debounce/retry timer only — it
+            // deliberately does not wait for a sync pass that happens to be mid-flight (file I/O uses
+            // atomic temp-then-rename, so an interrupted pass never leaves a half-written file visible
+            // to anything else; pending local changes simply sync on next startup, §24). No bounded
+            // final sync is added here — local autosave flush above is the only thing shutdown actually
+            // waits on, matching the spec's "do not risk shutdown hangs waiting on OneDrive."
+            try
+            {
+                await syncCoordinator.StopAsync().ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to stop the Personal Sync coordinator during shutdown; closing anyway.");
+            }
+
+            flushed = true;
+            desktop.Shutdown();
+        }
+    }
+
+    /// <summary>
+    /// Same busy-timeout budget <see cref="SqliteConnectionFactory"/> already gives a single stuck
+    /// write (see its own doc comment) — reused here as the ceiling for the whole shutdown flush, not
+    /// because the two are the same operation, but because it is already the codebase's established
+    /// answer to "how long is a database allowed to look stuck before this app stops waiting on it."
+    /// </summary>
+    private static readonly TimeSpan ShutdownFlushTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// The actual drain-before-exit work, split out from <see cref="AttachShutdownFlush"/> so it can
+    /// be exercised directly against a real <see cref="AssociateViewModel"/> without needing a real
+    /// Avalonia desktop lifetime (see <c>AppShutdownFlushTests</c>). Bounded by
+    /// <see cref="ShutdownFlushTimeout"/>: <see cref="AssociateViewModel.FlushPendingAutosaveAsync"/>'s
+    /// retry loop only stops once a save actually succeeds — a persistently unavailable database
+    /// (§13's "DB busy/locked" scenario, hit at exactly the wrong moment) would otherwise retry with
+    /// no backoff forever, making the app impossible to close. Timing out here still loses that one
+    /// last unsaved edit if the database genuinely never recovers, but an app the user cannot close no
+    /// matter how many times they click X is a strictly worse outcome for a case this rare. A flush
+    /// failure that throws directly (rather than timing out) is logged and swallowed the same way.
+    /// <paramref name="timeout"/> defaults to <see cref="ShutdownFlushTimeout"/>; the override exists
+    /// so a test can prove the timeout path itself without a real 5-second wait.
+    /// </summary>
+    internal static async Task FlushPendingAutosaveBeforeShutdownAsync(MainViewModel mainViewModel, ILogger logger, TimeSpan? timeout = null)
+    {
+        var effectiveTimeout = timeout ?? ShutdownFlushTimeout;
+
+        try
+        {
+            var flush = mainViewModel.Associate.FlushPendingAutosaveAsync();
+            var completed = await Task.WhenAny(flush, Task.Delay(effectiveTimeout)).ConfigureAwait(true);
+
+            if (completed != flush)
+            {
+                logger.LogWarning("Flush-on-shutdown timed out after {TimeoutSeconds}s; closing anyway rather than blocking shutdown indefinitely.", effectiveTimeout.TotalSeconds);
+                return;
+            }
+
+            await flush.ConfigureAwait(true); // Observe a faulted flush task so it isn't reported as unobserved.
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Flush-on-shutdown failed; closing anyway rather than blocking shutdown indefinitely.");
+        }
     }
 
     /// <summary>
@@ -83,11 +238,25 @@ public partial class App : global::Avalonia.Application
         _ = StartupCatchUpRefresh.RunAsync(services, scheduledLock, logger);
     }
 
+    /// <summary>
+    /// Phase 15F: appsettings.json is an embedded resource (Carowinds.Passdown.Desktop.csproj),
+    /// not a physical file read via AppContext.BaseDirectory — see the csproj comment for why a
+    /// single-file publish makes the physical-file approach unreliable. Caller disposes the stream
+    /// via <see cref="ConfigurationBuilder.Build"/>'s underlying JSON provider.
+    /// </summary>
+    private static Stream OpenEmbeddedAppSettings()
+    {
+        var assembly = typeof(App).Assembly;
+        const string resourceName = "Carowinds.Passdown.Desktop.appsettings.json";
+        return assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException(
+                $"Embedded resource '{resourceName}' not found in assembly '{assembly.FullName}'.");
+    }
+
     internal static IServiceProvider BuildServiceProvider()
     {
         var configuration = new ConfigurationBuilder()
-            .SetBasePath(AppContext.BaseDirectory)
-            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+            .AddJsonStream(OpenEmbeddedAppSettings())
             .Build();
 
         var services = new ServiceCollection();
@@ -113,6 +282,14 @@ public partial class App : global::Avalonia.Application
             new Migration0005CreateProductHistoryTable(),
             new Migration0006CreateAssociateDraftsTable(),
             new Migration0007CreateManagerDraftsTable(),
+            new Migration0008CreateFinalizedPassdownsTable(),
+            new Migration0009AddFinalizedPassdownPdfColumns(),
+            new Migration0010CreateOperationalNotesTable(),
+            new Migration0011CreateDeepRefreshStatusTable(),
+            new Migration0012CreateSyncEntityStateTable(),
+            new Migration0013CreateSyncConflictsTable(),
+            new Migration0014CreateMonthlyErtConfigurationsTable(),
+            new Migration0015CreateErtDateOverridesTable(),
         ]);
         services.AddSingleton<MigrationRunner>();
 
@@ -123,6 +300,25 @@ public partial class App : global::Avalonia.Application
         // IRefreshOrchestrator/IClock singletons AddRefreshOrchestration already registered above —
         // nothing here is a new storage or retrieval path.
         services.AddSingleton<IAssociateDraftRepository, SqliteAssociateDraftRepository>();
+
+        // Phase 13B Part K/L: AssociatePassdownService.CheckAssociateDateOnlineAsync (the sole
+        // RefreshMode.UserForced entry point, shared by Dashboard and Associate's own Check Online
+        // actions) uses this factory to guard against running concurrently with a scheduled refresh
+        // or startup catch-up already holding the same file lock. A fresh FileScheduledRefreshLock
+        // instance per attempt is deliberate (mirrors ScheduledRefreshHost/StartupCatchUpRefresh's own
+        // pattern) — OS-level exclusive file access is what actually enforces the single-holder
+        // guarantee, not shared C# instance state.
+        services.AddSingleton<Func<IScheduledRefreshLock>>(_ => () => new FileScheduledRefreshLock(FileScheduledRefreshLock.DefaultPath));
+
+        // Phase 17B: the persistent monthly Early Ride Time foundation, registered ahead of
+        // IAssociatePassdownService so its IEffectiveErtResolver constructor dependency resolves.
+        // IErtConfigurationService (save/remove, used by the Associate screen's Configure/Override
+        // actions) depends on IClock/ISyncChangeTracker only, mirroring IOperationalNotesService.
+        services.AddSingleton<IMonthlyErtRepository, SqliteMonthlyErtRepository>();
+        services.AddSingleton<IErtDateOverrideRepository, SqliteErtDateOverrideRepository>();
+        services.AddSingleton<IEffectiveErtResolver, EffectiveErtResolver>();
+        services.AddSingleton<IErtConfigurationService, ErtConfigurationService>();
+
         services.AddSingleton<IAssociatePassdownService, AssociatePassdownService>();
 
         // Phase 4F Part I: the Associate PDF export pipeline (Documents project) plus the native
@@ -130,6 +326,63 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IAssociatePassdownPdfGenerator, AssociatePassdownPdfGenerator>();
         services.AddSingleton<IAssociatePassdownPdfExportService, AssociatePassdownPdfExportService>();
         services.AddSingleton<IPdfSaveFilePicker, AvaloniaPdfSaveFilePicker>();
+
+        // Phase 17C §15/§39: the local Associate Passdown template preference (Classic/Compact/
+        // Modern) — one flat JSON file, mirroring the PersonalSync file-based stores below. Consumed
+        // by both AssociateViewModel (for Preview PDF) and FinalizedPassdownFinalizationService (so a
+        // scheduled finalization freezes whatever template was selected at that moment).
+        services.AddSingleton<IAssociatePassdownTemplatePreferenceStore>(_ => new FileAssociatePassdownTemplatePreferenceStore(FileAssociatePassdownTemplatePreferenceStore.DefaultPath));
+
+        // Phase 9A: the immutable finalized-passdown foundation.
+        services.AddSingleton<IFinalizedPassdownRepository, SqliteFinalizedPassdownRepository>();
+        services.AddSingleton<IFinalizedPassdownSnapshotBuilder, FinalizedPassdownSnapshotBuilder>();
+        services.AddSingleton<IFinalizedPassdownFinalizationService, FinalizedPassdownFinalizationService>();
+
+        // Phase 9C Part V: the smallest seam a future History UI needs to retrieve an already-frozen
+        // PDF. Reads IFinalizedPassdownRepository only — never invokes the PDF generator. Not wired
+        // to any UI yet.
+        services.AddSingleton<IFinalizedPassdownPdfRetrievalService, FinalizedPassdownPdfRetrievalService>();
+
+        // Phase 9B: the 6:00 AM automatic finalization coordinator, invoked by ScheduledRefreshHost
+        // and StartupCatchUpRefresh before either ever runs a source refresh.
+        services.AddSingleton<IScheduledPassdownFinalizer, ScheduledPassdownFinalizer>();
+
+        // Phase 9D: the read-only Passdown History screen. IPassdownHistoryService reads
+        // IFinalizedPassdownRepository/FinalizedPassdownSnapshotSerializer only — it never generates a
+        // PDF or touches the current Associate draft/catalog. IFinalizedPdfLauncher is the "Open Final
+        // PDF" seam; Save PDF Copy reuses the already-registered IPdfSaveFilePicker.
+        services.AddSingleton<IPassdownHistoryService, PassdownHistoryService>();
+        services.AddSingleton<IFinalizedPdfLauncher, TempFileFinalizedPdfLauncher>();
+        services.AddTransient<PassdownHistoryViewModel>();
+
+        // Phase 10A: the Operations Dashboard foundation. IOperationsDashboardService reads
+        // IAssociatePassdownService/IFinalizedPassdownRepository only (both already registered
+        // above) for GetTodayAsync/LoadAsync — those never perform HTTP/Playwright retrieval and
+        // never load a finalized PDF blob. Phase 13D Part O adds the manual "Run Deep Refresh"
+        // action, which does need IRefreshOrchestrator/IDeepRefreshStatusRepository directly, plus
+        // the same shared overlap-lock factory Check Online uses (Part AQ — never a second guard).
+        services.AddSingleton<IOperationsDashboardService, OperationsDashboardService>();
+        services.AddTransient<OperationsDashboardViewModel>();
+
+        // Phase 12A: the Operations Calendar foundation — a local-only planning/routing surface.
+        // IOperationsCalendarService depends only on already-registered local abstractions
+        // (IAssociatePassdownService/IAssociateDraftRepository/IFinalizedPassdownRepository/
+        // IOperationalNotesService/IClock); no HTTP/Playwright/Task Scheduler dependency exists.
+        services.AddSingleton<IOperationsCalendarService, OperationsCalendarService>();
+        services.AddTransient<OperationsCalendarViewModel>();
+
+        // Phase 11A: the persistent Operational Notes domain/persistence/service foundation.
+        // IOperationalNotesService depends on IOperationalNoteRepository/IClock only — nothing here
+        // writes into an Associate draft. A relevant persistent note is never automatically copied
+        // into a daily passdown (Phase 11D is the explicit, user-selected opt-in that will eventually
+        // do that).
+        services.AddSingleton<IOperationalNoteRepository, SqliteOperationalNoteRepository>();
+        services.AddSingleton<IOperationalNotesService, OperationalNotesService>();
+
+        // Phase 11B: the Operational Notes Manager screen. OperationalNotesViewModel depends only on
+        // IOperationalNotesService/IClock (both already registered above) — the Notes Manager UI, not
+        // Dashboard integration (11C) or Associate-passdown inclusion (11D).
+        services.AddTransient<OperationalNotesViewModel>();
 
         // Phase 7F Part F/G: the sanitized diagnostic export pipeline. Reuses the already-registered
         // SqliteConnectionFactory/ISourceStateRepository/IReadOnlyList<SourceRegistration>/IClock —
@@ -146,6 +399,58 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IDiagnosticExportFilePicker, AvaloniaDiagnosticExportFilePicker>();
 
         services.AddTransient<AssociateViewModel>();
+
+        // Phase 16B: the local Personal Sync foundation — device ID, local sync configuration,
+        // OneDrive suggestion, folder validation, and the manifest bootstrap. No entity (draft/note/
+        // finalized passdown) is exported or imported by anything registered here; that begins in
+        // 16C. Every piece is a flat local file under AppPaths.LocalApplicationDataDirectory, not a
+        // SQLite table (CLAUDE.md "prefer no SQLite schema change").
+        services.AddSingleton<IDeviceIdProvider>(_ => new FileDeviceIdProvider(FileDeviceIdProvider.DefaultPath));
+        services.AddSingleton<ISyncConfigurationStore>(_ => new FileSyncConfigurationStore(FileSyncConfigurationStore.DefaultPath));
+        services.AddSingleton<IOneDriveLocationSuggestionProvider, EnvironmentOneDriveLocationSuggestionProvider>();
+        services.AddSingleton<ISyncFolderValidator, SyncFolderValidator>();
+        services.AddSingleton<IPersonalSyncSettingsService, PersonalSyncSettingsService>();
+        services.AddSingleton<ISyncFolderPicker, AvaloniaSyncFolderPicker>();
+
+        // Phase 16C: the first real record-level sync — Associate drafts and Operational Notes.
+        // ISyncEntityStateRepository/ISyncChangeTracker are resolved automatically into
+        // AssociatePassdownService/OperationalNotesService's optional constructor parameters above;
+        // nothing else needs to change at those registrations.
+        services.AddSingleton<ISyncEntityStateRepository, SqliteSyncEntityStateRepository>();
+
+        // Phase 16F §4/§8: every local draft/note save already calls ISyncChangeTracker once it saves
+        // (Phase 16C §7) — AutomaticSyncChangeTracker wraps the plain SyncChangeTracker so that same
+        // call also requests a debounced automatic sync pass, with no change to AssociatePassdownService/
+        // OperationalNotesService or any ViewModel. SyncChangeTracker itself is kept resolvable under its
+        // own concrete type for the wrapper to depend on, matching the decorator pattern used nowhere
+        // else in this composition root only because nothing else here has needed one yet.
+        services.AddSingleton<SyncChangeTracker>();
+        services.AddSingleton<ISyncChangeTracker>(provider => new AutomaticSyncChangeTracker(
+            provider.GetRequiredService<SyncChangeTracker>(),
+            provider.GetRequiredService<IPersonalSyncCoordinator>()));
+        // Phase 16E: finalized History/PDF sync. PersonalSyncService's constructor now also takes
+        // IFinalizedPassdownRepository — already registered above (Phase 9A) — resolved automatically;
+        // no separate finalization-to-sync hook was added (spec §22: export dirtiness is decided by
+        // content-hash comparison during enumeration, so a never-synced finalized passdown is picked up
+        // on the very next "Sync Now" without any change to FinalizedPassdownFinalizationService).
+        services.AddSingleton<IPersonalSyncService, PersonalSyncService>();
+
+        // Phase 16D: explicit conflict resolution and deletion/tombstone propagation. ISyncConflictRepository
+        // persists the full conflicting remote envelope (DB 13's sync_conflicts table) so resolution
+        // survives a restart; IPersonalSyncConflictResolutionService owns Keep This Device/Use Other
+        // Device/Accept Deletion — no ViewModel implements any of that logic directly.
+        services.AddSingleton<ISyncConflictRepository, SqliteSyncConflictRepository>();
+        services.AddSingleton<IPersonalSyncConflictResolutionService, PersonalSyncConflictResolutionService>();
+
+        // Phase 16F: the automatic-sync coordinator (debounce/coalescing/periodic-safety-sync/retry
+        // backoff/status) — one singleton for the process's lifetime, started in
+        // OnFrameworkInitializationCompleted and stopped during shutdown (AttachShutdownFlush). Never
+        // resolved (and therefore never started) by the headless --scheduled-refresh entry point, which
+        // reuses this same BuildServiceProvider but has no interactive session to run automatic sync for
+        // (spec §31 — Personal Sync operates only while the interactive app is running).
+        services.AddSingleton<IPersonalSyncCoordinator, PersonalSyncCoordinator>();
+
+        services.AddTransient<PersonalSyncSettingsViewModel>();
 
         services.AddTransient<MainWindow>();
         services.AddTransient<MainViewModel>();
@@ -164,6 +469,10 @@ public partial class App : global::Avalonia.Application
 
         // Persistence (Phase 2 repository ports over the same SqliteConnectionFactory already registered above).
         services.AddSingleton<ISourceStateRepository, SqliteSourceStateRepository>();
+        // Phase 13D Part U: the single-row Deep Refresh status table — consumed by RefreshOrchestrator
+        // (writes truthfully after every RunDeepRefreshAsync) and by AssociatePassdownService/
+        // OperationsDashboardService (read the coverage-based NeedsDeepRefresh decision).
+        services.AddSingleton<IDeepRefreshStatusRepository, SqliteDeepRefreshStatusRepository>();
         services.AddSingleton<IDatedResultRepository, SqliteDatedResultRepository>();
         services.AddSingleton<ICatalogProductRepository, SqliteCatalogProductRepository>();
         services.AddSingleton<IProductHistoryRepository, SqliteProductHistoryRepository>();
@@ -201,6 +510,13 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<SeasonPassCatalogSource>();
         services.AddSingleton<SeasonPassAddOnsCatalogSource>();
         services.AddSingleton<GeneralAddOnsCatalogSource>();
+        // Phase 13C: Bring-A-Friend Duo (dated, exact per-person price) and Military/First Responder
+        // (catalog, "Starting From").
+        services.AddSingleton<DatedBringAFriendDuoSource>();
+        services.AddSingleton<MilitaryFirstResponderCatalogSource>();
+        // Phase 15A: ordinary Bring-A-Friend's exact per-date price (anonymous, keyword
+        // BAFWizardDailyTickets) — supersedes Phase 13C's passholder-login-only finding.
+        services.AddSingleton<DatedBringAFriendSource>();
 
         // Refresh-orchestrator source registrations (Part A) — every adapter above, paired with
         // how its successful payload is persisted (dated) or reconciled (catalog). None of the
@@ -221,6 +537,9 @@ public partial class App : global::Avalonia.Application
                 new CatalogSourceRegistration(provider.GetRequiredService<SeasonPassCatalogSource>(), reconciliationService),
                 new CatalogSourceRegistration(provider.GetRequiredService<SeasonPassAddOnsCatalogSource>(), reconciliationService),
                 new CatalogSourceRegistration(provider.GetRequiredService<GeneralAddOnsCatalogSource>(), reconciliationService),
+                new DatedSourceRegistration<DatedBringAFriendDuoPayload>(provider.GetRequiredService<DatedBringAFriendDuoSource>(), datedResultRepository),
+                new CatalogSourceRegistration(provider.GetRequiredService<MilitaryFirstResponderCatalogSource>(), reconciliationService),
+                new DatedSourceRegistration<DatedBringAFriendPayload>(provider.GetRequiredService<DatedBringAFriendSource>(), datedResultRepository),
             };
         });
 

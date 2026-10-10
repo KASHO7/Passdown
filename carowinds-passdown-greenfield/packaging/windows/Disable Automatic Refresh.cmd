@@ -12,13 +12,13 @@ set "UNINSTALL_SCRIPT=%APP_DIR%tools\Uninstall-ScheduledRefresh.ps1"
 
 if not exist "%UNINSTALL_SCRIPT%" (
     echo Could not find tools\Uninstall-ScheduledRefresh.ps1 next to this file.
-    echo Keep this file inside the extracted Carowinds Passdown folder and try again.
+    echo Keep this file inside the extracted Carowinds Operations folder and try again.
     echo.
     pause
     exit /b 1
 )
 
-echo Turning off automatic refresh for this copy of Carowinds Passdown...
+echo Turning off automatic refresh for this copy of Carowinds Operations...
 echo.
 
 rem -ExecutionPolicy Bypass applies only to this one PowerShell process (Part D) and changes

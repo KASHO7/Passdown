@@ -1,6 +1,5 @@
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
-using Avalonia.Interactivity;
+using Avalonia.Input;
 
 namespace Carowinds.Passdown.Desktop.Views;
 
@@ -12,23 +11,22 @@ public partial class AssociateView : UserControl
     }
 
     /// <summary>
-    /// Keeps the section rail's three <see cref="ToggleButton"/>s (spec Parts 2/3 — Overview /
-    /// Products / Notes) mutually exclusive. Plain view-layer navigation state, not business
-    /// logic (CLAUDE.md's code-behind restriction is about persistence/retrieval/business
-    /// rules/PDF generation, not which section is currently shown). Deliberately not
-    /// <see cref="RadioButton"/>'s built-in <c>GroupName</c> grouping: that registers each button
-    /// into Avalonia's process-global <c>RadioButtonGroupManager</c>, which collides across the
-    /// separate <see cref="AssociateView"/> instances different headless tests construct.
+    /// Phase 13E Part Q: pressing Enter in a Manual Hours/Private Buyout time field commits/normalizes
+    /// it immediately, the same as Tab/click-away, instead of waiting for a later, unrelated focus
+    /// change — and consumes the key so it can never fall through to an unrelated default button. Pure
+    /// focus plumbing, not persistence/business logic (CLAUDE.md's Avalonia boundary): the actual
+    /// parse/commit lives in <see cref="ViewModels.AssociateViewModel"/>'s
+    /// <c>UpdateSourceTrigger=LostFocus</c>-bound properties, which this merely triggers by clearing
+    /// focus.
     /// </summary>
-    private void OnSectionButtonClick(object? sender, RoutedEventArgs e)
+    private void TimeTextBox_OnKeyDown(object? sender, KeyEventArgs e)
     {
-        if (sender is not ToggleButton clicked)
+        if (e.Key != Key.Enter || sender is not TextBox textBox)
         {
             return;
         }
 
-        OverviewSectionButton.IsChecked = ReferenceEquals(clicked, OverviewSectionButton);
-        ProductsSectionButton.IsChecked = ReferenceEquals(clicked, ProductsSectionButton);
-        NotesSectionButton.IsChecked = ReferenceEquals(clicked, NotesSectionButton);
+        TopLevel.GetTopLevel(textBox)?.FocusManager?.Focus(null, NavigationMethod.Unspecified, KeyModifiers.None);
+        e.Handled = true;
     }
 }

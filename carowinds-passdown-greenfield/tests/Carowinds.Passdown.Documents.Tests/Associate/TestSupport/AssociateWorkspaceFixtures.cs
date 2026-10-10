@@ -1,10 +1,18 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Ert;
 using Carowinds.Passdown.Domain.Hours;
 
 namespace Carowinds.Passdown.Documents.Tests.Associate.TestSupport;
 
-/// <summary>Hand-built <see cref="AssociateWorkspace"/> fixtures for Documents.Tests (spec Phase 4E Part K's sample-day set), independent of any real repository/refresh plumbing.</summary>
+/// <summary>
+/// Hand-built <see cref="AssociateWorkspace"/> fixtures for Documents.Tests (spec Phase 4E Part K's
+/// sample-day set), independent of any real repository/refresh plumbing. Every fixture pins
+/// <see cref="PassdownSectionSelection.AllIncluded"/> explicitly (Phase 17D §6 changed
+/// <see cref="AssociateDraftPayload.CreateDefault"/>'s own default to a partial selection) — these
+/// fixtures exist to exercise PDF/grouping/pricing behavior across every section, independent of
+/// whatever the production "new draft" default happens to be.
+/// </summary>
 internal static class AssociateWorkspaceFixtures
 {
     private static readonly DateOnly Date = new(2026, 8, 21);
@@ -12,7 +20,7 @@ internal static class AssociateWorkspaceFixtures
     /// <summary>The absolute minimum a workspace can carry — no draft entries, no products, hours never checked.</summary>
     public static AssociateWorkspace MinimalValid() => new(
         Date,
-        AssociateDraftPayload.CreateDefault(),
+        AssociateDraftPayload.CreateDefault() with { SectionSelection = PassdownSectionSelection.AllIncluded },
         new AssociateParkHoursView(
             ParkHoursCalculator.Calculate(false, null, null, false, null, null, false, null, null),
             AssociateVerificationInfo.NotCheckedYet,
@@ -29,7 +37,7 @@ internal static class AssociateWorkspaceFixtures
         var effective = ParkHoursCalculator.Calculate(false, new TimeOnly(10, 0), new TimeOnly(19, 0), false, null, null, false, null, null);
         var verification = Verified();
 
-        var draft = AssociateDraftPayload.CreateDefault();
+        var draft = AssociateDraftPayload.CreateDefault() with { SectionSelection = PassdownSectionSelection.AllIncluded };
 
         var products = new List<AssociateProduct>
         {
@@ -52,19 +60,19 @@ internal static class AssociateWorkspaceFixtures
         {
             ProjectedAttendance = 18500,
             PreSolds = 4200,
-            EarlyRideTime = new EarlyRideTimeDetails("Early Ride Time from 8:30 AM for pass members with the benefit.", ["Fury 325", "Intimidator", "Copperhead Strike"]),
             OperationalNotes =
             [
                 "Fury 325 closed for scheduled maintenance until 11 AM.",
                 "Extra staffing at North Gate for a school group arriving at 9:15 AM.",
                 "Guest Services relocated temporarily to the Carolina Harbor breezeway.",
             ],
-            DailyFunType = DailyFunType.QuestionOfTheDay,
-            DailyFunText = "What year did Carowinds open?",
+            DailyFeatureType = DailyFeatureType.QuestionOfTheDay,
+            DailyFeatureText = "What year did Carowinds open?",
             CustomProducts =
             [
                 new CustomProductEntry("c1", "Team Member Meal Voucher", 8.00m, "Cafeteria only, associates present ID.", true),
             ],
+            SectionSelection = PassdownSectionSelection.AllIncluded,
         };
 
         var products = new List<AssociateProduct>
@@ -80,7 +88,9 @@ internal static class AssociateWorkspaceFixtures
         return new AssociateWorkspace(
             Date, draft,
             new AssociateParkHoursView(effective, verification, false, new TimeOnly(9, 0), new TimeOnly(21, 0)),
-            products, [], new AssociateSaveStatus(AssociateSaveState.Saved, DateTimeOffset.UtcNow));
+            products, [], new AssociateSaveStatus(AssociateSaveState.Saved, DateTimeOffset.UtcNow),
+            SelectedOperationalNoteSourceStates: null,
+            EarlyRideTime: new EffectiveErt(EffectiveErtKind.Configured, EffectiveErtSource.Monthly, new TimeOnly(8, 30), ["Fury 325", "Intimidator", "Copperhead Strike"], "For pass members with the benefit."));
     }
 
     /// <summary>Heavy-product day (spec §11.5) — many included products across every category, but still expected to fit one page.</summary>
@@ -93,14 +103,14 @@ internal static class AssociateWorkspaceFixtures
         {
             ProjectedAttendance = 26000,
             PreSolds = 9100,
-            EarlyRideTime = new EarlyRideTimeDetails("Early Ride Time from 8:30 AM.", ["Fury 325", "Intimidator"]),
             OperationalNotes =
             [
                 "Peak-day staffing plan in effect at all gates.",
                 "Season pass processing tent open at the front plaza.",
             ],
-            DailyFunType = DailyFunType.FactOfTheDay,
-            DailyFunText = "Fury 325 is one of the tallest and fastest giga coasters in the world.",
+            DailyFeatureType = DailyFeatureType.UselessFactOfTheDay,
+            DailyFeatureText = "Fury 325 is one of the tallest and fastest giga coasters in the world.",
+            SectionSelection = PassdownSectionSelection.AllIncluded,
         };
 
         var products = new List<AssociateProduct>();
@@ -113,7 +123,9 @@ internal static class AssociateWorkspaceFixtures
         return new AssociateWorkspace(
             Date, draft,
             new AssociateParkHoursView(effective, verification, false, new TimeOnly(9, 0), new TimeOnly(22, 0)),
-            products, [], new AssociateSaveStatus(AssociateSaveState.Saved, DateTimeOffset.UtcNow));
+            products, [], new AssociateSaveStatus(AssociateSaveState.Saved, DateTimeOffset.UtcNow),
+            SelectedOperationalNoteSourceStates: null,
+            EarlyRideTime: new EffectiveErt(EffectiveErtKind.Configured, EffectiveErtSource.Monthly, new TimeOnly(8, 30), ["Fury 325", "Intimidator"], null));
     }
 
     /// <summary>Private-buyout day (spec §11.5): officially closed, but open under a private-event override with its own hours and details.</summary>
@@ -124,6 +136,7 @@ internal static class AssociateWorkspaceFixtures
             PrivateBuyout = new PrivateBuyoutOverride(true, new TimeOnly(18, 0), new TimeOnly(23, 0), "Corporate buyout - Acme Corp. Gates open to badge holders only."),
             ProjectedAttendance = 5000,
             OperationalNotes = ["Public not admitted. All guests must present an Acme Corp event badge at the gate."],
+            SectionSelection = PassdownSectionSelection.AllIncluded,
         };
 
         var effective = ParkHoursCalculator.Calculate(true, null, null, false, null, null, true, new TimeOnly(18, 0), new TimeOnly(23, 0));
@@ -145,6 +158,7 @@ internal static class AssociateWorkspaceFixtures
         var draft = AssociateDraftPayload.CreateDefault() with
         {
             ProjectedAttendance = 12000,
+            SectionSelection = PassdownSectionSelection.AllIncluded,
         };
 
         var products = new List<AssociateProduct>
@@ -168,10 +182,10 @@ internal static class AssociateWorkspaceFixtures
         {
             ProjectedAttendance = 30000,
             PreSolds = 15000,
-            EarlyRideTime = new EarlyRideTimeDetails("Early Ride Time from 8:00 AM for all pass members and Fast Lane Plus guests.", ["Fury 325", "Intimidator", "Copperhead Strike", "Afterburn", "Nighthawk"]),
             OperationalNotes = Enumerable.Range(1, 6).Select(i => $"Operational note number {i} describing a staffing or guest-service situation for the day in enough detail to take up a full line.").ToList(),
-            DailyFunType = DailyFunType.QuoteOfTheDay,
-            DailyFunText = "\"The best way to predict the future is to create it.\"",
+            DailyFeatureType = DailyFeatureType.QuoteOfTheDay,
+            DailyFeatureText = "\"The best way to predict the future is to create it.\"",
+            SectionSelection = PassdownSectionSelection.AllIncluded,
         };
 
         var products = new List<AssociateProduct>();
@@ -184,7 +198,127 @@ internal static class AssociateWorkspaceFixtures
         return new AssociateWorkspace(
             Date, draft,
             new AssociateParkHoursView(effective, verification, false, new TimeOnly(9, 0), new TimeOnly(22, 0)),
-            products, [], new AssociateSaveStatus(AssociateSaveState.Saved, DateTimeOffset.UtcNow));
+            products, [], new AssociateSaveStatus(AssociateSaveState.Saved, DateTimeOffset.UtcNow),
+            SelectedOperationalNoteSourceStates: null,
+            EarlyRideTime: new EffectiveErt(EffectiveErtKind.Configured, EffectiveErtSource.Monthly, new TimeOnly(8, 0), ["Fury 325", "Intimidator", "Copperhead Strike", "Afterburn", "Nighthawk"], "For all pass members and Fast Lane Plus guests."));
+    }
+
+    /// <summary>Season-pass-heavy day (Phase 17E spec §14.C) — Season Passes dominates the product list, exercising a category with more rows than any pairing partner it might share a row with.</summary>
+    public static AssociateWorkspace SeasonPassHeavyDay()
+    {
+        var effective = ParkHoursCalculator.Calculate(false, new TimeOnly(10, 0), new TimeOnly(20, 0), false, null, null, false, null, null);
+        var verification = Verified();
+
+        var draft = AssociateDraftPayload.CreateDefault() with
+        {
+            ProjectedAttendance = 15000,
+            PreSolds = 3000,
+            DailyFeatureType = DailyFeatureType.QuoteOfTheDay,
+            DailyFeatureText = "\"Fun is the best medicine.\"",
+            SectionSelection = PassdownSectionSelection.AllIncluded,
+        };
+
+        var products = new List<AssociateProduct>
+        {
+            Product("dated|DatedAdmissionTickets|1day", "1-Day Ticket", SourceCategory.DatedAdmissionTickets, 54.99m, verification: verification),
+        };
+        products.AddRange(CategoryRun(SourceCategory.SeasonPasses, "Season Pass Tier", 7, 79.99m, verification));
+
+        return new AssociateWorkspace(
+            Date, draft,
+            new AssociateParkHoursView(effective, verification, false, new TimeOnly(10, 0), new TimeOnly(20, 0)),
+            products, [], new AssociateSaveStatus(AssociateSaveState.Saved, DateTimeOffset.UtcNow),
+            SelectedOperationalNoteSourceStates: null,
+            EarlyRideTime: new EffectiveErt(EffectiveErtKind.NoErt, EffectiveErtSource.Monthly, null, [], null));
+    }
+
+    /// <summary>SCarowinds day (Phase 17E spec §14.D) — the SCarowinds section is the only full-width category present alongside Daily Admission, exercising the "one side of a pairing missing" case.</summary>
+    public static AssociateWorkspace ScarowindsDay()
+    {
+        var effective = ParkHoursCalculator.Calculate(false, new TimeOnly(12, 0), new TimeOnly(23, 0), false, null, null, false, null, null);
+        var verification = Verified();
+
+        var draft = AssociateDraftPayload.CreateDefault() with
+        {
+            ProjectedAttendance = 20000,
+            PreSolds = 6000,
+            OperationalNotes = ["Fog effects active in Hallowed Ground after dark.", "Guests under 13 must be accompanied by an adult in mazes."],
+            DailyFeatureType = DailyFeatureType.UselessFactOfTheDay,
+            DailyFeatureText = "SCarowinds features six haunted mazes across the park.",
+            SectionSelection = PassdownSectionSelection.AllIncluded,
+        };
+
+        var products = new List<AssociateProduct>
+        {
+            Product("catalog|haunt|pass", "Haunted Attractions Pass", SourceCategory.HauntedAttractions, 15.00m, verification: verification),
+            Product("catalog|haunt|express", "Haunted Attractions Express", SourceCategory.HauntedAttractions, 55.00m, verification: verification),
+            Product("dated|DatedAdmissionTickets|1day", "1-Day Ticket", SourceCategory.DatedAdmissionTickets, 44.99m, verification: verification),
+        };
+
+        return new AssociateWorkspace(
+            Date, draft,
+            new AssociateParkHoursView(effective, verification, false, new TimeOnly(12, 0), new TimeOnly(23, 0)),
+            products, [], new AssociateSaveStatus(AssociateSaveState.Saved, DateTimeOffset.UtcNow),
+            SelectedOperationalNoteSourceStates: null,
+            EarlyRideTime: new EffectiveErt(EffectiveErtKind.NoErt, EffectiveErtSource.Monthly, null, [], null));
+    }
+
+    /// <summary>Add-Ons-enabled day (Phase 17E spec §14.F/§11) — Add-Ons is the only category besides Daily Admission, proving Add-Ons never gets special-cased layout by any renderer.</summary>
+    public static AssociateWorkspace AddOnsEnabledDay()
+    {
+        var effective = ParkHoursCalculator.Calculate(false, new TimeOnly(9, 0), new TimeOnly(21, 0), false, null, null, false, null, null);
+        var verification = Verified();
+
+        var draft = AssociateDraftPayload.CreateDefault() with
+        {
+            ProjectedAttendance = 16000,
+            PreSolds = 3200,
+            DailyFeatureType = DailyFeatureType.UselessFactOfTheDay,
+            DailyFeatureText = "Carowinds straddles the North Carolina/South Carolina state line.",
+            SectionSelection = PassdownSectionSelection.AllIncluded,
+        };
+
+        var products = new List<AssociateProduct>
+        {
+            Product("dated|DatedAdmissionTickets|1day", "1-Day Ticket", SourceCategory.DatedAdmissionTickets, 54.99m, verification: verification),
+        };
+        products.AddRange(CategoryRun(SourceCategory.AddOns, "Add-On", 5, 12.99m, verification));
+
+        return new AssociateWorkspace(
+            Date, draft,
+            new AssociateParkHoursView(effective, verification, false, new TimeOnly(9, 0), new TimeOnly(21, 0)),
+            products, [], new AssociateSaveStatus(AssociateSaveState.Saved, DateTimeOffset.UtcNow),
+            SelectedOperationalNoteSourceStates: null,
+            EarlyRideTime: new EffectiveErt(EffectiveErtKind.NoErt, EffectiveErtSource.Monthly, null, [], null));
+    }
+
+    /// <summary>Long Daily Feature day (Phase 17E spec §14.G) — a multi-sentence Daily Feature body, proving every template wraps it safely without colliding with a numbered gutter or section rule.</summary>
+    public static AssociateWorkspace LongDailyFeatureDay()
+    {
+        var effective = ParkHoursCalculator.Calculate(false, new TimeOnly(9, 0), new TimeOnly(21, 0), false, null, null, false, null, null);
+        var verification = Verified();
+
+        var draft = AssociateDraftPayload.CreateDefault() with
+        {
+            ProjectedAttendance = 14000,
+            PreSolds = 2600,
+            DailyFeatureType = DailyFeatureType.UselessFactOfTheDay,
+            DailyFeatureText = "Carowinds opened in March 1973 as a joint venture between the Cannon family and the Bryson family, and the state line between North Carolina and South Carolina runs directly through the middle of the park property, which is why the park's mascot and marketing have long played on the idea of straddling two states at once.",
+            SectionSelection = PassdownSectionSelection.AllIncluded,
+        };
+
+        var products = new List<AssociateProduct>
+        {
+            Product("dated|DatedAdmissionTickets|1day", "1-Day Ticket", SourceCategory.DatedAdmissionTickets, 54.99m, verification: verification),
+            Product("dated|DatedFastLane|regular", "Fast Lane", SourceCategory.DatedFastLane, 39.99m, verification: verification),
+        };
+
+        return new AssociateWorkspace(
+            Date, draft,
+            new AssociateParkHoursView(effective, verification, false, new TimeOnly(9, 0), new TimeOnly(21, 0)),
+            products, [], new AssociateSaveStatus(AssociateSaveState.Saved, DateTimeOffset.UtcNow),
+            SelectedOperationalNoteSourceStates: null,
+            EarlyRideTime: new EffectiveErt(EffectiveErtKind.Configured, EffectiveErtSource.Monthly, new TimeOnly(8, 30), ["Fury 325", "Intimidator"], null));
     }
 
     private static AssociateVerificationInfo Verified() => new(AssociateVerificationState.Verified, DateTimeOffset.UtcNow.AddMinutes(-30), null, null);

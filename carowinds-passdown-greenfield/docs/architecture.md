@@ -244,7 +244,11 @@ fixes):
   `IClock`, and the PDF export/save-file abstractions below; it never touches
   a repository, HTTP, Playwright, or SQL directly, and never re-derives the
   North Gate (-30 min)/Avenue (-45 min) offset math itself (always re-runs
-  `ParkHoursCalculator.Calculate`). Adds debounced autosave (serialized by a
+  `ParkHoursCalculator.Calculate`). Early Ride Time's start (Phase 13F) is the
+  same `EffectiveHours.NorthGateOpening` value, never a second calculation —
+  the supervisor manages only ERT rides; the start time is read-only and
+  derived live from whatever Manual Hours/Private Buyout state is currently
+  in the editable form. Adds debounced autosave (serialized by a
   semaphore so an in-flight save and a newer edit can never race), explicit
   flush points before a date switch/Check Online/Create PDF, editable
   product sections and custom-product rows, and the blue/white/red
@@ -688,3 +692,183 @@ legacy-machine collision verification against a real legacy install, the sanitiz
 export, nontechnical-tester instructions, and any further reduction of the Playwright package's
 footprint. Manager workflow remains out of scope per CLAUDE.md's current scope decision,
 unaffected by this phase.
+
+## Phase 12A — Operations Calendar foundation
+
+Full design rationale, date-semantics detail, and the "real bug found and fixed" note live in
+`docs/phase12-operations-calendar.md`; this section only records what was added and where.
+
+Phase 12A adds a fifth top-level app-shell section, `AppSection.OperationsCalendar`
+(`Dashboard | Operations Calendar | Associate Passdown | Operational Notes | History`), placed
+between Dashboard and Associate Passdown — a month-grid planning/routing surface, built the same
+way Phase 10A's Dashboard and Phase 9D's History were: a local-only Application-layer read model
+projected over existing state, never a second business-rule implementation.
+
+- **Application** (`Carowinds.Passdown.Application.Calendar`): `IOperationsCalendarService`/
+  `OperationsCalendarService` — depends on `IAssociatePassdownService` (the selected date's own
+  composed workspace), `IAssociateDraftRepository` (`ListSavedDraftDatesAsync`, the same signal
+  Phase 9B's `ScheduledPassdownFinalizer` already uses for eligibility), `IFinalizedPassdownRepository`
+  (metadata only via `ListAsync` — never `GetByDateAsync`, so a calendar load can never materialize
+  a historical PDF blob), `IOperationalNotesService` (`ListAsync` plus the existing
+  `OperationalNoteRelevance.IsRelevantForDate` predicate, applied in memory per day — never a second
+  relevance rule), and `IClock`. `OperationsCalendarSnapshot` carries a month grid
+  (`OperationsCalendarDay`: date, in-month/today flags, finalized/draft/note-count indicators) plus
+  one `OperationsCalendarSelectedDateSummary` (passdown status — NoDraft/DraftInProgress/Finalized —
+  plus note count) for whichever date is currently selected. Exactly three repository/service calls
+  happen per load regardless of grid size, never an N+1 per day cell.
+- **Desktop** (`OperationsCalendarViewModel`, `OperationsCalendarDayViewModel`,
+  `OperationsCalendarPresentation`, `OperationsCalendarView.axaml`): depends only on
+  `IOperationsCalendarService`/`IClock` — no repository/HTTP/PDF dependency, mirroring
+  `OperationsDashboardViewModel`'s own shape. "Today" is always Eastern via `IClock`+
+  `EasternTimeZone`, never `DateTime.Today`/`.Now`. `SelectedDate` is independent of
+  `AssociateViewModel.SelectedDate` except through the one explicit "Open Passdown" action, which
+  sets it deliberately (the Calendar's whole purpose is routing to a specific date) — "Open
+  History"/"Open Operational Notes" stay generic navigation, the same choice Phase 10C already made
+  and documented for Dashboard's own routing (evaluated again here, not re-litigated). `MainViewModel`
+  remains the sole navigation owner; the Calendar view model itself has no knowledge of `AppSection`
+  or any sibling view model.
+- **Tests**: `OperationsCalendarServiceTests` (Application, 18 cases — grid completeness/weekday
+  alignment across several month shapes, Eastern-today near a UTC boundary, per-day/selected-date
+  classification, the never-loads-a-PDF-blob guarantee), `OperationsCalendarViewModelTests` (13),
+  `OperationsCalendarViewTests` (4), plus extensions to `MainViewModelNavigationTests` (state
+  isolation between Calendar and Associate/History/Operational Notes in both directions, the dirty-
+  Operational-Notes-editor guard extended to Calendar's own nav command) and `CompositionRootTests`.
+  1286/1286 total (1242 Phase 11F baseline + 44 new), 0 warnings/errors, run twice for flakiness.
+
+No schema change — database schema stays 10, snapshot schema stays 1. Deferred to 12B+: richer
+per-day overlays, denser note previews, a History date-preselection seam, Alerts, and the Manager
+workflow (still out of scope per CLAUDE.md).
+
+## Phase 12B — Park Hours and Operating-State overlays
+
+Full design rationale (including the finalized-date and stale-indicator decisions) lives in
+`docs/phase12-operations-calendar.md`'s own Phase 12B section; this entry only records what changed
+and where.
+
+Phase 12B adds a park-hours/operating-state layer on top of 12A's Calendar foundation — every day
+cell and the selected-date panel now show a compact effective-hours summary (`Open`/`Closed`/
+`Custom Hours`/`Private Buyout`/`Not Published`/`Unavailable`), reusing the existing hours engine
+rather than building a second one:
+
+- **Application** (`Carowinds.Passdown.Associate`): `AssociatePassdownService`'s previously-private
+  `ComposeParkHours` and `DeserializeDraft` (plus its legacy-migration helpers) were extracted,
+  unchanged, into two new public static types — `AssociateParkHoursComposer.Compose` and
+  `AssociateDraftPayloadSerializer.Deserialize` — so `AssociatePassdownService` and the new
+  `OperationsCalendarService` logic call the exact same code, never two hours/deserialization
+  implementations. `IDatedResultRepository`/`IAssociateDraftRepository` each gained one new
+  date-range query method (`GetByCategoryAndDateRangeAsync`/`GetByDateRangeAsync`, both SQLite- and
+  in-memory-implemented) so a month's worth of park hours can be composed from exactly two extra
+  local queries regardless of grid size, never one query per day cell.
+- **`Application.Calendar`**: `OperationsCalendarOperatingState` (a new enum, structurally identical
+  to `Dashboard.DashboardParkStatus` but deliberately independent, matching the same
+  peer-feature-vocabulary precedent Phase 12A already set for `OperationsCalendarPassdownStatus`).
+  `OperationsCalendarDay`/`OperationsCalendarSelectedDateSummary` each gained `OperatingState` and
+  the full `AssociateParkHoursView` (`ParkHours`) — carried whole so the Desktop layer can reuse
+  `Desktop.Presentation.ParkHoursPresentation.Build` directly rather than a second formatter.
+- **Desktop**: `OperationsCalendarOperatingStatePresentation` (new) formats the compact day-cell
+  vocabulary (never recomputes hours or a freshness rule); `OperationsCalendarPresentation` gained
+  Park Status/Effective Hours/verification/staleness fields for the selected-date panel, built by
+  calling `ParkHoursPresentation.Build` once. No color-per-operating-state was added (explicit
+  instruction) — the compact text labels are the entire state signal; a pre-existing amber
+  "warning, not error" brush is reused only for the new Stale indicator.
+- **Tests**: 37 new — `OperationsCalendarServiceTests` +14 (every operating state, draft-override
+  precedence, Dashboard/Calendar classification parity, finalized-date live-vs-frozen-hours
+  behavior, exactly-one-range-query-per-load), `OperationsCalendarViewModelTests` +7 (accessibility
+  text per state, Today+Selected coexistence), two new presentation-test files (11 tests), and
+  `OperationsCalendarViewTests` +4 (mixed-state month, 1280×860/960×640 layout passes, selected-date
+  panel binding). 1323/1323 total (1286 Phase 12A baseline + 37 new), 0 warnings/errors.
+
+**Decision, documented not silently made**: a finalized historical date's Calendar cell shows live/
+current composed hours, never the frozen `FinalizedPassdownSnapshot` for that date (mixing raw
+`TimeOnly`-based live composition with the snapshot's pre-formatted display strings would need a
+second hours representation, and reading it would cost one more per-finalized-date query — both
+deliberately avoided). No schema change — database schema stays 10, `AssociateDraftPayload` schema
+stays 3, snapshot schema stays 1. Deferred to 12C+: source-health overlays beyond park hours, denser
+note previews, a History date-preselection seam, a frozen-hours read model for finalized dates,
+Alerts, and the Manager workflow (still out of scope per CLAUDE.md).
+
+## Phase 13B additions — refresh-mode model and explicit-refresh coverage
+
+Full rationale, the source-coverage matrix, and validation live in `docs/phase13-hardening.md`'s own
+Phase 13B section; this entry only records the refresh-orchestration API contract changes, since
+those affect how later phases call into `Carowinds.Passdown.Application.Refresh`/`Concurrency`.
+
+- **`Carowinds.Passdown.Application.Refresh.RefreshMode`** (new enum: `Scheduled`, `StartupCatchUp`,
+  `UserForced`) makes refresh intent explicit at the one place that needed it —
+  `IScheduledRefreshRunner.RunAsync(RefreshMode mode, CancellationToken)` now takes this purely for
+  accurate logging (`ScheduledRefreshHost` passes `Scheduled`; `StartupCatchUpRefresh` passes
+  `StartupCatchUp`; both still call the identical due-based `RunScheduledRefreshAsync` underneath —
+  confirmed correct by Phase 13A, not redesigned). `RunAsync` throws for `UserForced`, since that
+  mode never reaches this runner.
+- **`IRefreshOrchestrator.RunManualDateRefreshAsync` was renamed to `RunUserForcedRefreshAsync`** and
+  extended: it now plans every registered `SourceScope.Catalog` registration (Season Passes, both
+  Add-Ons source ids, Promotions) alongside the previously-covered `SourceScope.Dated` registrations
+  for the requested date, all unconditionally (no freshness gate), still without updating
+  `source_state`. `RefreshJobType.ManualSingleDate` was renamed to `RefreshJobType.UserForced` to
+  match. This is the sole entry point `AssociatePassdownService.CheckAssociateDateOnlineAsync` calls
+  — Dashboard and Associate's own Check Online actions both reach it through that one shared method,
+  so neither screen carries its own source-family list.
+- **`IScheduledRefreshLock` relocated** from `Carowinds.Passdown.Infrastructure.Concurrency` to
+  `Carowinds.Passdown.Application.Concurrency` (interface only — the concrete
+  `Infrastructure.Concurrency.FileScheduledRefreshLock` implementation is unchanged in place),
+  mirroring the existing repository-port pattern, so `AssociatePassdownService` (Application layer)
+  can depend on the abstraction directly. `AssociatePassdownService` gained an optional
+  `Func<IScheduledRefreshLock>? refreshLockFactory = null` constructor parameter (default `null` =
+  no overlap protection, matching every pre-13B caller); when supplied (the Desktop composition root
+  now does), `CheckAssociateDateOnlineAsync` acquires the same file lock a scheduled refresh/startup
+  catch-up would hold, and returns a distinct `RefreshSummary.AlreadyInProgress(...)` result
+  (`WasSkippedDueToOverlap: true`) rather than running a second concurrent orchestrator job if that
+  lock is already held.
+- **`RefreshSummary` gained one additive field**, `bool WasSkippedDueToOverlap = false` (a trailing
+  optional record parameter — every pre-13B positional-constructor call site is unaffected), plus a
+  `RefreshSummary.AlreadyInProgress(DateTimeOffset)` factory.
+
+No schema change (database schema stays 10, `AssociateDraftPayload` schema stays 3, snapshot schema
+stays 1) and no startup-architecture change — `App.OnFrameworkInitializationCompleted`'s
+migration-then-window-then-detached-catch-up ordering is exactly as Phase 6B left it.
+
+## Phase 13D additions — Deep Refresh architecture
+
+Full rationale, measurement, and validation live in `docs/phase13-hardening.md`'s own Phase 13D
+section; this entry only records the API-contract/schema changes future phases need to know about.
+
+- **`IRefreshOrchestrator` gained one new method**: `RunDeepRefreshAsync(bool bypassFreshness,
+  DateOnly? focusDate, IProgress<RefreshProgress>? progress, CancellationToken)` — the one
+  authoritative coverage-aware maintenance operation, shared by scheduled/startup-catch-up
+  (`bypassFreshness: false`), the manual "Run Deep Refresh" button, and the insufficient-coverage
+  Check Online bootstrap (both `bypassFreshness: true`). Always plans Park Hours across the full
+  future coverage window (`Application.Freshness.ParkHoursCoveragePlanner` — today through the end of
+  next calendar month) unconditionally; every other source is either due-gated (reusing the existing
+  `PlanScheduledOperationsAsync` logic verbatim) or fully unconditional, depending on
+  `bypassFreshness`. Unlike `RunUserForcedRefreshAsync`, this method *does* update `source_state` —
+  a Deep Refresh genuinely is a fresh check for every source it touches.
+- **`ScheduledRefreshRunner`** (both `RefreshMode.Scheduled` and `RefreshMode.StartupCatchUp`) now
+  calls `RunDeepRefreshAsync(bypassFreshness: false, ...)` instead of the old
+  `RunScheduledRefreshAsync` — literally reusing the same operation, not a second implementation.
+  `RunScheduledRefreshAsync` itself is unchanged and still exists (still exercised directly by its own
+  test suite), simply no longer called from this one production call site.
+- **`AssociatePassdownService.CheckAssociateDateOnlineAsync`** gained an optional
+  `IDeepRefreshStatusRepository? deepRefreshStatusRepository = null` constructor parameter (default
+  `null` preserves every pre-13D caller/test unconditionally). When supplied, it computes
+  `Application.Freshness.DeepRefreshCoverage.NeedsDeepRefresh` first; if coverage is insufficient it
+  calls `RunDeepRefreshAsync(bypassFreshness: true, focusDate: operatingDate, ...)` instead of the
+  normal `RunUserForcedRefreshAsync(operatingDate, ...)`.
+- **`IOperationsDashboardService`** gained `GetDeepRefreshStatusAsync`/`RunDeepRefreshAsync` (the
+  manual-button entry point), backed by new optional `OperationsDashboardService` constructor
+  parameters (`IRefreshOrchestrator?`, `IDeepRefreshStatusRepository?`,
+  `Func<IScheduledRefreshLock>?`, all default `null`) — `GetTodayAsync`/`LoadAsync` never reach the
+  orchestrator regardless of whether these are supplied (proven behaviorally, not just by
+  constructor-signature absence, since the orchestrator dependency is now a legitimate, if optional,
+  part of this service's contract).
+- **New persistence**: `Application.Persistence.IDeepRefreshStatusRepository`/
+  `DeepRefreshStatusRecord` (`LastAttemptAtUtc`, `LastSuccessAtUtc`, `Outcome`
+  [`Success`/`Partial`/`Failed`], `CoverageThrough`, `SourceSuccessCount`, `SourceFailureCount`) — one
+  single-row SQLite table, `Migration0011CreateDeepRefreshStatusTable`
+  (`Infrastructure.Storage.Repositories.SqliteDeepRefreshStatusRepository`). Written truthfully by
+  `RefreshOrchestrator.RunDeepRefreshAsync` itself after every run, from every trigger, so no call
+  site can forget to record it.
+
+**Database schema: 10 → 11** (the one new table above). `AssociateDraftPayload` schema stays 3;
+`FinalizedPassdownSnapshot` schema stays 1 — neither was touched; both waterpark hours
+(`ParkHoursPayload`'s two new nullable fields) and PDF page count (`AssociatePassdownPdfResult.PageCount`)
+are additive-nullable/transient values that needed no schema change of their own.

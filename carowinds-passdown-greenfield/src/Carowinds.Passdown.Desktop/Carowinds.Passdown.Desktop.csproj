@@ -2,6 +2,10 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Phase 13G: the approved app icon, embedded into the published .exe's icon resource (Windows
+         Explorer/taskbar) and reused as the Avalonia window icon (Views/MainWindow.axaml). One
+         canonical source asset (Assets/logo.ico), not a separate icon per surface. -->
+    <ApplicationIcon>Assets\logo.ico</ApplicationIcon>
   </PropertyGroup>
 
   <!--
@@ -12,17 +16,47 @@
     correctness risk for no proven benefit, and a normal publish directory is easier to
     troubleshoot on a nontechnical user's machine. See docs/release-strategy.md for the full
     rationale and the exact publish command (packaging/windows/Publish-Windows.ps1).
+
+    Phase 15D: PublishReadyToRun=true is set unconditionally but only takes effect when publishing
+    with a RuntimeIdentifier (dotnet build/test/run are unaffected — confirmed no RID is set for
+    any of those). Unlike PublishTrimmed/PublishAot, R2R keeps full IL/metadata and reflection
+    working exactly as today (it only adds pre-JITted native code alongside the IL as a fast path,
+    with normal JIT as the fallback) — it does not carry the trimming risk the paragraph above
+    documents. This targets a real, measured cause of "packaged EXE feels slow to open": a
+    self-contained, non-R2R publish must JIT Avalonia/Skia/HarfBuzz/the app's own assemblies from
+    IL on every cold start, before any composition-root/DB work (which Phase 13A/15D profiling
+    both measured at low-single-digit milliseconds) even begins. Verified in this environment: a
+    self-contained win-x64 publish with this flag set succeeds (the win-x64 crossgen2
+    cross-compilation tool pack restores via NuGet from a non-Windows host) and produces valid
+    win-x64 assemblies (~7% larger publish output — Desktop.dll 3.3MB vs 2.2MB unmodified). Actual
+    wall-clock time-to-first-window improvement on Windows is NOT verified in this environment (no
+    Windows host available) — see docs/phase13-hardening.md's Phase 15D
+    section for the full measurement/reasoning and the 15F Windows validation item this leaves
+    behind.
   -->
+  <PropertyGroup>
+    <PublishReadyToRun>true</PublishReadyToRun>
+  </PropertyGroup>
 
   <ItemGroup>
     <Folder Include="Models\" />
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
 
+  <!--
+    Phase 15F: embedded resource rather than a physical Content file copied next to the .exe.
+    App.axaml.cs.BuildServiceProvider reads it via Assembly.GetManifestResourceStream, which works
+    identically for dotnet build/test/run, the existing multi-file publish, and a true single-file
+    publish — a physical-file lookup via AppContext.BaseDirectory would silently miss the file for a
+    single-file publish that bundles content via IncludeAllContentForSelfExtract (files are
+    extracted to a %TEMP%/.net staging directory, not the directory AppContext.BaseDirectory
+    resolves to for the executable itself — see docs/release-strategy.md "Single-file publish").
+    Since Storage/Logging are the only two settings this file carries and neither is
+    secret/machine-specific, embedding is a strict robustness improvement with no configurability
+    lost - it's still an editable JSON file, just compiled into the DLL instead of copied loose.
+  -->
   <ItemGroup>
-    <Content Include="appsettings.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    <EmbeddedResource Include="appsettings.json" />
   </ItemGroup>
 
   <ItemGroup>
@@ -49,4 +83,25 @@
     <ProjectReference Include="..\Carowinds.Passdown.Infrastructure\Carowinds.Passdown.Infrastructure.csproj" />
     <ProjectReference Include="..\Carowinds.Passdown.Documents\Carowinds.Passdown.Documents.csproj" />
   </ItemGroup>
+
+  <!--
+    Phase 15F: Carowinds.Passdown.Documents.csproj now embeds QuestPDF's "Lato" font files as
+    resources instead of relying on QuestPDF's own physical-directory auto-discovery (see that
+    project's comment), but QuestPDF's buildTransitive/QuestPDF.targets still unconditionally adds
+    the original loose *.ttf files as CopyToOutputDirectory content — they're transitively pulled
+    into this project's publish output via the Documents ProjectReference regardless, since a
+    same-project exclusion in Documents.csproj can't reach items resolved this late in a
+    cross-project publish. Filtering the final ResolvedFileToPublish list here (the one place that's
+    authoritative for what actually gets copied, no matter which project or package originated an
+    item) is what makes this project's publish output — multi-file and single-file alike — not ship
+    a now-fully-redundant duplicate of font bytes that already live inside Carowinds.Passdown.Documents.dll.
+    OFL.txt (the font's license notice) is deliberately kept - it's not font content, just a
+    required third-party attribution file, and Compress/Publish scripts already expect to find and
+    ship it.
+  -->
+  <Target Name="RemoveRedundantLatoFontTtfFromPublish" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(ResolvedFileToPublish.Extension)' == '.ttf' and $([System.String]::Copy('%(ResolvedFileToPublish.Identity)').Contains('LatoFont'))" />
+    </ItemGroup>
+  </Target>
 </Project>

@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Persistence;
+using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Retrieval;
 
 namespace Carowinds.Passdown.Application.Tests.TestSupport;
@@ -13,6 +14,13 @@ internal sealed class InMemoryDatedResultRepository : IDatedResultRepository
     public Task<IReadOnlyList<DatedResultRecord>> GetByRequestedDateAsync(DateOnly requestedDate, CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<DatedResultRecord>>(
             _records.Values.Where(r => r.Key.Date == requestedDate).ToList());
+
+    public Task<IReadOnlyList<DatedResultRecord>> GetByCategoryAndDateRangeAsync(SourceCategory category, DateOnly startDate, DateOnly endDateInclusive, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<DatedResultRecord>>(
+            _records.Values
+                .Where(r => r.Key.Category == category && r.Key.Date >= startDate && r.Key.Date <= endDateInclusive)
+                .OrderBy(r => r.Key.Date)
+                .ToList());
 
     public Task RecordSuccessAsync(DatedResultKey key, SourceEvidence evidence, string? payloadJson, CancellationToken cancellationToken = default)
     {

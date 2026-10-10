@@ -1,5 +1,7 @@
 using Carowinds.Passdown.Application.Refresh;
 
+using Carowinds.Passdown.Application.OperationalNotes;
+
 namespace Carowinds.Passdown.Application.Associate;
 
 /// <summary>
@@ -26,13 +28,15 @@ public interface IAssociatePassdownService
     Task<AssociateWorkspace> LoadAssociateDateAsync(DateOnly operatingDate, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Explicit "Check this date online" (spec §6.3): runs the existing manual-date refresh for
-    /// <paramref name="operatingDate"/>, then recomposes the view from whatever is cached
-    /// afterward — success or failure. All manual draft fields, product include/exclude, and
-    /// display-price overrides are preserved regardless of outcome (spec §8.3/§6.7).
-    /// <paramref name="progress"/> is forwarded as-is to <see cref="Refresh.IRefreshOrchestrator.RunManualDateRefreshAsync"/>
-    /// (Phase 4B Part F's "checking park hours... 3 of 4 complete") — this method reuses the
-    /// existing refresh abstraction rather than tracking progress itself.
+    /// Explicit "Check Online" (spec §6.3, Phase 13B Part B/K — <see cref="Refresh.RefreshMode.UserForced"/>):
+    /// runs the user-forced refresh (every dated source for <paramref name="operatingDate"/>, every
+    /// catalog source once, all unconditionally) then recomposes the view from whatever is cached
+    /// afterward — success, failure, or already-in-progress alike. All manual draft fields, product
+    /// include/exclude, and display-price overrides are preserved regardless of outcome (spec
+    /// §8.3/§6.7). <paramref name="progress"/> is forwarded as-is to
+    /// <see cref="Refresh.IRefreshOrchestrator.RunUserForcedRefreshAsync"/> (Phase 4B Part F's
+    /// "checking park hours... 3 of 4 complete") — this method reuses the existing refresh
+    /// abstraction rather than tracking progress itself.
     /// </summary>
     Task<AssociateOnlineCheckResult> CheckAssociateDateOnlineAsync(DateOnly operatingDate, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default);
 
@@ -43,4 +47,38 @@ public interface IAssociatePassdownService
     /// <see cref="AssociateSaveStatus"/> while awaiting it.
     /// </summary>
     Task<AssociateSaveStatus> SaveDraftAsync(DateOnly operatingDate, AssociateDraftPayload draft, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 11D: persistent Operational Notes relevant to <paramref name="operatingDate"/> — the
+    /// Associate-selected date, not Dashboard's Eastern "today" (spec Phase 11D Part E). Suggestions
+    /// only; this never mutates the draft. The caller is responsible for excluding notes already
+    /// present in the loaded workspace's <see cref="AssociateDraftPayload.SelectedOperationalNotes"/>.
+    /// </summary>
+    Task<IReadOnlyList<OperationalNote>> GetRelevantOperationalNoteSuggestionsAsync(DateOnly operatingDate, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Explicit, user-driven inclusion of one persistent note into <paramref name="operatingDate"/>'s
+    /// Associate draft (spec Phase 11D Parts A/B/O): freezes the note's current display content into
+    /// a new <see cref="AssociateOperationalNoteSelection"/>, persists it as part of the draft, and
+    /// returns the recomposed workspace. Idempotent while already selected; throws
+    /// <see cref="InvalidOperationException"/> if the note is unknown or not currently relevant for
+    /// this date. Never mutates the source <see cref="OperationalNote"/> row.
+    /// </summary>
+    Task<AssociateWorkspace> SelectOperationalNoteAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Removes a previously selected note's frozen copy from <paramref name="operatingDate"/>'s
+    /// Associate draft (spec Phase 11D Part AH). Safe to call for a note that was never selected.
+    /// Never mutates the source <see cref="OperationalNote"/> row.
+    /// </summary>
+    Task<AssociateWorkspace> DeselectOperationalNoteAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 11E Part I/O: replaces an already-selected note's frozen copy with the source note's
+    /// current display content — the one deliberate, explicit path a selection's frozen content can
+    /// ever change through (never automatic; Part P). Preserves the selection's existing list position.
+    /// A no-op when the note is not currently selected; throws <see cref="InvalidOperationException"/>
+    /// only if the source note cannot be found at all. Never mutates the source <see cref="OperationalNote"/> row.
+    /// </summary>
+    Task<AssociateWorkspace> ReplaceOperationalNoteWithCurrentAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken cancellationToken = default);
 }

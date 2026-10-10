@@ -5,21 +5,31 @@ using Microsoft.Extensions.Logging;
 namespace Carowinds.Passdown.Application.Refresh;
 
 /// <summary>
-/// <see cref="IScheduledRefreshRunner"/> built on <see cref="IRefreshOrchestrator.RunScheduledRefreshAsync"/>
-/// (Phase 6A Part D). Never calls <see cref="IRefreshOrchestrator.RunManualDateRefreshAsync"/> —
-/// unattended execution always runs the due-sources rolling-window job, never a single-date check.
+/// <see cref="IScheduledRefreshRunner"/> built on <see cref="IRefreshOrchestrator.RunDeepRefreshAsync"/>
+/// (Phase 6A Part D; Phase 13D Part Q: scheduled/startup-catch-up maintenance now reuses the same
+/// authoritative Deep Refresh operation the manual "Run Deep Refresh" button uses, rather than a
+/// second/narrower implementation — called with <c>bypassFreshness: false</c> so every non-Park-Hours
+/// source stays due-gated exactly as the prior due-sources rolling-window job was, while Park Hours
+/// still always extends to its full future coverage window). Never calls
+/// <see cref="IRefreshOrchestrator.RunUserForcedRefreshAsync"/> — unattended execution always runs
+/// this due-gated deep-maintenance job, never a user-forced check.
 /// </summary>
 public sealed class ScheduledRefreshRunner(
     IRefreshOrchestrator orchestrator,
     IClock clock,
     ILogger<ScheduledRefreshRunner> logger) : IScheduledRefreshRunner
 {
-    public async Task<ScheduledRefreshResult> RunAsync(CancellationToken cancellationToken = default)
+    public async Task<ScheduledRefreshResult> RunAsync(RefreshMode mode, CancellationToken cancellationToken = default)
     {
-        var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
-        logger.LogInformation("Scheduled refresh started at {StartedAt} (version {Version}).", clock.UtcNow, version);
+        if (mode == RefreshMode.UserForced)
+        {
+            throw new ArgumentOutOfRangeException(nameof(mode), mode, $"{nameof(ScheduledRefreshRunner)} never runs in {nameof(RefreshMode.UserForced)} mode — that mode has its own entry point.");
+        }
 
-        var summary = await orchestrator.RunScheduledRefreshAsync(progress: null, cancellationToken).ConfigureAwait(false);
+        var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
+        logger.LogInformation("Scheduled refresh started ({Mode}) at {StartedAt} (version {Version}).", mode, clock.UtcNow, version);
+
+        var summary = await orchestrator.RunDeepRefreshAsync(bypassFreshness: false, focusDate: null, progress: null, cancellationToken).ConfigureAwait(false);
 
         LogSummary(summary);
 

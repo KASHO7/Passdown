@@ -12,7 +12,7 @@ set "INSTALL_SCRIPT=%APP_DIR%tools\Install-ScheduledRefresh.ps1"
 
 if not exist "%APP_EXE%" (
     echo Could not find Carowinds.Passdown.Desktop.exe next to this file.
-    echo Keep this file inside the extracted Carowinds Passdown folder and try again.
+    echo Keep this file inside the extracted Carowinds Operations folder and try again.
     echo.
     pause
     exit /b 1
@@ -20,13 +20,13 @@ if not exist "%APP_EXE%" (
 
 if not exist "%INSTALL_SCRIPT%" (
     echo Could not find tools\Install-ScheduledRefresh.ps1 next to this file.
-    echo Keep this file inside the extracted Carowinds Passdown folder and try again.
+    echo Keep this file inside the extracted Carowinds Operations folder and try again.
     echo.
     pause
     exit /b 1
 )
 
-echo Enabling automatic refresh for this copy of Carowinds Passdown...
+echo Enabling automatic refresh for this copy of Carowinds Operations...
 echo.
 
 rem -ExecutionPolicy Bypass applies only to this one PowerShell process (Part D). It does not
@@ -45,6 +45,6 @@ if not "%RESULT%"=="0" (
 )
 
 echo Automatic refresh is enabled.
-echo Carowinds Passdown will check for due updates each day.
+echo Carowinds Operations will check for due updates each day.
 echo.
 pause

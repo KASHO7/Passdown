@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Produces a reproducible self-contained win-x64 Release publish of Carowinds Passdown into a
+    Produces a reproducible self-contained win-x64 Release publish of Carowinds Operations into a
     clean staging directory.
 
 .DESCRIPTION
@@ -67,7 +67,7 @@ if (Test-Path -LiteralPath $OutputDirectory) {
 }
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 
-Write-Host "Publishing Carowinds Passdown (Release, win-x64, self-contained)..."
+Write-Host "Publishing Carowinds Operations (Release, win-x64, self-contained)..."
 Write-Host "  Project: $desktopProject"
 Write-Host "  Output:  $OutputDirectory"
 

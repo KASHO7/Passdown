@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Desktop.ScheduledRefresh;
 using Carowinds.Passdown.Infrastructure.Storage;
@@ -18,7 +19,8 @@ namespace Carowinds.Passdown.Ui.Tests.ScheduledRefresh;
 /// </summary>
 public class ScheduledRefreshHostTests
 {
-    private static IServiceProvider BuildMinimalProvider(IScheduledRefreshRunner runner, string? databasePath = null)
+    private static IServiceProvider BuildMinimalProvider(
+        IScheduledRefreshRunner runner, string? databasePath = null, IScheduledPassdownFinalizer? finalizer = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -31,6 +33,7 @@ public class ScheduledRefreshHostTests
         }
 
         services.AddSingleton(runner);
+        services.AddSingleton(finalizer ?? new FakeScheduledPassdownFinalizer());
 
         return services.BuildServiceProvider();
     }
@@ -49,6 +52,27 @@ public class ScheduledRefreshHostTests
 
             Assert.Equal(ScheduledRefreshExitCode.Success, exitCode);
             Assert.Equal(1, runner.CallCount);
+        }
+        finally
+        {
+            File.Delete(tempDb);
+        }
+    }
+
+    // Phase 13B Part A: the unattended host always identifies itself as RefreshMode.Scheduled to the
+    // runner, never StartupCatchUp or UserForced.
+    [Fact]
+    public async Task RunAsync_InvokesRunnerWithScheduledMode()
+    {
+        var runner = new FakeScheduledRefreshRunner { ResultToReturn = FakeScheduledRefreshRunner.EmptySuccess() };
+        var tempDb = Path.Combine(Path.GetTempPath(), $"carowinds-passdown-6a-{Guid.NewGuid():N}.db");
+        try
+        {
+            var host = new ScheduledRefreshHost(() => BuildMinimalProvider(runner, tempDb));
+
+            await host.RunAsync();
+
+            Assert.Equal([RefreshMode.Scheduled], runner.ModesInvoked);
         }
         finally
         {
@@ -366,5 +390,115 @@ public class ScheduledRefreshHostTests
         var exitCode = await host.RunAsync();
 
         Assert.Equal(ScheduledRefreshExitCode.Overlap, exitCode);
+    }
+
+    // Phase 9B Part B/Y #6: finalization must complete before the refresh runner is ever invoked.
+    [Fact]
+    public async Task RunAsync_InvokesFinalizationBeforeRefreshRunner()
+    {
+        var callOrder = new List<string>();
+        var finalizer = new FakeScheduledPassdownFinalizer
+        {
+            OnFinalize = _ =>
+            {
+                callOrder.Add("finalize");
+                return Task.FromResult(ScheduledFinalizationSummary.None);
+            },
+        };
+        var runner = new FakeScheduledRefreshRunner
+        {
+            OnRun = _ =>
+            {
+                callOrder.Add("refresh");
+                return Task.FromResult(FakeScheduledRefreshRunner.EmptySuccess());
+            },
+        };
+        var tempDb = Path.Combine(Path.GetTempPath(), $"carowinds-passdown-9b-{Guid.NewGuid():N}.db");
+        try
+        {
+            var host = new ScheduledRefreshHost(() => BuildMinimalProvider(runner, tempDb, finalizer));
+
+            var exitCode = await host.RunAsync();
+
+            Assert.Equal(ScheduledRefreshExitCode.Success, exitCode);
+            Assert.Equal(["finalize", "refresh"], callOrder);
+            Assert.Equal(1, finalizer.CallCount);
+            Assert.Equal(1, runner.CallCount);
+        }
+        finally
+        {
+            File.Delete(tempDb);
+        }
+    }
+
+    // Phase 9B Part H/Y #7: an eligible finalization that fails must block refresh entirely for
+    // this invocation, and report the existing FatalFailure exit code (no new exit code added).
+    [Fact]
+    public async Task RunAsync_FinalizationThrows_ReturnsFatalFailureExitCode_AndNeverInvokesRefreshRunner()
+    {
+        var finalizer = new FakeScheduledPassdownFinalizer { OnFinalize = _ => throw new InvalidOperationException("simulated finalization failure") };
+        var runner = new FakeScheduledRefreshRunner();
+        var tempDb = Path.Combine(Path.GetTempPath(), $"carowinds-passdown-9b-{Guid.NewGuid():N}.db");
+        try
+        {
+            var host = new ScheduledRefreshHost(() => BuildMinimalProvider(runner, tempDb, finalizer));
+
+            var exitCode = await host.RunAsync();
+
+            Assert.Equal(ScheduledRefreshExitCode.FatalFailure, exitCode);
+            Assert.Equal(0, runner.CallCount);
+        }
+        finally
+        {
+            File.Delete(tempDb);
+        }
+    }
+
+    // Phase 9B Part I/Y #8: "nothing to finalize" is a safe skip, not a failure — refresh still runs
+    // and the invocation still reports Success.
+    [Fact]
+    public async Task RunAsync_NoEligibleFinalization_StillRunsRefresh_AndReturnsSuccessExitCode()
+    {
+        var finalizer = new FakeScheduledPassdownFinalizer { ResultToReturn = ScheduledFinalizationSummary.None };
+        var runner = new FakeScheduledRefreshRunner { ResultToReturn = FakeScheduledRefreshRunner.EmptySuccess() };
+        var tempDb = Path.Combine(Path.GetTempPath(), $"carowinds-passdown-9b-{Guid.NewGuid():N}.db");
+        try
+        {
+            var host = new ScheduledRefreshHost(() => BuildMinimalProvider(runner, tempDb, finalizer));
+
+            var exitCode = await host.RunAsync();
+
+            Assert.Equal(ScheduledRefreshExitCode.Success, exitCode);
+            Assert.Equal(1, runner.CallCount);
+        }
+        finally
+        {
+            File.Delete(tempDb);
+        }
+    }
+
+    // Phase 9B Part S/Y #20: a successful finalization must not mask a genuine refresh partial
+    // failure — the existing PartialFailure exit code still surfaces.
+    [Fact]
+    public async Task RunAsync_SuccessfulFinalization_RefreshPartialFailure_StillReturnsPartialFailureExitCode()
+    {
+        var finalizer = new FakeScheduledPassdownFinalizer
+        {
+            ResultToReturn = new ScheduledFinalizationSummary(1, 1, 0, [new ScheduledFinalizationEntry(new DateOnly(2026, 8, 25), FinalizationOrigin.Scheduled)]),
+        };
+        var runner = new FakeScheduledRefreshRunner { ResultToReturn = FakeScheduledRefreshRunner.PartialFailure() };
+        var tempDb = Path.Combine(Path.GetTempPath(), $"carowinds-passdown-9b-{Guid.NewGuid():N}.db");
+        try
+        {
+            var host = new ScheduledRefreshHost(() => BuildMinimalProvider(runner, tempDb, finalizer));
+
+            var exitCode = await host.RunAsync();
+
+            Assert.Equal(ScheduledRefreshExitCode.PartialFailure, exitCode);
+        }
+        finally
+        {
+            File.Delete(tempDb);
+        }
     }
 }

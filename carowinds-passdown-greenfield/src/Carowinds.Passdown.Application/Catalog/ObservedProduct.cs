@@ -13,6 +13,14 @@ namespace Carowinds.Passdown.Application.Catalog;
 /// missing from the retrieved set: it means the source *did* list the product but
 /// explicitly flagged it expired/sold out, which archives immediately rather than
 /// waiting for a second confirmed-absence check (spec §7.3).
+///
+/// <see cref="ValidThroughDate"/> is a third, distinct signal (spec Phase 17A §1/§2): an
+/// authoritative last-valid-day for the offer, populated only by an adapter that has live evidence
+/// of one on the source page itself (none currently do — see <c>PromotionsCatalogSource</c>'s own
+/// doc comment for why no per-product validity field is populated from that page today). When
+/// present, <see cref="IProductReconciliationService"/> archives the product immediately, the same
+/// way <see cref="IsExplicitlyUnavailable"/> does, once the current Eastern date is past it — never
+/// waiting for the source to separately confirm the card gone.
 /// </summary>
 public sealed record ObservedProduct(
     CatalogProductKey Key,
@@ -24,4 +32,5 @@ public sealed record ObservedProduct(
     bool DateSpecific,
     DateOnly? ApplicableDate,
     bool IsExplicitlyUnavailable = false,
-    string? UnavailableReason = null);
+    string? UnavailableReason = null,
+    DateOnly? ValidThroughDate = null);

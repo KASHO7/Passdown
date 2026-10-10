@@ -26,12 +26,54 @@ public sealed class SqliteAssociateDraftRepository(SqliteConnectionFactory conne
             UpdatedAt: SqliteConvert.ReadDateTimeOffset(reader, 3));
     }
 
-    public async Task SaveAsync(AssociateDraft draft, CancellationToken cancellationToken = default)
+    public async Task SaveAsync(AssociateDraft draft, IUnitOfWork? unitOfWork = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(draft);
 
+        if (unitOfWork is SqliteUnitOfWork sqliteUnitOfWork)
+        {
+            using var sharedCommand = sqliteUnitOfWork.Connection.CreateCommand();
+            sharedCommand.Transaction = sqliteUnitOfWork.Transaction;
+            ConfigureSaveCommand(sharedCommand, draft);
+            await sharedCommand.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         using var command = connection.CreateCommand();
+        ConfigureSaveCommand(command, draft);
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Deletes the draft row for <paramref name="operatingDate"/>, if one exists (Phase 16D §13) — the
+    /// sync engine's tombstone primitive; no product delete action calls this today (§12).
+    /// </summary>
+    public async Task DeleteAsync(DateOnly operatingDate, IUnitOfWork? unitOfWork = null, CancellationToken cancellationToken = default)
+    {
+        if (unitOfWork is SqliteUnitOfWork sqliteUnitOfWork)
+        {
+            using var sharedCommand = sqliteUnitOfWork.Connection.CreateCommand();
+            sharedCommand.Transaction = sqliteUnitOfWork.Transaction;
+            ConfigureDeleteCommand(sharedCommand, operatingDate);
+            await sharedCommand.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        ConfigureDeleteCommand(command, operatingDate);
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static void ConfigureDeleteCommand(SqliteCommand command, DateOnly operatingDate)
+    {
+        command.CommandText = "DELETE FROM associate_drafts WHERE operating_date = $operatingDate;";
+        command.Parameters.AddWithValue("$operatingDate", SqliteConvert.ToText(operatingDate));
+    }
+
+    private static void ConfigureSaveCommand(SqliteCommand command, AssociateDraft draft)
+    {
         command.CommandText =
             """
             INSERT INTO associate_drafts (operating_date, schema_version, payload_json, updated_at_utc)
@@ -45,7 +87,43 @@ public sealed class SqliteAssociateDraftRepository(SqliteConnectionFactory conne
         command.Parameters.AddWithValue("$schemaVersion", draft.SchemaVersion);
         command.Parameters.AddWithValue("$payloadJson", draft.PayloadJson);
         command.Parameters.AddWithValue("$updatedAt", SqliteConvert.ToText(draft.UpdatedAt));
+    }
 
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    public async Task<IReadOnlyList<AssociateDraft>> GetByDateRangeAsync(DateOnly startDate, DateOnly endDateInclusive, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT operating_date, schema_version, payload_json, updated_at_utc FROM associate_drafts WHERE operating_date BETWEEN $startDate AND $endDate ORDER BY operating_date;";
+        command.Parameters.AddWithValue("$startDate", SqliteConvert.ToText(startDate));
+        command.Parameters.AddWithValue("$endDate", SqliteConvert.ToText(endDateInclusive));
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        var drafts = new List<AssociateDraft>();
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            drafts.Add(new AssociateDraft(
+                OperatingDate: SqliteConvert.ReadDateOnly(reader, 0),
+                SchemaVersion: reader.GetInt32(1),
+                PayloadJson: reader.GetString(2),
+                UpdatedAt: SqliteConvert.ReadDateTimeOffset(reader, 3)));
+        }
+
+        return drafts;
+    }
+
+    public async Task<IReadOnlyList<DateOnly>> ListSavedDraftDatesAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT operating_date FROM associate_drafts ORDER BY operating_date ASC;";
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        var dates = new List<DateOnly>();
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            dates.Add(SqliteConvert.ReadDateOnly(reader, 0));
+        }
+
+        return dates;
     }
 }
