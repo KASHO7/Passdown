@@ -38,6 +38,19 @@
     <PublishReadyToRun>true</PublishReadyToRun>
   </PropertyGroup>
 
+  <!--
+    Phase 18C (PKG-001 follow-up, found by Test-ReleasePackage.ps1 on the real release build):
+    Directory.Build.props' Release PathMap does not reach this assembly. Avalonia's XAML compiler
+    (CompileAvaloniaXamlTask) rewrites Carowinds.Passdown.Desktop.dll after csc and records the
+    absolute obj/.../Carowinds.Passdown.Desktop.pdb path in the PE debug directory, which leaked
+    the build machine's user name and checkout path into the shipped exe's main assembly. Release
+    builds of this project therefore emit no debug symbols at all. Nothing is lost for users:
+    .pdb files have never shipped (Publish-Windows.ps1 deletes them). Debug builds are unchanged.
+  -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
   <ItemGroup>
     <Folder Include="Models\" />
     <AvaloniaResource Include="Assets\**" />

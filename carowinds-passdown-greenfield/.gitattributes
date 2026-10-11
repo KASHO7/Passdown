@@ -3,3 +3,7 @@
 # CLAUDE.md "Platform"). This is the nontechnical double-click setup helpers from
 # Phase 7C (packaging/windows/*.cmd).
 *.cmd text eol=crlf
+
+# Third-party license texts are shipped byte-for-byte as their packages provide them
+# (Phase 18C PKG-003) - never line-ending-normalized.
+packaging/windows/licenses/** -text

@@ -11,10 +11,16 @@ namespace Carowinds.Passdown.Infrastructure.Tests.Packaging;
 /// </summary>
 public class ReleasePackageValidationTests
 {
+    /// <summary>Stand-in content: notice files get complete-looking license text (PKG-003 length/placeholder checks), everything else a short non-empty body.</summary>
+    internal static byte[] SyntheticContent(string path) =>
+        ReleasePackageValidator.Load().IsNoticeFile(path)
+            ? Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat("Permission is hereby granted, free of charge, to any person obtaining a copy. ", 4)))
+            : Encoding.UTF8.GetBytes("ok");
+
     private static Dictionary<string, Func<byte[]>> CleanRelease()
     {
         var validator = ReleasePackageValidator.Load();
-        var files = validator.RequiredFiles.ToDictionary(path => path, _ => (Func<byte[]>)(() => Encoding.UTF8.GetBytes("ok")), StringComparer.OrdinalIgnoreCase);
+        var files = validator.RequiredFiles.ToDictionary(path => path, path => (Func<byte[]>)(() => SyntheticContent(path)), StringComparer.OrdinalIgnoreCase);
         files["System.Text.Json.dll"] = () => [0x4D, 0x5A];
         files["Avalonia.Base.dll"] = () => [0x4D, 0x5A];
         return files;
@@ -50,6 +56,11 @@ public class ReleasePackageValidationTests
     [InlineData("Enable Automatic Refresh.cmd")]
     [InlineData("tools/Install-ScheduledRefresh.ps1")]
     [InlineData("LatoFont/OFL.txt")]
+    [InlineData("THIRD-PARTY-NOTICES.txt")]
+    [InlineData("licenses/dotnet-THIRD-PARTY-NOTICES.txt")]
+    [InlineData("licenses/Inter-OFL.txt")]
+    [InlineData("licenses/QuestPDF-LICENSE.txt")]
+    [InlineData("licenses/SkiaSharp-HarfBuzzSharp-THIRD-PARTY-NOTICES.txt")]
     public void MissingRequiredFile_IsAViolation(string required)
     {
         var files = CleanRelease();
@@ -165,8 +176,8 @@ public class ReleasePackageValidationTests
             {
                 foreach (var path in CleanRelease().Keys.Append("carowinds-passdown.db"))
                 {
-                    using var writer = new StreamWriter(archive.CreateEntry($"Carowinds-Operations-0.1.0-dev-win-x64/{path}").Open());
-                    writer.Write("ok");
+                    using var stream = archive.CreateEntry($"Carowinds-Operations-0.1.0-dev-win-x64/{path}").Open();
+                    stream.Write(SyntheticContent(path));
                 }
             }
 
@@ -194,7 +205,7 @@ public class ReleasePackageValidationTests
         var files = ownBinaries.ToDictionary(path => Path.GetFileName(path), path => (Func<byte[]>)(() => File.ReadAllBytes(path)));
         foreach (var required in ReleasePackageValidator.Load().RequiredFiles.Where(r => !files.ContainsKey(r)))
         {
-            files[required] = () => [];
+            files[required] = () => SyntheticContent(required);
         }
 
         var violations = ReleasePackageValidator.Load([ReleasePackageValidator.RepositoryRoot, Environment.UserName.Length >= 3 ? "/" + Environment.UserName + "/" : ""])
@@ -203,6 +214,124 @@ public class ReleasePackageValidationTests
         Assert.Empty(violations);
     }
 #endif
+
+    [Theory]
+    [InlineData("Carowinds.Passdown.Desktop.exe")]
+    [InlineData("hostfxr.dll")]
+    [InlineData("THIRD-PARTY-NOTICES.txt")]
+    public void EmptyRequiredFile_IsAViolation(string required)
+    {
+        var files = CleanRelease();
+        files[required] = () => [];
+
+        Assert.Contains(ReleasePackageValidator.Load().Validate(files), v => v == $"empty required file: {required}");
+    }
+
+    [Theory]
+    [InlineData("THIRD-PARTY-NOTICES.txt", "TODO")]
+    [InlineData("THIRD-PARTY-NOTICES.txt", "TBD")]
+    [InlineData("licenses/Inter-OFL.txt", "{{")]
+    [InlineData("licenses/Apache-2.0.txt", "<insert")]
+    [InlineData("LatoFont/OFL.txt", "<copyright>")]
+    public void NoticeFileWithUnresolvedPlaceholder_IsAViolation(string path, string placeholder)
+    {
+        var files = CleanRelease();
+        var body = Encoding.UTF8.GetString(SyntheticContent(path)) + $"\nCopyright {placeholder} holder\n";
+        files[path] = () => Encoding.UTF8.GetBytes(body);
+
+        Assert.Contains(ReleasePackageValidator.Load().Validate(files), v => v.StartsWith($"unresolved placeholder '{placeholder}'", StringComparison.Ordinal) && v.EndsWith(path, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TruncatedNoticeFile_IsAViolation()
+    {
+        var files = CleanRelease();
+        files["licenses/ANGLE-LICENSE.txt"] = () => "BSD"u8.ToArray();
+
+        Assert.Contains(ReleasePackageValidator.Load().Validate(files), v => v.StartsWith("notice file too short", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PlaceholderWordInANonNoticeFile_IsNotFlagged()
+    {
+        Assert.Empty(ValidateWith("README.txt", "TODO: nothing to do, this is the user README"));
+    }
+
+    [Fact]
+    public void ZipWithDuplicateEntries_IsAViolation()
+    {
+        var zipPath = Path.Combine(Path.GetTempPath(), $"carowinds-release-validation-{Guid.NewGuid():N}.zip");
+        try
+        {
+            using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+            {
+                foreach (var path in CleanRelease().Keys.Append("Carowinds.Passdown.Desktop.dll"))
+                {
+                    using var stream = archive.CreateEntry($"Carowinds-Operations-0.1.0-dev-win-x64/{path}").Open();
+                    stream.Write(SyntheticContent(path));
+                }
+            }
+
+            Assert.Equal(["duplicate ZIP entry: Carowinds.Passdown.Desktop.dll"], ReleasePackageValidator.Load().ValidateZip(zipPath));
+        }
+        finally
+        {
+            File.Delete(zipPath);
+        }
+    }
+
+    /// <summary>
+    /// PKG-003: the notice sources Build-PortableRelease.ps1 copies into the release
+    /// (packaging/windows/THIRD-PARTY-NOTICES.txt and licenses/) are exactly the required set, each
+    /// passes the notice-content rules, and every licenses\ file the index points to exists. Runs
+    /// offline on every host — no packaged artifact needed.
+    /// </summary>
+    [Fact]
+    public void RepositoryNoticeSources_MatchTheRequiredSet_AndAreComplete()
+    {
+        var validator = ReleasePackageValidator.Load();
+        var packagingRoot = Path.Combine(ReleasePackageValidator.RepositoryRoot, "packaging", "windows");
+        var licensesRoot = Path.Combine(packagingRoot, "licenses");
+
+        var shipped = Directory.EnumerateFiles(licensesRoot, "*", SearchOption.AllDirectories)
+            .Where(file => Path.GetFileName(file) != ".DS_Store")
+            .Select(file => "licenses/" + Path.GetRelativePath(licensesRoot, file).Replace('\\', '/'))
+            .Append("THIRD-PARTY-NOTICES.txt")
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var required = validator.RequiredFiles
+            .Where(path => path.StartsWith("licenses/", StringComparison.OrdinalIgnoreCase) || path == "THIRD-PARTY-NOTICES.txt")
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        Assert.True(shipped.SetEquals(required), $"licenses/ and requiredFiles differ: {string.Join(", ", shipped.Except(required).Concat(required.Except(shipped)))}");
+
+        foreach (var path in shipped)
+        {
+            Assert.True(validator.IsNoticeFile(path), path);
+            Assert.Empty(validator.ValidateNoticeContent(path, File.ReadAllBytes(Path.Combine(packagingRoot, path))));
+        }
+
+        var index = File.ReadAllText(Path.Combine(packagingRoot, "THIRD-PARTY-NOTICES.txt"));
+        var referenced = System.Text.RegularExpressions.Regex.Matches(index, @"licenses\\[A-Za-z0-9.\-]+(?:\\[A-Za-z0-9.\-]*)?")
+            .Select(match => match.Value.Replace('\\', '/').TrimEnd('/'))
+            .Distinct()
+            .ToList();
+        Assert.NotEmpty(referenced);
+        foreach (var reference in referenced)
+        {
+            Assert.True(File.Exists(Path.Combine(packagingRoot, reference)) || Directory.Exists(Path.Combine(packagingRoot, reference)), $"THIRD-PARTY-NOTICES.txt points to missing {reference}");
+        }
+
+        Assert.Contains("LatoFont\\OFL.txt", index, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildScript_ShipsTheThirdPartyNotices()
+    {
+        var build = File.ReadAllText(Path.Combine(ReleasePackageValidator.RepositoryRoot, "packaging", "windows", "Build-PortableRelease.ps1"));
+
+        Assert.Contains("'THIRD-PARTY-NOTICES.txt'", build, StringComparison.Ordinal);
+        Assert.Contains("'licenses'", build, StringComparison.Ordinal);
+    }
 
     [Fact]
     public void RealReleaseZip_WhenSupplied_PassesEveryRule()

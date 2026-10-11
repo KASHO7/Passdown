@@ -1,0 +1,171 @@
+Carowinds Operations - Third-Party Notices
+==========================================
+
+This release (Windows x64, self-contained) redistributes the third-party
+components listed below. For each one this file gives the version shipped,
+the license, the copyright/attribution line, and where the full license
+text is in this release.
+
+Full license and notice texts are in the "licenses" folder next to this
+file, copied unchanged from the packages they ship in, except where noted.
+The Lato font license is in "LatoFont\OFL.txt".
+
+Sources of this information: each package's NuGet metadata (license
+expression, copyright) and the LICENSE / NOTICE files included in the
+packages. Only components that are actually included in the release are
+listed. Build tools and test-only packages are not shipped and not listed.
+
+
+1. .NET runtime and libraries
+-----------------------------
+Components: .NET 10 runtime (Microsoft.NETCore.App.Runtime.win-x64 10.0.11,
+            self-contained: coreclr.dll, clrjit.dll, hostfxr.dll,
+            hostpolicy.dll, msquic.dll, System.*.dll, Microsoft.*.dll and
+            the other runtime files), Microsoft.Extensions.* 10.0.11
+            (Configuration, DependencyInjection, Logging, Options,
+            FileProviders, Primitives), Microsoft.Data.Sqlite.Core 10.0.11
+License:    MIT
+Copyright:  Copyright (c) .NET Foundation and Contributors
+Full text:  licenses\dotnet-LICENSE.txt
+Notices:    licenses\dotnet-THIRD-PARTY-NOTICES.txt (third-party code
+            included in .NET; from the Microsoft.Extensions 10.0.11
+            packages, built from the same dotnet/dotnet source commit
+            e2f47b0 as the 10.0.11 runtime)
+
+
+2. Avalonia UI
+--------------
+Components: Avalonia, Avalonia.Base, Avalonia.Controls, Avalonia.Desktop,
+            Avalonia.Win32, Avalonia.Skia, Avalonia.HarfBuzz,
+            Avalonia.Themes.Fluent, Avalonia.Fonts.Inter and the other
+            Avalonia.*.dll files, version 12.1.1
+License:    MIT
+Copyright:  Copyright 2013-2026 (c) The AvaloniaUI Project
+Full text:  MIT License text in section 12 below (the packages declare
+            "MIT" but contain no license file).
+
+
+3. ANGLE (av_libglesv2.dll)
+---------------------------
+Component:  Avalonia.Angle.Windows.Natives 2.1.27548.20260419
+License:    BSD-3-Clause
+Copyright:  Copyright 2018 The ANGLE Project Authors
+Full text:  licenses\ANGLE-LICENSE.txt
+
+
+4. Inter font (embedded in Avalonia.Fonts.Inter.dll)
+----------------------------------------------------
+Component:  Inter 3.019 (used for the application's on-screen text)
+License:    SIL Open Font License 1.1
+Copyright:  Copyright 2020 The Inter Project Authors
+            (https://github.com/rsms/inter)
+Full text:  licenses\Inter-OFL.txt
+Note:       The Avalonia.Fonts.Inter package contains no license file. The
+            copyright and license lines above are the ones recorded inside
+            the shipped font files. licenses\Inter-OFL.txt combines that
+            copyright line with the standard SIL OFL 1.1 text as shipped in
+            LatoFont\OFL.txt.
+
+
+5. SkiaSharp and HarfBuzzSharp (libSkiaSharp.dll, libHarfBuzzSharp.dll,
+   SkiaSharp.dll, HarfBuzzSharp.dll)
+----------------------------------------------------------------------
+Components: SkiaSharp 3.119.4, HarfBuzzSharp 8.3.1.3 (and their Win32
+            native asset packages)
+License:    MIT
+Copyright:  Copyright (c) 2015-2016 Xamarin, Inc.;
+            Copyright (c) 2017-2018 Microsoft Corporation
+Full text:  licenses\SkiaSharp-HarfBuzzSharp-LICENSE.txt
+Notices:    licenses\SkiaSharp-HarfBuzzSharp-THIRD-PARTY-NOTICES.txt
+            (Skia, HarfBuzz and the other libraries built into the native
+            DLLs; identical file in both native asset packages)
+
+
+6. QuestPDF (QuestPDF.dll, QuestPdfSkia.dll, qpdf.dll)
+------------------------------------------------------
+Component:  QuestPDF 2026.7.3 (PDF generation)
+License:    QuestPDF Community License (QuestPDF is dual-licensed:
+            Community / Professional / Enterprise). This application
+            selects the Community license in code.
+Copyright:  Marcin Ziabek, QuestPDF contributors
+Full text:  licenses\QuestPDF-LICENSE.txt
+Notices:    licenses\QuestPDF-dependencies\ (licenses of the libraries
+            built into QuestPdfSkia.dll and qpdf.dll: Skia, HarfBuzz,
+            qpdf, zlib, libpng, libjpeg-turbo, libwebp, expat, wuffs,
+            libgrapheme, emsdk, ninja-build; copied from the package's
+            ExternalDependencyLicenses folder)
+
+
+7. Lato font (embedded in Carowinds.Passdown.Documents.dll)
+-----------------------------------------------------------
+Component:  Lato (shipped with QuestPDF 2026.7.3; used in generated PDFs)
+License:    SIL Open Font License 1.1
+Copyright:  Copyright (c) 2010-2014 by tyPoland Lukasz Dziedzic, with
+            Reserved Font Name "Lato"
+Full text:  LatoFont\OFL.txt
+
+
+8. SQLitePCLRaw and SQLite (e_sqlite3.dll, SQLitePCLRaw.*.dll)
+--------------------------------------------------------------
+Components: SQLitePCLRaw.core, SQLitePCLRaw.provider.e_sqlite3,
+            SQLitePCLRaw.batteries_v2 / bundle_e_sqlite3,
+            SQLitePCLRaw.lib.e_sqlite3 - version 2.1.12
+License:    Apache License 2.0
+Copyright:  Copyright 2014-2024 SourceGear, LLC
+Full text:  licenses\Apache-2.0.txt
+Note:       The packages declare "Apache-2.0" but contain no license file.
+            licenses\Apache-2.0.txt is the standard Apache 2.0 text, taken
+            unchanged from the copy QuestPDF ships for qpdf.
+            e_sqlite3.dll is a build of SQLite. SQLite itself is in the
+            public domain and needs no license notice.
+
+
+9. CommunityToolkit.Mvvm
+------------------------
+Component:  CommunityToolkit.Mvvm 8.4.2
+License:    MIT
+Copyright:  Copyright (c) .NET Foundation and Contributors
+Full text:  licenses\CommunityToolkit.Mvvm-LICENSE.txt
+Notices:    licenses\CommunityToolkit.Mvvm-THIRD-PARTY-NOTICES.txt
+
+
+10. MicroCom.Runtime
+--------------------
+Component:  MicroCom.Runtime 0.11.6 (used by Avalonia)
+License:    MIT
+Copyright:  Copyright 2021 (c) Nikita Tsukanov
+Full text:  MIT License text in section 12 below (the package declares
+            "MIT" but contains no license file).
+
+
+11. Tmds.DBus.Protocol
+----------------------
+Component:  Tmds.DBus.Protocol 0.94.1 (an Avalonia dependency; Linux-only
+            code, included in the release but not used on Windows)
+License:    MIT
+Copyright:  Copyright (c) Tom Deseyn
+Full text:  MIT License text in section 12 below (the package declares
+            "MIT" but contains no license file).
+
+
+12. MIT License text (for sections 2, 10 and 11)
+------------------------------------------------
+Applies with each copyright line given in the section above.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

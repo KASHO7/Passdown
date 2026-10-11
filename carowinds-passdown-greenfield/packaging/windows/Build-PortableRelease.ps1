@@ -153,6 +153,22 @@ if (-not (Test-Path -LiteralPath $testerGuideSource -PathType Leaf)) {
 }
 Copy-Item -Path $testerGuideSource -Destination $stagingReleaseDirectory -Force
 
+# Phase 18C PKG-003: third-party notices index at the release root, plus the full license/notice
+# texts it points to (copied unchanged from the shipped NuGet packages) under licenses\.
+# LatoFont\OFL.txt is already part of the publish output.
+$noticesSource = Join-Path $repoRoot 'packaging' 'windows' 'THIRD-PARTY-NOTICES.txt'
+$licensesSource = Join-Path $repoRoot 'packaging' 'windows' 'licenses'
+if (-not (Test-Path -LiteralPath $noticesSource -PathType Leaf)) {
+    Write-Error "Third-party notices not found at '$noticesSource'."
+    exit 1
+}
+if (-not (Test-Path -LiteralPath $licensesSource -PathType Container)) {
+    Write-Error "Third-party license folder not found at '$licensesSource'."
+    exit 1
+}
+Copy-Item -Path $noticesSource -Destination $stagingReleaseDirectory -Force
+Copy-Item -LiteralPath $licensesSource -Destination $stagingReleaseDirectory -Recurse -Force
+
 # Phase 18B PKG-002: full release-content validation (required runtime/native files, scheduler
 # helpers, license notices; forbidden PDBs, source, tests, fixtures, databases, logs, diagnostics,
 # sync data, PDFs, Ghostscript artifacts, .DS_Store, non-win-x64 natives, secrets, developer paths).

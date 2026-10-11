@@ -36,17 +36,46 @@ internal sealed class ReleasePackageValidator
 
     public IReadOnlyList<string> RequiredFiles => _rules.RequiredFiles;
 
-    /// <summary>Validates a release given as relative path → content reader (a folder or a ZIP).</summary>
-    public IReadOnlyList<string> Validate(IReadOnlyDictionary<string, Func<byte[]>> files)
+    public IReadOnlyList<string> NoticeFilePatterns => _rules.NoticeFilePatterns;
+
+    public int MinimumNoticeFileBytes => _rules.MinimumNoticeFileBytes;
+
+    public bool IsNoticeFile(string path) => _rules.NoticeFilePatterns.Any(p => Glob(p).IsMatch(Normalize(path)));
+
+    /// <summary>Phase 18C PKG-003: a license/notice file must be real, complete text — not a stub or a template.</summary>
+    public IEnumerable<string> ValidateNoticeContent(string path, byte[] bytes)
     {
-        var violations = new List<string>();
-        var normalized = files.Keys.Select(Normalize).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (bytes.Length < _rules.MinimumNoticeFileBytes)
+        {
+            yield return $"notice file too short ({bytes.Length} bytes): {path}";
+        }
+
+        var text = Encoding.UTF8.GetString(bytes);
+        foreach (var placeholder in _rules.NoticePlaceholderTokens.Where(t => text.Contains(t, StringComparison.Ordinal)))
+        {
+            yield return $"unresolved placeholder '{placeholder}' in notice file {path}";
+        }
+    }
+
+    /// <summary>Validates a release given as relative path → content reader (a folder or a ZIP).</summary>
+    public IReadOnlyList<string> Validate(IReadOnlyDictionary<string, Func<byte[]>> files, IReadOnlyList<string>? duplicateEntries = null)
+    {
+        var violations = new List<string>(duplicateEntries ?? []);
+        var normalized = new Dictionary<string, Func<byte[]>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (rawPath, read) in files)
+        {
+            normalized[Normalize(rawPath)] = read;
+        }
 
         foreach (var required in _rules.RequiredFiles)
         {
-            if (!normalized.Contains(required))
+            if (!normalized.TryGetValue(required, out var readRequired))
             {
                 violations.Add($"missing required file: {required}");
+            }
+            else if (readRequired().Length == 0)
+            {
+                violations.Add($"empty required file: {required}");
             }
         }
 
@@ -79,13 +108,19 @@ internal sealed class ReleasePackageValidator
                 }
             }
 
+            var isNotice = IsNoticeFile(path);
             var scanGeneric = _rules.OwnBinaryPatterns.Concat(_rules.TextFilePatterns).Any(p => Glob(p).IsMatch(fileName));
-            if (!scanGeneric && _extraForbiddenTokens.Count == 0)
+            if (!isNotice && !scanGeneric && _extraForbiddenTokens.Count == 0)
             {
                 continue;
             }
 
             var bytes = read();
+            if (isNotice)
+            {
+                violations.AddRange(ValidateNoticeContent(path, bytes));
+            }
+
             var tokens = (scanGeneric ? _rules.ForbiddenPathTokens : []).Concat(_extraForbiddenTokens).Where(t => t.Length > 0);
             foreach (var token in tokens.Where(token => ContainsToken(bytes, token)))
             {
@@ -106,11 +141,17 @@ internal sealed class ReleasePackageValidator
         using var archive = ZipFile.OpenRead(zipPath);
         var entries = archive.Entries.Where(e => !string.IsNullOrEmpty(e.Name)).ToList();
         var files = new Dictionary<string, Func<byte[]>>(StringComparer.OrdinalIgnoreCase);
+        var duplicates = new List<string>();
         foreach (var entry in entries)
         {
             var path = Normalize(entry.FullName);
             var slash = path.IndexOf('/');
             var relative = slash >= 0 ? path[(slash + 1)..] : path;
+            if (files.ContainsKey(relative))
+            {
+                duplicates.Add($"duplicate ZIP entry: {relative}");
+            }
+
             var captured = entry;
             files[relative] = () =>
             {
@@ -121,7 +162,7 @@ internal sealed class ReleasePackageValidator
             };
         }
 
-        return Validate(files);
+        return Validate(files, duplicates);
     }
 
     /// <summary>Case-insensitive search in both UTF-8/ASCII and UTF-16LE — .NET user strings are UTF-16, PDB paths and text files UTF-8.</summary>
@@ -184,5 +225,8 @@ internal sealed class ReleasePackageValidator
         public List<string> OwnBinaryPatterns { get; set; } = [];
         public List<string> TextFilePatterns { get; set; } = [];
         public List<string> ForbiddenPathTokens { get; set; } = [];
+        public List<string> NoticeFilePatterns { get; set; } = [];
+        public int MinimumNoticeFileBytes { get; set; }
+        public List<string> NoticePlaceholderTokens { get; set; } = [];
     }
 }

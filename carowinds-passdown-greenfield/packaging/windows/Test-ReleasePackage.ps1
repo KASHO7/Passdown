@@ -10,6 +10,10 @@
     PDFs, Ghostscript artifacts, .DS_Store, macOS/Linux/non-x64 natives, secrets/config, or an
     absolute developer path.
 
+    Phase 18C PKG-003: also fails when a required file is empty, a ZIP has duplicate entries, or a
+    third-party license/notice file (noticeFilePatterns) is too short or still contains a template
+    placeholder (noticePlaceholderTokens).
+
     Path scanning: the generic tokens (/Users/, /home/, C:\Users\) are searched in this app's own
     binaries (Carowinds.Passdown.*) and every text file — not in third-party binaries, some of which
     legitimately embed their vendor's build path. The repository checkout path and the current user
@@ -56,8 +60,9 @@ function Test-TokenInBytes([byte[]]$Bytes, [string]$Token) {
     return $false
 }
 
-# Collect relative path -> scriptblock that returns the bytes.
+# Collect relative path -> FileInfo / ZipArchiveEntry (both expose .Length).
 $files = @{}
+$duplicateEntries = New-Object System.Collections.Generic.List[string]
 $zip = $null
 if ((Test-Path -LiteralPath $Path -PathType Leaf) -and $Path.EndsWith('.zip', [StringComparison]::OrdinalIgnoreCase)) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -67,6 +72,9 @@ if ((Test-Path -LiteralPath $Path -PathType Leaf) -and $Path.EndsWith('.zip', [S
         $full = $entry.FullName.Replace('\', '/').TrimStart('/')
         $slash = $full.IndexOf('/')
         $relative = if ($slash -ge 0) { $full.Substring($slash + 1) } else { $full }
+        if ($files.ContainsKey($relative)) {
+            $duplicateEntries.Add("duplicate ZIP entry: $relative")
+        }
         $files[$relative] = $entry
     }
 }
@@ -98,12 +106,16 @@ function Read-Bytes($source) {
 }
 
 $violations = New-Object System.Collections.Generic.List[string]
+foreach ($duplicate in $duplicateEntries) { $violations.Add($duplicate) }
 $present = @{}
-foreach ($key in $files.Keys) { $present[$key.ToLowerInvariant()] = $true }
+foreach ($key in $files.Keys) { $present[$key.ToLowerInvariant()] = $files[$key] }
 
 foreach ($required in $rules.requiredFiles) {
     if (-not $present.ContainsKey($required.ToLowerInvariant())) {
         $violations.Add("missing required file: $required")
+    }
+    elseif ($present[$required.ToLowerInvariant()].Length -eq 0) {
+        $violations.Add("empty required file: $required")
     }
 }
 
@@ -139,6 +151,24 @@ try {
         }
 
         $bytes = Read-Bytes $files[$relative]
+
+        # PKG-003: license/notice files must be real, complete text — not a stub or a template.
+        $isNotice = $false
+        foreach ($pattern in $rules.noticeFilePatterns) {
+            if ($relative -like $pattern) { $isNotice = $true }
+        }
+        if ($isNotice) {
+            if ($bytes.Length -lt $rules.minimumNoticeFileBytes) {
+                $violations.Add("notice file too short ($($bytes.Length) bytes): $relative")
+            }
+            $text = [Text.Encoding]::UTF8.GetString($bytes)
+            foreach ($placeholder in $rules.noticePlaceholderTokens) {
+                if ($text.Contains($placeholder)) {
+                    $violations.Add("unresolved placeholder '$placeholder' in notice file $relative")
+                }
+            }
+        }
+
         $tokens = @($extraTokens)
         if ($scanGeneric) { $tokens += @($rules.forbiddenPathTokens) }
         foreach ($token in $tokens) {
