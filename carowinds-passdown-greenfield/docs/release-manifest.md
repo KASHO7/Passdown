@@ -652,3 +652,57 @@ system — composition changes, not just styling). Schema is unchanged (DB 15 / 
 SyncSchemaVersion 1) — no migration was added since Phase 17B. No Personal Sync or Manager-workflow
 code changed since Phase 16G — real Windows/OneDrive-client validation and Windows DPI validation
 both remain outstanding exactly as recorded there.
+
+# Release manifest — Dashboard ERT fix rebuild (rides-only Early Ride Time no longer breaks the Dashboard)
+
+Rebuilt from commit `399d40c` ("Fix Dashboard load recovery on existing Windows data"). No code
+changed during the rebuild itself. Packaging strategy, publish flags, staging layout and the 10-step
+procedure are unchanged from the Phase 17E entry above; this entry only records the new build and
+hashes. Functional change since Phase 17E: if today's month (or today's date) has a rides-only
+Early Ride Time configuration, the Dashboard now loads instead of showing "Unable to load today's
+operations summary." See `docs/support-troubleshooting.md`.
+
+| | |
+|---|---|
+| Product (visible) | Carowinds Operations |
+| Version | `0.1.0-dev` (unchanged; assembly informational version `0.1.0-dev+399d40c4a7bc54b9a99b3191d433051d8b8fd28d`) |
+| Target | Windows 11 x64 (`win-x64`), self-contained, R2R |
+| Build commit | `399d40c4a7bc54b9a99b3191d433051d8b8fd28d` (HEAD) |
+| Working tree at build time | No source changes. Only the same macOS `.DS_Store` / `.claude/skills/pdf-design/` noise recorded in the Phase 17E entry |
+| DB / Draft / Snapshot / SyncSchemaVersion | 15 / 4 / 2 / 1 (all unchanged, no migration) |
+| Deterministic test count | **2150/2150**: 116 Domain + 642 Application + 178 Documents + 545 Infrastructure + 669 Ui.Tests (38 real-`Window` tests run alone + the remaining 631 run alone, the same documented partition as before) |
+| Build | `dotnet build CarowindsPassdown.slnx -c Release`: 0 warnings, 0 errors |
+| Windows validation | **NOT EXECUTED.** No Windows host, VM or affected PC was available (macOS dev host). The Dashboard fix has not yet been confirmed on a real affected machine. |
+| Known limitations | Same standing gaps as the Phase 17E entry (Personal Sync real-client validation, single-file EXE Windows-launch validation, Windows DPI validation). Manager workflow remains deferred. |
+
+## Primary release: multi-file portable ZIP
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-dev-win-x64.zip` |
+| SHA-256 | `44dd165cccdf66882a1734d11df94897ea48127cf7c602353e20573b4bce8cc0` |
+| Size | 70,612,096 bytes (67.3 MiB) |
+| File count | 258 files (261 zip entries) |
+
+Verification:
+
+- The ZIP was extracted to an isolated scratch directory, and `diff -rq` showed it byte-for-byte
+  identical to the staging folder.
+- The staged and extracted `.exe` SHA-256 values match.
+- `file` reports `PE32+ executable (GUI) x86-64, for MS Windows`.
+- The packaged `Carowinds.Passdown.Desktop.dll` carries informational version `+399d40c…`, so this
+  is not a stale reuse of the 17E build.
+- Forbidden-pattern check (`.git`, `.db`/`-wal`/`-shm`, `CLAUDE.md`, `AGENT_BUILD_SPEC.md`, `.pdb`,
+  `.DS_Store`): clean.
+- No stray `.dylib`/`.so`/Playwright files.
+
+## Single-file release (still experimental / deferred)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-dev-win-x64.exe` |
+| SHA-256 | `2c675479c8ad8c3a704f6c4e75af3c3b7aefd8bc2632893798ae7c845c0bd6db` |
+| Size | 185,750,330 bytes (177.1 MiB) |
+| Status | Unchanged: **EXPERIMENTAL / DEFERRED**. It publishes and inspects clean, and the fix commit `399d40c…` is embedded in the bundle. Launching it on Windows: **NOT EXECUTED**. |
+
+This build supersedes the Phase 17E artifacts as the current release.
