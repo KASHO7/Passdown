@@ -3061,3 +3061,18 @@ default calendar such as th-TH would otherwise have produced a Buddhist-era year
 
 The release ZIP/EXE were **not** rebuilt in Phase 18B.
 
+
+## Phase 18C — release candidate build with the real packaging scripts
+
+- First release produced by `Build-PortableRelease.ps1` itself (PowerShell 7.6.6, installed for the
+  build as a local `dotnet tool PowerShell` in a scratch folder — nothing installed system-wide), so
+  `Test-ReleasePackage.ps1` ran for real on the staging folder and on the ZIP. It caught PKG-004 (our
+  checkout path in `Carowinds.Passdown.Desktop.dll`), fixed in `5c0ddf2`. Still not run on Windows.
+- The developer build scripts need PowerShell 7 (`pwsh`): they use three-argument `Join-Path`, despite
+  `#Requires -Version 5.1`. User-machine scripts (`tools\*.ps1`) are Windows PowerShell 5.1-compatible.
+- The release now ships `THIRD-PARTY-NOTICES.txt` and `licenses\` (PKG-003). To refresh them after a
+  dependency change, copy the new packages' LICENSE/NOTICE files into `packaging/windows/licenses/`,
+  update the index and `requiredFiles`; `RepositoryNoticeSources_MatchTheRequiredSet_AndAreComplete`
+  fails until the two agree.
+- The single-file EXE carries no notices when distributed alone; it stays experimental.
+- Details and hashes: `docs/release-manifest.md` "Phase 18C".

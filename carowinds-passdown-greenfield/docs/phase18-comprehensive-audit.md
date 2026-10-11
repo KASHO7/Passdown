@@ -415,3 +415,54 @@ Tests added: `AtomicFileWriterFaultTests` (25), `SyncTempFileCleanerTests` (25),
 `DiagnosticReportBuilderTests` (+2), `SyncConflictDetailCultureTests` (10), `PdfUsPresentationCultureTests`
 (4), `UsPresentationCultureTests` (49), repository metadata assertion (+0, extended).
 
+
+## 15. Phase 18C — release candidate packaging
+
+Source commit `5c0ddf2`. Release-validation phase only: no feature, business-rule, sync, or schema
+change. Full record and hashes: `docs/release-manifest.md` "Phase 18C".
+
+### 15.1 PKG-003 — third-party notices (resolved)
+
+The release now ships `THIRD-PARTY-NOTICES.txt` (index: component, version, license, copyright, where
+the full text is) and `licenses\` (full texts copied unchanged from the shipped NuGet packages; sources
+kept in `packaging/windows/`). Scope = what the win-x64 publish actually contains, determined from
+`project.assets.json` for `win-x64`, each package's nuspec license/copyright, and the LICENSE/NOTICE
+files inside the packages. The Inter font's copyright line was read from the font files embedded in
+`Avalonia.Fonts.Inter.dll` (the package has no license file). Lato's `LatoFont\OFL.txt` is unchanged and
+referenced from the index.
+
+Validation (`release-content-rules.json`, enforced by `Test-ReleasePackage.ps1` and the C# mirror): the
+notice files are required; any file matching `noticeFilePatterns` must be ≥ 100 bytes and contain no
+placeholder token (`TODO`, `TBD`, `{{`, `<insert`, …, case-sensitive); every required file must be
+non-empty; a ZIP must have no duplicate entries. A test also checks, offline, that `packaging/windows/
+licenses/` and the required list match exactly and that every `licenses\…` path named in the index
+exists.
+
+Open owner question (documented, not decided here): QuestPDF Community License eligibility — see the
+manifest.
+
+### 15.2 PKG-004 (LOW, new, fixed) — Desktop assembly embedded the build machine's path
+
+`Test-ReleasePackage.ps1`, run on a real release build for the first time, failed: the shipped
+`Carowinds.Passdown.Desktop.dll` contained `/Users/<developer>/…/obj/Release/net10.0/win-x64/
+Carowinds.Passdown.Desktop.pdb`. Cause: Avalonia's `CompileAvaloniaXamlTask` rewrites the assembly
+after `csc` and records the absolute PDB path, so the 18A PKG-001 `PathMap` never applied to this one
+assembly. The 18A/18B regression test only scanned Infrastructure.Tests' output folder, which does not
+contain `Desktop.dll`. Every earlier release (including 17F) shipped this path.
+
+Fix: Desktop Release builds use `<DebugType>none</DebugType>` (no PDB, so no debug-directory path).
+PDBs were never shipped, so users lose nothing; Debug builds are unchanged. Regression:
+`DesktopAssemblyPathPrivacyTests` (Ui.Tests, Release-only) — confirmed failing with the old setting and
+passing with the fix.
+
+### 15.3 Test count correction
+
+18B's "2476" included Infrastructure.Tests' 11 opt-in `LiveSmoke` tests. With the established
+`Category!=LiveSmoke` partition, 18B's commit measures **2465/2465**. 18C: +19 → **2484/2484**.
+
+### 15.4 Not executed
+
+All Windows validation (launch, affected-PC Dashboard, existing data, US formatting under a non-US
+region, app log, diagnostics, PDFs, temp PDF cleanup, Task Scheduler, Personal Sync one-PC and two-PC,
+single-file EXE) — no Windows machine available. Recommendation: **RELEASE BLOCKED pending Windows
+validation** (no open defect).
