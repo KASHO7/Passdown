@@ -52,4 +52,21 @@ public sealed record AssociateWorkspace(
     EffectiveErt? EarlyRideTime = null)
 {
     public EffectiveErt EarlyRideTime { get; init; } = EarlyRideTime ?? EffectiveErt.NotConfigured;
+
+    /// <summary>
+    /// Phase 18B REL-004: canonical content hash of the draft exactly as stored when this workspace was
+    /// composed (<see langword="null"/> when no draft row existed). An editor passes it back as the
+    /// expected base of its next save so a draft that Personal Sync changed underneath it is never
+    /// silently overwritten — see <see cref="IAssociatePassdownService.SaveEditorDraftAsync"/>.
+    /// </summary>
+    public string? DraftContentHash { get; init; }
 }
+
+/// <summary>
+/// Result of <see cref="IAssociatePassdownService.SaveEditorDraftAsync"/>. <see cref="ContentHash"/> is
+/// the new base for the editor's next save. <see cref="ConflictDetected"/> means the stored draft had
+/// changed since the editor loaded it: the editor's content was saved as this device's version, the
+/// changed version was preserved as a Personal Sync conflict, and export of this draft is paused until
+/// the conflict is resolved explicitly.
+/// </summary>
+public sealed record AssociateDraftSaveResult(AssociateSaveStatus Status, string ContentHash, bool ConflictDetected);

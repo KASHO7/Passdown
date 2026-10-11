@@ -1,6 +1,7 @@
 # Phase 18A — Comprehensive Reliability, Security, Privacy, and Release Hardening Audit
 
-Status: **complete (18A)**. Remediation of deferred items is Phase 18B and has **not** been started.
+Status: **18A complete; 18B in progress** — REL-004 fixed in 18B (see §13). The other deferred items
+below remain open.
 
 This document records a whole-application audit of Carowinds Operations (internal name
 Carowinds.Passdown) and the targeted fixes made during it. It is not a certification. A passing test
@@ -99,7 +100,7 @@ Severity per the phase rubric. "Fixed" means fixed in 18A with a failing-first r
 | PRIV-001 | LOW | Diagnostics ZIP | The last 200 scheduled-refresh log lines were copied verbatim. Logged exceptions (`IOException`, `UnauthorizedAccessException`) embed full paths, i.e. the Windows account name and OneDrive tenant folder. | `FileScheduledRefreshLogProvider` returned raw lines; `FileLoggerProvider` appends `exception.ToString()` | `DiagnosticPathRedactor`: known per-user roots → `%LOCALAPPDATA%`/`%APPDATA%`/`%USERPROFILE%`/`%TEMP%`/`%OneDrive*%`, then generic `X:\Users\<name>` and `/Users|/home/<name>` patterns | **Fixed** |
 | PKG-001 | LOW | Release binaries | Every shipped `Carowinds.Passdown.*.dll` embedded the build machine's absolute PDB path (`/Users/<developer>/Documents/Passdown/...`) — a username/folder disclosure and a non-reproducible byte difference between build machines. | `strings` on the released ZIP's DLLs | Release-only `PathMap` (repo root → `/_/`) in `Directory.Build.props`; Debug unchanged | **Fixed** (takes effect on next release build; existing ZIP/EXE not rebuilt per phase rules) |
 | BUG-001 | QUALITY | Operations Calendar | Daily-admission price used the machine culture's `"C"` format; an English (UK)/German region format showed `£54.99`/`54,99 €` for a USD price. Every other price uses invariant `$0.00`. | `OperationsCalendarPresentation.BuildDailyAdmissionPriceText` | Use `PriceFormatting.Format` | **Fixed** |
-| REL-004 | MEDIUM | Sync ↔ open editor | After a sync pass imports a remote change to a draft (or note) that is **currently open** in the Associate (or Notes) editor, nothing reloads the view model. The next local edit autosaves the stale in-memory payload over the imported one, the export pushes it, and the other device then accepts it as a safe update — the remote edit is lost **without** a conflict. Requires the same date/note to be open on one device while edited on another. | No sync-completion → view-model reload path (`App.axaml.cs`, `AssociateViewModel`); `SaveDraftAsync` is unconditional | Needs a design choice (reload-on-import vs base-hash check on save → conflict). Product/UX decision | **Deferred 18B (#1)** |
+| REL-004 | MEDIUM | Sync ↔ open editor | After a sync pass imports a remote change to a draft (or note) that is **currently open** in the Associate (or Notes) editor, nothing reloads the view model. The next local edit autosaves the stale in-memory payload over the imported one, the export pushes it, and the other device then accepts it as a safe update — the remote edit is lost **without** a conflict. Requires the same date/note to be open on one device while edited on another. | No sync-completion → view-model reload path (`App.axaml.cs`, `AssociateViewModel`); `SaveDraftAsync` is unconditional | 18B, per product decision "auto-reload clean editors; preserve dirty editors and require explicit conflict resolution" — see §13 | **Fixed (18B)** |
 | REL-003 | LOW | Atomic writes | `AtomicFileWriter` (sync files, config, preferences) and `FileDeviceIdProvider` write the temp file without `Flush(flushToDisk: true)` before the rename. A power loss shortly after can leave a zero-length/garbage final file on NTFS (rename is durable, data may not be). Process-crash atomicity is fine. | `File.WriteAllTextAsync` + `File.Move` | Write via `FileStream` + `Flush(true)` (or `FileOptions.WriteThrough`) | Deferred 18B (#2) |
 | REL-005 | QUALITY | Diagnostics | The interactive app logs only to the console provider (no console for a WinExe), so sync/load/PDF errors in normal use leave no persistent trace; the diagnostics ZIP contains scheduled-refresh logs only. | `App.axaml.cs` `AddConsole()`; file logger only in `Program.BuildScheduledRefreshServiceProvider` | Add the file logger (separate file name) to the interactive host, with PRIV-001 redaction on export | Deferred 18B (#3) |
 | REL-007 | LOW | Sync folder hygiene | A crash between temp write and rename leaves `<name>.tmp-<guid>` files in the shared OneDrive folder forever (ignored by importers, but synced to every device). | `AtomicFileWriter` temp naming | Best-effort cleanup of own stale `*.tmp-*` older than N hours at pass start | Deferred 18B (#5) |
@@ -224,9 +225,7 @@ originally affected PC with its existing `%LOCALAPPDATA%\Carowinds Passdown` dat
 
 ## 11. Ordered Phase 18B remediation plan
 
-1. **REL-004** (MEDIUM) — decide reload-on-import vs. base-hash check on save (→ conflict); implement
-   for Associate drafts, Operational Notes, and ERT editors; two-device tests with the editor open.
-   *Needs a product/UX decision.*
+1. ~~**REL-004** (MEDIUM)~~ — **fixed in 18B** (§13).
 2. **REL-003** — durable temp write (`Flush(true)`) in `AtomicFileWriter` and `FileDeviceIdProvider`.
 3. **REL-005** — interactive-app file log (separate file), included in diagnostics with PRIV-001 redaction.
 4. **PRIV-002** — unique temp PDF names for "Open Final PDF" + age-based cleanup.
@@ -242,3 +241,69 @@ originally affected PC with its existing `%LOCALAPPDATA%\Carowinds Passdown` dat
 explicit caveat that REL-004 (MEDIUM) should be fixed in 18B before Personal Sync is relied on across
 two actively-used PCs, and that no Windows validation was performed in this phase. The 18A fixes take
 effect in the next release build; the current ZIP/EXE were deliberately not rebuilt.
+
+## 13. Phase 18B — REL-004 remediation (open editors vs. Personal Sync)
+
+**Product rule (owner decision):** auto-reload clean editors; preserve dirty editors and require
+explicit conflict resolution; never silently overwrite a synced change from an already-open editor.
+
+**Scope:** the three editors that write sync-tracked data — the Associate draft (autosave), the Early
+Ride Time panel (monthly default, date override, remove override), and the Operational Notes editor.
+Read-only screens (Dashboard, Calendar, History) are unaffected.
+
+**Mechanism.**
+
+1. *Every editor save is conditional.* Each editor remembers the canonical Personal Sync content hash
+   of the version it loaded (`AssociateWorkspace.DraftContentHash`,
+   `IErtConfigurationService.ContentHashOf`, the note as opened). The save
+   (`SaveEditorDraftAsync`, `Save*FromEditorAsync`/`RemoveOverrideFromEditorAsync`,
+   `UpdateFromEditorAsync`) runs read-compare-write inside one `BEGIN IMMEDIATE` unit of work. If the
+   stored version still matches (or already equals what is being written), it is a normal save. If
+   not, the editor's content is still saved as this device's version, and
+   `OpenEditorConflictRecorder` preserves the version found in storage as the "other device" side of an
+   ordinary sync conflict (provenance from the sync state's last remote device/revision) and marks the
+   entity Conflicting — so export pauses and the existing Keep This Device / Use Other Device / Accept
+   Deletion resolution applies unchanged. A note deleted underneath its editor is re-created from the
+   editor and the deletion recorded as the conflict's other side.
+2. *Every sync import is atomic.* `PersonalSyncService`'s per-entity read-decide-write for drafts,
+   notes, monthly ERT and ERT overrides now runs under the same write lock, so an editor save can no
+   longer land between an import's read and its write (the reverse race, which previously let an
+   import overwrite a just-committed editor save).
+3. *Clean editors reload.* `ISyncLocalChangeNotifier` publishes the entities a sync pass (or a Use
+   Other Device / Accept Deletion resolution) changed locally, after commit. The Associate screen
+   reloads the selected date only when it has no unsaved edits and no save in flight (re-checked after
+   the read); an open ERT panel keeps unsaved values and is re-filled only when unchanged. The Notes
+   screen reloads its list only when no note is being edited, deferring the reload until the edit is
+   saved or cancelled. The notification is a convenience; correctness never depends on it (step 1).
+
+**User-visible change:** when a conflict is detected the screen shows "…changed on another device while
+you were editing. Your edits are saved on this computer and the other version is kept too — choose
+which to keep under Personal Sync conflicts." No data is discarded in any path.
+
+**Schema/versions:** none changed (DB 15 / Draft 4 / Snapshot 2 / Sync 1). No sync file format change.
+
+**Tests (11, `Ui.Tests/OpenEditorSyncProtectionTests.cs`)** — two real SQLite devices, real services,
+real sync passes, the real Associate/Notes view models: dirty draft → conflict with both versions,
+export paused, folder unchanged; Use Other Device restores and the clean editor reloads; Keep This
+Device publishes the editor's version; clean draft editor auto-reloads and its next edit is not a
+conflict and keeps the other device's change; draft created remotely while the editor had none;
+import-vs-editor-commit race; dirty ERT panel → conflict; clean ERT panel re-filled; dirty note editor
+→ conflict; note deleted underneath → re-created + deletion conflict; notes list reload deferred while
+editing. All 11 fail under the pre-18B behavior (services without the unit of work/recorder, import
+without the lock, no reload handler) and pass 8/8 repeated runs after the fix.
+
+**Also fixed (test-only):** `PersonalSyncCoordinatorTests.PeriodicIntervalElapsing_TriggersAnAdditionalPass_AndReArmsItself`
+was flaky on the 18A baseline (5 of 12 isolated runs failed on commit `a9903e5`): it asserted the
+periodic delay had been re-armed before the coordinator's loop had done so. It now waits for the
+re-armed delay; 15/15 isolated runs pass. No production change.
+
+**Guard tests updated:** the two `OperationalNotesService` constructor-shape tests now sanction the two
+new persistence-only dependencies (still no network/retrieval dependency).
+
+**Validation:** Release build 0 warnings / 0 errors; **2245/2245** deterministic tests (116 Domain +
+649 Application + 222 Documents + 575 Infrastructure + 683 Ui = 645 together + 26 + 10 + 2 alone, same
+documented partition).
+
+**Windows validation:** NOT EXECUTED (no Windows host). Real two-PC OneDrive validation of this flow
+remains part of the outstanding Windows/OneDrive validation pass.
+

@@ -263,7 +263,10 @@ public class PersonalSyncCoordinatorTests
         Assert.True(scheduler.Elapse(Periodic));
         await WaitForAsync(() => syncService.RunCallCount == 2);
 
-        Assert.True(scheduler.Elapse(Periodic)); // re-armed for the next interval.
+        // Re-armed for the next interval. The loop re-arms asynchronously after pass #2 completes, so
+        // wait for the new delay to exist rather than asserting it already does (Phase 18B: this
+        // assertion raced the loop and failed ~40% of isolated runs on the 18A baseline).
+        await WaitForAsync(() => scheduler.Elapse(Periodic));
         await WaitForAsync(() => syncService.RunCallCount == 3);
     }
 

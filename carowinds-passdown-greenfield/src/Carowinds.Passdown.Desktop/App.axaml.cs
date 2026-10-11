@@ -424,6 +424,14 @@ public partial class App : global::Avalonia.Application
         // OperationalNotesService or any ViewModel. SyncChangeTracker itself is kept resolvable under its
         // own concrete type for the wrapper to depend on, matching the decorator pattern used nowhere
         // else in this composition root only because nothing else here has needed one yet.
+        // Phase 18B REL-004: open-editor protection. The notifier lets clean editors reload after Personal
+        // Sync changes local data; the recorder turns an editor save over a changed version into an
+        // explicit sync conflict (resolved via IPersonalSyncConflictResolutionService) instead of a
+        // silent overwrite. Both are resolved automatically into the optional constructor parameters of
+        // AssociatePassdownService/ErtConfigurationService/OperationalNotesService/PersonalSyncService/
+        // PersonalSyncConflictResolutionService and the Associate/Operational Notes view models.
+        services.AddSingleton<ISyncLocalChangeNotifier, SyncLocalChangeNotifier>();
+        services.AddSingleton<OpenEditorConflictRecorder>();
         services.AddSingleton<SyncChangeTracker>();
         services.AddSingleton<ISyncChangeTracker>(provider => new AutomaticSyncChangeTracker(
             provider.GetRequiredService<SyncChangeTracker>(),

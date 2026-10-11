@@ -352,6 +352,13 @@
         <TextBlock Text="{Binding LoadErrorMessage}"
                    IsVisible="{Binding LoadErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                    Foreground="{DynamicResource PassdownErrorBrush}" />
+
+        <!-- Phase 18B REL-004: an edit made here collided with a change from another device. Nothing
+             was lost; the associate chooses which version to keep under Personal Sync conflicts. -->
+        <TextBlock Text="{Binding SyncConflictMessage}"
+                   IsVisible="{Binding SyncConflictMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   TextWrapping="Wrap"
+                   Foreground="{DynamicResource PassdownErrorBrush}" />
       </StackPanel>
     </Border>
 

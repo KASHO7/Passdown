@@ -25,7 +25,8 @@ public sealed class PersonalSyncConflictResolutionService(
     IUnitOfWorkFactory unitOfWorkFactory,
     IClock clock,
     IMonthlyErtRepository monthlyErtRepository,
-    IErtDateOverrideRepository ertDateOverrideRepository) : IPersonalSyncConflictResolutionService
+    IErtDateOverrideRepository ertDateOverrideRepository,
+    ISyncLocalChangeNotifier? changeNotifier = null) : IPersonalSyncConflictResolutionService
 {
     private static readonly JsonSerializerOptions DraftPayloadWriteOptions = new();
 
@@ -543,6 +544,10 @@ public sealed class PersonalSyncConflictResolutionService(
         await conflictRepository.DeleteAsync(entityType, entityId, unitOfWork, cancellationToken).ConfigureAwait(false);
         await unitOfWork.CommitAsync(cancellationToken).ConfigureAwait(false);
 
+        // Phase 18B REL-004: local data now holds the other device's version (or is deleted) — let a
+        // clean open editor reload it; a dirty one stays protected by its own conditional save.
+        changeNotifier?.Publish([new SyncEntityKey(entityType, entityId)]);
+
         return ConflictResolutionResult.Resolved();
     }
 
@@ -610,6 +615,10 @@ public sealed class PersonalSyncConflictResolutionService(
             unitOfWork, cancellationToken).ConfigureAwait(false);
         await conflictRepository.DeleteAsync(entityType, entityId, unitOfWork, cancellationToken).ConfigureAwait(false);
         await unitOfWork.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+        // Phase 18B REL-004: local data now holds the other device's version (or is deleted) — let a
+        // clean open editor reload it; a dirty one stays protected by its own conditional save.
+        changeNotifier?.Publish([new SyncEntityKey(entityType, entityId)]);
 
         return ConflictResolutionResult.Resolved();
     }

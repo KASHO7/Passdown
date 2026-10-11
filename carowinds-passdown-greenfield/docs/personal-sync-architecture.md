@@ -2751,3 +2751,15 @@ DB schema 13 → 15 (`Migration0014CreateMonthlyErtConfigurationsTable`,
 obsolete free-text `EarlyRideTime` field — see `docs/ert-configuration.md` §8). Snapshot schema 1 → 2
 (additive new fields on `FinalizedEarlyRideTimeSnapshot` — see `docs/ert-configuration.md` §9).
 SyncSchemaVersion remains 1.
+
+## Phase 18B — Open editors and sync (REL-004)
+
+Rule: **auto-reload clean editors; preserve dirty editors and require explicit conflict resolution;
+never silently overwrite a synced change from an already-open editor.** Editor saves (Associate draft,
+Early Ride Time panel, Operational Notes editor) are conditional on the content hash of the version the
+editor loaded and run under the same `BEGIN IMMEDIATE` lock that each sync import's read-decide-write
+now takes. A mismatch saves the editor's content locally and records the stored version as an ordinary
+sync conflict (`OpenEditorConflictRecorder`), pausing export until Keep This Device / Use Other Device
+/ Accept Deletion. `ISyncLocalChangeNotifier` lets clean editors reload after an import or resolution.
+Full design, scope and tests: `docs/phase18-comprehensive-audit.md` §13.
+

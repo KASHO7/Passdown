@@ -1,6 +1,8 @@
 using Carowinds.Passdown.Application.OperationalNotes;
+using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Presentation;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -53,6 +55,17 @@ public partial class OperationalNotesViewModel : ViewModelBase
     private IReadOnlyList<OperationalNote> _allNotes = [];
     private Guid? _editingNoteId;
     private Task _pendingLoad = Task.CompletedTask;
+
+    // Phase 18B REL-004: the note exactly as the editor opened it — the expected base of the save, so a
+    // note Personal Sync changed (or deleted) while the editor was open is never silently overwritten.
+    private OperationalNote? _editingBaseNote;
+
+    // Set when Personal Sync changed notes while an edit was open (an open editor is never reloaded).
+    private bool _reloadAfterEdit;
+    private Task _pendingSyncReload = Task.CompletedTask;
+
+    internal const string NoteSyncConflictMessage =
+        "This note was changed on another device while you were editing. Your edits are saved on this computer and the other version is kept too — choose which to keep under Personal Sync conflicts.";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmptyState))]
@@ -164,7 +177,7 @@ public partial class OperationalNotesViewModel : ViewModelBase
     [NotifyCanExecuteChangedFor(nameof(ConfirmResolveCommand))]
     public partial bool IsResolving { get; set; }
 
-    public OperationalNotesViewModel(IOperationalNotesService service, IClock clock, ILogger<OperationalNotesViewModel>? logger = null)
+    public OperationalNotesViewModel(IOperationalNotesService service, IClock clock, ILogger<OperationalNotesViewModel>? logger = null, ISyncLocalChangeNotifier? syncLocalChangeNotifier = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -174,6 +187,35 @@ public partial class OperationalNotesViewModel : ViewModelBase
         _logger = logger;
 
         _pendingLoad = LoadAsync();
+
+        if (syncLocalChangeNotifier is not null)
+        {
+            syncLocalChangeNotifier.LocalDataChanged += (_, changed) =>
+                Dispatcher.UIThread.Post(() => _pendingSyncReload = HandleSyncLocalChangesAsync(changed));
+        }
+    }
+
+    /// <summary>
+    /// Phase 18B REL-004: "auto-reload clean editors; preserve dirty editors." With no note open for
+    /// editing, the list reloads (selection kept by id). With one open, nothing in the editor is touched;
+    /// the reload waits until the edit is saved (which reloads anyway) or cancelled, and the save itself
+    /// is conditional on the version the editor opened, so a concurrent change becomes an explicit
+    /// conflict rather than an overwrite. Internal so tests can drive it without a dispatcher.
+    /// </summary>
+    internal async Task HandleSyncLocalChangesAsync(IReadOnlyCollection<SyncEntityKey> changed)
+    {
+        if (!changed.Any(key => key.EntityType == SyncEntityType.OperationalNote))
+        {
+            return;
+        }
+
+        if (IsEditing || IsSaving)
+        {
+            _reloadAfterEdit = true;
+            return;
+        }
+
+        await LoadAsync().ConfigureAwait(true);
     }
 
     /// <summary>"Today" in the park's own wall-clock time (mirrors <see cref="AssociateViewModel"/>'s convention) — read fresh on every load/filter pass rather than cached, so a Reload after midnight re-derives Upcoming/Active/Expired against the new day.</summary>
@@ -392,6 +434,7 @@ public partial class OperationalNotesViewModel : ViewModelBase
         }
 
         _editingNoteId = note.Id;
+        _editingBaseNote = note;
         EditorTitle = note.Title;
         EditorBody = note.Body ?? string.Empty;
         EditorCategory = OperationalNoteCategoryOption.For(note.Category);
@@ -410,6 +453,12 @@ public partial class OperationalNotesViewModel : ViewModelBase
     {
         EditorMode = OperationalNoteEditorMode.None;
         EditorValidationMessage = null;
+
+        if (_reloadAfterEdit)
+        {
+            _reloadAfterEdit = false;
+            _pendingSyncReload = LoadAsync();
+        }
     }
 
     private bool CanCancelEdit() => IsEditing;
@@ -450,16 +499,27 @@ public partial class OperationalNotesViewModel : ViewModelBase
                 EditorEffectiveFrom,
                 effectiveThrough);
 
-            var saved = EditorMode == OperationalNoteEditorMode.Create
-                ? await _service.CreateAsync(draft).ConfigureAwait(true)
-                : await _service.UpdateAsync(_editingNoteId!.Value, draft).ConfigureAwait(true);
+            OperationalNote saved;
+            var conflictDetected = false;
+            if (EditorMode == OperationalNoteEditorMode.Create)
+            {
+                saved = await _service.CreateAsync(draft).ConfigureAwait(true);
+            }
+            else
+            {
+                var result = await _service.UpdateFromEditorAsync(_editingBaseNote!, draft).ConfigureAwait(true);
+                saved = result.Note;
+                conflictDetected = result.ConflictDetected;
+            }
 
             _logger?.LogInformation("Operational note saved: {NoteId}", saved.Id);
 
             EditorMode = OperationalNoteEditorMode.None;
+            _reloadAfterEdit = false; // The reload below covers any change that arrived during the edit.
             await LoadAsync().ConfigureAwait(true);
             SelectedNote = Notes.FirstOrDefault(row => row.Id == saved.Id);
             RefreshSelectedDetail();
+            ActionMessage = conflictDetected ? NoteSyncConflictMessage : null;
         }
         catch (ArgumentException)
         {

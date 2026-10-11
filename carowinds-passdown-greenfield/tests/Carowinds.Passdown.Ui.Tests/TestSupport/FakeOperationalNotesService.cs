@@ -81,6 +81,43 @@ internal sealed class FakeOperationalNotesService : IOperationalNotesService
         return Task.FromResult(updated);
     }
 
+    /// <summary>Phase 18B REL-004: notes whose editor save found a stored version different from the one the editor opened.</summary>
+    public List<Guid> EditorConflicts { get; } = [];
+
+    /// <summary>Phase 18B REL-004: replaces a stored note the way a Personal Sync import would.</summary>
+    public void SimulateSyncImport(OperationalNote note)
+    {
+        var index = _notes.FindIndex(n => n.Id == note.Id);
+        if (index < 0)
+        {
+            _notes.Add(note);
+        }
+        else
+        {
+            _notes[index] = note;
+        }
+    }
+
+    public async Task<OperationalNoteEditorSaveResult> UpdateFromEditorAsync(OperationalNote editedFrom, OperationalNoteDraft draft, CancellationToken cancellationToken = default)
+    {
+        var stored = _notes.FirstOrDefault(n => n.Id == editedFrom.Id);
+        var storedHash = stored is null ? null : OperationalNotesService.ContentHashOf(stored);
+        if (stored is null)
+        {
+            _notes.Add(editedFrom);
+        }
+
+        var updated = await UpdateAsync(editedFrom.Id, draft, cancellationToken);
+        var conflict = !string.Equals(storedHash, OperationalNotesService.ContentHashOf(editedFrom), StringComparison.Ordinal)
+            && !string.Equals(storedHash, OperationalNotesService.ContentHashOf(updated), StringComparison.Ordinal);
+        if (conflict)
+        {
+            EditorConflicts.Add(editedFrom.Id);
+        }
+
+        return new OperationalNoteEditorSaveResult(updated, conflict);
+    }
+
     public Task<OperationalNote> ResolveAsync(Guid id, CancellationToken cancellationToken = default)
     {
         if (ResolveException is not null)

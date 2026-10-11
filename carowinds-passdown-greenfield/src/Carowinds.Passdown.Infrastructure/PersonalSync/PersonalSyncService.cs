@@ -38,7 +38,9 @@ public sealed class PersonalSyncService(
     ISyncConflictRepository conflictRepository,
     IClock clock,
     IMonthlyErtRepository monthlyErtRepository,
-    IErtDateOverrideRepository ertDateOverrideRepository) : IPersonalSyncService
+    IErtDateOverrideRepository ertDateOverrideRepository,
+    IUnitOfWorkFactory? unitOfWorkFactory = null,
+    ISyncLocalChangeNotifier? changeNotifier = null) : IPersonalSyncService
 {
     private static readonly JsonSerializerOptions DraftPayloadWriteOptions = new();
 
@@ -66,6 +68,7 @@ public sealed class PersonalSyncService(
             return PersonalSyncResult.AlreadyRunning();
         }
 
+        Counters? counters = null;
         try
         {
             var snapshot = await settingsService.LoadAsync(cancellationToken).ConfigureAwait(false);
@@ -82,7 +85,7 @@ public sealed class PersonalSyncService(
             var root = snapshot.SyncRootPath!;
             var deviceId = deviceIdProvider.GetOrCreateDeviceId();
             var now = clock.UtcNow;
-            var counters = new Counters();
+            counters = new Counters();
 
             await ReconcileSyncSpaceAsync(snapshot.SyncSpaceId, cancellationToken).ConfigureAwait(false);
 
@@ -102,6 +105,13 @@ public sealed class PersonalSyncService(
         finally
         {
             _gate.Release();
+
+            // Published even when the pass ended early with an exception: every change listed here
+            // was already committed, and a clean open editor showing it must still reload.
+            if (counters is { ChangedLocally.Count: > 0 })
+            {
+                changeNotifier?.Publish(counters.ChangedLocally.Distinct().ToList());
+            }
         }
     }
 
@@ -234,6 +244,13 @@ public sealed class PersonalSyncService(
             remotePayloadJson = JsonSerializer.Serialize(remotePayload, DraftPayloadWriteOptions);
         }
 
+        // Phase 18B REL-004: read-decide-write under one write lock (BEGIN IMMEDIATE), the same lock an
+        // open editor's conditional save takes — so an editor save can never land between this
+        // import's read of the local version and its write (which would silently overwrite it), and
+        // this import can never land between an editor's read and write. Every write below goes
+        // through this unit of work; the reads use their own connections, which the lock permits.
+        await using var unitOfWork = unitOfWorkFactory is null ? null : await unitOfWorkFactory.BeginAsync(cancellationToken).ConfigureAwait(false);
+
         var localDraft = await draftRepository.GetAsync(operatingDate, cancellationToken).ConfigureAwait(false);
         var state = await stateRepository.GetAsync(SyncEntityType.AssociateDraft, entityId, cancellationToken).ConfigureAwait(false);
 
@@ -250,7 +267,7 @@ public sealed class PersonalSyncService(
             case SyncImportDecision.RemoteOnlyImport:
                 await draftRepository.SaveAsync(
                     new AssociateDraft(operatingDate, envelope.PayloadSchemaVersion, remotePayloadJson!, envelope.ModifiedUtc),
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    unitOfWork, cancellationToken).ConfigureAwait(false);
                 await stateRepository.UpsertAsync(
                     SyncEntityState.CreateNew(SyncEntityType.AssociateDraft, entityId, now) with
                     {
@@ -259,7 +276,7 @@ public sealed class PersonalSyncService(
                         LastRemoteDeviceId = envelope.DeviceId,
                         LastRemoteRevision = envelope.Revision,
                     },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Imported++;
                 break;
 
@@ -281,7 +298,7 @@ public sealed class PersonalSyncService(
                         ConflictDetectedAtUtc = null,
                         UpdatedAtUtc = now,
                     },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Unchanged++;
                 break;
             }
@@ -291,7 +308,7 @@ public sealed class PersonalSyncService(
                 var newRevision = (state?.LocalRevision ?? 1) + 1;
                 await draftRepository.SaveAsync(
                     new AssociateDraft(operatingDate, envelope.PayloadSchemaVersion, remotePayloadJson!, envelope.ModifiedUtc),
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    unitOfWork, cancellationToken).ConfigureAwait(false);
                 await stateRepository.UpsertAsync(
                     (state ?? SyncEntityState.CreateNew(SyncEntityType.AssociateDraft, entityId, now)) with
                     {
@@ -307,14 +324,14 @@ public sealed class PersonalSyncService(
                         ConflictDetectedAtUtc = null,
                         UpdatedAtUtc = now,
                     },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Imported++;
                 break;
             }
 
             case SyncImportDecision.Conflict:
             case SyncImportDecision.LocalDeletionConflict:
-                await RecordConflictAsync(SyncEntityType.AssociateDraft, entityId, envelope, remotePayloadJson, remoteHash, isDeleted: false, state, now, cancellationToken).ConfigureAwait(false);
+                await RecordConflictAsync(SyncEntityType.AssociateDraft, entityId, envelope, remotePayloadJson, remoteHash, isDeleted: false, state, now, unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Conflicts++;
                 break;
 
@@ -323,14 +340,14 @@ public sealed class PersonalSyncService(
                 {
                     await stateRepository.UpsertAsync(
                         state with { LastRemoteDeviceId = envelope.DeviceId, LastRemoteRevision = envelope.Revision, UpdatedAtUtc = now },
-                        cancellationToken: cancellationToken).ConfigureAwait(false);
+                        unitOfWork, cancellationToken).ConfigureAwait(false);
                 }
                 counters.Unchanged++;
                 break;
 
             case SyncImportDecision.RemoteDeletionSafeApply:
             {
-                await draftRepository.DeleteAsync(operatingDate, cancellationToken: cancellationToken).ConfigureAwait(false);
+                await draftRepository.DeleteAsync(operatingDate, unitOfWork, cancellationToken).ConfigureAwait(false);
                 var newRevision = (state?.LocalRevision ?? 1) + 1;
                 await stateRepository.UpsertAsync(
                     (state ?? SyncEntityState.CreateNew(SyncEntityType.AssociateDraft, entityId, now)) with
@@ -347,15 +364,25 @@ public sealed class PersonalSyncService(
                         ConflictDetectedAtUtc = null,
                         UpdatedAtUtc = now,
                     },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Imported++;
                 break;
             }
 
             case SyncImportDecision.RemoteDeletionConflict:
-                await RecordConflictAsync(SyncEntityType.AssociateDraft, entityId, envelope, remotePayloadJson: null, remoteHash: null, isDeleted: true, state, now, cancellationToken).ConfigureAwait(false);
+                await RecordConflictAsync(SyncEntityType.AssociateDraft, entityId, envelope, remotePayloadJson: null, remoteHash: null, isDeleted: true, state, now, unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Conflicts++;
                 break;
+        }
+
+        if (unitOfWork is not null)
+        {
+            await unitOfWork.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        if (decision is SyncImportDecision.RemoteOnlyImport or SyncImportDecision.SafeRemoteUpdate or SyncImportDecision.RemoteDeletionSafeApply)
+        {
+            counters.ChangedLocally.Add(new SyncEntityKey(SyncEntityType.AssociateDraft, entityId));
         }
     }
 
@@ -515,6 +542,13 @@ public sealed class PersonalSyncService(
             remotePayloadJson = OperationalNoteSyncPayloadSerializer.Serialize(remotePayload);
         }
 
+        // Phase 18B REL-004: read-decide-write under one write lock (BEGIN IMMEDIATE), the same lock an
+        // open editor's conditional save takes — so an editor save can never land between this
+        // import's read of the local version and its write (which would silently overwrite it), and
+        // this import can never land between an editor's read and write. Every write below goes
+        // through this unit of work; the reads use their own connections, which the lock permits.
+        await using var unitOfWork = unitOfWorkFactory is null ? null : await unitOfWorkFactory.BeginAsync(cancellationToken).ConfigureAwait(false);
+
         var localNote = await noteRepository.GetByIdAsync(noteId, cancellationToken).ConfigureAwait(false);
         var state = await stateRepository.GetAsync(SyncEntityType.OperationalNote, entityId, cancellationToken).ConfigureAwait(false);
 
@@ -529,7 +563,7 @@ public sealed class PersonalSyncService(
                 break;
 
             case SyncImportDecision.RemoteOnlyImport:
-                await noteRepository.AddAsync(remotePayload!.ToDomain(), cancellationToken: cancellationToken).ConfigureAwait(false);
+                await noteRepository.AddAsync(remotePayload!.ToDomain(), unitOfWork, cancellationToken).ConfigureAwait(false);
                 await stateRepository.UpsertAsync(
                     SyncEntityState.CreateNew(SyncEntityType.OperationalNote, entityId, now) with
                     {
@@ -538,7 +572,7 @@ public sealed class PersonalSyncService(
                         LastRemoteDeviceId = envelope.DeviceId,
                         LastRemoteRevision = envelope.Revision,
                     },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Imported++;
                 break;
 
@@ -560,7 +594,7 @@ public sealed class PersonalSyncService(
                         ConflictDetectedAtUtc = null,
                         UpdatedAtUtc = now,
                     },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Unchanged++;
                 break;
             }
@@ -568,7 +602,7 @@ public sealed class PersonalSyncService(
             case SyncImportDecision.SafeRemoteUpdate:
             {
                 var newRevision = (state?.LocalRevision ?? 1) + 1;
-                await noteRepository.UpdateAsync(remotePayload!.ToDomain(), cancellationToken: cancellationToken).ConfigureAwait(false);
+                await noteRepository.UpdateAsync(remotePayload!.ToDomain(), unitOfWork, cancellationToken).ConfigureAwait(false);
                 await stateRepository.UpsertAsync(
                     (state ?? SyncEntityState.CreateNew(SyncEntityType.OperationalNote, entityId, now)) with
                     {
@@ -584,14 +618,14 @@ public sealed class PersonalSyncService(
                         ConflictDetectedAtUtc = null,
                         UpdatedAtUtc = now,
                     },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Imported++;
                 break;
             }
 
             case SyncImportDecision.Conflict:
             case SyncImportDecision.LocalDeletionConflict:
-                await RecordConflictAsync(SyncEntityType.OperationalNote, entityId, envelope, remotePayloadJson, remoteHash, isDeleted: false, state, now, cancellationToken).ConfigureAwait(false);
+                await RecordConflictAsync(SyncEntityType.OperationalNote, entityId, envelope, remotePayloadJson, remoteHash, isDeleted: false, state, now, unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Conflicts++;
                 break;
 
@@ -600,14 +634,14 @@ public sealed class PersonalSyncService(
                 {
                     await stateRepository.UpsertAsync(
                         state with { LastRemoteDeviceId = envelope.DeviceId, LastRemoteRevision = envelope.Revision, UpdatedAtUtc = now },
-                        cancellationToken: cancellationToken).ConfigureAwait(false);
+                        unitOfWork, cancellationToken).ConfigureAwait(false);
                 }
                 counters.Unchanged++;
                 break;
 
             case SyncImportDecision.RemoteDeletionSafeApply:
             {
-                await noteRepository.DeleteAsync(noteId, cancellationToken: cancellationToken).ConfigureAwait(false);
+                await noteRepository.DeleteAsync(noteId, unitOfWork, cancellationToken).ConfigureAwait(false);
                 var newRevision = (state?.LocalRevision ?? 1) + 1;
                 await stateRepository.UpsertAsync(
                     (state ?? SyncEntityState.CreateNew(SyncEntityType.OperationalNote, entityId, now)) with
@@ -624,15 +658,25 @@ public sealed class PersonalSyncService(
                         ConflictDetectedAtUtc = null,
                         UpdatedAtUtc = now,
                     },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Imported++;
                 break;
             }
 
             case SyncImportDecision.RemoteDeletionConflict:
-                await RecordConflictAsync(SyncEntityType.OperationalNote, entityId, envelope, remotePayloadJson: null, remoteHash: null, isDeleted: true, state, now, cancellationToken).ConfigureAwait(false);
+                await RecordConflictAsync(SyncEntityType.OperationalNote, entityId, envelope, remotePayloadJson: null, remoteHash: null, isDeleted: true, state, now, unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Conflicts++;
                 break;
+        }
+
+        if (unitOfWork is not null)
+        {
+            await unitOfWork.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        if (decision is SyncImportDecision.RemoteOnlyImport or SyncImportDecision.SafeRemoteUpdate or SyncImportDecision.RemoteDeletionSafeApply)
+        {
+            counters.ChangedLocally.Add(new SyncEntityKey(SyncEntityType.OperationalNote, entityId));
         }
     }
 
@@ -783,6 +827,13 @@ public sealed class PersonalSyncService(
             remoteHash = SyncContentHash.ComputeMonthlyErtHash(remotePayload);
         }
 
+        // Phase 18B REL-004: read-decide-write under one write lock (BEGIN IMMEDIATE), the same lock an
+        // open editor's conditional save takes — so an editor save can never land between this
+        // import's read of the local version and its write (which would silently overwrite it), and
+        // this import can never land between an editor's read and write. Every write below goes
+        // through this unit of work; the reads use their own connections, which the lock permits.
+        await using var unitOfWork = unitOfWorkFactory is null ? null : await unitOfWorkFactory.BeginAsync(cancellationToken).ConfigureAwait(false);
+
         var localConfiguration = await monthlyErtRepository.GetAsync(year, month, cancellationToken).ConfigureAwait(false);
         var state = await stateRepository.GetAsync(SyncEntityType.MonthlyErt, entityId, cancellationToken).ConfigureAwait(false);
 
@@ -797,7 +848,7 @@ public sealed class PersonalSyncService(
                 break;
 
             case SyncImportDecision.RemoteOnlyImport:
-                await monthlyErtRepository.UpsertAsync(remotePayload!.ToDomain(), cancellationToken: cancellationToken).ConfigureAwait(false);
+                await monthlyErtRepository.UpsertAsync(remotePayload!.ToDomain(), unitOfWork, cancellationToken).ConfigureAwait(false);
                 await stateRepository.UpsertAsync(
                     SyncEntityState.CreateNew(SyncEntityType.MonthlyErt, entityId, now) with
                     {
@@ -806,7 +857,7 @@ public sealed class PersonalSyncService(
                         LastRemoteDeviceId = envelope.DeviceId,
                         LastRemoteRevision = envelope.Revision,
                     },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Imported++;
                 break;
 
@@ -828,7 +879,7 @@ public sealed class PersonalSyncService(
                         ConflictDetectedAtUtc = null,
                         UpdatedAtUtc = now,
                     },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Unchanged++;
                 break;
             }
@@ -836,7 +887,7 @@ public sealed class PersonalSyncService(
             case SyncImportDecision.SafeRemoteUpdate:
             {
                 var newRevision = (state?.LocalRevision ?? 1) + 1;
-                await monthlyErtRepository.UpsertAsync(remotePayload!.ToDomain(), cancellationToken: cancellationToken).ConfigureAwait(false);
+                await monthlyErtRepository.UpsertAsync(remotePayload!.ToDomain(), unitOfWork, cancellationToken).ConfigureAwait(false);
                 await stateRepository.UpsertAsync(
                     (state ?? SyncEntityState.CreateNew(SyncEntityType.MonthlyErt, entityId, now)) with
                     {
@@ -852,14 +903,14 @@ public sealed class PersonalSyncService(
                         ConflictDetectedAtUtc = null,
                         UpdatedAtUtc = now,
                     },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Imported++;
                 break;
             }
 
             case SyncImportDecision.Conflict:
             case SyncImportDecision.LocalDeletionConflict:
-                await RecordConflictAsync(SyncEntityType.MonthlyErt, entityId, envelope, remotePayload is null ? null : MonthlyErtSyncPayloadSerializer.Serialize(remotePayload), remoteHash, isDeleted: false, state, now, cancellationToken).ConfigureAwait(false);
+                await RecordConflictAsync(SyncEntityType.MonthlyErt, entityId, envelope, remotePayload is null ? null : MonthlyErtSyncPayloadSerializer.Serialize(remotePayload), remoteHash, isDeleted: false, state, now, unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Conflicts++;
                 break;
 
@@ -868,14 +919,14 @@ public sealed class PersonalSyncService(
                 {
                     await stateRepository.UpsertAsync(
                         state with { LastRemoteDeviceId = envelope.DeviceId, LastRemoteRevision = envelope.Revision, UpdatedAtUtc = now },
-                        cancellationToken: cancellationToken).ConfigureAwait(false);
+                        unitOfWork, cancellationToken).ConfigureAwait(false);
                 }
                 counters.Unchanged++;
                 break;
 
             case SyncImportDecision.RemoteDeletionSafeApply:
             {
-                await monthlyErtRepository.DeleteAsync(year, month, cancellationToken: cancellationToken).ConfigureAwait(false);
+                await monthlyErtRepository.DeleteAsync(year, month, unitOfWork, cancellationToken).ConfigureAwait(false);
                 var newRevision = (state?.LocalRevision ?? 1) + 1;
                 await stateRepository.UpsertAsync(
                     (state ?? SyncEntityState.CreateNew(SyncEntityType.MonthlyErt, entityId, now)) with
@@ -892,15 +943,25 @@ public sealed class PersonalSyncService(
                         ConflictDetectedAtUtc = null,
                         UpdatedAtUtc = now,
                     },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Imported++;
                 break;
             }
 
             case SyncImportDecision.RemoteDeletionConflict:
-                await RecordConflictAsync(SyncEntityType.MonthlyErt, entityId, envelope, remotePayloadJson: null, remoteHash: null, isDeleted: true, state, now, cancellationToken).ConfigureAwait(false);
+                await RecordConflictAsync(SyncEntityType.MonthlyErt, entityId, envelope, remotePayloadJson: null, remoteHash: null, isDeleted: true, state, now, unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Conflicts++;
                 break;
+        }
+
+        if (unitOfWork is not null)
+        {
+            await unitOfWork.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        if (decision is SyncImportDecision.RemoteOnlyImport or SyncImportDecision.SafeRemoteUpdate or SyncImportDecision.RemoteDeletionSafeApply)
+        {
+            counters.ChangedLocally.Add(new SyncEntityKey(SyncEntityType.MonthlyErt, entityId));
         }
     }
 
@@ -1051,6 +1112,13 @@ public sealed class PersonalSyncService(
             remoteHash = SyncContentHash.ComputeErtDateOverrideHash(remotePayload);
         }
 
+        // Phase 18B REL-004: read-decide-write under one write lock (BEGIN IMMEDIATE), the same lock an
+        // open editor's conditional save takes — so an editor save can never land between this
+        // import's read of the local version and its write (which would silently overwrite it), and
+        // this import can never land between an editor's read and write. Every write below goes
+        // through this unit of work; the reads use their own connections, which the lock permits.
+        await using var unitOfWork = unitOfWorkFactory is null ? null : await unitOfWorkFactory.BeginAsync(cancellationToken).ConfigureAwait(false);
+
         var localOverride = await ertDateOverrideRepository.GetAsync(operatingDate, cancellationToken).ConfigureAwait(false);
         var state = await stateRepository.GetAsync(SyncEntityType.ErtDateOverride, entityId, cancellationToken).ConfigureAwait(false);
 
@@ -1065,7 +1133,7 @@ public sealed class PersonalSyncService(
                 break;
 
             case SyncImportDecision.RemoteOnlyImport:
-                await ertDateOverrideRepository.UpsertAsync(remotePayload!.ToDomain(), cancellationToken: cancellationToken).ConfigureAwait(false);
+                await ertDateOverrideRepository.UpsertAsync(remotePayload!.ToDomain(), unitOfWork, cancellationToken).ConfigureAwait(false);
                 await stateRepository.UpsertAsync(
                     SyncEntityState.CreateNew(SyncEntityType.ErtDateOverride, entityId, now) with
                     {
@@ -1074,7 +1142,7 @@ public sealed class PersonalSyncService(
                         LastRemoteDeviceId = envelope.DeviceId,
                         LastRemoteRevision = envelope.Revision,
                     },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Imported++;
                 break;
 
@@ -1096,7 +1164,7 @@ public sealed class PersonalSyncService(
                         ConflictDetectedAtUtc = null,
                         UpdatedAtUtc = now,
                     },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Unchanged++;
                 break;
             }
@@ -1104,7 +1172,7 @@ public sealed class PersonalSyncService(
             case SyncImportDecision.SafeRemoteUpdate:
             {
                 var newRevision = (state?.LocalRevision ?? 1) + 1;
-                await ertDateOverrideRepository.UpsertAsync(remotePayload!.ToDomain(), cancellationToken: cancellationToken).ConfigureAwait(false);
+                await ertDateOverrideRepository.UpsertAsync(remotePayload!.ToDomain(), unitOfWork, cancellationToken).ConfigureAwait(false);
                 await stateRepository.UpsertAsync(
                     (state ?? SyncEntityState.CreateNew(SyncEntityType.ErtDateOverride, entityId, now)) with
                     {
@@ -1120,14 +1188,14 @@ public sealed class PersonalSyncService(
                         ConflictDetectedAtUtc = null,
                         UpdatedAtUtc = now,
                     },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Imported++;
                 break;
             }
 
             case SyncImportDecision.Conflict:
             case SyncImportDecision.LocalDeletionConflict:
-                await RecordConflictAsync(SyncEntityType.ErtDateOverride, entityId, envelope, remotePayload is null ? null : ErtDateOverrideSyncPayloadSerializer.Serialize(remotePayload), remoteHash, isDeleted: false, state, now, cancellationToken).ConfigureAwait(false);
+                await RecordConflictAsync(SyncEntityType.ErtDateOverride, entityId, envelope, remotePayload is null ? null : ErtDateOverrideSyncPayloadSerializer.Serialize(remotePayload), remoteHash, isDeleted: false, state, now, unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Conflicts++;
                 break;
 
@@ -1136,14 +1204,14 @@ public sealed class PersonalSyncService(
                 {
                     await stateRepository.UpsertAsync(
                         state with { LastRemoteDeviceId = envelope.DeviceId, LastRemoteRevision = envelope.Revision, UpdatedAtUtc = now },
-                        cancellationToken: cancellationToken).ConfigureAwait(false);
+                        unitOfWork, cancellationToken).ConfigureAwait(false);
                 }
                 counters.Unchanged++;
                 break;
 
             case SyncImportDecision.RemoteDeletionSafeApply:
             {
-                await ertDateOverrideRepository.DeleteAsync(operatingDate, cancellationToken: cancellationToken).ConfigureAwait(false);
+                await ertDateOverrideRepository.DeleteAsync(operatingDate, unitOfWork, cancellationToken).ConfigureAwait(false);
                 var newRevision = (state?.LocalRevision ?? 1) + 1;
                 await stateRepository.UpsertAsync(
                     (state ?? SyncEntityState.CreateNew(SyncEntityType.ErtDateOverride, entityId, now)) with
@@ -1160,15 +1228,25 @@ public sealed class PersonalSyncService(
                         ConflictDetectedAtUtc = null,
                         UpdatedAtUtc = now,
                     },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Imported++;
                 break;
             }
 
             case SyncImportDecision.RemoteDeletionConflict:
-                await RecordConflictAsync(SyncEntityType.ErtDateOverride, entityId, envelope, remotePayloadJson: null, remoteHash: null, isDeleted: true, state, now, cancellationToken).ConfigureAwait(false);
+                await RecordConflictAsync(SyncEntityType.ErtDateOverride, entityId, envelope, remotePayloadJson: null, remoteHash: null, isDeleted: true, state, now, unitOfWork, cancellationToken).ConfigureAwait(false);
                 counters.Conflicts++;
                 break;
+        }
+
+        if (unitOfWork is not null)
+        {
+            await unitOfWork.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        if (decision is SyncImportDecision.RemoteOnlyImport or SyncImportDecision.SafeRemoteUpdate or SyncImportDecision.RemoteDeletionSafeApply)
+        {
+            counters.ChangedLocally.Add(new SyncEntityKey(SyncEntityType.ErtDateOverride, entityId));
         }
     }
 
@@ -1471,7 +1549,7 @@ public sealed class PersonalSyncService(
                 // somehow occurs (Phase 16E §13). Keyed by the shared id, so this local record's own
                 // export is also paused (never re-exported over an unresolved conflict).
                 var state = await stateRepository.GetAsync(SyncEntityType.FinalizedPassdown, entityId, cancellationToken).ConfigureAwait(false);
-                await RecordConflictAsync(SyncEntityType.FinalizedPassdown, entityId, envelope, FinalizedPassdownSyncPayloadSerializer.Serialize(payload), envelope.ContentHash, isDeleted: false, state, now, cancellationToken).ConfigureAwait(false);
+                await RecordConflictAsync(SyncEntityType.FinalizedPassdown, entityId, envelope, FinalizedPassdownSyncPayloadSerializer.Serialize(payload), envelope.ContentHash, isDeleted: false, state, now, unitOfWork: null, cancellationToken).ConfigureAwait(false);
                 counters.HistoryConflicts++;
                 counters.Conflicts++;
                 break;
@@ -1486,7 +1564,7 @@ public sealed class PersonalSyncService(
                 // both source artifacts (the local file this device already exported, and the remote file
                 // untouched in the shared folder) are preserved as-is (never mutated, never deleted).
                 var state = await stateRepository.GetAsync(SyncEntityType.FinalizedPassdown, entityId, cancellationToken).ConfigureAwait(false);
-                await RecordConflictAsync(SyncEntityType.FinalizedPassdown, entityId, envelope, FinalizedPassdownSyncPayloadSerializer.Serialize(payload), envelope.ContentHash, isDeleted: false, state, now, cancellationToken).ConfigureAwait(false);
+                await RecordConflictAsync(SyncEntityType.FinalizedPassdown, entityId, envelope, FinalizedPassdownSyncPayloadSerializer.Serialize(payload), envelope.ContentHash, isDeleted: false, state, now, unitOfWork: null, cancellationToken).ConfigureAwait(false);
                 counters.HistoryConflicts++;
                 counters.Conflicts++;
                 break;
@@ -1709,7 +1787,7 @@ public sealed class PersonalSyncService(
     private async Task RecordConflictAsync(
         SyncEntityType entityType, string entityId, SyncEnvelope envelope,
         string? remotePayloadJson, string? remoteHash, bool isDeleted,
-        SyncEntityState? state, DateTimeOffset now, CancellationToken cancellationToken)
+        SyncEntityState? state, DateTimeOffset now, IUnitOfWork? unitOfWork, CancellationToken cancellationToken)
     {
         var existingConflict = await conflictRepository.GetAsync(entityType, entityId, cancellationToken).ConfigureAwait(false);
 
@@ -1720,7 +1798,7 @@ public sealed class PersonalSyncService(
                     entityType, entityId, envelope.DeviceId, envelope.Revision, envelope.ModifiedUtc, isDeleted,
                     isDeleted ? null : envelope.PayloadSchemaVersion,
                     remotePayloadJson, remoteHash, now, null, null, null),
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+                unitOfWork, cancellationToken).ConfigureAwait(false);
 
             await stateRepository.UpsertAsync(
                 (state ?? SyncEntityState.CreateNew(entityType, entityId, now)) with
@@ -1732,7 +1810,7 @@ public sealed class PersonalSyncService(
                     ConflictDetectedAtUtc = now,
                     UpdatedAtUtc = now,
                 },
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+                unitOfWork, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -1749,7 +1827,7 @@ public sealed class PersonalSyncService(
                 NewerRemoteRevision = envelope.Revision,
                 NewerRemoteDetectedAtUtc = now,
             },
-            cancellationToken: cancellationToken).ConfigureAwait(false);
+            unitOfWork, cancellationToken).ConfigureAwait(false);
     }
 
     private sealed class Counters
@@ -1765,6 +1843,9 @@ public sealed class PersonalSyncService(
         public int HistoryUnchanged;
         public int HistoryConflicts;
         public int HistoryIncomplete;
+
+        /// <summary>Phase 18B REL-004: local entities this pass changed (imported, updated, or deleted) — published to open editors once the pass ends.</summary>
+        public List<SyncEntityKey> ChangedLocally { get; } = [];
 
         public PersonalSyncResult ToResult() => new(
             PersonalSyncOutcome.Completed, Imported, Exported, Unchanged, Conflicts, Malformed, IoFailures, null,
