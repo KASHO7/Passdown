@@ -264,5 +264,7 @@ public class SqliteFinalizedPassdownRepositoryTests : IDisposable
         Assert.Equal(record.Id, metadata.Id);
         Assert.Equal(record.PassdownDate, metadata.PassdownDate);
         Assert.Equal(record.ContentHash, metadata.ContentHash);
+        Assert.Equal(record.PdfSha256, metadata.PdfSha256);   // Phase 18B PERF-001 — still no pdf_bytes
+        Assert.Equal(record.PdfSizeBytes, metadata.PdfSizeBytes);
     }
 }

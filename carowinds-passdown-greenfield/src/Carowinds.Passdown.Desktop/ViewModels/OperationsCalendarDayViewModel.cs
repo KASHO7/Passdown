@@ -2,6 +2,7 @@ using Carowinds.Passdown.Application.Calendar;
 using Carowinds.Passdown.Desktop.Presentation;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Desktop.ViewModels;
 
@@ -140,7 +141,7 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
     {
         var parts = new List<string>
         {
-            day.Date.ToString("MMMM d, yyyy"),
+            day.Date.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates),
             operatingState.AccessibilityText,
         };
 

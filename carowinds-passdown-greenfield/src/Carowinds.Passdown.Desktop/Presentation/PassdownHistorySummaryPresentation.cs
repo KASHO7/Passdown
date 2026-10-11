@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Time;
+using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Desktop.Presentation;
 
@@ -27,8 +28,8 @@ public sealed record PassdownHistorySummaryPresentation(
 
         return new PassdownHistorySummaryPresentation(
             summary.PassdownDate,
-            summary.PassdownDate.ToString("MMMM d, yyyy"),
-            $"Finalized {finalizedEastern:MMM d, yyyy 'at' h:mm tt}",
+            summary.PassdownDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates),
+            string.Create(PresentationCulture.UnitedStates, $"Finalized {finalizedEastern:MMM d, yyyy 'at' h:mm tt}"),
             summary.Origin.ToString(),
             summary.HasFrozenPdf,
             summary.HasFrozenPdf ? "PDF available" : "Exact historical PDF unavailable");

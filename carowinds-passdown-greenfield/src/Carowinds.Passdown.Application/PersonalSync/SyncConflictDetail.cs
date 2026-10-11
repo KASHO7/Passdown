@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.OperationalNotes;
+using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Application.PersonalSync;
 
@@ -73,28 +74,28 @@ internal static class DraftConflictComparer
         [
             new ConflictFieldComparison("Manual Hours", L(FormatManualHours), R(FormatManualHours)),
             new ConflictFieldComparison("Private Buyout", L(FormatPrivateBuyout), R(FormatPrivateBuyout)),
-            new ConflictFieldComparison("Projected Attendance", L(p => p.ProjectedAttendance?.ToString() ?? "—"), R(p => p.ProjectedAttendance?.ToString() ?? "—")),
-            new ConflictFieldComparison("Pre-Solds", L(p => p.PreSolds?.ToString() ?? "—"), R(p => p.PreSolds?.ToString() ?? "—")),
+            new ConflictFieldComparison("Projected Attendance", L(p => p.ProjectedAttendance?.ToString(PresentationCulture.UnitedStates) ?? "—"), R(p => p.ProjectedAttendance?.ToString(PresentationCulture.UnitedStates) ?? "—")),
+            new ConflictFieldComparison("Pre-Solds", L(p => p.PreSolds?.ToString(PresentationCulture.UnitedStates) ?? "—"), R(p => p.PreSolds?.ToString(PresentationCulture.UnitedStates) ?? "—")),
             new ConflictFieldComparison("Daily Feature", L(FormatDailyFeature), R(FormatDailyFeature)),
-            new ConflictFieldComparison("Product Overrides", L(p => p.ProductOverrides.Count.ToString()), R(p => p.ProductOverrides.Count.ToString())),
+            new ConflictFieldComparison("Product Overrides", L(p => p.ProductOverrides.Count.ToString(PresentationCulture.UnitedStates)), R(p => p.ProductOverrides.Count.ToString(PresentationCulture.UnitedStates))),
             new ConflictFieldComparison("Custom Products", L(FormatCustomProducts), R(FormatCustomProducts)),
             new ConflictFieldComparison("Selected Operational Notes", L(FormatSelectedNotes), R(FormatSelectedNotes)),
         ];
     }
 
     private static string FormatManualHours(AssociateDraftPayload p) => p.ManualHoursOverride.Enabled
-        ? $"{p.ManualHoursOverride.OpeningTime:h\\:mm tt} – {p.ManualHoursOverride.ClosingTime:h\\:mm tt}"
+        ? string.Create(PresentationCulture.UnitedStates, $"{p.ManualHoursOverride.OpeningTime:h\\:mm tt} – {p.ManualHoursOverride.ClosingTime:h\\:mm tt}")
         : "Off";
 
     private static string FormatPrivateBuyout(AssociateDraftPayload p) => p.PrivateBuyout.Enabled
-        ? $"{p.PrivateBuyout.OpeningTime:h\\:mm tt} – {p.PrivateBuyout.ClosingTime:h\\:mm tt}{(string.IsNullOrWhiteSpace(p.PrivateBuyout.Details) ? "" : $" ({p.PrivateBuyout.Details})")}"
+        ? string.Create(PresentationCulture.UnitedStates, $"{p.PrivateBuyout.OpeningTime:h\\:mm tt} – {p.PrivateBuyout.ClosingTime:h\\:mm tt}{(string.IsNullOrWhiteSpace(p.PrivateBuyout.Details) ? "" : $" ({p.PrivateBuyout.Details})")}")
         : "Off";
 
     private static string FormatDailyFeature(AssociateDraftPayload p) =>
         p.DailyFeatureType is null ? "—" : $"{p.DailyFeatureType}: {p.DailyFeatureText}";
 
     private static string FormatCustomProducts(AssociateDraftPayload p) =>
-        p.CustomProducts.Count == 0 ? "None" : string.Join("; ", p.CustomProducts.Select(c => $"{c.DisplayName}{(c.Price is { } price ? $" (${price})" : "")}"));
+        p.CustomProducts.Count == 0 ? "None" : string.Join("; ", p.CustomProducts.Select(c => $"{c.DisplayName}{(c.Price is { } price ? $" ({PresentationCulture.FormatUsd(price)})" : "")}"));
 
     private static string FormatSelectedNotes(AssociateDraftPayload p) =>
         p.SelectedOperationalNotes.Count == 0 ? "None" : string.Join("; ", p.SelectedOperationalNotes.Select(n => n.Title));
@@ -133,7 +134,9 @@ internal static class NoteConflictComparer
     }
 
     private static string FormatDateRange(DateOnly from, DateOnly? through) =>
-        through is null ? $"{from:yyyy-MM-dd} onward" : $"{from:yyyy-MM-dd} – {through:yyyy-MM-dd}";
+        through is null
+            ? string.Create(PresentationCulture.UnitedStates, $"{from:MMM d, yyyy} onward")
+            : string.Create(PresentationCulture.UnitedStates, $"{from:MMM d, yyyy} – {through:MMM d, yyyy}");
 }
 
 /// <summary>How one conflict-resolution command ended (Phase 16D §7/§8/§21/§32) — never a thrown exception for an expected, retryable condition.</summary>

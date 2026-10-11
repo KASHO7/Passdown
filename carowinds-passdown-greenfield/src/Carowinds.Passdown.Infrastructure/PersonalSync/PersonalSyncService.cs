@@ -52,6 +52,19 @@ public sealed class PersonalSyncService(
     /// </summary>
     private readonly SemaphoreSlim _gate = new(1, 1);
 
+    /// <summary>
+    /// Phase 18B PERF-001: (length, last-write) of each remote history PDF this process has fully
+    /// byte-validated, keyed by path. Only ever used to force a re-validation when a file changed
+    /// during this session — never as proof of identity on its own (see <see cref="CanSkipPdfRevalidation"/>).
+    /// </summary>
+    private readonly Dictionary<string, (long Length, DateTime LastWriteUtc)> _validatedHistoryPdfs = new(StringComparer.Ordinal);
+
+    /// <summary>Phase 18B PERF-001 instrumentation (tests/measurement only): remote history-PDF bytes read during the last completed pass.</summary>
+    internal long LastPassHistoryPdfBytesRead { get; private set; }
+
+    /// <summary>Phase 18B PERF-001 instrumentation: remote history PDFs whose byte re-validation was skipped during the last completed pass.</summary>
+    internal int LastPassHistoryPdfRevalidationsSkipped { get; private set; }
+
     public async Task<PersonalSyncResult> RunAsync(CancellationToken cancellationToken = default)
     {
         if (!await _gate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
@@ -87,6 +100,9 @@ public sealed class PersonalSyncService(
             var now = clock.UtcNow;
             counters = new Counters();
 
+            // Phase 18B REL-007: best-effort, never throws; only this app's own stale temp names.
+            SyncTempFileCleaner.CleanStaleTempFiles(root);
+
             await ReconcileSyncSpaceAsync(snapshot.SyncSpaceId, cancellationToken).ConfigureAwait(false);
 
             await ImportDraftsAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
@@ -100,6 +116,8 @@ public sealed class PersonalSyncService(
             await ExportMonthlyErtsAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
             await ExportErtDateOverridesAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
 
+            LastPassHistoryPdfBytesRead = counters.HistoryPdfBytesRead;
+            LastPassHistoryPdfRevalidationsSkipped = counters.HistoryPdfRevalidationsSkipped;
             return counters.ToResult();
         }
         finally
@@ -1334,6 +1352,11 @@ public sealed class PersonalSyncService(
             return;
         }
 
+        // Phase 18B PERF-001: one blob-free metadata query per pass (never pdf_bytes), used only to
+        // decide whether an already-held record's remote PDF must be re-read.
+        var localMetadataById = (await finalizedPassdownRepository.ListForSyncAsync(cancellationToken).ConfigureAwait(false))
+            .ToDictionary(item => item.Id);
+
         foreach (var file in Directory.GetFiles(directory, "*.json"))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -1352,7 +1375,7 @@ public sealed class PersonalSyncService(
             switch (readResult.Status)
             {
                 case SyncFileReadStatus.Success:
-                    await ProcessHistoryEnvelopeAsync(readResult.Value!, root, fileDate, fileId, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
+                    await ProcessHistoryEnvelopeAsync(readResult.Value!, root, fileDate, fileId, deviceId, now, localMetadataById, counters, cancellationToken).ConfigureAwait(false);
                     break;
 
                 case SyncFileReadStatus.Missing:
@@ -1371,7 +1394,8 @@ public sealed class PersonalSyncService(
     }
 
     private async Task ProcessHistoryEnvelopeAsync(
-        SyncEnvelope envelope, string root, DateOnly fileDate, Guid fileId, Guid deviceId, DateTimeOffset now, Counters counters, CancellationToken cancellationToken)
+        SyncEnvelope envelope, string root, DateOnly fileDate, Guid fileId, Guid deviceId, DateTimeOffset now,
+        IReadOnlyDictionary<Guid, FinalizedPassdownSyncMetadata> localMetadataById, Counters counters, CancellationToken cancellationToken)
     {
         var entityId = SyncEntityIdentity.ForFinalizedPassdown(fileId);
 
@@ -1447,18 +1471,42 @@ public sealed class PersonalSyncService(
             return;
         }
 
+        FileInfo pdfInfo;
+        try
+        {
+            pdfInfo = new FileInfo(pdfPath);
+            pdfInfo.Refresh();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            counters.IoFailures++;
+            return;
+        }
+
+        if (await CanSkipPdfRevalidation(envelope, payload, entityId, fileId, pdfPath, pdfInfo, localMetadataById, cancellationToken).ConfigureAwait(false))
+        {
+            // Phase 18B PERF-001: this exact remote record was already byte-validated and imported (or
+            // converged) by this device, the local immutable copy is the one in use, and nothing about
+            // the remote file suggests it changed — re-reading/hashing it would not change any outcome.
+            counters.HistoryPdfRevalidationsSkipped++;
+            counters.HistoryUnchanged++;
+            counters.Unchanged++;
+            return;
+        }
+
         byte[] pdfBytes;
         try
         {
             // Phase 18A SEC-003: never buffer an arbitrarily large untrusted file into memory. A real
             // frozen passdown PDF is far below this bound (see SyncFileReader.MaxPdfFileBytes).
-            if (payload.PdfSizeBytes > SyncFileReader.MaxPdfFileBytes || new FileInfo(pdfPath).Length > SyncFileReader.MaxPdfFileBytes)
+            if (payload.PdfSizeBytes > SyncFileReader.MaxPdfFileBytes || pdfInfo.Length > SyncFileReader.MaxPdfFileBytes)
             {
                 counters.Malformed++;
                 return;
             }
 
             pdfBytes = await File.ReadAllBytesAsync(pdfPath, cancellationToken).ConfigureAwait(false);
+            counters.HistoryPdfBytesRead += pdfBytes.LongLength;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -1472,10 +1520,13 @@ public sealed class PersonalSyncService(
             // Corrupt/hash-mismatched PDF — never imported, and the local (if any) copy is never
             // touched (§17). Counted as a conflict: this needs a human to look at it, exactly like the
             // integrity conditions below.
+            _validatedHistoryPdfs.Remove(pdfPath);
             counters.HistoryConflicts++;
             counters.Conflicts++;
             return;
         }
+
+        _validatedHistoryPdfs[pdfPath] = (pdfInfo.Length, pdfInfo.LastWriteTimeUtc);
 
         var localById = await finalizedPassdownRepository.GetByIdAsync(fileId, cancellationToken).ConfigureAwait(false);
         var localContentHashForSameId = localById?.ContentHash;
@@ -1570,6 +1621,56 @@ public sealed class PersonalSyncService(
                 break;
             }
         }
+    }
+
+    /// <summary>
+    /// Phase 18B PERF-001: whether a remote history PDF may be left unread this pass. Every condition
+    /// must hold; anything uncertain falls through to the full read + SHA-256 + size check:
+    /// <list type="number">
+    /// <item>A local record with this exact id and content hash already exists, and the remote JSON
+    /// declares exactly the local frozen PDF's SHA-256 and size (the decision can only be
+    /// <see cref="FinalizedPassdownSyncDecision.Converged"/>, which never uses the remote bytes — the
+    /// local immutable copy, itself hash-verified when it was imported, stays authoritative).</item>
+    /// <item>This device's sync state records that exact remote envelope (device + revision + content
+    /// hash) as already imported/converged — only ever written after a successful byte validation —
+    /// and the entity is not in conflict.</item>
+    /// <item>The remote PDF's current length equals the payload's declared size.</item>
+    /// <item>If this process already validated the file, its length and last-write time are unchanged
+    /// since. (Metadata is only ever a reason to re-read, never proof that the bytes are right.)</item>
+    /// </list>
+    /// A remote record not yet held locally is always fully validated, so no forged length/timestamp
+    /// can get unverified bytes imported.
+    /// </summary>
+    private async Task<bool> CanSkipPdfRevalidation(
+        SyncEnvelope envelope, FinalizedPassdownSyncPayload payload, string entityId, Guid fileId, string pdfPath, FileInfo pdfInfo,
+        IReadOnlyDictionary<Guid, FinalizedPassdownSyncMetadata> localMetadataById, CancellationToken cancellationToken)
+    {
+        if (!localMetadataById.TryGetValue(fileId, out var local)
+            || !string.Equals(local.ContentHash, envelope.ContentHash, StringComparison.Ordinal)
+            || local.PdfSha256 is null
+            || !string.Equals(local.PdfSha256, payload.PdfSha256, StringComparison.OrdinalIgnoreCase)
+            || local.PdfSizeBytes != payload.PdfSizeBytes)
+        {
+            return false;
+        }
+
+        if (!pdfInfo.Exists || pdfInfo.Length != payload.PdfSizeBytes)
+        {
+            return false;
+        }
+
+        if (_validatedHistoryPdfs.TryGetValue(pdfPath, out var validated)
+            && (validated.Length != pdfInfo.Length || validated.LastWriteUtc != pdfInfo.LastWriteTimeUtc))
+        {
+            return false;
+        }
+
+        var state = await stateRepository.GetAsync(SyncEntityType.FinalizedPassdown, entityId, cancellationToken).ConfigureAwait(false);
+        return state is not null
+            && state.ConflictState != SyncConflictState.Conflicting
+            && string.Equals(state.SyncedContentHash, envelope.ContentHash, StringComparison.Ordinal)
+            && state.LastRemoteDeviceId == envelope.DeviceId
+            && state.LastRemoteRevision == envelope.Revision;
     }
 
     // ----- History: export (Phase 16E §8/§9/§10) -----
@@ -1843,6 +1944,8 @@ public sealed class PersonalSyncService(
         public int HistoryUnchanged;
         public int HistoryConflicts;
         public int HistoryIncomplete;
+        public long HistoryPdfBytesRead;
+        public int HistoryPdfRevalidationsSkipped;
 
         /// <summary>Phase 18B REL-004: local entities this pass changed (imported, updated, or deleted) — published to open editors once the pass ends.</summary>
         public List<SyncEntityKey> ChangedLocally { get; } = [];

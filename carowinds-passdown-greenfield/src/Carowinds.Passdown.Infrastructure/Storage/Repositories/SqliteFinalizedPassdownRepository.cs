@@ -123,7 +123,7 @@ public sealed class SqliteFinalizedPassdownRepository(SqliteConnectionFactory co
     {
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, passdown_date, content_hash FROM finalized_passdowns;";
+        command.CommandText = "SELECT id, passdown_date, content_hash, pdf_sha256, pdf_size_bytes FROM finalized_passdowns;";
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         var results = new List<FinalizedPassdownSyncMetadata>();
@@ -132,7 +132,9 @@ public sealed class SqliteFinalizedPassdownRepository(SqliteConnectionFactory co
             results.Add(new FinalizedPassdownSyncMetadata(
                 Guid.Parse(reader.GetString(0)),
                 SqliteConvert.ReadDateOnly(reader, 1),
-                reader.GetString(2)));
+                reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetInt64(4)));
         }
 
         return results;

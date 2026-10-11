@@ -62,16 +62,6 @@ public sealed class FileDeviceIdProvider(string deviceIdFilePath) : IDeviceIdPro
         return Guid.TryParse(text, out deviceId);
     }
 
-    private void WriteDeviceId(Guid deviceId)
-    {
-        var directory = Path.GetDirectoryName(DeviceIdFilePath);
-        if (!string.IsNullOrEmpty(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        var tempPath = Path.Combine(directory ?? string.Empty, $"{Path.GetFileName(DeviceIdFilePath)}.tmp-{Guid.NewGuid():N}");
-        File.WriteAllText(tempPath, deviceId.ToString("D"));
-        File.Move(tempPath, DeviceIdFilePath, overwrite: true);
-    }
+    /// <summary>Phase 18B REL-003: the same durable temp-write → flush-to-disk → rename as every other small settings file (<see cref="AtomicFileWriter"/>).</summary>
+    private void WriteDeviceId(Guid deviceId) => AtomicFileWriter.WriteText(DeviceIdFilePath, deviceId.ToString("D"));
 }

@@ -36,6 +36,34 @@ public class DiagnosticReportBuilderTests
             new FakeClock(Now));
 
     [Fact]
+    public async Task BuildAsync_IncludesABoundedAppLogExcerpt_WhenAnAppLogProviderIsRegistered()
+    {
+        var appLog = new FakeInteractiveAppLogProvider(["app line"]);
+        var sut = new DiagnosticReportBuilder(
+            [],
+            new InMemorySourceStateRepository(),
+            new FakeDatabaseDiagnosticsProvider(new DatabaseDiagnostics(false, null, null, false, null)),
+            new FakeScheduledTaskStatusProvider(new ScheduledTaskDiagnostics(ScheduledTaskDiagnosticStatus.NotFound, null)),
+            new FakeScheduledRefreshLogProvider(["scheduled line"]),
+            new FakeClock(Now),
+            appLog);
+
+        var report = await sut.BuildAsync();
+
+        Assert.Equal(["app line"], report.RecentAppLogLines);
+        Assert.Equal(["scheduled line"], report.RecentLogLines);
+        Assert.Equal(200, appLog.RequestedMaxLines);
+    }
+
+    [Fact]
+    public async Task BuildAsync_WithoutAnAppLogProvider_HasAnEmptyAppLogExcerpt()
+    {
+        var report = await BuildSut([]).BuildAsync();
+
+        Assert.Empty(report.RecentAppLogLines);
+    }
+
+    [Fact]
     public async Task BuildAsync_SourceNeverChecked_ReportsNeverChecked()
     {
         var registration = BuildRegistration("park-hours.official", SourceCategory.ParkHours, new InMemoryDatedResultRepository());

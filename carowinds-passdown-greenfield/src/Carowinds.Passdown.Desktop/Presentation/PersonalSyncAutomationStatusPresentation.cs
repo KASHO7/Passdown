@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.PersonalSync;
+using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Desktop.Presentation;
 
@@ -45,5 +46,5 @@ public sealed record PersonalSyncAutomationStatusPresentation(string Text, strin
 
     /// <summary>"Last synced: 2:41 PM" (§13, display-only — local time, never used for reconciliation ordering) — null until the first successful pass.</summary>
     public static string? BuildLastSyncedText(DateTimeOffset? lastSuccessfulSyncUtc) =>
-        lastSuccessfulSyncUtc is { } value ? $"Last synced: {value.ToLocalTime():h:mm tt}" : null;
+        lastSuccessfulSyncUtc is { } value ? string.Create(PresentationCulture.UnitedStates, $"Last synced: {value.ToLocalTime():h:mm tt}") : null;
 }

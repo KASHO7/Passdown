@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Calendar;
+using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Desktop.Presentation;
 
@@ -99,7 +100,7 @@ public sealed record OperationsCalendarOperatingStatePresentation(
     private static string? FormatCompactRange(TimeOnly? opening, TimeOnly? closing) =>
         opening is null || closing is null ? null : $"{FormatCompactTime(opening.Value)}–{FormatCompactTime(closing.Value)}";
 
-    private static string FormatCompactTime(TimeOnly time) => time.Minute == 0 ? time.ToString("h tt") : time.ToString("h:mm tt");
+    private static string FormatCompactTime(TimeOnly time) => time.Minute == 0 ? time.ToString("h tt", PresentationCulture.UnitedStates) : time.ToString("h:mm tt", PresentationCulture.UnitedStates);
 
     /// <summary>"10 AM to 10 PM" (spec Part X's own literal accessibility examples use "to", not a dash).</summary>
     private static string FormatAccessibleRange(TimeOnly? opening, TimeOnly? closing) =>

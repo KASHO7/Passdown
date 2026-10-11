@@ -39,7 +39,7 @@ internal sealed class InMemoryFinalizedPassdownRepository : IFinalizedPassdownRe
     public Task<IReadOnlyList<FinalizedPassdownSyncMetadata>> ListForSyncAsync(CancellationToken cancellationToken = default)
     {
         IReadOnlyList<FinalizedPassdownSyncMetadata> metadata = _records.Values
-            .Select(r => new FinalizedPassdownSyncMetadata(r.Id, r.PassdownDate, r.ContentHash))
+            .Select(r => new FinalizedPassdownSyncMetadata(r.Id, r.PassdownDate, r.ContentHash, r.PdfSha256, r.PdfSizeBytes))
             .ToList();
 
         return Task.FromResult(metadata);

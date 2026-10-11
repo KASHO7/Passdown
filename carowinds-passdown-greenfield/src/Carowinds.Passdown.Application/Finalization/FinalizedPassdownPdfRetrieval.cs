@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Persistence;
+using System.Globalization;
 
 namespace Carowinds.Passdown.Application.Finalization;
 
@@ -35,7 +36,7 @@ public sealed class FinalizedPassdownPdfRetrievalService(IFinalizedPassdownRepos
             return null;
         }
 
-        var fileName = $"Carowinds-Operations-{passdownDate:yyyy-MM-dd}.pdf";
+        var fileName = string.Create(CultureInfo.InvariantCulture, $"Carowinds-Operations-{passdownDate:yyyy-MM-dd}.pdf");
         return new FinalizedPassdownPdfRetrievalResult(finalized.PdfBytes, fileName, finalized.PdfSha256, finalized.PdfSizeBytes.Value);
     }
 }

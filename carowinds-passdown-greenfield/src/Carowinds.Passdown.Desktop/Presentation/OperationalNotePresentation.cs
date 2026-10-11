@@ -1,5 +1,6 @@
 using System.Globalization;
 using Carowinds.Passdown.Application.OperationalNotes;
+using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Desktop.Presentation;
 
@@ -99,7 +100,7 @@ public sealed record OperationalNoteDetailPresentation(
 
     private static string FormatDate(DateOnly date, DateOnly referenceDate) => OperationalNoteDateRangeFormatter.FormatDate(date, referenceDate);
 
-    private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d 'at' h:mm tt", CultureInfo.InvariantCulture);
+    private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d 'at' h:mm tt", PresentationCulture.UnitedStates);
 }
 
 /// <summary>
@@ -136,7 +137,7 @@ internal static class OperationalNoteDateRangeFormatter
     public static string FormatDate(DateOnly date, DateOnly referenceDate)
     {
         var format = date.Year == referenceDate.Year ? "MMM d" : "MMM d, yyyy";
-        return date.ToDateTime(TimeOnly.MinValue).ToString(format, CultureInfo.InvariantCulture);
+        return date.ToDateTime(TimeOnly.MinValue).ToString(format, PresentationCulture.UnitedStates);
     }
 }
 

@@ -51,4 +51,9 @@ public sealed record DiagnosticReport(
     IReadOnlyList<SourceStatusSummary> Sources,
     DatabaseDiagnostics Database,
     ScheduledTaskDiagnostics ScheduledTask,
-    IReadOnlyList<string> RecentLogLines);
+    IReadOnlyList<string> RecentLogLines,
+    IReadOnlyList<string>? RecentAppLogLines = null)
+{
+    /// <summary>Phase 18B REL-005: bounded, path-redacted tail of the interactive app log; empty when none exists.</summary>
+    public IReadOnlyList<string> RecentAppLogLines { get; init; } = RecentAppLogLines ?? [];
+}

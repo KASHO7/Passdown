@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Calendar;
 using Carowinds.Passdown.Application.Time;
+using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Desktop.Presentation;
 
@@ -62,5 +63,5 @@ public sealed record OperationsCalendarPassdownPresentation(
         };
 
     private static string FormatTimestamp(DateTimeOffset value) =>
-        EasternTimeZone.ConvertFromUtc(value).ToString("MMM d, yyyy 'at' h:mm tt");
+        EasternTimeZone.ConvertFromUtc(value).ToString("MMM d, yyyy 'at' h:mm tt", PresentationCulture.UnitedStates);
 }

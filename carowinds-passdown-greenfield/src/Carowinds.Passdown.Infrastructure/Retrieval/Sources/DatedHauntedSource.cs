@@ -119,7 +119,7 @@ public sealed class DatedHauntedSource(IRetrievalHttpClient httpClient, IClock c
                     OfficialPageUrl,
                     timeChecked,
                     RetrievalStatus.Verified,
-                    $"Haunted attractions confirmed for {requestedDate.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)}.",
+                    $"Haunted attractions confirmed for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}.",
                     RetrievalStrategy.DirectApi,
                     requestedDate: requestedDate,
                     confirmedDate: requestedDate),
@@ -276,7 +276,7 @@ public sealed class DatedHauntedSource(IRetrievalHttpClient httpClient, IClock c
     }
 
     private static string DefaultUnavailableDetail(DateOnly requestedDate) =>
-        $"Haunted attractions are not available for {requestedDate.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)}.";
+        $"Haunted attractions are not available for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}.";
 
     private SourceResult<DatedHauntedPayload> NotPublished(DateTimeOffset timeChecked, DateOnly requestedDate) =>
         SourceResult<DatedHauntedPayload>.WithoutPayload(
@@ -286,7 +286,7 @@ public sealed class DatedHauntedSource(IRetrievalHttpClient httpClient, IClock c
                 OfficialPageUrl,
                 timeChecked,
                 RetrievalStatus.NotPublished,
-                $"Haunted attractions for {requestedDate.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)} have not been published yet.",
+                $"Haunted attractions for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)} have not been published yet.",
                 RetrievalStrategy.DirectApi,
                 requestedDate: requestedDate));
 

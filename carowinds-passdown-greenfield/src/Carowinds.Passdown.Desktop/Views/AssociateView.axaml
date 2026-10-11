@@ -510,7 +510,7 @@
                   <Rectangle Height="1" Fill="{DynamicResource PassdownDividerBrush}" Margin="0,2,0,2" />
 
                   <TextBlock Text="DATE OVERRIDE" Classes="subsectionTitle" Margin="0" />
-                  <CheckBox Content="{Binding SelectedDate, StringFormat='Use override for {0:MMM d}'}"
+                  <CheckBox Content="{Binding UseOverrideForDateLabel}"
                             IsChecked="{Binding ErtUseOverrideForDate}"
                             AutomationProperties.Name="Use an Early Ride Time override for this date" />
                   <StackPanel Spacing="8" IsVisible="{Binding ErtUseOverrideForDate}">

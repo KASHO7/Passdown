@@ -1,7 +1,8 @@
 # Phase 18A — Comprehensive Reliability, Security, Privacy, and Release Hardening Audit
 
-Status: **18A complete; 18B in progress** — REL-004 fixed in 18B (see §13). The other deferred items
-below remain open.
+Status: **18A complete; 18B complete** — REL-004 fixed in 18B (§13); REL-003, REL-005, REL-007,
+PRIV-002, PERF-001, QUAL-001, PKG-002 fixed in 18B (§14). Windows / two-PC OneDrive validation remains
+**NOT EXECUTED**.
 
 This document records a whole-application audit of Carowinds Operations (internal name
 Carowinds.Passdown) and the targeted fixes made during it. It is not a certification. A passing test
@@ -101,20 +102,21 @@ Severity per the phase rubric. "Fixed" means fixed in 18A with a failing-first r
 | PKG-001 | LOW | Release binaries | Every shipped `Carowinds.Passdown.*.dll` embedded the build machine's absolute PDB path (`/Users/<developer>/Documents/Passdown/...`) — a username/folder disclosure and a non-reproducible byte difference between build machines. | `strings` on the released ZIP's DLLs | Release-only `PathMap` (repo root → `/_/`) in `Directory.Build.props`; Debug unchanged | **Fixed** (takes effect on next release build; existing ZIP/EXE not rebuilt per phase rules) |
 | BUG-001 | QUALITY | Operations Calendar | Daily-admission price used the machine culture's `"C"` format; an English (UK)/German region format showed `£54.99`/`54,99 €` for a USD price. Every other price uses invariant `$0.00`. | `OperationsCalendarPresentation.BuildDailyAdmissionPriceText` | Use `PriceFormatting.Format` | **Fixed** |
 | REL-004 | MEDIUM | Sync ↔ open editor | After a sync pass imports a remote change to a draft (or note) that is **currently open** in the Associate (or Notes) editor, nothing reloads the view model. The next local edit autosaves the stale in-memory payload over the imported one, the export pushes it, and the other device then accepts it as a safe update — the remote edit is lost **without** a conflict. Requires the same date/note to be open on one device while edited on another. | No sync-completion → view-model reload path (`App.axaml.cs`, `AssociateViewModel`); `SaveDraftAsync` is unconditional | 18B, per product decision "auto-reload clean editors; preserve dirty editors and require explicit conflict resolution" — see §13 | **Fixed (18B)** |
-| REL-003 | LOW | Atomic writes | `AtomicFileWriter` (sync files, config, preferences) and `FileDeviceIdProvider` write the temp file without `Flush(flushToDisk: true)` before the rename. A power loss shortly after can leave a zero-length/garbage final file on NTFS (rename is durable, data may not be). Process-crash atomicity is fine. | `File.WriteAllTextAsync` + `File.Move` | Write via `FileStream` + `Flush(true)` (or `FileOptions.WriteThrough`) | Deferred 18B (#2) |
-| REL-005 | QUALITY | Diagnostics | The interactive app logs only to the console provider (no console for a WinExe), so sync/load/PDF errors in normal use leave no persistent trace; the diagnostics ZIP contains scheduled-refresh logs only. | `App.axaml.cs` `AddConsole()`; file logger only in `Program.BuildScheduledRefreshServiceProvider` | Add the file logger (separate file name) to the interactive host, with PRIV-001 redaction on export | Deferred 18B (#3) |
-| REL-007 | LOW | Sync folder hygiene | A crash between temp write and rename leaves `<name>.tmp-<guid>` files in the shared OneDrive folder forever (ignored by importers, but synced to every device). | `AtomicFileWriter` temp naming | Best-effort cleanup of own stale `*.tmp-*` older than N hours at pass start | Deferred 18B (#5) |
-| PRIV-002 | LOW | History temp PDFs | "Open Final PDF" writes the frozen PDF to `%TEMP%\Carowinds Passdown\History\Carowinds-Operations-<date>.pdf` and never removes it; re-opening the same date while a viewer holds the file locked (common with Acrobat on Windows) fails with "could not be opened". | `TempFileFinalizedPdfLauncher` | Unique per-open file name + age-based cleanup | Deferred 18B (#4) |
-| PERF-001 | LOW | Sync history import | Every pass re-reads and SHA-256-hashes **every remote** history PDF before checking whether the same record (same id + content hash) already exists locally. ~365 records/year × ~0.5 MB ≈ 180 MB read per pass by end of season. | `ProcessHistoryEnvelopeAsync` ordering | Short-circuit when local id + content hash already match — but this changes when a later-corrupted remote PDF is reported, so needs a deliberate decision | Deferred 18B (#6) |
-| QUAL-001 | QUALITY | Culture | 15 UI date/time formats (`"MMMM yyyy"`, `"dddd, MMMM d, yyyy"`, …) use the machine culture, so a non-English Windows region shows mixed-language month/day names. PDFs, persistence, sync, and parsing are invariant. | Desktop presentation `ToString("MMMM…")` without culture | Decide whether the UI is pinned to en-US (one startup line) — product decision | Deferred 18B (#7) |
-| PKG-002 | INFO | Packaging | `Build-PortableRelease.ps1` forbidden-pattern sanity check covers `*.git*`, `*.db*`, `CLAUDE.md`, `AGENT_BUILD_SPEC.md` but not `*.log`, `*.cs`, `.DS_Store`, `sync-config.json`, `device-id.txt`. The staging folder is built only from publish output, so this is defense-in-depth. Released ZIP inspected clean. | Script lines 158-165 | Extend the deny list | Deferred 18B (#8) |
+| REL-003 | LOW | Atomic writes | `AtomicFileWriter` (sync files, config, preferences) and `FileDeviceIdProvider` write the temp file without `Flush(flushToDisk: true)` before the rename. A power loss shortly after can leave a zero-length/garbage final file on NTFS (rename is durable, data may not be). Process-crash atomicity is fine. | `File.WriteAllTextAsync` + `File.Move` | Write via `FileStream` + `Flush(true)` (or `FileOptions.WriteThrough`) | **Fixed (18B)** — §14.1 |
+| REL-005 | QUALITY | Diagnostics | The interactive app logs only to the console provider (no console for a WinExe), so sync/load/PDF errors in normal use leave no persistent trace; the diagnostics ZIP contains scheduled-refresh logs only. | `App.axaml.cs` `AddConsole()`; file logger only in `Program.BuildScheduledRefreshServiceProvider` | Add the file logger (separate file name) to the interactive host, with PRIV-001 redaction on export | **Fixed (18B)** — §14.2 |
+| REL-007 | LOW | Sync folder hygiene | A crash between temp write and rename leaves `<name>.tmp-<guid>` files in the shared OneDrive folder forever (ignored by importers, but synced to every device). | `AtomicFileWriter` temp naming | Best-effort cleanup of own stale `*.tmp-*` older than N hours at pass start | **Fixed (18B)** — §14.3 |
+| PRIV-002 | LOW | History temp PDFs | "Open Final PDF" writes the frozen PDF to `%TEMP%\Carowinds Passdown\History\Carowinds-Operations-<date>.pdf` and never removes it; re-opening the same date while a viewer holds the file locked (common with Acrobat on Windows) fails with "could not be opened". | `TempFileFinalizedPdfLauncher` | Unique per-open file name + age-based cleanup | **Fixed (18B)** — §14.4 |
+| PERF-001 | LOW | Sync history import | Every pass re-reads and SHA-256-hashes **every remote** history PDF before checking whether the same record (same id + content hash) already exists locally. ~365 records/year × ~0.5 MB ≈ 180 MB read per pass by end of season. | `ProcessHistoryEnvelopeAsync` ordering | Short-circuit when local id + content hash already match — but this changes when a later-corrupted remote PDF is reported, so needs a deliberate decision | **Fixed (18B)** — §14.5 |
+| QUAL-001 | QUALITY | Culture | 15 UI date/time formats (`"MMMM yyyy"`, `"dddd, MMMM d, yyyy"`, …) use the machine culture, so a non-English Windows region shows mixed-language month/day names. PDFs, persistence, sync, and parsing are invariant. | Desktop presentation `ToString("MMMM…")` without culture | Decide whether the UI is pinned to en-US (one startup line) — product decision | **Fixed (18B)** — owner decision: pin presentation to en-US, §14.6 |
+| PKG-002 | INFO | Packaging | `Build-PortableRelease.ps1` forbidden-pattern sanity check covers `*.git*`, `*.db*`, `CLAUDE.md`, `AGENT_BUILD_SPEC.md` but not `*.log`, `*.cs`, `.DS_Store`, `sync-config.json`, `device-id.txt`. The staging folder is built only from publish output, so this is defense-in-depth. Released ZIP inspected clean. | Script lines 158-165 | Extend the deny list | **Fixed (18B)** — §14.7 |
 | INFO-001 | INFO | Dependencies | No vulnerable packages (direct or transitive). Only `xunit` 2.9.3 (test-only) is flagged "Legacy" → xunit.v3. Patch updates exist (Avalonia 12.1.4, MS.Extensions/Sqlite 10.0.12, QuestPDF 2026.9.1); none is security-flagged. | `dotnet list package` output (§6) | Do not auto-upgrade; take patch updates in a normal maintenance phase | Info |
 | INFO-002 | INFO | Time | Associate PDF "generated" stamp uses `DateTimeOffset.Now`/`ToLocalTime()` (machine wall clock) rather than `IClock`+Eastern. Correct on an Eastern-time PC; documented semantics unchanged. | `AssociateViewModel.CreatePdfAsync`, `AssociatePassdownDocumentModelBuilder.FormatTimestamp` | No change (do not alter wall-clock semantics without evidence) | Info |
 | INFO-003 | INFO | Architecture | PDF hash/size verification for History open/save lives in `PassdownHistoryViewModel.TryValidate` (presentation) rather than the Application retrieval service. Correct today. | `PassdownHistoryViewModel` | Consider moving into `FinalizedPassdownPdfRetrievalService` when next touched | Info |
 
-Counts: **CRITICAL 0 · HIGH 0 · MEDIUM 3** (SEC-001, SEC-002 fixed; REL-004 deferred) **· LOW 10**
-(SEC-003, REL-001, REL-002, REL-006, PRIV-001, PKG-001 fixed; REL-003, REL-007, PRIV-002, PERF-001
-deferred) **· QUALITY 3** (BUG-001 fixed; REL-005, QUAL-001 deferred) **· INFO 4**.
+Counts: **CRITICAL 0 · HIGH 0 · MEDIUM 3** (all fixed: SEC-001, SEC-002 in 18A; REL-004 in 18B) **· LOW 10**
+(all fixed: SEC-003, REL-001, REL-002, REL-006, PRIV-001, PKG-001 in 18A; REL-003, REL-007, PRIV-002,
+PERF-001 in 18B) **· QUALITY 3** (all fixed: BUG-001 in 18A; REL-005, QUAL-001 in 18B) **· INFO 4**
+(PKG-002 fixed in 18B; one new INFO, PKG-003, opened in 18B — §14.9).
 
 ## 6. Area results
 
@@ -225,14 +227,16 @@ originally affected PC with its existing `%LOCALAPPDATA%\Carowinds Passdown` dat
 
 ## 11. Ordered Phase 18B remediation plan
 
+Items 1–8 are complete (§13, §14); only item 9 remains.
+
 1. ~~**REL-004** (MEDIUM)~~ — **fixed in 18B** (§13).
-2. **REL-003** — durable temp write (`Flush(true)`) in `AtomicFileWriter` and `FileDeviceIdProvider`.
-3. **REL-005** — interactive-app file log (separate file), included in diagnostics with PRIV-001 redaction.
-4. **PRIV-002** — unique temp PDF names for "Open Final PDF" + age-based cleanup.
-5. **REL-007** — clean up this device's own stale `*.tmp-*` files in the sync folder.
-6. **PERF-001** — avoid re-hashing already-imported remote history PDFs every pass (decide corruption-reporting semantics first).
-7. **QUAL-001** — decide whether to pin the UI culture to en-US. *Product decision.*
-8. **PKG-002** — extend the release staging deny list.
+2. ~~**REL-003**~~ — durable temp write (`Flush(true)`) in `AtomicFileWriter` and `FileDeviceIdProvider`.
+3. ~~**REL-005**~~ — interactive-app file log (separate file), included in diagnostics with PRIV-001 redaction.
+4. ~~**PRIV-002**~~ — unique temp PDF names for "Open Final PDF" + age-based cleanup.
+5. ~~**REL-007**~~ — clean up this device's own stale `*.tmp-*` files in the sync folder.
+6. ~~**PERF-001**~~ — avoid re-hashing already-imported remote history PDFs every pass (decide corruption-reporting semantics first).
+7. ~~**QUAL-001**~~ — decide whether to pin the UI culture to en-US. *Product decision.*
+8. ~~**PKG-002**~~ — extend the release staging deny list.
 9. Windows validation pass (§10) on a real Windows 11 x64 machine, including the affected-PC Dashboard check.
 
 ## 12. Recommendation
@@ -306,4 +310,108 @@ documented partition).
 
 **Windows validation:** NOT EXECUTED (no Windows host). Real two-PC OneDrive validation of this flow
 remains part of the outstanding Windows/OneDrive validation pass.
+
+## 14. Phase 18B — remaining remediation and US presentation culture
+
+Baseline before 18B work (commit `8a6ca0d`): Release build 0 warnings / 0 errors; **2256/2256**
+deterministic tests in Release (116 Domain + 649 Application + 222 Documents + **586** Infrastructure +
+645 Ui together + 26 + 10 + 2 alone). §13 recorded 2245 / 575 Infrastructure; the actual Infrastructure
+count at that commit is 586 (585 in Debug — one test is Release-only), so §13's total was undercounted
+by 11. No change was made to reconcile it; the numbers here are measured.
+
+### 14.1 REL-003 — power-loss-safe small-file writes
+`AtomicFileWriter`: `CreateNew` temp in the destination folder → write → flush →
+`Flush(flushToDisk: true)` → close → `File.Move(overwrite: true)`; temp deleted on any failure.
+`FileDeviceIdProvider` now uses it too (sync, config, device id, PDF-template preference, manifest,
+envelopes, history pairs). **Guarantee:** after a crash or power loss the destination is the complete
+old or the complete new version. **Residual:** the rename is not forced to disk, so a write completed
+seconds before a power loss can roll back to the previous complete version (no corruption); closing it
+would need Windows P/Invoke (`MOVEFILE_WRITE_THROUGH`) or a directory fsync .NET does not expose — not
+done. Details: `docs/personal-sync-architecture.md` §18B.1.
+
+### 14.2 REL-005 — interactive app log
+`%LOCALAPPDATA%\Carowinds Passdown\logs\app-YYYYMMDD.log` (UTC day), added only on the real desktop
+lifetime path (never in the scheduled-refresh host or headless tests). Logs startup, schema version,
+migration failure, unhandled/unobserved exceptions, plus every existing view-model/sync failure log.
+Every line is path-redacted before it is written; logging failures are swallowed. Retention **14 days**
+for both logs, pruned at startup, matching only `^<prefix>-\d{8}\.log$`. Export Diagnostics adds
+`logs/app-YYYYMMDD.log`: the last ≤200 lines of the newest app log, redacted. Privacy rules unchanged
+from §6 #13 (ids/dates/counts/statuses only).
+
+### 14.3 REL-007 — stale sync temp cleanup
+`SyncTempFileCleaner`, run at each pass start: only the app-owned sync folder and its five subfolders
+(non-recursive), only exact `<canonical name>.tmp-<32 hex>` / `.sync-probe-<32 hex>.tmp` names, only
+direct children by canonical path, no symlink/junction folders or files, only files ≥ **24 h** old.
+Adversarial tests cover `..`, rooted, UNC, alternate-separator, nested, symlinked folder/file, locked
+file; the symlink guards were proven necessary (removing them fails two tests).
+
+### 14.4 PRIV-002 — temporary PDFs
+The only temp-PDF path in the app is History "Open Final PDF" (generation is in memory; Save writes
+straight to the picker's file). `HistoryPdfTempFileStore`: unique `…yyyy-MM-dd.view-<32 hex>.pdf` per
+open in `%TEMP%\Carowinds Passdown\History`; deleted on failed/cancelled write or a launch that throws;
+swept by age (≥ **24 h**) at startup and before each open; only own names (plus the pre-18B fixed name)
+directly in that folder; symlinked folder not swept. A null `Process` from the shell is *not* treated as
+"nothing opened it" (an already-running viewer receives the file without a new process), so that file is
+left for the sweep rather than deleted from under the viewer.
+
+### 14.5 PERF-001 — History import re-reads
+Skip only when the local record matches id + content hash + PDF SHA-256/size (blob-free query), the
+sync state records that exact remote envelope (device + revision + hash) as already validated and not
+in conflict, the remote length matches, and in-session length/timestamp are unchanged. Anything else is
+fully read and hashed. Representative run (365 × 500 KB): steady-state pass **182.5 MB → 0 bytes** read;
+315–361 ms → 111–118 ms on a local SSD (OneDrive not measured). Trade-off documented: same-length,
+same-timestamp in-place alteration of the shared copy of an already-held record is no longer reported
+(the local immutable copy is unaffected). Details: `personal-sync-architecture.md` §18B.3.
+
+### 14.6 QUAL-001 — US presentation culture (owner decision)
+`Carowinds.Passdown.Domain.PresentationCulture` is the single named culture
+(`CultureInfo.GetCultureInfo("en-US")`, built-in data, no user overrides) plus `FormatUsd`; every
+user-facing date/time/price formatter uses it, and `Program.Main` makes it the process default for
+framework controls. **Defects fixed** (machine culture leaked through): Calendar month title, selected
+date, day-cell accessibility date, compact hours (AM/PM), finalized/saved timestamps; History row date and
+finalized stamp; Dashboard Deep Refresh status/coverage; save status; park-hours times and category
+status timestamps; Personal Sync "Last synced" and conflict "Changed on another device on …"; sync
+conflict detail AM/PM (lost entirely on de-DE/fr-FR), custom-product prices (`$54,99`), counts and
+note date ranges (ISO → `Sep 19, 2026`); the "Use override for {date}" XAML `StringFormat`; diagnostics
+"MB" decimal separator. Already-invariant formatters (PDF, Dashboard header, notes, retrieval messages,
+ERT conflict labels) were routed through the same helper. **Machine formats made explicitly invariant:**
+the Park Hours request URL date and the PDF/diagnostics file names (a th-TH Buddhist-calendar default
+would otherwise have produced year 2569). Storage, sync wire format, `yyyy-MM-dd` file identities,
+round-trip timestamps and parsing are unchanged; time zones unchanged (operational Eastern; the
+pre-existing local-wall-clock stamps, INFO-002, unchanged). No localization framework, no setting.
+
+### 14.7 PKG-002 — release content validation
+`packaging/windows/release-content-rules.json` + `Test-ReleasePackage.ps1` (run on staging and on the
+ZIP by `Build-PortableRelease.ps1`) + C# mirror `ReleasePackageValidator` in tests. Required/forbidden
+lists and the developer-path scan are in `docs/release-strategy.md` "Phase 18B". The PowerShell script
+was **not executed** (no `pwsh` on this host); the C# mirror against the existing pre-18A ZIP reports
+only the known PKG-001 leak, and the Release-build scan of our own assemblies is clean.
+
+### 14.8 Regression evidence
+- REL-004: `OpenEditorSyncProtectionTests` 11/11 (clean editor reload, dirty editor keeps edits,
+  explicit conflict, autosave can't overwrite, ERT monthly/override/remove, Notes).
+- 18A: adversarial sync input, migration hardening/race, semicolon DB path, locked DeviceId,
+  diagnostics redaction, Release PDB-path privacy, BUG-001 USD — all green.
+- Test-only fix: a `MemberData` theory in the Ui assembly deterministically triggered the documented
+  Avalonia headless thread-ownership failure in the isolated real-`Window` partitions; the new culture
+  tests use `InlineData` instead (comment in the file). The documented partition itself is unchanged.
+
+### 14.9 Remaining findings
+- **PKG-003 (INFO, new):** no consolidated third-party notices file for MIT/BSD/Apache dependencies;
+  only `LatoFont/OFL.txt` ships. Licensing/product decision.
+- REL-003 residual (rename durability), PERF-001 trade-off — documented above, accepted.
+- INFO-001/002/003 unchanged.
+- All Windows-specific validation and real two-PC OneDrive validation: **NOT EXECUTED**.
+
+### 14.10 Validation
+Release build `--no-incremental`: **0 warnings, 0 errors**. Deterministic tests **2476/2476** = 116
+Domain + 661 Application + 226 Documents + 741 Infrastructure + 694 Ui together + 26 + 10 + 2 alone
+(+220 over the measured 2256 baseline). DB 15 / Draft 4 / Snapshot 2 / SyncSchemaVersion 1 unchanged;
+no migration; no sync file format change. Release ZIP/EXE not rebuilt.
+
+Tests added: `AtomicFileWriterFaultTests` (25), `SyncTempFileCleanerTests` (25), `InteractiveAppLogTests`
+(17), `HistoryPdfTempFileStoreTests` (16), `ReleasePackageValidationTests` (57 incl. 1 Release-only,
+1 opt-in), 14 History PERF/integrity + 1 temp-cleanup integration test in `PersonalSyncServiceTests`,
+`DiagnosticReportBuilderTests` (+2), `SyncConflictDetailCultureTests` (10), `PdfUsPresentationCultureTests`
+(4), `UsPresentationCultureTests` (49), repository metadata assertion (+0, extended).
 

@@ -11,3 +11,12 @@ public interface IScheduledRefreshLogProvider
 {
     Task<IReadOnlyList<string>> GetRecentLogLinesAsync(int maxLines, CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// Phase 18B REL-005: the tail of the interactive app's own log (<c>app-yyyyMMdd.log</c>) for the
+/// diagnostics ZIP — bounded, path-redacted, and empty (never a throw) when there is no log yet.
+/// </summary>
+public interface IInteractiveAppLogProvider
+{
+    Task<IReadOnlyList<string>> GetRecentLogLinesAsync(int maxLines, CancellationToken cancellationToken = default);
+}

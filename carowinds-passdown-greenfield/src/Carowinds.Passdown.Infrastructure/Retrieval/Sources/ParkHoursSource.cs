@@ -47,7 +47,7 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
         }
 
         var endpoint = new Uri(
-            $"https://d3ln8b3jj5b2pq.cloudfront.net/operating-hours/park/{CarowindsParkId}?date={requestedDate:yyyyMMdd}");
+            string.Create(CultureInfo.InvariantCulture, $"https://d3ln8b3jj5b2pq.cloudfront.net/operating-hours/park/{CarowindsParkId}?date={requestedDate:yyyyMMdd}"));
         var timeChecked = EasternTimeZone.ConvertFromUtc(clock.UtcNow);
 
         RetrievalHttpResponse response;
@@ -111,7 +111,7 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
                     OfficialPageUrl,
                     timeChecked,
                     RetrievalStatus.Closed,
-                    $"Carowinds is officially closed on {requestedDate.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)}.",
+                    $"Carowinds is officially closed on {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}.",
                     RetrievalStrategy.DirectApi,
                     requestedDate: requestedDate,
                     confirmedDate: confirmedDate));
@@ -130,7 +130,7 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
                     OfficialPageUrl,
                     timeChecked,
                     RetrievalStatus.NotPublished,
-                    $"Hours for {requestedDate.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)} have not been published yet.",
+                    $"Hours for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)} have not been published yet.",
                     RetrievalStrategy.DirectApi,
                     requestedDate: requestedDate,
                     confirmedDate: confirmedDate));
@@ -154,7 +154,7 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
                 OfficialPageUrl,
                 timeChecked,
                 RetrievalStatus.Verified,
-                $"Carowinds is open {FormatTime(openingTime)}–{FormatTime(closingTime)} on {requestedDate.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)}.",
+                $"Carowinds is open {FormatTime(openingTime)}–{FormatTime(closingTime)} on {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}.",
                 RetrievalStrategy.DirectApi,
                 requestedDate: requestedDate,
                 confirmedDate: confirmedDate),
@@ -208,7 +208,7 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
     private static bool TryParseClockTime(string? value, out TimeOnly time) =>
         TimeOnly.TryParseExact(value, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out time);
 
-    private static string FormatTime(TimeOnly time) => time.ToString("h:mm tt", CultureInfo.InvariantCulture);
+    private static string FormatTime(TimeOnly time) => time.ToString("h:mm tt", PresentationCulture.UnitedStates);
 
     private static string Truncate(string value) => value.Length <= 500 ? value : value[..500] + "…";
 }

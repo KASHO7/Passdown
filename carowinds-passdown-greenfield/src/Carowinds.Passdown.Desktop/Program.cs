@@ -1,6 +1,7 @@
 ﻿using Avalonia;
 using System;
 using Carowinds.Passdown.Desktop.ScheduledRefresh;
+using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Infrastructure.Concurrency;
 using Carowinds.Passdown.Infrastructure.Logging;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,6 +17,11 @@ sealed class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        // Phase 18B: user-facing presentation is US English on every PC (month/day names, AM/PM,
+        // date order, "$") — including framework controls such as date pickers. Persistence/sync/
+        // parsing are explicitly invariant and unaffected; time zones are unaffected.
+        PresentationCulture.ApplyAsProcessDefault();
+
         var parsedArgs = CommandLineArguments.Parse(args);
 
         switch (parsedArgs.Mode)

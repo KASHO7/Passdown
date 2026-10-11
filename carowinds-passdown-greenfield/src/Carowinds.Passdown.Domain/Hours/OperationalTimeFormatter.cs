@@ -10,5 +10,5 @@ namespace Carowinds.Passdown.Domain.Hours;
 /// </summary>
 public static class OperationalTimeFormatter
 {
-    public static string Format(TimeOnly time) => time.ToString("h:mm tt", CultureInfo.InvariantCulture);
+    public static string Format(TimeOnly time) => time.ToString("h:mm tt", PresentationCulture.UnitedStates);
 }

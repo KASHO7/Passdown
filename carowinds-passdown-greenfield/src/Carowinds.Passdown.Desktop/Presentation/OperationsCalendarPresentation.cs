@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Calendar;
 using Carowinds.Passdown.Domain.Catalog;
+using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Desktop.Presentation;
 
@@ -65,8 +66,8 @@ public sealed record OperationsCalendarPresentation(
             or OperationsCalendarOperatingState.PrivateBuyout;
 
         return new OperationsCalendarPresentation(
-            snapshot.DisplayedMonth.ToString("MMMM yyyy"),
-            selected.Date.ToString("dddd, MMMM d, yyyy"),
+            snapshot.DisplayedMonth.ToString("MMMM yyyy", PresentationCulture.UnitedStates),
+            selected.Date.ToString("dddd, MMMM d, yyyy", PresentationCulture.UnitedStates),
             selected.IsToday,
             passdownPresentation.DetailLabel,
             passdownPresentation.DetailNoteText,

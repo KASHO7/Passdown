@@ -159,6 +159,7 @@ public partial class AssociateViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(SelectedDateForPicker))]
     [NotifyPropertyChangedFor(nameof(AvailableOperationalNoteSuggestionsHeading))]
     [NotifyPropertyChangedFor(nameof(SelectedMonthLabel))]
+    [NotifyPropertyChangedFor(nameof(UseOverrideForDateLabel))]
     [NotifyPropertyChangedFor(nameof(EarlyRideTimeStatusText))]
     public partial DateOnly SelectedDate { get; set; }
 
@@ -355,7 +356,7 @@ public partial class AssociateViewModel : ViewModelBase
 
     /// <summary>"Available for Aug 26" — the Associate-selected date, not Dashboard's Eastern "today" (Phase 11D Part E/U).</summary>
     public string AvailableOperationalNoteSuggestionsHeading =>
-        $"Available for {SelectedDate.ToDateTime(TimeOnly.MinValue).ToString("MMM d", CultureInfo.InvariantCulture)}";
+        $"Available for {SelectedDate.ToDateTime(TimeOnly.MinValue).ToString("MMM d", PresentationCulture.UnitedStates)}";
 
     [ObservableProperty]
     public partial DailyFeatureTypeOption SelectedDailyFeatureTypeOption { get; set; } = DailyFeatureTypeOption.All[0];
@@ -637,7 +638,10 @@ public partial class AssociateViewModel : ViewModelBase
     public ParkHoursPresentation? ParkHours => LiveParkHours is { } live ? ParkHoursPresentation.Build(live) : null;
 
     /// <summary>"September 2026" — the Associate-selected date's month/year (Phase 17B spec Part 6/7), used by both the effective-ERT "Not configured for ..." message and the Configure Monthly ERT panel's own heading.</summary>
-    public string SelectedMonthLabel => SelectedDate.ToString("MMMM yyyy", CultureInfo.InvariantCulture);
+    public string SelectedMonthLabel => SelectedDate.ToString("MMMM yyyy", PresentationCulture.UnitedStates);
+
+    /// <summary>"Use override for Sep 19" — Phase 18B: formatted here in en-US rather than by a XAML <c>StringFormat</c>, which would use the machine culture.</summary>
+    public string UseOverrideForDateLabel => $"Use override for {SelectedDate.ToString("MMM d", PresentationCulture.UnitedStates)}";
 
     private EffectiveErt EffectiveEarlyRideTime => Workspace?.EarlyRideTime ?? EffectiveErt.NotConfigured;
 
@@ -891,7 +895,7 @@ public partial class AssociateViewModel : ViewModelBase
                 return;
             }
 
-            var fileName = $"Carowinds-Operations-{workspace.OperatingDate:yyyy-MM-dd}.pdf";
+            var fileName = string.Create(CultureInfo.InvariantCulture, $"Carowinds-Operations-{workspace.OperatingDate:yyyy-MM-dd}.pdf");
             var saveResult = await _pdfSavePicker.SaveAsync(pdfBytes, fileName).ConfigureAwait(true);
 
             PdfExportMessage = saveResult.Outcome switch

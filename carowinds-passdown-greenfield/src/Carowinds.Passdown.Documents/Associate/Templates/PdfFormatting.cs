@@ -1,5 +1,6 @@
 using System.Globalization;
 using Carowinds.Passdown.Domain.Ert;
+using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Documents.Associate.Templates;
 
@@ -12,12 +13,12 @@ namespace Carowinds.Passdown.Documents.Associate.Templates;
 internal static class PdfFormatting
 {
     /// <summary>"—" rather than a fabricated zero when a count was never entered (spec §8.1; Phase 17D §11 master layout — "Attendance   —   Pre-solds   —").</summary>
-    public static string FormatCount(int? value) => value?.ToString("N0", CultureInfo.InvariantCulture) ?? "—";
+    public static string FormatCount(int? value) => value?.ToString("N0", PresentationCulture.UnitedStates) ?? "—";
 
     /// <summary>"Not configured for {Month Year}." (spec Phase 17B Part 13) — an explicit, dated message rather than a bare "Not configured".</summary>
     public static string NotConfiguredText(DateOnly? operatingDate) =>
         operatingDate is { } date
-            ? $"Not configured for {date.ToString("MMMM yyyy", CultureInfo.InvariantCulture)}."
+            ? $"Not configured for {date.ToString("MMMM yyyy", PresentationCulture.UnitedStates)}."
             : "Not configured.";
 
     /// <summary>

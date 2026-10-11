@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.PersonalSync;
+using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Desktop.Presentation;
 
@@ -64,7 +65,7 @@ public sealed record ConflictDetailPresentation(
         detail.BuildFieldComparisons());
 
     private static string BuildRemoteActivityLabel(DateTimeOffset remoteModifiedUtc) =>
-        $"Changed on another device on {remoteModifiedUtc.LocalDateTime:MMM d 'at' h:mm tt}.";
+        string.Create(PresentationCulture.UnitedStates, $"Changed on another device on {remoteModifiedUtc.LocalDateTime:MMM d 'at' h:mm tt}.");
 
     private static string? BuildNewerActivityNote(bool hasNewerRemoteActivity) =>
         hasNewerRemoteActivity ? "The other device has changed this again since this conflict was detected. Resolve this conflict first; the newer change will be picked up on a later sync." : null;

@@ -119,7 +119,7 @@ public sealed class DatedBringAFriendDuoSource(IRetrievalHttpClient httpClient, 
                     OfficialPageUrl,
                     timeChecked,
                     RetrievalStatus.Verified,
-                    $"Bring-A-Friend Duo confirmed for {requestedDate.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)}.",
+                    $"Bring-A-Friend Duo confirmed for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}.",
                     RetrievalStrategy.DirectApi,
                     requestedDate: requestedDate,
                     confirmedDate: requestedDate),
@@ -255,7 +255,7 @@ public sealed class DatedBringAFriendDuoSource(IRetrievalHttpClient httpClient, 
     }
 
     private static string DefaultUnavailableDetail(DateOnly requestedDate) =>
-        $"Bring-A-Friend Duo is not available for {requestedDate.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)}.";
+        $"Bring-A-Friend Duo is not available for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}.";
 
     private SourceResult<DatedBringAFriendDuoPayload> NotPublished(DateTimeOffset timeChecked, DateOnly requestedDate) =>
         SourceResult<DatedBringAFriendDuoPayload>.WithoutPayload(
@@ -265,7 +265,7 @@ public sealed class DatedBringAFriendDuoSource(IRetrievalHttpClient httpClient, 
                 OfficialPageUrl,
                 timeChecked,
                 RetrievalStatus.NotPublished,
-                $"Bring-A-Friend Duo for {requestedDate.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)} has not been published yet.",
+                $"Bring-A-Friend Duo for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)} has not been published yet.",
                 RetrievalStrategy.DirectApi,
                 requestedDate: requestedDate));
 

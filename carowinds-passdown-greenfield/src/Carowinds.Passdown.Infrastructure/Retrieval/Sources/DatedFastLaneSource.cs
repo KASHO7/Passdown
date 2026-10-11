@@ -118,7 +118,7 @@ public sealed class DatedFastLaneSource(IRetrievalHttpClient httpClient, IClock 
                     OfficialPageUrl,
                     timeChecked,
                     RetrievalStatus.Verified,
-                    $"Fast Lane confirmed for {requestedDate.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)}.",
+                    $"Fast Lane confirmed for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}.",
                     RetrievalStrategy.DirectApi,
                     requestedDate: requestedDate,
                     confirmedDate: requestedDate),
@@ -269,7 +269,7 @@ public sealed class DatedFastLaneSource(IRetrievalHttpClient httpClient, IClock 
     }
 
     private static string DefaultUnavailableDetail(DateOnly requestedDate) =>
-        $"Fast Lane is not available for {requestedDate.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)}.";
+        $"Fast Lane is not available for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}.";
 
     private SourceResult<DatedFastLanePayload> NotPublished(DateTimeOffset timeChecked, DateOnly requestedDate) =>
         SourceResult<DatedFastLanePayload>.WithoutPayload(
@@ -279,7 +279,7 @@ public sealed class DatedFastLaneSource(IRetrievalHttpClient httpClient, IClock 
                 OfficialPageUrl,
                 timeChecked,
                 RetrievalStatus.NotPublished,
-                $"Fast Lane for {requestedDate.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)} has not been published yet.",
+                $"Fast Lane for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)} has not been published yet.",
                 RetrievalStrategy.DirectApi,
                 requestedDate: requestedDate));
 

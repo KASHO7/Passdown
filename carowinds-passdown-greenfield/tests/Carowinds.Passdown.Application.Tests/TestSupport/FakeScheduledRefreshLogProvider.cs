@@ -12,3 +12,14 @@ internal sealed class FakeScheduledRefreshLogProvider(IReadOnlyList<string> line
         return Task.FromResult(lines);
     }
 }
+
+internal sealed class FakeInteractiveAppLogProvider(IReadOnlyList<string> lines) : IInteractiveAppLogProvider
+{
+    public int? RequestedMaxLines { get; private set; }
+
+    public Task<IReadOnlyList<string>> GetRecentLogLinesAsync(int maxLines, CancellationToken cancellationToken = default)
+    {
+        RequestedMaxLines = maxLines;
+        return Task.FromResult(lines);
+    }
+}

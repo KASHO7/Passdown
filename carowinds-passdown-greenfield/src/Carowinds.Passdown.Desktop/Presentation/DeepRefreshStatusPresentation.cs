@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Persistence;
+using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Desktop.Presentation;
 
@@ -40,7 +41,7 @@ public sealed record DeepRefreshStatusPresentation(
         };
 
         string? coverageText = status.CoverageThrough is { } through
-            ? $"Park hours available through {through:MMM d}"
+            ? string.Create(PresentationCulture.UnitedStates, $"Park hours available through {through:MMM d}")
             : null;
 
         var automationParts = new List<string> { headline };
@@ -56,5 +57,5 @@ public sealed record DeepRefreshStatusPresentation(
         return new DeepRefreshStatusPresentation(headline, wasSuccessful, detail, coverageText, string.Join(". ", automationParts));
     }
 
-    private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d 'at' h:mm tt");
+    private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d 'at' h:mm tt", PresentationCulture.UnitedStates);
 }
