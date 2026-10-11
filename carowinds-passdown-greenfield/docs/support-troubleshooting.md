@@ -71,6 +71,56 @@ needing remote access to the tester's machine.
   for diagnosis. If a full reset is ever genuinely needed, that is a deliberate manual support
   action (rename/back up the folder), not a normal user instruction.
 
+## Dashboard shows "Unable to load today's operations summary."
+
+### Known cause fixed after Phase 17E: rides-only Early Ride Time
+
+- **Symptom:** the app opened, but the Dashboard (the default startup section) showed
+  "Unable to load today's operations summary." Refresh did not help and restarting did not help.
+  Associate, Calendar, Notes and History all worked. It happened on some PCs and not others.
+- **Root cause:** Phase 17D switched Early Ride Time to rides only, so every monthly ERT
+  configuration or date override saved since then has no start time (`StartTime = null`) while still
+  being `Configured`. The Dashboard's ERT line
+  (`Desktop/Presentation/OperationsDashboardPresentation.cs`) still assumed a `Configured` ERT always
+  had a start time (`StartTime!.Value`). That threw `InvalidOperationException` ("Nullable object
+  must have a value"), and the Dashboard view model reported it as the generic load error.
+- **Why only some PCs:** the bug only fired on a PC whose local database had a rides-only ERT for
+  **today's** month, or a rides-only override for today. ERT is saved per PC and can arrive through
+  Personal Sync. PCs with no ERT for the month, an explicit "No ERT", or an older pre-17D record that
+  still has a start time all loaded normally. Database age, migration path, Windows architecture
+  (x64 or ARM64 emulation), SQLite contention and startup timing were not factors.
+- **Why Refresh "did nothing":** Refresh worked. It started a fresh load each time, but that load
+  hit the same data and failed the same way. Tests now confirm that Refresh recovers after a failed
+  first load.
+- **Fix:** if a `Configured` ERT has a start time (a legacy record), the Dashboard shows the same
+  "Starts h:mm AM" text as before. Otherwise it shows the ride list, comma-joined, using the same
+  rule as the Associate screen's Early Ride line. With no rides it shows "Configured". "None" and
+  "Not configured" are unchanged.
+- **Data repair:** none needed. The ERT rows were always valid, and nothing is migrated, rewritten
+  or deleted. Old and incrementally upgraded databases are safe. Schema is unchanged
+  (DB 15 / Draft 4 / Snapshot 2 / SyncSchemaVersion 1).
+- **Regression tests:** `Ui.Tests/DashboardExistingDataLoadTests.cs` runs real migrations, real
+  SQLite repositories and the real services/view model. It covers a fresh DB, a DB upgraded from
+  schema 8 with a legacy v1 draft and a legacy finalized row, a rides-only monthly ERT, a rides-only
+  override, NoERT, a legacy start time, a corrupt draft (still a controlled error), and
+  failure-then-Refresh recovery. Also see
+  `OperationsDashboardPresentationTests.Build_EarlyRideTimeConfigured*NoStartTime*` and
+  `OperationsDashboardViewModelTests.LoadFailure_ThenReloadSucceeds_*` /
+  `SqliteBusyOnFirstLoad_ThenReloadSucceeds_*`.
+- **Real affected-machine validation:** NOT EXECUTED. No affected Windows PC was available to
+  the fix author. When validating on one, do not delete `%LOCALAPPDATA%\Carowinds Passdown`. First
+  back up a diagnostics export and the existing `.db`, then install the fixed build over the same
+  data and confirm that the Dashboard opens, Refresh works, and the other screens and data are
+  unchanged.
+
+### If the Dashboard error appears for another reason
+
+- The full exception (type and stack) is already written to the local app log by
+  `OperationsDashboardViewModel` ("Failed to load today's operations dashboard summary.").
+  Users see only the short message. Ask for the log, not a screenshot.
+- Never delete or reset local data to clear this error. A genuinely corrupt draft row deliberately
+  still produces this error rather than being "recovered", and the row is left untouched.
+
 ## Unsupported / newer database
 
 - If the app fails to open citing a schema/version problem (`UnsupportedSchemaVersionException`,

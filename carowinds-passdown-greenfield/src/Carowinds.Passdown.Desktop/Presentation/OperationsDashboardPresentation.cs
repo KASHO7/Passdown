@@ -76,10 +76,15 @@ public sealed record OperationsDashboardPresentation(
         // does (spec Part 17) — never park hours/North Gate. "Not configured" and "None" are kept
         // deliberately terse (spec §17 "do not redesign Dashboard") rather than the fuller
         // "Not configured for <Month Year>" wording the Associate screen/PDF use.
-        var earlyRideTimeText = snapshot.EarlyRideTime.Kind switch
+        // Phase 17D+ saves Configured ERT with no start time (rides only), so StartTime is optional
+        // here: a legacy record's start time keeps its existing text, otherwise the ride list is
+        // shown with the same rule as AssociateViewModel.EarlyRideTimeStatusText.
+        var earlyRideTimeText = snapshot.EarlyRideTime switch
         {
-            EffectiveErtKind.Configured => $"Starts {OperationalTimeFormatter.Format(snapshot.EarlyRideTime.StartTime!.Value)}",
-            EffectiveErtKind.NoErt => "None",
+            { Kind: EffectiveErtKind.Configured, StartTime: { } startTime } => $"Starts {OperationalTimeFormatter.Format(startTime)}",
+            { Kind: EffectiveErtKind.Configured, Rides.Count: > 0 } => string.Join(", ", snapshot.EarlyRideTime.Rides),
+            { Kind: EffectiveErtKind.Configured } => "Configured",
+            { Kind: EffectiveErtKind.NoErt } => "None",
             _ => "Not configured",
         };
 

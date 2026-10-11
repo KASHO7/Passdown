@@ -117,6 +117,35 @@ public class OperationsDashboardPresentationTests
         Assert.Equal("Starts 8:30 AM", presentation.EarlyRideTimeText); // 9:30 AM (North Gate) would be the old, now-removed derivation.
     }
 
+    // Machine-specific Dashboard failure: Phase 17D+ saves rides-only ERT (StartTime = null) for a
+    // Configured state. The presentation must never dereference a missing start time — it shows the
+    // ride list, the same rule the Associate screen's own Early Ride line uses.
+    [Fact]
+    public void Build_EarlyRideTimeConfiguredRidesOnly_NoStartTime_ShowsRides()
+    {
+        var snapshot = DefaultSnapshot() with
+        {
+            EarlyRideTime = new EffectiveErt(EffectiveErtKind.Configured, EffectiveErtSource.Monthly, StartTime: null, ["Fury 325", "Copperhead Strike"], null),
+        };
+
+        var presentation = OperationsDashboardPresentation.Build(snapshot);
+
+        Assert.Equal("Fury 325, Copperhead Strike", presentation.EarlyRideTimeText);
+    }
+
+    [Fact]
+    public void Build_EarlyRideTimeConfigured_NoStartTimeNoRides_ShowsConfigured()
+    {
+        var snapshot = DefaultSnapshot() with
+        {
+            EarlyRideTime = new EffectiveErt(EffectiveErtKind.Configured, EffectiveErtSource.Override, StartTime: null, [], null),
+        };
+
+        var presentation = OperationsDashboardPresentation.Build(snapshot);
+
+        Assert.Equal("Configured", presentation.EarlyRideTimeText);
+    }
+
     [Fact]
     public void Build_DailyFeatureMissing_ShowsNotEntered()
     {
