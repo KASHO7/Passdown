@@ -208,6 +208,16 @@ practically the only supported configuration for the OneDrive desktop client) �
 against a half-written file being picked up mid-write. This assumption would need re-checking if a
 non-NTFS OneDrive mount point were ever supported, which is not planned.
 
+> **Phase 18B (REL-003) update — power-loss durability.** Step 2 is now "write, flush, then
+> `FileStream.Flush(flushToDisk: true)` (`FlushFileBuffers` on Windows / `fsync` on Unix), then close".
+> The data is therefore on stable storage *before* the rename can exist, so after a power loss the
+> target is either the complete previous version or the complete new version — never zero-length or
+> partial. **Residual risk:** the rename itself is not forced to disk (.NET has no portable directory
+> fsync; on Windows it would need `MoveFileEx(MOVEFILE_WRITE_THROUGH)` P/Invoke, deliberately not
+> added). A power loss within the filesystem's metadata-commit window (typically seconds) after a
+> write completed can roll the target back to its previous complete version; sync redoes the export
+> (its synced state was not recorded), and a settings change is simply re-saved. See §18B below.
+
 Never write progressively into the final filename — the earlier written-content requirement in the
 phase prompt is the load-bearing rule here: OneDrive uploads on filesystem change events, not on
 "file looks done," so a partially-written final-name file is a real risk without the temp+rename
@@ -520,10 +530,11 @@ code lives under `PersonalSync/` in Application, Infrastructure, and Desktop.
 [`FileDeviceIdProvider`](../src/Carowinds.Passdown.Infrastructure/PersonalSync/FileDeviceIdProvider.cs).
 One plain-text file, `device-id.txt`, holding a `Guid.ToString("D")`, directly under
 `AppPaths.LocalApplicationDataDirectory` (flat, no `Settings/` subfolder — see "Deviations" below).
-`GetOrCreateDeviceId()` reads and `Guid.TryParse`s the file; a missing file, unparsable content, or a
-read failure (`IOException`/`UnauthorizedAccessException`) all fall through to generating a fresh
-`Guid.NewGuid()` and persisting it via the same temp-then-rename write `FileDeviceIdProvider` uses
-internally. Lazily created on first call — nothing calls this at normal startup unless the Settings
+`GetOrCreateDeviceId()` reads and `Guid.TryParse`s the file; a missing file or unparsable content
+falls through to generating a fresh `Guid.NewGuid()` and persisting it via the same temp-then-rename
+write `FileDeviceIdProvider` uses internally. (Phase 18A REL-006: a read failure on a file that
+*exists* — `IOException`/`UnauthorizedAccessException`, e.g. a scanner holding it — now propagates as
+a retryable `IOException` and never replaces the existing id; see `docs/phase18-comprehensive-audit.md`.) Lazily created on first call — nothing calls this at normal startup unless the Settings
 screen (or, from 16C on, the sync engine) is actually resolved, matching 16A §C's "not at first app
 launch" intent closely enough that a device that never opens Settings never gets a DeviceId file.
 
@@ -708,7 +719,9 @@ the actual written JSON for "Token"/"Password"/"Credential" as a standing regres
   "create/validate manifest.json" — they're pure filesystem utilities exercised directly against a
   real temp directory in tests (the same pattern `FileScheduledRefreshLockTests` already established
   for `FileScheduledRefreshLock`), not seams a ViewModel test needs to fake.
-- **`FileDeviceIdProvider` does not call `AtomicFileWriter`**: `IDeviceIdProvider.GetOrCreateDeviceId()`
+- **(Superseded in Phase 18B)** `FileDeviceIdProvider` now uses `AtomicFileWriter.WriteText` (a
+  synchronous entry point over the same durable implementation). Original 16B note:
+  **`FileDeviceIdProvider` does not call `AtomicFileWriter`**: `IDeviceIdProvider.GetOrCreateDeviceId()`
   is synchronous by design (a settings-screen-open-time read, not something worth an async ceremony
   for), while `AtomicFileWriter` is async throughout; rather than block on async (`.GetAwaiter().GetResult()`)
   to reuse it, `FileDeviceIdProvider` inlines the same three-line temp-then-rename shape directly with
@@ -2750,3 +2763,96 @@ DB schema 13 → 15 (`Migration0014CreateMonthlyErtConfigurationsTable`,
 obsolete free-text `EarlyRideTime` field — see `docs/ert-configuration.md` §8). Snapshot schema 1 → 2
 (additive new fields on `FinalizedEarlyRideTimeSnapshot` — see `docs/ert-configuration.md` §9).
 SyncSchemaVersion remains 1.
+
+## Phase 18B — Open editors and sync (REL-004)
+
+Rule: **auto-reload clean editors; preserve dirty editors and require explicit conflict resolution;
+never silently overwrite a synced change from an already-open editor.** Editor saves (Associate draft,
+Early Ride Time panel, Operational Notes editor) are conditional on the content hash of the version the
+editor loaded and run under the same `BEGIN IMMEDIATE` lock that each sync import's read-decide-write
+now takes. A mismatch saves the editor's content locally and records the stored version as an ordinary
+sync conflict (`OpenEditorConflictRecorder`), pausing export until Keep This Device / Use Other Device
+/ Accept Deletion. `ISyncLocalChangeNotifier` lets clean editors reload after an import or resolution.
+Full design, scope and tests: `docs/phase18-comprehensive-audit.md` §13.
+
+# Phase 18B — Personal Sync durability, temp hygiene, and History import cost
+
+## 18B.1 Durable small-file writes (REL-003)
+
+`AtomicFileWriter` is now the single write path for every small persistent file the app owns:
+sync envelopes, history PDF/JSON pairs, the manifest, `sync-config.json`, `device-id.txt`, and
+`associate-passdown-template.json`. Sequence: create `<name>.tmp-<32 hex>` with `FileMode.CreateNew`
+in the destination directory → write the full content → flush → **`Flush(flushToDisk: true)`** →
+close → `File.Move(temp, target, overwrite: true)`. Any failure (including cancellation) deletes the
+temp file before rethrowing; text is UTF-8 without BOM, byte-identical to the pre-18B output.
+
+**Guarantee actually achieved:** a process crash *or a power loss* at any instant leaves the target as
+a complete old or complete new version. A temp file is never read as authoritative (readers only open
+exact canonical names) and never adopted by a retry (each attempt mints a new name).
+
+**Not guaranteed:** that a write which returned successfully survives a power loss in the next few
+seconds — the directory entry update (the rename) is left to the filesystem's own journal commit. The
+consequence is a rollback to the previous complete version, never corruption. Forcing it would need
+Windows-only P/Invoke (`MOVEFILE_WRITE_THROUGH`) or a Unix directory fsync, which .NET does not expose
+portably; judged not worth the native complexity for files that are regenerated/re-exported on the
+next pass. Windows behaviour is by design-analysis only — **NOT EXECUTED** on a Windows host.
+
+Tests: `AtomicFileWriterFaultTests` (fault injection before temp creation, mid-write with a genuinely
+partial temp on disk, after a complete flushed temp but before replacement, a failing replacement,
+retry beside a leftover temp, last valid envelope still reads as valid after a failed replacement).
+
+## 18B.2 Stale sync temp-file cleanup (REL-007)
+
+`SyncTempFileCleaner.CleanStaleTempFiles(root)` runs at the start of every sync pass (best-effort,
+never throws). It deletes a file only if **all** hold:
+
+- it is directly inside the app-owned `Carowinds Operations Sync` folder or one of its `drafts`,
+  `notes`, `history`, `monthly-ert`, `ert-date-overrides` subfolders (non-recursive; the user's
+  selected root and everything else in OneDrive are never enumerated);
+- its canonical path's parent is exactly that folder, and neither the folder nor the file is a
+  symbolic link/junction (`LinkTarget`; OneDrive Files-On-Demand placeholders are not links);
+- its name is exactly `<canonical sync file name>.tmp-<32 lowercase hex>` for *that* folder (the final
+  name must round-trip through `SyncPathService`), or the folder validator's own
+  `.sync-probe-<32 hex>.tmp` in the sync folder;
+- its last write is at least **24 hours** old — orders of magnitude longer than any real write, and
+  tolerant of clock skew between devices, so an in-progress write on any device is never deleted.
+
+Locked/vanished candidates (OneDrive racing the cleanup) are skipped. Legitimate envelopes, PDFs, the
+manifest, conflict copies, and user files never match. Tests: `SyncTempFileCleanerTests` (every
+folder, legitimate files kept, age threshold, unrecognized names, outside-subtree files, symlinked
+subfolder/sync folder/file, locked file, `..`/rooted/UNC/alternate-separator containment checks) and
+`PersonalSyncServiceTests.SyncPass_RemovesOnlyStaleTempFiles_FromTheSharedFolder`.
+
+## 18B.3 History import no longer re-reads every PDF (PERF-001)
+
+Before 18B every pass read and SHA-256-hashed every remote history PDF. Now a remote PDF is left
+unread only when **every** condition holds (`PersonalSyncService.CanSkipPdfRevalidation`):
+
+1. a local record with the same id and content hash exists, and the remote JSON declares exactly the
+   local frozen PDF's SHA-256 and size (from a blob-free metadata query — `pdf_bytes` is never loaded);
+2. this device's sync state records that exact remote envelope (device id + revision + content hash)
+   as imported/converged — state that is only written after a successful byte validation — and the
+   entity is not in conflict;
+3. the remote PDF's current length equals the declared size;
+4. if this process already validated the file, its length and last-write time are unchanged since.
+
+Timestamp/length are only ever reasons to **re**-validate, never proof of identity. A remote record not
+yet held locally is always fully read and hashed, so a forged timestamp/length cannot get unverified
+bytes imported. A folder switch (SyncSpaceId change) clears sync state, so everything is re-validated.
+
+**Deliberate trade-off:** if the *shared copy* of a record this device already holds is later altered
+in place with identical length and timestamp, that is no longer reported as a history conflict (the
+local immutable copy is unaffected and is never replaced). Any length change, any timestamp change
+during the session, any JSON hash/identity/revision change is still re-validated and reported as before.
+
+Measured (macOS dev host, local SSD, warm cache; 365 records × 500 KB synthetic PDFs, Release build):
+
+| | PDF bytes read per steady-state pass | elapsed (5 runs) |
+|---|---|---|
+| without skip (pre-18B behaviour) | 182,500,000 | 315–361 ms |
+| with skip | 0 | 111–118 ms |
+
+The import pass itself is unchanged (182.5 MB, ~0.86 s). Elapsed time on a real OneDrive folder
+(Files-On-Demand may need to download a dehydrated PDF just to hash it) is expected to benefit more
+but was **not measured** (no Windows/OneDrive host).
+

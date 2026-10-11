@@ -40,7 +40,7 @@ public static class AssociatePassdownDocumentModelBuilder
     }
 
     private static string FormatOperatingDate(DateOnly date) =>
-        date.ToDateTime(TimeOnly.MinValue).ToString("dddd, MMMM d, yyyy", CultureInfo.InvariantCulture);
+        date.ToDateTime(TimeOnly.MinValue).ToString("dddd, MMMM d, yyyy", PresentationCulture.UnitedStates);
 
     private static PdfParkHours BuildParkHours(AssociateWorkspace workspace)
     {
@@ -283,11 +283,11 @@ public static class AssociatePassdownDocumentModelBuilder
             && product.IncludeOnPdf
             && product.Verification.State != AssociateVerificationState.Verified);
 
-    private static string? FormatMoney(decimal? amount) => amount is { } value ? "$" + value.ToString("0.00", CultureInfo.InvariantCulture) : null;
+    private static string? FormatMoney(decimal? amount) => amount is { } value ? PresentationCulture.FormatUsd(value) : null;
 
-    private static string FormatTime(TimeOnly? time) => time?.ToString("h:mm tt", CultureInfo.InvariantCulture) ?? "-";
+    private static string FormatTime(TimeOnly? time) => time?.ToString("h:mm tt", PresentationCulture.UnitedStates) ?? "-";
 
     /// <summary>"Sep 15 • 1:52 PM" (Phase 17D §19 — replaces the old "Generated Sep 15 at 1:52 PM"; no app name, no "Generated" verb, kept small and quiet by every renderer's footer).</summary>
-    private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d", CultureInfo.InvariantCulture)
-        + " • " + value.ToLocalTime().ToString("h:mm tt", CultureInfo.InvariantCulture);
+    private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d", PresentationCulture.UnitedStates)
+        + " • " + value.ToLocalTime().ToString("h:mm tt", PresentationCulture.UnitedStates);
 }

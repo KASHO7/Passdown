@@ -29,6 +29,7 @@ using Carowinds.Passdown.Domain.Retrieval;
 using Carowinds.Passdown.Infrastructure;
 using Carowinds.Passdown.Infrastructure.Concurrency;
 using Carowinds.Passdown.Infrastructure.Diagnostics;
+using Carowinds.Passdown.Infrastructure.Files;
 using Carowinds.Passdown.Infrastructure.Logging;
 using Carowinds.Passdown.Infrastructure.PersonalSync;
 using Carowinds.Passdown.Infrastructure.Preferences;
@@ -86,12 +87,30 @@ public partial class App : global::Avalonia.Application
             var services = _services ?? throw new InvalidOperationException(
                 $"{nameof(_services)} was not initialized; {nameof(Initialize)} must run first.");
 
+            // Phase 18B REL-005: the interactive app's own persistent log (app-yyyyMMdd.log). Added
+            // here, on the real desktop-lifetime path only — not in BuildServiceProvider, which the
+            // --scheduled-refresh host and headless tests also use — so the two logs never mix.
+            AttachInteractiveFileLog(services);
+
             var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+            logger.LogInformation(
+                "Carowinds Operations starting (version {Version}, OS {OS}, 64-bit {Is64Bit}).",
+                typeof(App).Assembly.GetName().Version, Environment.OSVersion.VersionString, Environment.Is64BitProcess);
 
             // Storage must be ready (spec §17 Phase 1: "establish ... storage
             // migrations before building the production UI") before any
             // view model touches the database.
-            services.GetRequiredService<MigrationRunner>().Run();
+            try
+            {
+                var schemaVersion = services.GetRequiredService<MigrationRunner>().Run();
+                logger.LogInformation("Database ready at schema version {SchemaVersion}.", schemaVersion);
+            }
+            catch (Exception ex)
+            {
+                logger.LogCritical(ex, "Database migration failed during startup.");
+                throw;
+            }
+
             var migrationsRunMs = ElapsedSinceProcessStartMs();
 
             var mainWindow = services.GetRequiredService<MainWindow>();
@@ -126,6 +145,7 @@ public partial class App : global::Avalonia.Application
             syncCoordinator.Start();
 
             StartCatchUpRefresh(services);
+            StartTempPdfCleanup(logger);
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -224,6 +244,38 @@ public partial class App : global::Avalonia.Application
             logger.LogWarning(ex, "Flush-on-shutdown failed; closing anyway rather than blocking shutdown indefinitely.");
         }
     }
+
+    /// <summary>
+    /// Phase 18B REL-005: adds the file logger for the interactive app, runs its startup retention
+    /// pruning (first line written), and records otherwise-invisible failures: an unhandled exception
+    /// that is about to terminate the process, and a faulted task nobody observed. Logging only — the
+    /// runtime's existing behavior for both is unchanged.
+    /// </summary>
+    private static void AttachInteractiveFileLog(IServiceProvider services)
+    {
+        var loggerFactory = services.GetRequiredService<ILoggerFactory>();
+        loggerFactory.AddProvider(new FileLoggerProvider(FileLoggerOptions.ForInteractiveApp()));
+
+        var logger = loggerFactory.CreateLogger("Unhandled");
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            logger.LogCritical(e.ExceptionObject as Exception, "Unhandled exception (terminating: {IsTerminating}).", e.IsTerminating);
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+            logger.LogError(e.Exception, "Unobserved task exception.");
+    }
+
+    /// <summary>
+    /// Phase 18B PRIV-002: removes "Open Final PDF" temp copies left by earlier sessions (older than
+    /// <see cref="HistoryPdfTempFileStore.StaleAfter"/>), off the UI thread. Best-effort; never throws.
+    /// </summary>
+    private static void StartTempPdfCleanup(ILogger logger) =>
+        _ = Task.Run(() =>
+        {
+            var deleted = new HistoryPdfTempFileStore(HistoryPdfTempFileStore.DefaultDirectory).CleanStale();
+            if (deleted > 0)
+            {
+                logger.LogInformation("Removed {Count} stale temporary history PDF(s).", deleted);
+            }
+        });
 
     /// <summary>
     /// Phase 6B Part C: fires the missed-run catch-up (spec §6.6) as a detached background task —
@@ -392,7 +444,8 @@ public partial class App : global::Avalonia.Application
         // (see Program.BuildScheduledRefreshServiceProvider).
         services.AddSingleton<FileLoggerOptions>();
         services.AddSingleton<IDatabaseDiagnosticsProvider, SqliteDatabaseDiagnosticsProvider>();
-        services.AddSingleton<IScheduledRefreshLogProvider, FileScheduledRefreshLogProvider>();
+        services.AddSingleton<IScheduledRefreshLogProvider>(provider => new FileScheduledRefreshLogProvider(provider.GetRequiredService<FileLoggerOptions>()));
+        services.AddSingleton<IInteractiveAppLogProvider>(provider => new FileInteractiveAppLogProvider(provider.GetRequiredService<FileLoggerOptions>()));
         services.AddSingleton<IScheduledTaskStatusProvider, ScheduledTaskStatusProvider>();
         services.AddSingleton<IDiagnosticReportBuilder, DiagnosticReportBuilder>();
         services.AddSingleton<IDiagnosticExportService, DiagnosticExportService>();
@@ -424,6 +477,14 @@ public partial class App : global::Avalonia.Application
         // OperationalNotesService or any ViewModel. SyncChangeTracker itself is kept resolvable under its
         // own concrete type for the wrapper to depend on, matching the decorator pattern used nowhere
         // else in this composition root only because nothing else here has needed one yet.
+        // Phase 18B REL-004: open-editor protection. The notifier lets clean editors reload after Personal
+        // Sync changes local data; the recorder turns an editor save over a changed version into an
+        // explicit sync conflict (resolved via IPersonalSyncConflictResolutionService) instead of a
+        // silent overwrite. Both are resolved automatically into the optional constructor parameters of
+        // AssociatePassdownService/ErtConfigurationService/OperationalNotesService/PersonalSyncService/
+        // PersonalSyncConflictResolutionService and the Associate/Operational Notes view models.
+        services.AddSingleton<ISyncLocalChangeNotifier, SyncLocalChangeNotifier>();
+        services.AddSingleton<OpenEditorConflictRecorder>();
         services.AddSingleton<SyncChangeTracker>();
         services.AddSingleton<ISyncChangeTracker>(provider => new AutomaticSyncChangeTracker(
             provider.GetRequiredService<SyncChangeTracker>(),

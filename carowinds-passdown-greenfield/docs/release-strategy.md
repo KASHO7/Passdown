@@ -3014,3 +3014,65 @@ Phase 17C rebuild entry.
 - Real Windows/OneDrive-client validation remains **NOT EXECUTED**, carried forward unchanged from every
   prior rebuild.
 
+## Phase 18B — release content validation (PKG-002) and US presentation culture
+
+**Packaging validation.** `Build-PortableRelease.ps1`'s small forbidden-pattern list is replaced by
+`packaging/windows/Test-ReleasePackage.ps1`, driven by `packaging/windows/release-content-rules.json`.
+It runs twice: on the staging folder (no ZIP is created on failure) and on the finished ZIP (the ZIP
+is deleted on failure). It can also be run by hand: `Test-ReleasePackage.ps1 -Path <folder-or-zip>`.
+
+- **Required:** the desktop exe/dll, runtimeconfig/deps, the four app assemblies, the self-contained
+  runtime (`hostfxr`, `hostpolicy`, `coreclr`, `System.Private.CoreLib`), win-x64 natives
+  (`e_sqlite3`, `libSkiaSharp`, `libHarfBuzzSharp`, `av_libglesv2`, `QuestPdfSkia`), both scheduler
+  `.cmd` helpers and `tools/*.ps1`, `README.txt`, `TESTER-GUIDE.txt`, and `LatoFont/OFL.txt` (the only
+  license file a shipped resource currently requires to travel with it).
+- **Forbidden:** `*.pdb`; source/project files; test assemblies and test-runner/headless packages;
+  `fixtures`/`TestData`/`obj`/`src`/`docs`/… directories; `*.db`/WAL/SHM/journal; `*.log` and `logs/`;
+  any `*.zip` (diagnostics); sync data (`Carowinds Operations Sync/`, `manifest.json`, `*.tmp-*`,
+  `sync-config.json`, `device-id.txt`); `*.pdf` (generated previews); Ghostscript binaries/`*.ps`;
+  `.DS_Store`/`._*`/`Thumbs.db`/`__MACOSX`; `*.so`/`*.dylib`/`*.a` and any `runtimes/<rid>` other than
+  win-x64; `.git*`, `.env`, keys/certificates, `secrets.json`, `appsettings.*.json`, `CLAUDE.md`,
+  `AGENT_BUILD_SPEC.md`.
+- **Developer-path leak (PKG-001 regression):** `/Users/`, `/home/`, `C:\Users\` are searched (UTF-8
+  and UTF-16) in our own `Carowinds.Passdown.*` binaries and every shipped text file; the checkout path
+  and the packaging user's name are searched in **every** file. Third-party binaries are deliberately
+  not searched for the generic tokens — `SQLitePCLRaw.*` and `MicroCom.Runtime` legitimately embed
+  their vendors' `/Users/…`/`/home/…` build paths, which would otherwise be false positives.
+
+The same rules are exercised on every host by `ReleasePackageValidationTests` (a C# mirror of the
+script, reading the same JSON): every forbidden category, the third-party false-positive case, ZIP
+handling, and — in Release builds — a string scan of our own built assemblies for the developer and
+checkout paths. A real ZIP is validated with `CAROWINDS_RELEASE_ZIP=<zip> dotnet test … --filter
+RealReleaseZip` (opt-in so the normal build never depends on an artifact). Run against the existing
+pre-18A ZIP it reports exactly the known PKG-001 leak (6 own assemblies containing `/Users/…`) and
+nothing else, which confirms the required-file list matches real publish output.
+
+**Not executed:** `Test-ReleasePackage.ps1` itself has not run — there is no `pwsh` on this
+development host (same limitation as every prior rebuild). It must run, and pass, on the next release
+rebuild on Windows. **Open item (PKG-003):** the release has no consolidated third-party notices file
+for its MIT/BSD/Apache-licensed dependencies (Avalonia, SkiaSharp, HarfBuzzSharp, SQLitePCLRaw, .NET,
+QuestPDF); adding one is a licensing/product decision, not done here.
+
+**Presentation culture.** `Program.Main` now calls `PresentationCulture.ApplyAsProcessDefault()` (en-US)
+before anything else, so framework controls (date pickers, XAML formats) match the app's own explicit
+en-US formatting. Persistence, sync, hashing, and parsing were already explicitly invariant; the Park
+Hours request URL and generated file names were additionally made explicitly invariant (a non-Gregorian
+default calendar such as th-TH would otherwise have produced a Buddhist-era year).
+
+The release ZIP/EXE were **not** rebuilt in Phase 18B.
+
+
+## Phase 18C — release candidate build with the real packaging scripts
+
+- First release produced by `Build-PortableRelease.ps1` itself (PowerShell 7.6.6, installed for the
+  build as a local `dotnet tool PowerShell` in a scratch folder — nothing installed system-wide), so
+  `Test-ReleasePackage.ps1` ran for real on the staging folder and on the ZIP. It caught PKG-004 (our
+  checkout path in `Carowinds.Passdown.Desktop.dll`), fixed in `5c0ddf2`. Still not run on Windows.
+- The developer build scripts need PowerShell 7 (`pwsh`): they use three-argument `Join-Path`, despite
+  `#Requires -Version 5.1`. User-machine scripts (`tools\*.ps1`) are Windows PowerShell 5.1-compatible.
+- The release now ships `THIRD-PARTY-NOTICES.txt` and `licenses\` (PKG-003). To refresh them after a
+  dependency change, copy the new packages' LICENSE/NOTICE files into `packaging/windows/licenses/`,
+  update the index and `requiredFiles`; `RepositoryNoticeSources_MatchTheRequiredSet_AndAreComplete`
+  fails until the two agree.
+- The single-file EXE carries no notices when distributed alone; it stays experimental.
+- Details and hashes: `docs/release-manifest.md` "Phase 18C".

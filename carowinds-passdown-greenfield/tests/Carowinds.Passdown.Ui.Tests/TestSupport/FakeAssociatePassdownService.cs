@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.OperationalNotes;
+using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Hours;
@@ -99,6 +100,45 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
 
         return new AssociateOnlineCheckResult(workspace, SuccessSummary(operatingDate));
     }
+
+    /// <summary>Phase 18B REL-004: the expected base hash each editor save carried, in order.</summary>
+    public List<string?> EditorSaveExpectedHashes { get; } = [];
+
+    /// <summary>Phase 18B REL-004: every editor save that found the stored draft changed since the editor's base — with the stored version it found (null = absent).</summary>
+    public List<(DateOnly OperatingDate, AssociateDraftPayload? StoredVersion)> EditorConflicts { get; } = [];
+
+    /// <summary>
+    /// Mirrors <c>AssociatePassdownService.SaveEditorDraftAsync</c>'s rule: the editor's draft is always
+    /// saved (recorded in <see cref="SaveCalls"/> exactly like before), and the result reports a conflict
+    /// when the stored version differs from both the editor's expected base and what it is saving.
+    /// </summary>
+    public async Task<AssociateDraftSaveResult> SaveEditorDraftAsync(DateOnly operatingDate, AssociateDraftPayload draft, string? expectedContentHash, CancellationToken cancellationToken = default)
+    {
+        EditorSaveExpectedHashes.Add(expectedContentHash);
+        var stored = _savedDrafts.GetValueOrDefault(operatingDate);
+        var storedHash = stored is null ? null : SyncContentHash.ComputeDraftHash(stored);
+        var newHash = SyncContentHash.ComputeDraftHash(draft);
+
+        var status = await SaveDraftAsync(operatingDate, draft, cancellationToken);
+
+        var conflict = !string.Equals(storedHash, expectedContentHash, StringComparison.Ordinal)
+            && !string.Equals(storedHash, newHash, StringComparison.Ordinal);
+        if (conflict)
+        {
+            EditorConflicts.Add((operatingDate, stored));
+        }
+
+        return new AssociateDraftSaveResult(status, newHash, conflict);
+    }
+
+    /// <summary>Phase 18B REL-004: changes the stored draft the way a Personal Sync import would — not an editor save, so not recorded in <see cref="SaveCalls"/>.</summary>
+    public void SimulateSyncImport(DateOnly operatingDate, AssociateDraftPayload draft)
+    {
+        _savedDrafts[operatingDate] = draft;
+        _savedAt[operatingDate] = DateTimeOffset.UtcNow;
+    }
+
+    public AssociateDraftPayload? StoredDraft(DateOnly operatingDate) => _savedDrafts.GetValueOrDefault(operatingDate);
 
     public async Task<AssociateSaveStatus> SaveDraftAsync(DateOnly operatingDate, AssociateDraftPayload draft, CancellationToken cancellationToken = default)
     {
@@ -220,7 +260,10 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
             Products: [],
             CategoryStatuses: [],
             saveStatus,
-            sourceStates);
+            sourceStates)
+        {
+            DraftContentHash = _savedDrafts.TryGetValue(date, out var stored) ? SyncContentHash.ComputeDraftHash(stored) : null,
+        };
     }
 
     /// <summary>Mirrors production <c>AssociatePassdownService.ComposeParkHours</c>'s override precedence (no official hours ever set here — this fake has no dated-source data) so a test's saved-then-reloaded draft round-trips its manual/buyout override the same way the real service does, instead of always coming back "not checked yet".</summary>

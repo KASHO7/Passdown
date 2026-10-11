@@ -40,7 +40,9 @@ public sealed class AssociatePassdownService(
     Func<IScheduledRefreshLock>? refreshLockFactory = null,
     IDeepRefreshStatusRepository? deepRefreshStatusRepository = null,
     ISyncChangeTracker? syncChangeTracker = null,
-    IEffectiveErtResolver? effectiveErtResolver = null) : IAssociatePassdownService
+    IEffectiveErtResolver? effectiveErtResolver = null,
+    IUnitOfWorkFactory? unitOfWorkFactory = null,
+    OpenEditorConflictRecorder? openEditorConflictRecorder = null) : IAssociatePassdownService
 {
     private static readonly SourceCategory[] CatalogCategories =
     [
@@ -152,6 +154,65 @@ public sealed class AssociatePassdownService(
         return new AssociateSaveStatus(AssociateSaveState.Saved, now);
     }
 
+    public async Task<AssociateDraftSaveResult> SaveEditorDraftAsync(DateOnly operatingDate, AssociateDraftPayload draft, string? expectedContentHash, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+
+        var payloadJson = JsonSerializer.Serialize(draft);
+        var newHash = ComputeStoredDraftHash(payloadJson);
+
+        if (unitOfWorkFactory is null || openEditorConflictRecorder is null)
+        {
+            // Composition without persistence-transaction support (unit tests of unrelated behavior).
+            var legacyStatus = await SaveDraftAsync(operatingDate, draft, cancellationToken).ConfigureAwait(false);
+            return new AssociateDraftSaveResult(legacyStatus, newHash, ConflictDetected: false);
+        }
+
+        var now = clock.UtcNow;
+        var record = new AssociateDraft(operatingDate, AssociateDraftPayload.CurrentSchemaVersion, payloadJson, now);
+        var conflictDetected = false;
+
+        // BEGIN IMMEDIATE: holding the write lock across read-compare-write is what makes this atomic
+        // with respect to a concurrent Personal Sync import (which takes the same lock for its own
+        // read-decide-write) — neither can slip a write between the other's read and write.
+        await using (var unitOfWork = await unitOfWorkFactory.BeginAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var stored = await draftRepository.GetAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+            var storedHash = stored is null ? null : ComputeStoredDraftHash(stored.PayloadJson);
+
+            await draftRepository.SaveAsync(record, unitOfWork, cancellationToken).ConfigureAwait(false);
+
+            if (!string.Equals(storedHash, expectedContentHash, StringComparison.Ordinal)
+                && !string.Equals(storedHash, newHash, StringComparison.Ordinal))
+            {
+                var storedPayloadJson = stored is null
+                    ? null
+                    : JsonSerializer.Serialize(AssociateDraftPayloadSerializer.Deserialize(stored.PayloadJson));
+                await openEditorConflictRecorder.RecordAsync(
+                    SyncEntityType.AssociateDraft,
+                    SyncEntityIdentity.ForDraft(operatingDate),
+                    new DivergedStoredVersion(storedPayloadJson, AssociateDraftPayload.CurrentSchemaVersion, storedHash, stored?.UpdatedAt ?? now),
+                    unitOfWork,
+                    cancellationToken).ConfigureAwait(false);
+                conflictDetected = true;
+            }
+
+            await unitOfWork.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        // Phase 16C §7: SQLite save first, sync metadata second — on the conflict path too.
+        if (syncChangeTracker is not null)
+        {
+            await syncChangeTracker.MarkLocalChangeAsync(SyncEntityType.AssociateDraft, SyncEntityIdentity.ForDraft(operatingDate), cancellationToken).ConfigureAwait(false);
+        }
+
+        return new AssociateDraftSaveResult(new AssociateSaveStatus(AssociateSaveState.Saved, now), newHash, conflictDetected);
+    }
+
+    /// <summary>Phase 18B REL-004: the same canonical hash Personal Sync uses, over the payload as this service reads it back (legacy fields migrated), so two spellings of the same draft never look different.</summary>
+    private static string ComputeStoredDraftHash(string payloadJson) =>
+        SyncContentHash.ComputeDraftHash(AssociateDraftPayloadSerializer.Deserialize(payloadJson));
+
     /// <summary>
     /// Phase 11D Part E/F: persistent notes relevant to <paramref name="operatingDate"/> — the
     /// Associate-selected date, deliberately never Dashboard's Eastern "today" — in the same
@@ -173,7 +234,7 @@ public sealed class AssociatePassdownService(
     /// </summary>
     public async Task<AssociateWorkspace> SelectOperationalNoteAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken cancellationToken = default)
     {
-        var draft = await LoadDraftPayloadAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+        var (draft, baseHash) = await LoadDraftPayloadAsync(operatingDate, cancellationToken).ConfigureAwait(false);
 
         if (draft.SelectedOperationalNotes.Any(selection => selection.SourceOperationalNoteId == operationalNoteId))
         {
@@ -189,7 +250,7 @@ public sealed class AssociatePassdownService(
             source.EffectiveFrom, source.EffectiveThrough, clock.UtcNow);
 
         var updated = draft with { SelectedOperationalNotes = [.. draft.SelectedOperationalNotes, selection] };
-        await SaveDraftAsync(operatingDate, updated, cancellationToken).ConfigureAwait(false);
+        await SaveEditorDraftAsync(operatingDate, updated, baseHash, cancellationToken).ConfigureAwait(false);
 
         return await ComposeAsync(operatingDate, cancellationToken).ConfigureAwait(false);
     }
@@ -201,7 +262,7 @@ public sealed class AssociatePassdownService(
     /// </summary>
     public async Task<AssociateWorkspace> DeselectOperationalNoteAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken cancellationToken = default)
     {
-        var draft = await LoadDraftPayloadAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+        var (draft, baseHash) = await LoadDraftPayloadAsync(operatingDate, cancellationToken).ConfigureAwait(false);
 
         var updated = draft with
         {
@@ -210,7 +271,7 @@ public sealed class AssociatePassdownService(
                 .ToList(),
         };
 
-        await SaveDraftAsync(operatingDate, updated, cancellationToken).ConfigureAwait(false);
+        await SaveEditorDraftAsync(operatingDate, updated, baseHash, cancellationToken).ConfigureAwait(false);
         return await ComposeAsync(operatingDate, cancellationToken).ConfigureAwait(false);
     }
 
@@ -227,7 +288,7 @@ public sealed class AssociatePassdownService(
     /// </summary>
     public async Task<AssociateWorkspace> ReplaceOperationalNoteWithCurrentAsync(DateOnly operatingDate, Guid operationalNoteId, CancellationToken cancellationToken = default)
     {
-        var draft = await LoadDraftPayloadAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+        var (draft, baseHash) = await LoadDraftPayloadAsync(operatingDate, cancellationToken).ConfigureAwait(false);
 
         var selections = draft.SelectedOperationalNotes.ToList();
         var index = selections.FindIndex(selection => selection.SourceOperationalNoteId == operationalNoteId);
@@ -245,15 +306,18 @@ public sealed class AssociatePassdownService(
             source.EffectiveFrom, source.EffectiveThrough, clock.UtcNow);
 
         var updated = draft with { SelectedOperationalNotes = selections };
-        await SaveDraftAsync(operatingDate, updated, cancellationToken).ConfigureAwait(false);
+        await SaveEditorDraftAsync(operatingDate, updated, baseHash, cancellationToken).ConfigureAwait(false);
 
         return await ComposeAsync(operatingDate, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<AssociateDraftPayload> LoadDraftPayloadAsync(DateOnly operatingDate, CancellationToken cancellationToken)
+    /// <summary>Phase 18B REL-004: also returns the stored version's hash so the read-modify-write callers save conditionally on exactly what they read.</summary>
+    private async Task<(AssociateDraftPayload Draft, string? ContentHash)> LoadDraftPayloadAsync(DateOnly operatingDate, CancellationToken cancellationToken)
     {
         var draftRecord = await draftRepository.GetAsync(operatingDate, cancellationToken).ConfigureAwait(false);
-        return draftRecord is null ? AssociateDraftPayload.CreateDefault() : AssociateDraftPayloadSerializer.Deserialize(draftRecord.PayloadJson);
+        return draftRecord is null
+            ? (AssociateDraftPayload.CreateDefault(), null)
+            : (AssociateDraftPayloadSerializer.Deserialize(draftRecord.PayloadJson), ComputeStoredDraftHash(draftRecord.PayloadJson));
     }
 
     private async Task<AssociateWorkspace> ComposeAsync(DateOnly operatingDate, CancellationToken cancellationToken)
@@ -321,7 +385,10 @@ public sealed class AssociatePassdownService(
             ? await effectiveErtResolver.ResolveAsync(operatingDate, cancellationToken).ConfigureAwait(false)
             : EffectiveErt.NotConfigured;
 
-        return new AssociateWorkspace(operatingDate, draft, parkHours, products, categoryStatuses, saveStatus, selectedNoteSourceStates, earlyRideTime);
+        return new AssociateWorkspace(operatingDate, draft, parkHours, products, categoryStatuses, saveStatus, selectedNoteSourceStates, earlyRideTime)
+        {
+            DraftContentHash = draftRecord is null ? null : SyncContentHash.ComputeDraftHash(draft),
+        };
     }
 
     /// <summary>

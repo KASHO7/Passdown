@@ -176,7 +176,7 @@ public sealed class DatedAdmissionSource(IRetrievalHttpClient httpClient, IClock
                 OfficialPageUrl,
                 timeChecked,
                 RetrievalStatus.Verified,
-                $"Dated admission tickets confirmed for {requestedDate.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)}.",
+                $"Dated admission tickets confirmed for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}.",
                 RetrievalStrategy.DirectApi,
                 requestedDate: requestedDate,
                 confirmedDate: requestedDate),
@@ -261,7 +261,7 @@ public sealed class DatedAdmissionSource(IRetrievalHttpClient httpClient, IClock
     }
 
     private static string DefaultUnavailableDetail(DateOnly requestedDate) =>
-        $"Dated admission tickets are not available for {requestedDate.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)}.";
+        $"Dated admission tickets are not available for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}.";
 
     private SourceResult<DatedAdmissionPayload> NotPublished(DateTimeOffset timeChecked, DateOnly requestedDate) =>
         SourceResult<DatedAdmissionPayload>.WithoutPayload(
@@ -271,7 +271,7 @@ public sealed class DatedAdmissionSource(IRetrievalHttpClient httpClient, IClock
                 OfficialPageUrl,
                 timeChecked,
                 RetrievalStatus.NotPublished,
-                $"Dated admission tickets for {requestedDate.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)} have not been published yet.",
+                $"Dated admission tickets for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)} have not been published yet.",
                 RetrievalStrategy.DirectApi,
                 requestedDate: requestedDate));
 

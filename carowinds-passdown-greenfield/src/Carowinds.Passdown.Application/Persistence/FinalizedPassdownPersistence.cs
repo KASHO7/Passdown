@@ -54,9 +54,11 @@ public sealed record FinalizedPassdownSummary(
 /// or <see cref="FinalizedPassdown.PdfBytes"/> blob — mirrors <see cref="FinalizedPassdownSummary"/>'s
 /// own "cheap listing" rationale, but keyed by <see cref="Id"/> (the sync entity id, Phase 16A §B) and
 /// carrying <see cref="ContentHash"/> (the one fact export dirtiness is decided from) rather than
-/// display-oriented fields.
+/// display-oriented fields. Phase 18B PERF-001 adds the frozen PDF's own SHA-256/size (still no blob)
+/// so History import can tell, without reading any PDF, that a remote record describes exactly the
+/// PDF this device already holds; <see langword="null"/> for a legacy row with no frozen PDF.
 /// </summary>
-public sealed record FinalizedPassdownSyncMetadata(Guid Id, DateOnly PassdownDate, string ContentHash);
+public sealed record FinalizedPassdownSyncMetadata(Guid Id, DateOnly PassdownDate, string ContentHash, string? PdfSha256 = null, long? PdfSizeBytes = null);
 
 /// <summary>
 /// Narrow, insert-only persistence contract for finalized passdowns (spec Phase 9 Part M). Exposes

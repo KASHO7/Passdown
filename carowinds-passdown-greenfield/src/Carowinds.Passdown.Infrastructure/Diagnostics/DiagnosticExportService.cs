@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Text;
 using Carowinds.Passdown.Application.Diagnostics;
 using Carowinds.Passdown.Application.Time;
+using System.Globalization;
 
 namespace Carowinds.Passdown.Infrastructure.Diagnostics;
 
@@ -28,14 +29,21 @@ public sealed class DiagnosticExportService(IDiagnosticReportBuilder reportBuild
             if (report.RecentLogLines.Count > 0)
             {
                 var logContent = string.Join(Environment.NewLine, report.RecentLogLines);
-                await WriteTextEntryAsync(archive, $"logs/scheduled-refresh-{report.GeneratedAtUtc:yyyyMMdd}.log", logContent, cancellationToken).ConfigureAwait(false);
+                await WriteTextEntryAsync(archive, string.Create(CultureInfo.InvariantCulture, $"logs/scheduled-refresh-{report.GeneratedAtUtc:yyyyMMdd}.log"), logContent, cancellationToken).ConfigureAwait(false);
+            }
+
+            // Phase 18B REL-005: a bounded, already path-redacted excerpt of the interactive app log.
+            if (report.RecentAppLogLines.Count > 0)
+            {
+                var appLogContent = string.Join(Environment.NewLine, report.RecentAppLogLines);
+                await WriteTextEntryAsync(archive, string.Create(CultureInfo.InvariantCulture, $"logs/app-{report.GeneratedAtUtc:yyyyMMdd}.log"), appLogContent, cancellationToken).ConfigureAwait(false);
             }
         }
 
         // yyyyMMdd-HHmm is digits and dashes only — always a safe file name component, no path
         // separators or characters a destination filesystem could reject (Part S "output filename
         // is safe").
-        var fileName = $"Carowinds-Operations-Diagnostics-{clock.UtcNow:yyyyMMdd-HHmm}.zip";
+        var fileName = string.Create(CultureInfo.InvariantCulture, $"Carowinds-Operations-Diagnostics-{clock.UtcNow:yyyyMMdd-HHmm}.zip");
         return new DiagnosticExportResult(memoryStream.ToArray(), fileName);
     }
 

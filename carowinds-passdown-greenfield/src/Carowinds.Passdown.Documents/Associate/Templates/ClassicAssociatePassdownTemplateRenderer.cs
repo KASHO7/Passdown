@@ -6,81 +6,99 @@ using QuestPDF.Infrastructure;
 namespace Carowinds.Passdown.Documents.Associate.Templates;
 
 /// <summary>
-/// Phase 17E's "Classic" template — a traditional, single-column daily operations handout (spec Part
-/// 2): section-by-section flow, no product pairing/matrix (that is Compact's distinguishing trait, not
-/// Classic's), conservative gray/blue hairlines, moderate spacing, a fully vertical Park Hours/gates/
-/// attendance/Early Ride list rather than a two-per-row grid. No app-branding header, no product
-/// cards/tiles, no comparison pricing, rides-only Early Ride Time — the Phase 17D content rules are
-/// unchanged, only the composition (Phase 17E's actual scope) moved from the shared paired-row master
-/// layout to <see cref="SingleColumnProductLayout"/>.
+/// The "Classic" template — a traditional, professional operations handout (Phase 17E composition,
+/// Phase 17F visual refinement). One-line date over a full-width rule; a fully vertical Park Hours/
+/// gates/attendance/Early Ride list; every section introduced by a plain uppercase heading over a
+/// full-width thin rule; single-column product rows (no pairing — that is Compact's trait) with a
+/// strict right-aligned price column. Conservative near-black typography with moderate whitespace so
+/// the sheet stays easy to annotate by hand and reads the same printed in grayscale. No cards, no
+/// shaded boxes, no app branding, no comparison pricing, rides-only Early Ride.
 /// </summary>
 public sealed class ClassicAssociatePassdownTemplateRenderer : IAssociatePassdownTemplateRenderer
 {
     public AssociatePassdownTemplate Template => AssociatePassdownTemplate.Classic;
 
-    private const float PageMargin = 32f;
-    private const float SectionSpacing = 8f;
+    private const float PageMargin = 34f;
+    private const float PriceColumnWidth = 72f;
+    private const float BodySize = 9.5f;
 
-    private static readonly string InkColor = "#0B2A4A";
-    private static readonly string AccentColor = "#1E5AA8";
-    private static readonly string MutedTextColor = "#57626D";
-    private static readonly string HairlineColor = "#B7C1CC";
+    private static readonly string InkColor = "#111111";
+    private static readonly string MutedTextColor = "#555555";
+    private static readonly string RuleColor = "#8C8C8C";
 
-    public void Compose(PageDescriptor page, AssociatePassdownDocumentModel model, CancellationToken cancellationToken)
+    /// <summary>Vertical rhythm only — <see cref="PdfDensity.Tight"/> trims spacing so a just-overflowing day can recover a page; Classic still favors readability, so type sizes never change.</summary>
+    private sealed record Metrics(float ContentTop, float SectionSpacing, float CommercialGap, float SummarySpacing, float HeadingGap, float RowPadding, float NoteSpacingFew, float NoteSpacingMany)
     {
+        public static readonly Metrics Standard = new(9f, 11f, 2f, 2.5f, 2.5f, 1.75f, 4f, 2f);
+        public static readonly Metrics Tight = new(6f, 7f, 0f, 1.75f, 1.5f, 1.1f, 2.5f, 1.25f);
+
+        public static Metrics For(PdfDensity density) => density == PdfDensity.Tight ? Tight : Standard;
+    }
+
+    public void Compose(PageDescriptor page, AssociatePassdownDocumentModel model, PdfDensity density, CancellationToken cancellationToken)
+    {
+        var m = Metrics.For(density);
+
         page.Size(PageSizes.Letter);
         page.Margin(PageMargin);
-        page.DefaultTextStyle(x => x.FontSize(9.75f).FontColor(Colors.Black));
+        page.DefaultTextStyle(x => x.FontSize(BodySize).FontColor(InkColor));
 
         page.Header().Element(header => ComposeHeader(header, model));
 
-        page.Content().PaddingTop(7).Column(column =>
+        page.Content().PaddingTop(m.ContentTop).Column(column =>
         {
-            column.Spacing(SectionSpacing);
+            column.Spacing(m.SectionSpacing);
 
-            ComposeSummaryList(column, model);
-            ComposeDailyFeature(column, model);
+            // Operations information (hours, gates, attendance, Early Ride, Daily Feature)...
+            ComposeSummaryList(column, model, m);
+            ComposeDailyFeature(column, model, m);
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            SingleColumnProductLayout.Compose(column, model.ProductCategories, 6f, (el, category, _) => ComposeCategory(el, category));
-            ComposeNotes(column, model.OperationalNotes);
+            // ...then the commercial reference, separated by a little extra space rather than a container.
+            if (model.ProductCategories.Count > 0 && m.CommercialGap > 0)
+            {
+                column.Item().Height(m.CommercialGap);
+            }
+
+            SingleColumnProductLayout.Compose(column, model.ProductCategories, m.SectionSpacing, (el, category) => ComposeCategory(el, category, m));
+            ComposeNotes(column, model.OperationalNotes, m);
         });
 
         page.Footer().Element(footer => ComposeFooter(footer, model));
     }
 
-    /// <summary>The date is the page's primary heading (spec §7/§11) — no "CAROWINDS OPERATIONS"/"Associate Passdown" branding above it.</summary>
+    /// <summary>The date on one line is the page's primary heading — no "CAROWINDS OPERATIONS"/"Associate Passdown" branding above it.</summary>
     private static void ComposeHeader(IContainer container, AssociatePassdownDocumentModel model) =>
         container.Column(column =>
         {
-            column.Item().Text(model.OperatingDateText.ToUpperInvariant()).FontSize(19).Bold().FontColor(InkColor);
-            column.Item().PaddingTop(5).Height(2f).Background(AccentColor);
+            column.Item().Text(model.OperatingDateText.ToUpperInvariant()).FontSize(17).Bold().LetterSpacing(0.01f);
+            column.Item().PaddingTop(5).Height(1.25f).Background(InkColor);
         });
 
-    private static void SectionHeading(ColumnDescriptor column, string text) =>
-        column.Item().Column(heading =>
+    private static void SectionHeading(ColumnDescriptor column, string text, Metrics m) =>
+        column.Item().PaddingBottom(m.HeadingGap).Column(heading =>
         {
-            heading.Item().Text(text.ToUpperInvariant()).Bold().FontSize(9).LetterSpacing(0.05f).FontColor(AccentColor);
-            heading.Item().PaddingTop(2).Height(0.75f).Background(HairlineColor);
+            heading.Item().Text(text.ToUpperInvariant()).Bold().FontSize(9).LetterSpacing(0.06f);
+            heading.Item().PaddingTop(2.5f).Height(0.75f).Background(RuleColor);
         });
 
     /// <summary>
-    /// Classic's top summary (spec Part 8: "vertical label/value arrangement") — Park Hours, gates,
-    /// attendance, and Early Ride Time each as their own aligned row, stacked one under another rather
-    /// than paired two-per-row. This is what makes Classic read as a traditional handout at a glance:
-    /// Compact packs the same facts onto an inline strip, Modern lays them out as a metadata grid.
+    /// Classic's top summary — a "PARK HOURS" caption, the hours headline, then North Gate, Avenue,
+    /// Attendance, Pre-solds, and Early Ride each on their own aligned label/value row. The fully
+    /// vertical list is what reads as a traditional handout (Compact packs the same facts onto an
+    /// inline strip; Modern lays them out as a four-column metadata grid).
     /// </summary>
-    private static void ComposeSummaryList(ColumnDescriptor column, AssociatePassdownDocumentModel model)
+    private static void ComposeSummaryList(ColumnDescriptor column, AssociatePassdownDocumentModel model, Metrics m)
     {
-        const float labelWidth = 100f;
+        const float labelWidth = 92f;
 
         column.Item().Column(list =>
         {
-            list.Spacing(3);
+            list.Spacing(m.SummarySpacing);
 
-            list.Item().Text("PARK HOURS").FontSize(8.5f).Bold().FontColor(MutedTextColor);
-            list.Item().PaddingBottom(1).Text(text =>
+            list.Item().Text("PARK HOURS").FontSize(9).Bold().LetterSpacing(0.06f);
+            list.Item().PaddingTop(1).PaddingBottom(3).Text(text =>
             {
                 text.Span(model.ParkHours.HeadlineText).FontSize(14).Bold();
 
@@ -107,85 +125,82 @@ public sealed class ClassicAssociatePassdownTemplateRenderer : IAssociatePassdow
     private static void SummaryRow(ColumnDescriptor column, float labelWidth, string label, string value) =>
         column.Item().Row(row =>
         {
-            row.ConstantItem(labelWidth).Text(label).FontSize(9).FontColor(MutedTextColor);
-            row.RelativeItem().Text(value).FontSize(9.5f).Bold();
+            row.ConstantItem(labelWidth).Text(label).FontSize(9.25f).FontColor(MutedTextColor);
+            row.RelativeItem().Text(value).FontSize(9.5f).SemiBold();
         });
 
-    /// <summary>
-    /// Mandatory content (spec §15) — always rendered, even with no text entered, so the Daily
-    /// Feature type an associate committed to still shows on the page. No shaded card/accent bar; a
-    /// plain heading + rule, matching every other section.
-    /// </summary>
-    private static void ComposeDailyFeature(ColumnDescriptor column, AssociatePassdownDocumentModel model)
-    {
-        column.Item().ShowEntire().Column(section =>
+    /// <summary>Mandatory content — always rendered, even with no text entered, under its feature-type heading and a full-width rule. No shaded card.</summary>
+    private static void ComposeDailyFeature(ColumnDescriptor column, AssociatePassdownDocumentModel model, Metrics m) =>
+        column.Item().PreventPageBreak().Column(section =>
         {
-            section.Spacing(2);
-            SectionHeading(section, model.DailyFeature.TypeLabel ?? "Daily Feature");
+            SectionHeading(section, model.DailyFeature.TypeLabel ?? "Daily Feature", m);
 
             if (model.DailyFeature.Text is { } featureText)
             {
-                section.Item().PaddingTop(1).Text(featureText).FontSize(10.5f).Italic();
+                section.Item().Text(featureText).FontSize(10).Italic().LineHeight(1.2f);
             }
             else
             {
-                section.Item().PaddingTop(1).Text("Not entered.").FontSize(10.5f).Italic().FontColor(MutedTextColor);
+                section.Item().Text("Not entered.").FontSize(10).Italic().FontColor(MutedTextColor);
             }
         });
-    }
 
-    /// <summary>One category: heading + rule, then every product as a single aligned row (spec §14 — no cards).</summary>
-    private static void ComposeCategory(IContainer container, PdfProductCategory category) =>
-        container.Column(section =>
+    /// <summary>One category: heading + full-width rule, then one aligned name/price row per product (no cards, no per-row rules).</summary>
+    private static void ComposeCategory(IContainer container, PdfProductCategory category, Metrics m) =>
+        container.KeepSection(category.Products.Count, headingWithFirstRowsHeight: 70f).Column(section =>
         {
-            section.Spacing(1);
-            SectionHeading(section, category.CategoryName);
+            SectionHeading(section, category.CategoryName, m);
 
             foreach (var product in category.Products)
             {
-                section.Item().PaddingTop(1.5f).BorderBottom(0.5f).BorderColor(HairlineColor).PaddingBottom(1.5f).Row(row =>
-                {
-                    row.RelativeItem().Text(product.DisplayName).FontSize(9.5f);
-                    row.ConstantItem(64).AlignRight().Text(product.EffectivePriceText ?? "-").FontSize(9.5f).Bold();
-                });
+                section.Item().PaddingVertical(m.RowPadding).Element(row => PdfPrimitives.PriceRow(
+                    row,
+                    product.DisplayName,
+                    product.EffectivePriceText,
+                    PriceColumnWidth,
+                    name => name.FontSize(BodySize),
+                    price => price.FontSize(BodySize).Bold()));
 
                 if (product.Notes is { } notes)
                 {
-                    section.Item().Text(notes).FontSize(8).Italic().FontColor(MutedTextColor);
+                    section.Item().PaddingRight(PriceColumnWidth).PaddingBottom(1).Text(notes).FontSize(8).Italic().FontColor(MutedTextColor);
                 }
             }
         });
 
-    /// <summary>Bulleted lines under a plain heading — no card, no excessive padding (spec §16), so a few short notes never get pushed to a near-empty page 2.</summary>
-    private static void ComposeNotes(ColumnDescriptor column, IReadOnlyList<string> notes)
+    /// <summary>
+    /// Readable bullets under a plain heading — never a notes container. Spacing tightens once the
+    /// list grows past three notes so a long list compresses before it forces a page break.
+    /// </summary>
+    private static void ComposeNotes(ColumnDescriptor column, IReadOnlyList<string> notes, Metrics m)
     {
         if (notes.Count == 0)
         {
             return;
         }
 
-        column.Item().ShowEntire().Column(section =>
+        column.Item().KeepSection(notes.Count, headingWithFirstRowsHeight: 70f).Column(section =>
         {
-            section.Spacing(3);
-            SectionHeading(section, "Operational Notes");
+            SectionHeading(section, "Operational Notes", m);
 
+            var noteSpacing = notes.Count <= 3 ? m.NoteSpacingFew : m.NoteSpacingMany;
             foreach (var note in notes)
             {
-                section.Item().Row(row =>
+                section.Item().PaddingBottom(noteSpacing).Row(row =>
                 {
-                    row.ConstantItem(12).Text("•").FontSize(9.5f).Bold().FontColor(AccentColor);
-                    row.RelativeItem().Text(note).FontSize(9.5f);
+                    row.ConstantItem(13).Text("•").FontSize(BodySize).Bold();
+                    row.RelativeItem().Text(note).FontSize(BodySize).LineHeight(1.15f);
                 });
             }
         });
     }
 
     private static void ComposeFooter(IContainer container, AssociatePassdownDocumentModel model) =>
-        container.PaddingTop(4).BorderTop(0.75f).BorderColor(HairlineColor).PaddingTop(4).Row(row =>
+        container.PaddingTop(6).Row(row =>
         {
             row.RelativeItem().Text(model.HasUnverifiedProductPricing ? "Some product pricing has not been recently verified." : string.Empty)
                 .FontSize(7.5f).FontColor(MutedTextColor);
 
-            row.ConstantItem(120).AlignRight().Text(model.GeneratedAtText).FontSize(7.5f).FontColor(MutedTextColor);
+            PdfPrimitives.TimestampAndPageIndicator(row, model.GeneratedAtText, span => span.FontSize(7.5f).FontColor(MutedTextColor));
         });
 }

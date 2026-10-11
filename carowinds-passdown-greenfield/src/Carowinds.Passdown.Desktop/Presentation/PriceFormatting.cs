@@ -1,4 +1,5 @@
 using System.Globalization;
+using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Desktop.Presentation;
 
@@ -9,7 +10,7 @@ namespace Carowinds.Passdown.Desktop.Presentation;
 /// </summary>
 internal static class PriceFormatting
 {
-    public static string Format(decimal amount) => "$" + amount.ToString("0.00", CultureInfo.InvariantCulture);
+    public static string Format(decimal amount) => PresentationCulture.FormatUsd(amount);
 
     public static string? FormatOrNull(decimal? amount) => amount is { } value ? Format(value) : null;
 

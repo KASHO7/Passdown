@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Domain.Hours;
+using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Desktop.Presentation;
 
@@ -104,7 +105,7 @@ public sealed record ParkHoursPresentation(
             waterparkHeadline);
     }
 
-    private static string? FormatTime(TimeOnly? time) => time?.ToString("h:mm tt");
+    private static string? FormatTime(TimeOnly? time) => time?.ToString("h:mm tt", PresentationCulture.UnitedStates);
 
-    private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d 'at' h:mm tt");
+    private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d 'at' h:mm tt", PresentationCulture.UnitedStates);
 }

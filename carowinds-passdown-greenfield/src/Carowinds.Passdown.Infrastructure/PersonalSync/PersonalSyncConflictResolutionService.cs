@@ -6,6 +6,7 @@ using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Time;
+using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Infrastructure.PersonalSync;
 
@@ -25,7 +26,8 @@ public sealed class PersonalSyncConflictResolutionService(
     IUnitOfWorkFactory unitOfWorkFactory,
     IClock clock,
     IMonthlyErtRepository monthlyErtRepository,
-    IErtDateOverrideRepository ertDateOverrideRepository) : IPersonalSyncConflictResolutionService
+    IErtDateOverrideRepository ertDateOverrideRepository,
+    ISyncLocalChangeNotifier? changeNotifier = null) : IPersonalSyncConflictResolutionService
 {
     private static readonly JsonSerializerOptions DraftPayloadWriteOptions = new();
 
@@ -81,7 +83,7 @@ public sealed class PersonalSyncConflictResolutionService(
                 SyncEntityIdentity.TryParseDraftId(record.EntityId, out var operatingDate);
                 var local = await draftRepository.GetAsync(operatingDate, cancellationToken).ConfigureAwait(false);
                 isLocalDeletion = local is null;
-                displayLabel = $"{operatingDate.ToString("MMM d", CultureInfo.InvariantCulture)} Draft";
+                displayLabel = $"{operatingDate.ToString("MMM d", PresentationCulture.UnitedStates)} Draft";
                 break;
             }
 
@@ -90,7 +92,7 @@ public sealed class PersonalSyncConflictResolutionService(
                 SyncEntityIdentity.TryParseMonthlyErtId(record.EntityId, out var year, out var month);
                 var local = await monthlyErtRepository.GetAsync(year, month, cancellationToken).ConfigureAwait(false);
                 isLocalDeletion = local is null;
-                displayLabel = $"{new DateOnly(year, month, 1).ToString("MMMM yyyy", CultureInfo.InvariantCulture)} Early Ride Time";
+                displayLabel = $"{new DateOnly(year, month, 1).ToString("MMMM yyyy", PresentationCulture.UnitedStates)} Early Ride Time";
                 break;
             }
 
@@ -99,7 +101,7 @@ public sealed class PersonalSyncConflictResolutionService(
                 SyncEntityIdentity.TryParseErtDateOverrideId(record.EntityId, out var operatingDate);
                 var local = await ertDateOverrideRepository.GetAsync(operatingDate, cancellationToken).ConfigureAwait(false);
                 isLocalDeletion = local is null;
-                displayLabel = $"{operatingDate.ToString("MMM d, yyyy", CultureInfo.InvariantCulture)} Early Ride Time override";
+                displayLabel = $"{operatingDate.ToString("MMM d, yyyy", PresentationCulture.UnitedStates)} Early Ride Time override";
                 break;
             }
 
@@ -543,6 +545,10 @@ public sealed class PersonalSyncConflictResolutionService(
         await conflictRepository.DeleteAsync(entityType, entityId, unitOfWork, cancellationToken).ConfigureAwait(false);
         await unitOfWork.CommitAsync(cancellationToken).ConfigureAwait(false);
 
+        // Phase 18B REL-004: local data now holds the other device's version (or is deleted) — let a
+        // clean open editor reload it; a dirty one stays protected by its own conditional save.
+        changeNotifier?.Publish([new SyncEntityKey(entityType, entityId)]);
+
         return ConflictResolutionResult.Resolved();
     }
 
@@ -610,6 +616,10 @@ public sealed class PersonalSyncConflictResolutionService(
             unitOfWork, cancellationToken).ConfigureAwait(false);
         await conflictRepository.DeleteAsync(entityType, entityId, unitOfWork, cancellationToken).ConfigureAwait(false);
         await unitOfWork.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+        // Phase 18B REL-004: local data now holds the other device's version (or is deleted) — let a
+        // clean open editor reload it; a dirty one stays protected by its own conditional save.
+        changeNotifier?.Publish([new SyncEntityKey(entityType, entityId)]);
 
         return ConflictResolutionResult.Resolved();
     }

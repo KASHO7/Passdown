@@ -1,39 +1,54 @@
 using System.Diagnostics;
+using Carowinds.Passdown.Infrastructure.Files;
 
 namespace Carowinds.Passdown.Desktop.Services;
 
 /// <summary>
-/// <see cref="IFinalizedPdfLauncher"/> that writes the exact frozen bytes to a per-filename temp file
-/// and asks the OS to open it with whatever the user has associated with .pdf (spec Part I). Reuses
-/// the same temp path for a given <paramref name="suggestedFileName"/> across calls (overwriting it)
-/// rather than minting a new file every time, so repeatedly opening history PDFs does not grow this
-/// folder without bound. Deliberately never deletes the file after opening it — the OS PDF viewer may
-/// still be reading it, and deleting out from under an open viewer would be worse than leaving a small,
-/// reused temp file behind (spec Part I "clean up temp files where practical, without breaking the
-/// viewer").
+/// <see cref="IFinalizedPdfLauncher"/> that writes the exact frozen bytes to an app-owned temp file
+/// and asks the OS to open it with whatever the user has associated with .pdf (spec Part I).
+/// Phase 18B PRIV-002: each open uses a new unique file (<see cref="HistoryPdfTempFileStore"/>), so a
+/// viewer still holding yesterday's copy locked can no longer make "Open Final PDF" fail. The file is
+/// not deleted after a successful open — the OS viewer may still be reading it — but stale copies are
+/// swept by age before every open and once at startup; a failed write, or a launch that throws (no
+/// viewer could be started), removes its file at once.
 /// </summary>
-public sealed class TempFileFinalizedPdfLauncher : IFinalizedPdfLauncher
+public sealed class TempFileFinalizedPdfLauncher(HistoryPdfTempFileStore store) : IFinalizedPdfLauncher
 {
-    private static readonly string TempDirectory = Path.Combine(Path.GetTempPath(), "Carowinds Passdown", "History");
+    public TempFileFinalizedPdfLauncher()
+        : this(new HistoryPdfTempFileStore(HistoryPdfTempFileStore.DefaultDirectory))
+    {
+    }
 
     public async Task<PdfOpenResult> OpenAsync(byte[] pdfBytes, string suggestedFileName, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(pdfBytes);
         ArgumentException.ThrowIfNullOrWhiteSpace(suggestedFileName);
 
+        store.CleanStale();
+
+        string filePath;
         try
         {
-            Directory.CreateDirectory(TempDirectory);
-            var filePath = Path.Combine(TempDirectory, suggestedFileName);
-            await File.WriteAllBytesAsync(filePath, pdfBytes, cancellationToken).ConfigureAwait(false);
+            filePath = await store.WriteAsync(pdfBytes, suggestedFileName, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return PdfOpenResult.Failed("The PDF could not be opened. Try again.");
+        }
 
+        try
+        {
             using var process = Process.Start(new ProcessStartInfo(filePath) { UseShellExecute = true });
+            // A null process is not proof nothing opened the file: on Windows, a viewer that is already
+            // running (e.g. Acrobat) receives the file via the shell without a new process. So the file
+            // is left for the age-based sweep rather than deleted from under that viewer.
             return process is null
                 ? PdfOpenResult.Failed("Could not open the PDF with your default viewer.")
                 : PdfOpenResult.Opened();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            store.TryDelete(filePath);
             return PdfOpenResult.Failed("The PDF could not be opened. Try again.");
         }
     }

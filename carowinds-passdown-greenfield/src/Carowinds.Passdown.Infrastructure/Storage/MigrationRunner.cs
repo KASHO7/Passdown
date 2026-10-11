@@ -39,6 +39,20 @@ public sealed class MigrationRunner(
 
             using (var transaction = connection.BeginTransaction())
             {
+                // Phase 18A REL-001: the interactive app and a --scheduled-refresh process can both
+                // start against the same database right after an upgrade. BeginTransaction takes the
+                // write lock (BEGIN IMMEDIATE), so re-reading the version here — not only the
+                // pre-transaction read above — is what guarantees a migration the other process
+                // committed while this one waited is never re-applied (a non-idempotent step such as
+                // Migration0009's ALTER TABLE ADD COLUMN would otherwise fail and abort startup).
+                var committedVersion = ReadUserVersion(connection);
+                if (committedVersion >= migration.Version)
+                {
+                    transaction.Commit();
+                    currentVersion = committedVersion;
+                    continue;
+                }
+
                 migration.Apply(connection);
                 RecordHistory(connection, migration);
                 WriteUserVersion(connection, migration.Version);

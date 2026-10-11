@@ -71,6 +71,56 @@ needing remote access to the tester's machine.
   for diagnosis. If a full reset is ever genuinely needed, that is a deliberate manual support
   action (rename/back up the folder), not a normal user instruction.
 
+## Dashboard shows "Unable to load today's operations summary."
+
+### Known cause fixed after Phase 17E: rides-only Early Ride Time
+
+- **Symptom:** the app opened, but the Dashboard (the default startup section) showed
+  "Unable to load today's operations summary." Refresh did not help and restarting did not help.
+  Associate, Calendar, Notes and History all worked. It happened on some PCs and not others.
+- **Root cause:** Phase 17D switched Early Ride Time to rides only, so every monthly ERT
+  configuration or date override saved since then has no start time (`StartTime = null`) while still
+  being `Configured`. The Dashboard's ERT line
+  (`Desktop/Presentation/OperationsDashboardPresentation.cs`) still assumed a `Configured` ERT always
+  had a start time (`StartTime!.Value`). That threw `InvalidOperationException` ("Nullable object
+  must have a value"), and the Dashboard view model reported it as the generic load error.
+- **Why only some PCs:** the bug only fired on a PC whose local database had a rides-only ERT for
+  **today's** month, or a rides-only override for today. ERT is saved per PC and can arrive through
+  Personal Sync. PCs with no ERT for the month, an explicit "No ERT", or an older pre-17D record that
+  still has a start time all loaded normally. Database age, migration path, Windows architecture
+  (x64 or ARM64 emulation), SQLite contention and startup timing were not factors.
+- **Why Refresh "did nothing":** Refresh worked. It started a fresh load each time, but that load
+  hit the same data and failed the same way. Tests now confirm that Refresh recovers after a failed
+  first load.
+- **Fix:** if a `Configured` ERT has a start time (a legacy record), the Dashboard shows the same
+  "Starts h:mm AM" text as before. Otherwise it shows the ride list, comma-joined, using the same
+  rule as the Associate screen's Early Ride line. With no rides it shows "Configured". "None" and
+  "Not configured" are unchanged.
+- **Data repair:** none needed. The ERT rows were always valid, and nothing is migrated, rewritten
+  or deleted. Old and incrementally upgraded databases are safe. Schema is unchanged
+  (DB 15 / Draft 4 / Snapshot 2 / SyncSchemaVersion 1).
+- **Regression tests:** `Ui.Tests/DashboardExistingDataLoadTests.cs` runs real migrations, real
+  SQLite repositories and the real services/view model. It covers a fresh DB, a DB upgraded from
+  schema 8 with a legacy v1 draft and a legacy finalized row, a rides-only monthly ERT, a rides-only
+  override, NoERT, a legacy start time, a corrupt draft (still a controlled error), and
+  failure-then-Refresh recovery. Also see
+  `OperationsDashboardPresentationTests.Build_EarlyRideTimeConfigured*NoStartTime*` and
+  `OperationsDashboardViewModelTests.LoadFailure_ThenReloadSucceeds_*` /
+  `SqliteBusyOnFirstLoad_ThenReloadSucceeds_*`.
+- **Real affected-machine validation:** NOT EXECUTED. No affected Windows PC was available to
+  the fix author. When validating on one, do not delete `%LOCALAPPDATA%\Carowinds Passdown`. First
+  back up a diagnostics export and the existing `.db`, then install the fixed build over the same
+  data and confirm that the Dashboard opens, Refresh works, and the other screens and data are
+  unchanged.
+
+### If the Dashboard error appears for another reason
+
+- The full exception (type and stack) is already written to the local app log by
+  `OperationsDashboardViewModel` ("Failed to load today's operations dashboard summary.").
+  Users see only the short message. Ask for the log, not a screenshot.
+- Never delete or reset local data to clear this error. A genuinely corrupt draft row deliberately
+  still produces this error rather than being "recovered", and the row is left untouched.
+
 ## Unsupported / newer database
 
 - If the app fails to open citing a schema/version problem (`UnsupportedSchemaVersionException`,
@@ -103,6 +153,9 @@ needing remote access to the tester's machine.
 - `logs/scheduled-refresh-YYYYMMDD.log` — the tail of the most recent scheduled-refresh log file, if
   one exists. Already sanitized at the source (see "Log sanitization" below) — safe to read/share
   without further redaction.
+- `logs/app-YYYYMMDD.log` (Phase 18B) — the last ≤200 lines of the most recent **interactive app**
+  log, if one exists. Path-redacted (user/OneDrive folders become `%USERPROFILE%`, `%OneDrive%`, …).
+  Never the full log history, the database, drafts, notes, sync payloads, or PDFs.
 
 ## Log sanitization (reviewed Phase 7F, no code change needed)
 
@@ -118,3 +171,44 @@ diagnostic export — confirmed by reading every log call site
 (`ScheduledRefreshRunner.LogSummary`/`MigrationRunner`/`ScheduledRefreshHost`). No secrets, cookies,
 full HTTP payloads, or draft/note content appear in this log by construction. Safe to read or share
 as-is.
+
+## Application log (Phase 18B)
+
+The interactive app writes its own log, separate from the scheduled-refresh log:
+
+| Log | File | Written by |
+|---|---|---|
+| Interactive app | `%LOCALAPPDATA%\Carowinds Passdown\logs\app-YYYYMMDD.log` | the normal desktop app |
+| Scheduled refresh | `%LOCALAPPDATA%\Carowinds Passdown\logs\scheduled-refresh-YYYYMMDD.log` | the `--scheduled-refresh` task |
+
+- One file per UTC day. Contents: startup (version, OS), database schema version after migrations,
+  and any failure the screens already report — Dashboard/Calendar/Associate load, autosave, Check
+  Online, Early Ride Time saves, Notes, History, Personal Sync passes/conflict counts/failures, Create
+  PDF, Export Diagnostics — plus unhandled and unobserved exceptions.
+- **Privacy:** only ids, dates, counts, categories, and statuses are logged — never draft text,
+  Operational Note bodies, Daily Feature text, PDF content, sync payload JSON, cookies, auth material,
+  or HTTP responses. Exception text is logged, but every line is path-redacted *before* it is written
+  (Windows account name and OneDrive tenant folder do not reach the file).
+- **Retention:** 14 days, for both logs. Pruning runs once at startup (the first line written) and
+  deletes only files whose names are exactly `app-YYYYMMDD.log` (or, for the task,
+  `scheduled-refresh-YYYYMMDD.log`). Nothing else in the folder is ever deleted.
+- A logging failure (disk full, file locked) is ignored; it never stops the app.
+
+## Temporary files the app cleans up (Phase 18B)
+
+- **History "Open Final PDF"** writes `Carowinds-Operations-YYYY-MM-DD.view-<id>.pdf` to
+  `%TEMP%\Carowinds Passdown\History\` (a new file per open, so a PDF viewer holding an older copy no
+  longer blocks re-opening). Copies older than 24 hours are removed at startup and before each open;
+  a failed open removes its file immediately. Only files with exactly these names in exactly that
+  folder are ever deleted. "Save PDF Copy"/"Create PDF" never use temp files and never touch your
+  chosen save location.
+- **Personal Sync** removes its own interrupted-write leftovers (`<file>.tmp-<id>`) from the sync
+  folder once they are over 24 hours old. Normal sync files are never touched.
+
+## Dates, times, and prices always show US format (Phase 18B)
+
+By design, the app shows "Saturday, September 19, 2026", "Sep 19, 2026", "10:30 AM", and "$55.00"
+regardless of the PC's Windows region or display language. A UK, French, or German Windows setting
+does not change month/day names, date order, AM/PM, or the dollar sign. This is intentional — not a
+bug — and there is no setting to change it. Times of day for park operations remain Eastern Time.
+

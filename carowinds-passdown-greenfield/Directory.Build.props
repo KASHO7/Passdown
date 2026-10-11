@@ -23,4 +23,16 @@
     <Version>0.1.0-dev</Version>
     <Product>Carowinds Operations</Product>
   </PropertyGroup>
+
+  <!--
+    Phase 18A PKG-001: Release binaries are distributed to other people, so they must not embed the
+    build machine's absolute source path (the PE debug directory's PDB path otherwise records e.g.
+    /Users/<developer>/Documents/... — a username and folder layout disclosure, and a non-reproducible
+    byte difference between two machines building the same commit). PathMap rewrites the repository
+    root to "/_/" in Release only; Debug keeps real paths so local debugging/breakpoints are unaffected.
+    See docs/phase18-comprehensive-audit.md.
+  -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <PathMap>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)'))=/_/</PathMap>
+  </PropertyGroup>
 </Project>

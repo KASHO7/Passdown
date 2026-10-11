@@ -153,16 +153,31 @@ if (-not (Test-Path -LiteralPath $testerGuideSource -PathType Leaf)) {
 }
 Copy-Item -Path $testerGuideSource -Destination $stagingReleaseDirectory -Force
 
-# Fail loudly if anything unexpected snuck into staging (Part M privacy/security review): the
-# staging folder is built solely from Publish-Windows.ps1's own output plus the two additions
-# above, so this is a sanity check, not the primary safeguard.
-$forbiddenPatterns = @('*.git*', '*.db', '*.db-wal', '*.db-shm', '*CLAUDE.md', '*AGENT_BUILD_SPEC.md')
-foreach ($pattern in $forbiddenPatterns) {
-    $matches = Get-ChildItem -LiteralPath $stagingReleaseDirectory -Filter $pattern -Recurse -Force -ErrorAction SilentlyContinue
-    if ($matches.Count -gt 0) {
-        Write-Error "Staging directory unexpectedly contains files matching '$pattern': $($matches.FullName -join ', ')"
-        exit 1
-    }
+# Phase 18C PKG-003: third-party notices index at the release root, plus the full license/notice
+# texts it points to (copied unchanged from the shipped NuGet packages) under licenses\.
+# LatoFont\OFL.txt is already part of the publish output.
+$noticesSource = Join-Path $repoRoot 'packaging' 'windows' 'THIRD-PARTY-NOTICES.txt'
+$licensesSource = Join-Path $repoRoot 'packaging' 'windows' 'licenses'
+if (-not (Test-Path -LiteralPath $noticesSource -PathType Leaf)) {
+    Write-Error "Third-party notices not found at '$noticesSource'."
+    exit 1
+}
+if (-not (Test-Path -LiteralPath $licensesSource -PathType Container)) {
+    Write-Error "Third-party license folder not found at '$licensesSource'."
+    exit 1
+}
+Copy-Item -Path $noticesSource -Destination $stagingReleaseDirectory -Force
+Copy-Item -LiteralPath $licensesSource -Destination $stagingReleaseDirectory -Recurse -Force
+
+# Phase 18B PKG-002: full release-content validation (required runtime/native files, scheduler
+# helpers, license notices; forbidden PDBs, source, tests, fixtures, databases, logs, diagnostics,
+# sync data, PDFs, Ghostscript artifacts, .DS_Store, non-win-x64 natives, secrets, developer paths).
+# Rules: packaging/windows/release-content-rules.json, shared with the repository's automated tests.
+$validateScript = Join-Path $repoRoot 'packaging' 'windows' 'Test-ReleasePackage.ps1'
+& $validateScript -Path $stagingReleaseDirectory -RepositoryRoot $repoRoot
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Release staging folder failed validation; no ZIP was created."
+    exit 1
 }
 
 if (-not (Test-Path -LiteralPath $releasesDirectory)) {
@@ -177,6 +192,14 @@ if (Test-Path -LiteralPath $zipPath) {
 Write-Host ""
 Write-Host "Creating ZIP: $zipPath"
 Compress-Archive -Path $stagingReleaseDirectory -DestinationPath $zipPath -CompressionLevel Optimal
+
+# Validate the ZIP itself too (what is actually distributed), not only the staging folder.
+& $validateScript -Path $zipPath -RepositoryRoot $repoRoot
+if ($LASTEXITCODE -ne 0) {
+    Remove-Item -LiteralPath $zipPath -Force
+    Write-Error "Release ZIP failed validation and was deleted."
+    exit 1
+}
 
 $stagedFiles = Get-ChildItem -LiteralPath $stagingReleaseDirectory -Recurse -File
 $fileCount = $stagedFiles.Count

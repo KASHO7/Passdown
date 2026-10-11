@@ -125,7 +125,7 @@ public sealed class DatedBringAFriendSource(IRetrievalHttpClient httpClient, ICl
                     OfficialPageUrl,
                     timeChecked,
                     RetrievalStatus.Verified,
-                    $"Bring-A-Friend confirmed for {requestedDate.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)}.",
+                    $"Bring-A-Friend confirmed for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}.",
                     RetrievalStrategy.DirectApi,
                     requestedDate: requestedDate,
                     confirmedDate: requestedDate),
@@ -270,7 +270,7 @@ public sealed class DatedBringAFriendSource(IRetrievalHttpClient httpClient, ICl
     }
 
     private static string DefaultUnavailableDetail(DateOnly requestedDate) =>
-        $"Bring-A-Friend is not available for {requestedDate.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)}.";
+        $"Bring-A-Friend is not available for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}.";
 
     private SourceResult<DatedBringAFriendPayload> NotPublished(DateTimeOffset timeChecked, DateOnly requestedDate) =>
         SourceResult<DatedBringAFriendPayload>.WithoutPayload(
@@ -280,7 +280,7 @@ public sealed class DatedBringAFriendSource(IRetrievalHttpClient httpClient, ICl
                 OfficialPageUrl,
                 timeChecked,
                 RetrievalStatus.NotPublished,
-                $"Bring-A-Friend for {requestedDate.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)} has not been published yet.",
+                $"Bring-A-Friend for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)} has not been published yet.",
                 RetrievalStrategy.DirectApi,
                 requestedDate: requestedDate));
 

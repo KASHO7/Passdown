@@ -976,6 +976,9 @@ public class OperationsDashboardServiceTests
         public Task<OperationalNote> UpdateAsync(Guid id, OperationalNoteDraft draft, CancellationToken cancellationToken = default) =>
             inner.UpdateAsync(id, draft, cancellationToken);
 
+        public Task<OperationalNoteEditorSaveResult> UpdateFromEditorAsync(OperationalNote editedFrom, OperationalNoteDraft draft, CancellationToken cancellationToken = default) =>
+            inner.UpdateFromEditorAsync(editedFrom, draft, cancellationToken);
+
         public Task<OperationalNote> ResolveAsync(Guid id, CancellationToken cancellationToken = default) =>
             inner.ResolveAsync(id, cancellationToken);
 
@@ -995,6 +998,8 @@ public class OperationsDashboardServiceTests
         public Task<OperationalNote> CreateAsync(OperationalNoteDraft draft, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<OperationalNote> UpdateAsync(Guid id, OperationalNoteDraft draft, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<OperationalNoteEditorSaveResult> UpdateFromEditorAsync(OperationalNote editedFrom, OperationalNoteDraft draft, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<OperationalNote> ResolveAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 

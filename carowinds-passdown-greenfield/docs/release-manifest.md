@@ -652,3 +652,267 @@ system — composition changes, not just styling). Schema is unchanged (DB 15 / 
 SyncSchemaVersion 1) — no migration was added since Phase 17B. No Personal Sync or Manager-workflow
 code changed since Phase 16G — real Windows/OneDrive-client validation and Windows DPI validation
 both remain outstanding exactly as recorded there.
+
+# Release manifest — Dashboard ERT fix rebuild (rides-only Early Ride Time no longer breaks the Dashboard)
+
+Rebuilt from commit `399d40c` ("Fix Dashboard load recovery on existing Windows data"). No code
+changed during the rebuild itself. Packaging strategy, publish flags, staging layout and the 10-step
+procedure are unchanged from the Phase 17E entry above; this entry only records the new build and
+hashes. Functional change since Phase 17E: if today's month (or today's date) has a rides-only
+Early Ride Time configuration, the Dashboard now loads instead of showing "Unable to load today's
+operations summary." See `docs/support-troubleshooting.md`.
+
+| | |
+|---|---|
+| Product (visible) | Carowinds Operations |
+| Version | `0.1.0-dev` (unchanged; assembly informational version `0.1.0-dev+399d40c4a7bc54b9a99b3191d433051d8b8fd28d`) |
+| Target | Windows 11 x64 (`win-x64`), self-contained, R2R |
+| Build commit | `399d40c4a7bc54b9a99b3191d433051d8b8fd28d` (HEAD) |
+| Working tree at build time | No source changes. Only the same macOS `.DS_Store` / `.claude/skills/pdf-design/` noise recorded in the Phase 17E entry |
+| DB / Draft / Snapshot / SyncSchemaVersion | 15 / 4 / 2 / 1 (all unchanged, no migration) |
+| Deterministic test count | **2150/2150**: 116 Domain + 642 Application + 178 Documents + 545 Infrastructure + 669 Ui.Tests (38 real-`Window` tests run alone + the remaining 631 run alone, the same documented partition as before) |
+| Build | `dotnet build CarowindsPassdown.slnx -c Release`: 0 warnings, 0 errors |
+| Windows validation | **NOT EXECUTED.** No Windows host, VM or affected PC was available (macOS dev host). The Dashboard fix has not yet been confirmed on a real affected machine. |
+| Known limitations | Same standing gaps as the Phase 17E entry (Personal Sync real-client validation, single-file EXE Windows-launch validation, Windows DPI validation). Manager workflow remains deferred. |
+
+## Primary release: multi-file portable ZIP
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-dev-win-x64.zip` |
+| SHA-256 | `44dd165cccdf66882a1734d11df94897ea48127cf7c602353e20573b4bce8cc0` |
+| Size | 70,612,096 bytes (67.3 MiB) |
+| File count | 258 files (261 zip entries) |
+
+Verification:
+
+- The ZIP was extracted to an isolated scratch directory, and `diff -rq` showed it byte-for-byte
+  identical to the staging folder.
+- The staged and extracted `.exe` SHA-256 values match.
+- `file` reports `PE32+ executable (GUI) x86-64, for MS Windows`.
+- The packaged `Carowinds.Passdown.Desktop.dll` carries informational version `+399d40c…`, so this
+  is not a stale reuse of the 17E build.
+- Forbidden-pattern check (`.git`, `.db`/`-wal`/`-shm`, `CLAUDE.md`, `AGENT_BUILD_SPEC.md`, `.pdb`,
+  `.DS_Store`): clean.
+- No stray `.dylib`/`.so`/Playwright files.
+
+## Single-file release (still experimental / deferred)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-dev-win-x64.exe` |
+| SHA-256 | `2c675479c8ad8c3a704f6c4e75af3c3b7aefd8bc2632893798ae7c845c0bd6db` |
+| Size | 185,750,330 bytes (177.1 MiB) |
+| Status | Unchanged: **EXPERIMENTAL / DEFERRED**. It publishes and inspects clean, and the fix commit `399d40c…` is embedded in the bundle. Launching it on Windows: **NOT EXECUTED**. |
+
+This build supersedes the Phase 17E artifacts as the current release.
+
+# Release manifest — Phase 17F rebuild (refined PDF templates, Modern section numbering removed)
+
+Rebuilt from commit `8671e92` ("Phase 17F: refine Associate PDF templates; remove Modern section
+numbering"). No code changed during the rebuild itself. Packaging strategy, publish flags, staging
+layout and the 10-step procedure are unchanged from the Phase 17E entry. This entry records the new
+build and its hashes.
+
+Functional change since the Dashboard ERT fix build:
+
+- Modern no longer prints "01/02/…" section numbers. It is told apart by its two-line date and
+  four-column summary grid.
+- All three templates align prices in one fixed right-hand column.
+- A section heading is never left alone at a page bottom.
+- An overflowing PDF is re-rendered once with tighter spacing and kept if that saves a page.
+- On multi-page PDFs the footer shows "1 / 2"; single-page footers are unchanged.
+
+See `docs/associate-passdown-templates.md` §17.
+
+| | |
+|---|---|
+| Product (visible) | Carowinds Operations |
+| Version | `0.1.0-dev` (unchanged; assembly informational version `0.1.0-dev+8671e92a5dfedc3323f294f88905642dfceb06af`) |
+| Target | Windows 11 x64 (`win-x64`), self-contained, R2R |
+| Build commit | `8671e92a5dfedc3323f294f88905642dfceb06af` (HEAD) |
+| Working tree at build time | No source changes. Only the same macOS `.DS_Store` / `.claude/skills/pdf-design/` noise recorded in the Phase 17E entry |
+| DB / Draft / Snapshot / SyncSchemaVersion | 15 / 4 / 2 / 1 (all unchanged, no migration) |
+| Deterministic test count | **2182/2182**: 116 Domain + 642 Application + 210 Documents + 545 Infrastructure + 669 Ui.Tests (631 run together; `Phase15ERealWindowLayoutTests` 10, `RealWindowStartupTimingTests` 2, `OperationsCalendarViewTests` 26 each run alone, per the documented partition) |
+| Build | `dotnet build CarowindsPassdown.slnx -c Release --no-incremental`: 0 warnings, 0 errors |
+| Windows validation | **NOT EXECUTED.** No Windows host or VM was available (macOS dev host). |
+| Known limitations | Same standing gaps as the Phase 17E entry (Personal Sync real-client validation, single-file EXE Windows-launch validation, Windows DPI validation). Manager workflow remains deferred. |
+
+## Primary release: multi-file portable ZIP
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-dev-win-x64.zip` |
+| SHA-256 | `c504c211e175f1da4099e2b5b2436b3fbef81a8668b1329846482d41a41e7b53` |
+| Size | 70,623,278 bytes (67.4 MiB) |
+| File count | 258 files (261 zip entries) |
+
+Verification:
+
+- Stale `artifacts/publish/`, `release-staging/` and `releases/` were removed before publishing.
+- The multi-file publish had 252 files after `.pdb` removal, with no stray `.pdb`/`.dylib`/`.so`/
+  Playwright files.
+- The ZIP was extracted to an isolated scratch directory, and `diff -rq` showed it byte-for-byte
+  identical to the staging folder.
+- The staged and extracted `.exe` SHA-256 values match
+  (`3fb7e3e6341766b360dff11b40944227ec8bd8e80fce1ec001b7a59fd7629134`).
+- `file` reports `PE32+ executable (GUI) x86-64, for MS Windows`.
+- The packaged `Carowinds.Passdown.Desktop.dll` carries informational version `+8671e92…`.
+- `Carowinds.Passdown.Documents.dll` contains the Phase 17F-only `PdfPrimitives`/`PdfDensity`/
+  `KeepSection` symbols, and no longer contains the removed `NumberedSectionLabel`. This is not a
+  stale reuse of an earlier build.
+- Forbidden-pattern check (`.git`, `.db`/`-wal`/`-shm`, `CLAUDE.md`, `AGENT_BUILD_SPEC.md`, `.pdb`,
+  `.DS_Store`): clean.
+
+## Single-file release (still experimental / deferred)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-dev-win-x64.exe` |
+| SHA-256 | `aa8cbe06b1a6c03507ba2799d41980b5abe9730c1828a102fdd568f2f3870cec` |
+| Size | 185,779,002 bytes (177.2 MiB) |
+| Status | Unchanged: **EXPERIMENTAL / DEFERRED**. The publish produced exactly two files before `.pdb` removal (`Carowinds.Passdown.Desktop.exe` and `LatoFont/OFL.txt`). The `PE32+ (GUI) x86-64` header, the `+8671e92…` version stamp, and the `PdfPrimitives`/`PdfDensity` symbols are present in the bundle, and `NumberedSectionLabel` is absent. Launching it on Windows: **NOT EXECUTED**. |
+
+This build supersedes the Dashboard ERT fix artifacts as the current release.
+
+# Release manifest — Phase 18C hardened release candidate (third-party notices, packaging validator)
+
+Built from commit `5c0ddf292fe5a62ffb23d52a91d7126a921afd35` ("Phase 18C: third-party notices (PKG-003)
+and Desktop.dll build-path leak fix"), on top of the Phase 18A/18B hardening (`5598618`). Docs-only
+commit(s) after `5c0ddf2` do not change any shipped byte.
+
+**Status: built and validated on the build host only. Not yet validated on Windows.** See "Windows
+validation" below — every Windows item is NOT EXECUTED, so this is not yet the stable internal release
+candidate.
+
+| | |
+|---|---|
+| Product (visible) | Carowinds Operations |
+| Version | `0.1.0-dev` (unchanged; informational version `0.1.0-dev+5c0ddf292fe5a62ffb23d52a91d7126a921afd35`, confirmed inside the packaged `Carowinds.Passdown.Desktop.dll` and the single-file EXE) |
+| Target | Windows 11 x64 (`win-x64`), self-contained, R2R |
+| Build host | macOS 27.0 (Darwin 27.0.0), Apple Silicon arm64; .NET SDK 10.0.400; PowerShell 7.6.6 (installed as a local `dotnet tool` for this build — not Windows PowerShell) |
+| Phase 18A/18B hardening | Included (all 18A/18B fixes; REL-004 open-editor protection) |
+| Phase 18C changes | PKG-003 third-party notices shipped; release validator extended (notices, empty files, duplicate ZIP entries); **PKG-004 fixed** — `Carowinds.Passdown.Desktop.dll` leaked the build machine's checkout path (see `docs/phase18-comprehensive-audit.md` §15) |
+| DB / Draft / Snapshot / SyncSchemaVersion | 15 / 4 / 2 / 1 (unchanged; no migration; no sync format change) |
+| Deterministic tests | **2484/2484** = 116 Domain + 661 Application + 226 Documents + 748 Infrastructure + 695 Ui together + 26 `OperationsCalendarViewTests` + 10 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`) |
+| Test count note | The Phase 18B figure "2476" counted Infrastructure.Tests' 11 opt-in `LiveSmoke` (live-internet) tests. Measured at 18B's commit `5598618` with the established filter, the deterministic baseline is **2465**. Phase 18C adds 19 (18 packaging-validator tests, 1 Desktop-assembly path test): 2465 + 19 = 2484 |
+| Build | `dotnet build CarowindsPassdown.slnx -c Release --no-incremental`: 0 warnings, 0 errors |
+
+## Primary release: multi-file portable ZIP (RECOMMENDED)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-dev-win-x64.zip` |
+| SHA-256 | `776fbe47680cdaee1edd47bbc92b434516f71c74d3be15381127a6f5bda9d467` |
+| Size | 73,413,887 bytes (70.0 MiB) |
+| Content | 282 files (258 as before + `THIRD-PARTY-NOTICES.txt` + 23 files under `licenses\`); one top-level folder `Carowinds-Operations-0.1.0-dev-win-x64\`; 282 entries (`Compress-Archive` writes no separate directory entries — earlier `zip -r` builds had 3; extraction is identical) |
+
+Produced by the real `packaging/windows/Build-PortableRelease.ps1` (first time a release has been built
+by the script itself rather than by a manual shell mirror), which runs `Publish-Windows.ps1` and then
+`Test-ReleasePackage.ps1` on the staging folder and again on the final ZIP.
+
+Verification:
+
+- **Packaging validator (`Test-ReleasePackage.ps1`): PASS** on the staging folder and the ZIP (282 files
+  each). Run under PowerShell 7.6.6 on the macOS build host, **not** on Windows. The C# mirror
+  (`CAROWINDS_RELEASE_ZIP=… dotnet test … --filter RealReleaseZip`) also passed on the final ZIP.
+- The first validator run **failed** (correctly) on `Carowinds.Passdown.Desktop.dll` containing the
+  checkout path — PKG-004, fixed in `5c0ddf2`, then rebuilt. The check was not bypassed.
+- ZIP structure: CRC test OK; no duplicate entries; no backslash entry names; no empty files; every
+  `.dll`/`.exe` is a PE image (166 x64 native/R2R, 83 AnyCPU IL); extracted to a clean scratch directory
+  outside `artifacts/` and found byte-identical (SHA-256 per file) to the staging folder.
+- Required content present: executable, managed/runtime files, native `e_sqlite3`/`libSkiaSharp`/
+  `libHarfBuzzSharp`/`av_libglesv2`/`QuestPdfSkia`/`qpdf`, `Enable/Disable Automatic Refresh.cmd`,
+  `tools\Install-/Uninstall-ScheduledRefresh.ps1`, `README.txt`, `TESTER-GUIDE.txt`,
+  `THIRD-PARTY-NOTICES.txt`, `licenses\…`, `LatoFont\OFL.txt`.
+- Developer-path scan: our checkout path and user name appear in **no** file (UTF-8 and UTF-16).
+  `/Users/`, `/home/`, `C:\Users\` appear in no project-owned file (`Carowinds.Passdown.*` binaries and
+  all text files). Only the known third-party vendor build paths remain, in `MicroCom.Runtime.dll` and
+  the three `SQLitePCLRaw.*.dll` files (their authors' own machines; accepted in 18B).
+
+## Single-file release (EXPERIMENTAL — not the primary artifact)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-dev-win-x64.exe` |
+| SHA-256 | `a013240875b71e65ae0583e359656067f7634b5c0ed09b5397de0fcb57f03924` |
+| Size | 186,041,146 bytes (177.4 MiB) |
+| Status | **EXPERIMENTAL / DEFERRED** (unchanged). `PE32+ (GUI) x86-64`; carries `+5c0ddf2…`; no checkout path or user name; the only `/Users/` strings are SQLitePCLRaw's vendor paths. Launch on Windows: **NOT EXECUTED**. |
+| Limitation | Distributed alone, the EXE carries no `THIRD-PARTY-NOTICES.txt`/`licenses\` (the publish produces only the EXE plus `LatoFont\OFL.txt`). If it is ever promoted, ship it inside a folder/ZIP with the notices. |
+
+## Third-party notices (PKG-003)
+
+`THIRD-PARTY-NOTICES.txt` (release root) lists every redistributed third-party component with version,
+license, copyright and the location of the full text. Full texts under `licenses\` are copied unchanged
+from the shipped NuGet packages (no web-sourced text):
+
+| Component | Version | License | Full text / notices |
+|---|---|---|---|
+| .NET runtime, Microsoft.Extensions.*, Microsoft.Data.Sqlite.Core | 10.0.11 | MIT | `dotnet-LICENSE.txt`, `dotnet-THIRD-PARTY-NOTICES.txt` |
+| Avalonia (all `Avalonia.*`) | 12.1.1 | MIT | MIT text in the index (package has no license file) |
+| ANGLE (`av_libglesv2.dll`) | 2.1.27548.20260419 | BSD-3-Clause | `ANGLE-LICENSE.txt` |
+| Inter font (in `Avalonia.Fonts.Inter.dll`) | 3.019 | SIL OFL 1.1 | `Inter-OFL.txt` (copyright line read from the shipped font files) |
+| SkiaSharp / HarfBuzzSharp (+ native) | 3.119.4 / 8.3.1.3 | MIT | `SkiaSharp-HarfBuzzSharp-LICENSE.txt`, `…-THIRD-PARTY-NOTICES.txt` |
+| QuestPDF (+ `QuestPdfSkia.dll`, `qpdf.dll`) | 2026.7.3 | QuestPDF Community License | `QuestPDF-LICENSE.txt`, `QuestPDF-dependencies\` (12 bundled-library licenses) |
+| Lato font (in `Carowinds.Passdown.Documents.dll`) | — | SIL OFL 1.1 | `LatoFont\OFL.txt` (unchanged location) |
+| SQLitePCLRaw (+ `e_sqlite3.dll`; SQLite is public domain) | 2.1.12 | Apache-2.0 | `Apache-2.0.txt` |
+| CommunityToolkit.Mvvm | 8.4.2 | MIT | `CommunityToolkit.Mvvm-LICENSE.txt`, `…-THIRD-PARTY-NOTICES.txt` |
+| MicroCom.Runtime | 0.11.6 | MIT | MIT text in the index |
+| Tmds.DBus.Protocol | 0.94.1 | MIT | MIT text in the index |
+
+Not listed (not shipped): test packages, `AvaloniaUI.DiagnosticsSupport` (excluded from Release),
+build tooling. Project-owned assets (`Assets\logo.ico`, `logo.png`) are not third-party.
+
+**Open owner decision (not a technical defect, not legal advice):** QuestPDF's Community License
+(`licenses\QuestPDF-LICENSE.txt`, "Community License Eligibility") excludes publicly traded companies
+and organisations above USD 1M annual revenue, and treats code an AI tool writes on an organisation's
+behalf as that organisation's. The app selects `LicenseType.Community` in code. Whether this tool's
+use falls under an eligible licensee depends on who owns/operates it — confirm before wider
+distribution.
+
+## Windows validation
+
+No Windows PC, VM, affected PC, or second PC was available in this session. Every item below is
+**NOT EXECUTED**; nothing is inferred from automated tests.
+
+| Item | Result |
+|---|---|
+| Packaging validator on Windows / Windows PowerShell | NOT EXECUTED (ran on macOS under PowerShell 7.6.6 — PASS there) |
+| ZIP extract + launch as standard user; second launch | NOT EXECUTED |
+| Affected-PC Dashboard (rides-only ERT) | NOT EXECUTED |
+| Existing-data compatibility (DB 15, drafts, notes, History, Calendar, PDFs, settings) | NOT EXECUTED |
+| US formatting under a non-US Windows region | NOT EXECUTED |
+| App log (`%LOCALAPPDATA%\Carowinds Passdown\logs\app-YYYYMMDD.log`) | NOT EXECUTED |
+| Diagnostics export contents | NOT EXECUTED |
+| PDFs (Classic/Compact/Modern, multi-page numbering) in a Windows viewer | NOT EXECUTED |
+| History "Open Final PDF" temp cleanup | NOT EXECUTED |
+| Task Scheduler install/run/uninstall from the extracted ZIP | NOT EXECUTED |
+| Personal Sync one-PC smoke test (OneDrive) | NOT EXECUTED |
+| Two-PC Associate / Notes / ERT conflict validation (REL-004) | NOT EXECUTED |
+| Sync temp cleanup and sync PDF skip in the real world | NOT EXECUTED |
+| Single-file EXE launch | NOT EXECUTED |
+
+Windows test machine details (version/build, x64 vs ARM64 emulation, extraction path,
+SmartScreen/Defender behaviour): not recorded — no machine.
+
+## Known limitations
+
+- All Windows and two-PC OneDrive validation above is outstanding.
+- `Build-PortableRelease.ps1` / `Publish-Windows.ps1` declare `#Requires -Version 5.1` but use
+  three-argument `Join-Path` (PowerShell 6+). Run them with PowerShell 7 (`pwsh`). The scripts that run on
+  user machines (`tools\*.ps1`, called by the `.cmd` helpers through `powershell.exe`) use no
+  PowerShell 7-only syntax. Not changed in 18C.
+- Single-file EXE: experimental, ships without notices when distributed alone (above).
+- QuestPDF licence eligibility: owner decision (above).
+- Standing gaps from earlier entries (Windows DPI validation; Manager workflow deferred).
+
+## Release recommendation
+
+**RELEASE BLOCKED — pending Windows validation.** No release-blocking defect is open: the one
+blocker found (PKG-004) was fixed, regression-tested and rebuilt. But the Phase 18C acceptance gate
+requires the packaging validator to pass on Windows, the ZIP to launch, the Dashboard to load, and
+logging, diagnostics, PDFs and the scheduler to work on Windows — none of which could be run here.
+After those pass on a Windows PC, the ZIP above (unchanged hash) can be called the stable internal
+release candidate. Without two PCs it would be "READY WITH UNVALIDATED TWO-PC SYNC".
+
+This build supersedes the Phase 17F artifacts as the current build.

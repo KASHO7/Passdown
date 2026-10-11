@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Desktop.Presentation;
 
@@ -16,5 +17,5 @@ public sealed record SaveStatusPresentation(string Text)
         };
     }
 
-    private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("h:mm tt");
+    private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("h:mm tt", PresentationCulture.UnitedStates);
 }

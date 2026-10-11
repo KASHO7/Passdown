@@ -83,4 +83,52 @@ public class FileScheduledRefreshLogProviderTests : IDisposable
 
         Assert.Equal(["real log line"], result);
     }
+
+    /// <summary>
+    /// Phase 18A PRIV-001: these lines are copied into the diagnostic ZIP a user sends to support.
+    /// Pre-18A they were copied verbatim, so a logged exception message carried the Windows account
+    /// name and OneDrive tenant folder out of the machine.
+    /// </summary>
+    [Fact]
+    public async Task GetRecentLogLinesAsync_RedactsUserProfileAndOneDrivePaths_KeepsTheRestOfTheLine()
+    {
+        Directory.CreateDirectory(_logDirectory);
+        await File.WriteAllLinesAsync(Path.Combine(_logDirectory, "scheduled-refresh-20260822.log"),
+        [
+            @"2026-08-22T10:00:00Z [Critical] ScheduledRefresh: Fatal: System.IO.IOException: Could not find a part of the path 'C:\Users\jane.doe\AppData\Local\Carowinds Passdown\logs'.",
+            @"System.UnauthorizedAccessException: Access to the path 'C:\Users\jane.doe\OneDrive - Contoso\Ops\x.json' is denied.",
+            @"Another profile: D:\Users\Someone Else\file.txt",
+        ]);
+
+        var sut = new FileScheduledRefreshLogProvider(
+            new FileLoggerOptions { LogDirectory = _logDirectory },
+            [
+                new(@"C:\Users\jane.doe", "%USERPROFILE%"),
+                new(@"C:\Users\jane.doe\AppData\Local", "%LOCALAPPDATA%"),
+                new(@"C:\Users\jane.doe\OneDrive - Contoso", "%OneDriveCommercial%"),
+            ]);
+
+        var result = await sut.GetRecentLogLinesAsync(100);
+        var all = string.Join("\n", result);
+
+        Assert.DoesNotContain("jane.doe", all, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Contoso", all, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Someone Else", all, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(@"'%LOCALAPPDATA%\Carowinds Passdown\logs'", result[0]);
+        Assert.Contains(@"'%OneDriveCommercial%\Ops\x.json' is denied.", result[1]);
+        Assert.Contains("System.IO.IOException: Could not find a part of the path", result[0]);
+    }
+
+    [Fact]
+    public async Task GetRecentLogLinesAsync_DefaultConstructor_RedactsThisMachinesOwnProfilePath()
+    {
+        Directory.CreateDirectory(_logDirectory);
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        await File.WriteAllLinesAsync(Path.Combine(_logDirectory, "scheduled-refresh-20260822.log"), [$"IOException at '{Path.Combine(profile, "secret-folder", "a.txt")}'"]);
+
+        var result = await CreateSut().GetRecentLogLinesAsync(100);
+
+        Assert.DoesNotContain(profile, result[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("secret-folder", result[0]);
+    }
 }

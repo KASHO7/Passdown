@@ -20,7 +20,8 @@ public sealed class DiagnosticReportBuilder(
     IDatabaseDiagnosticsProvider databaseDiagnosticsProvider,
     IScheduledTaskStatusProvider scheduledTaskStatusProvider,
     IScheduledRefreshLogProvider logProvider,
-    IClock clock) : IDiagnosticReportBuilder
+    IClock clock,
+    IInteractiveAppLogProvider? appLogProvider = null) : IDiagnosticReportBuilder
 {
     private const int MaxLogLines = 200;
 
@@ -36,10 +37,13 @@ public sealed class DiagnosticReportBuilder(
         var database = await databaseDiagnosticsProvider.GetAsync(cancellationToken).ConfigureAwait(false);
         var scheduledTask = await scheduledTaskStatusProvider.GetStatusAsync(cancellationToken).ConfigureAwait(false);
         var logLines = await logProvider.GetRecentLogLinesAsync(MaxLogLines, cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<string> appLogLines = appLogProvider is null
+            ? []
+            : await appLogProvider.GetRecentLogLinesAsync(MaxLogLines, cancellationToken).ConfigureAwait(false);
 
         var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
 
-        return new DiagnosticReport(version, clock.UtcNow, sources, database, scheduledTask, logLines);
+        return new DiagnosticReport(version, clock.UtcNow, sources, database, scheduledTask, logLines, appLogLines);
     }
 
     private static SourceStatusSummary BuildSourceSummary(SourceRegistration registration, SourceStateRecord? state)

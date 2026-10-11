@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Calendar;
 using Carowinds.Passdown.Domain.Catalog;
+using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Desktop.Presentation;
 
@@ -65,8 +66,8 @@ public sealed record OperationsCalendarPresentation(
             or OperationsCalendarOperatingState.PrivateBuyout;
 
         return new OperationsCalendarPresentation(
-            snapshot.DisplayedMonth.ToString("MMMM yyyy"),
-            selected.Date.ToString("dddd, MMMM d, yyyy"),
+            snapshot.DisplayedMonth.ToString("MMMM yyyy", PresentationCulture.UnitedStates),
+            selected.Date.ToString("dddd, MMMM d, yyyy", PresentationCulture.UnitedStates),
             selected.IsToday,
             passdownPresentation.DetailLabel,
             passdownPresentation.DetailNoteText,
@@ -90,9 +91,11 @@ public sealed record OperationsCalendarPresentation(
     private static string BuildDailyAdmissionPriceText(OperationsCalendarDailyAdmissionPrice? dailyAdmission) => dailyAdmission?.Status switch
     {
         OperationsCalendarDailyAdmissionStatus.Available when dailyAdmission.PriceAmount is { } amount =>
+            // Phase 18A BUG-001: PriceFormatting (invariant "$0.00"), never the machine culture's "C" —
+            // a PC with e.g. an English (UK) region format otherwise showed "£54.99" for a USD price.
             dailyAdmission.PriceKind == PriceKind.StartingFrom
-                ? $"Starting from {amount:C}"
-                : amount.ToString("C"),
+                ? $"Starting from {PriceFormatting.Format(amount)}"
+                : PriceFormatting.Format(amount),
         OperationsCalendarDailyAdmissionStatus.NotPublished => "Not Published",
         OperationsCalendarDailyAdmissionStatus.Unavailable => "Unavailable",
         _ => "Not checked yet",

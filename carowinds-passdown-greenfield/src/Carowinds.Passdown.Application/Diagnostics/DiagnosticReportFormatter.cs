@@ -28,7 +28,7 @@ public static class DiagnosticReportFormatter
         }
 
         sb.AppendLine();
-        sb.AppendLine(CultureInfo.InvariantCulture, $"See source-status.txt for per-source detail ({report.Sources.Count} sources) and logs/ for recent scheduled-refresh activity.");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"See source-status.txt for per-source detail ({report.Sources.Count} sources) and logs/ for recent scheduled-refresh and app activity.");
         return sb.ToString();
     }
 
@@ -84,5 +84,5 @@ public static class DiagnosticReportFormatter
     private static string FormatTimestamp(DateTimeOffset? value) =>
         value is { } timestamp ? timestamp.ToString("O", CultureInfo.InvariantCulture) : "never";
 
-    private static string FormatBytes(long bytes) => $"{bytes / 1024.0 / 1024.0:0.00} MB";
+    private static string FormatBytes(long bytes) => string.Create(CultureInfo.InvariantCulture, $"{bytes / 1024.0 / 1024.0:0.00} MB");
 }

@@ -54,7 +54,8 @@ public static class SyncEntityIdentity
 
         if (!int.TryParse(entityId.AsSpan(0, 4), NumberStyles.None, CultureInfo.InvariantCulture, out var parsedYear)
             || !int.TryParse(entityId.AsSpan(5, 2), NumberStyles.None, CultureInfo.InvariantCulture, out var parsedMonth)
-            || parsedMonth is < 1 or > 12)
+            || parsedMonth is < 1 or > 12
+            || parsedYear < 1) // Phase 18A SEC-002: "0000-05" is not a representable DateOnly year — never accepted as an identity.
         {
             return false;
         }

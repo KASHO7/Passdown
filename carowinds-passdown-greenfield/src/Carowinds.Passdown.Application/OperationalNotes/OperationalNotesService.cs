@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Time;
 
@@ -34,6 +35,15 @@ public interface IOperationalNotesService
     /// <summary>Updates an existing note's content. Identity, <see cref="OperationalNote.CreatedAtUtc"/>, and <see cref="OperationalNote.Status"/>/<see cref="OperationalNote.ResolvedAtUtc"/> are preserved — this never reopens a resolved note (spec Part R defers Reopen) and never lets a caller-supplied timestamp bypass <see cref="Time.IClock"/> (spec Part P).</summary>
     Task<OperationalNote> UpdateAsync(Guid id, OperationalNoteDraft draft, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Phase 18B REL-004: the Notes editor's save. <paramref name="editedFrom"/> is the note exactly as
+    /// the editor opened it. If the stored note has changed since (or was deleted) — Personal Sync
+    /// imported or resolved another device's version — the editor's values are still saved, never
+    /// discarded, but the changed version is preserved as an explicit Personal Sync conflict instead
+    /// of being silently overwritten.
+    /// </summary>
+    Task<OperationalNoteEditorSaveResult> UpdateFromEditorAsync(OperationalNote editedFrom, OperationalNoteDraft draft, CancellationToken cancellationToken = default);
+
     /// <summary>Marks a note Resolved (spec Part Q). Idempotent: resolving an already-resolved note returns it unchanged rather than overwriting its original <see cref="OperationalNote.ResolvedAtUtc"/>.</summary>
     Task<OperationalNote> ResolveAsync(Guid id, CancellationToken cancellationToken = default);
 
@@ -45,8 +55,91 @@ public interface IOperationalNotesService
 }
 
 /// <inheritdoc cref="IOperationalNotesService"/>
-public sealed class OperationalNotesService(IOperationalNoteRepository repository, IClock clock, ISyncChangeTracker? syncChangeTracker = null) : IOperationalNotesService
+/// <summary>Phase 18B REL-004: <see cref="ConflictDetected"/> means the note had changed underneath the editor; both versions are preserved and the conflict must be resolved in Personal Sync settings.</summary>
+public sealed record OperationalNoteEditorSaveResult(OperationalNote Note, bool ConflictDetected);
+
+public sealed class OperationalNotesService(
+    IOperationalNoteRepository repository,
+    IClock clock,
+    ISyncChangeTracker? syncChangeTracker = null,
+    IUnitOfWorkFactory? unitOfWorkFactory = null,
+    OpenEditorConflictRecorder? openEditorConflictRecorder = null) : IOperationalNotesService
 {
+    /// <summary>The canonical Personal Sync content hash of a note — the version identity an editor compares against.</summary>
+    public static string ContentHashOf(OperationalNote note) =>
+        SyncContentHash.ComputeNoteHash(OperationalNoteSyncPayload.FromDomain(note));
+
+    public async Task<OperationalNoteEditorSaveResult> UpdateFromEditorAsync(OperationalNote editedFrom, OperationalNoteDraft draft, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(editedFrom);
+        Validate(draft);
+
+        if (unitOfWorkFactory is null || openEditorConflictRecorder is null)
+        {
+            // Composition without persistence-transaction support (unit tests of unrelated behavior).
+            return new OperationalNoteEditorSaveResult(await UpdateAsync(editedFrom.Id, draft, cancellationToken).ConfigureAwait(false), false);
+        }
+
+        var expectedHash = ContentHashOf(editedFrom);
+        var entityId = SyncEntityIdentity.ForNote(editedFrom.Id);
+        OperationalNote updated;
+        var conflict = false;
+
+        await using (var unitOfWork = await unitOfWorkFactory.BeginAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var stored = await repository.GetByIdAsync(editedFrom.Id, cancellationToken).ConfigureAwait(false);
+            var storedHash = stored is null ? null : ContentHashOf(stored);
+
+            // Only the editable fields come from the editor; status/resolution/creation stay whatever
+            // the stored record (or, if it was deleted underneath the editor, the opened one) says.
+            updated = ApplyDraft(stored ?? editedFrom, draft);
+            var newHash = ContentHashOf(updated);
+
+            if (stored is null)
+            {
+                await repository.AddAsync(updated, unitOfWork, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await repository.UpdateAsync(updated, unitOfWork, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (!string.Equals(storedHash, expectedHash, StringComparison.Ordinal)
+                && !string.Equals(storedHash, newHash, StringComparison.Ordinal))
+            {
+                await openEditorConflictRecorder.RecordAsync(
+                    SyncEntityType.OperationalNote,
+                    entityId,
+                    stored is null
+                        ? new DivergedStoredVersion(null, null, null, clock.UtcNow)
+                        : new DivergedStoredVersion(
+                            OperationalNoteSyncPayloadSerializer.Serialize(OperationalNoteSyncPayload.FromDomain(stored)),
+                            OperationalNoteSyncPayload.CurrentSchemaVersion,
+                            storedHash,
+                            stored.UpdatedAtUtc),
+                    unitOfWork,
+                    cancellationToken).ConfigureAwait(false);
+                conflict = true;
+            }
+
+            await unitOfWork.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await MarkChangedAsync(updated.Id, cancellationToken).ConfigureAwait(false);
+        return new OperationalNoteEditorSaveResult(updated, conflict);
+    }
+
+    private OperationalNote ApplyDraft(OperationalNote note, OperationalNoteDraft draft) => note with
+    {
+        Title = draft.Title.Trim(),
+        Body = NormalizeBody(draft.Body),
+        Category = draft.Category,
+        Priority = draft.Priority,
+        EffectiveFrom = draft.EffectiveFrom,
+        EffectiveThrough = draft.EffectiveThrough,
+        UpdatedAtUtc = clock.UtcNow,
+    };
+
     public async Task<OperationalNote> CreateAsync(OperationalNoteDraft draft, CancellationToken cancellationToken = default)
     {
         Validate(draft);

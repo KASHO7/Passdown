@@ -31,4 +31,22 @@ internal static class PdfInspector
             .FirstOrDefault(candidate => string.Equals(candidate.Text, wordText, StringComparison.Ordinal));
         return word?.BoundingBox.Top;
     }
+
+    /// <summary>Bounding box (left, right, top, PDF space) of the first word on <paramref name="pageNumber"/> exactly matching <paramref name="wordText"/>; with <paramref name="occurrence"/> &gt; 0, the n-th (zero-based) such word. Phase 17F: used to prove price-column alignment and multi-line date/grid composition from real glyph positions.</summary>
+    public static (double Left, double Right, double Top)? FindWordBox(byte[] pdfBytes, int pageNumber, string wordText, int occurrence = 0)
+    {
+        using var document = PdfDocument.Open(pdfBytes);
+        var word = document.GetPage(pageNumber).GetWords()
+            .Where(candidate => string.Equals(candidate.Text, wordText, StringComparison.Ordinal))
+            .Skip(occurrence)
+            .FirstOrDefault();
+        return word is null ? null : (word.BoundingBox.Left, word.BoundingBox.Right, word.BoundingBox.Top);
+    }
+
+    /// <summary>Every word on <paramref name="pageNumber"/>, in PdfPig's reading order.</summary>
+    public static IReadOnlyList<string> Words(byte[] pdfBytes, int pageNumber)
+    {
+        using var document = PdfDocument.Open(pdfBytes);
+        return document.GetPage(pageNumber).GetWords().Select(word => word.Text).ToList();
+    }
 }

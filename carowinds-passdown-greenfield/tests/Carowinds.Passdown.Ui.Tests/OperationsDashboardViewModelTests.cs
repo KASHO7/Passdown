@@ -40,6 +40,44 @@ public class OperationsDashboardViewModelTests
         Assert.False(string.IsNullOrEmpty(viewModel.ErrorMessage));
     }
 
+    // Refresh must start a genuinely new load after a failed one: stale error cleared, loading state
+    // reset, snapshot/presentation populated — no restart and no new view model required.
+    [Fact]
+    public async Task LoadFailure_ThenReloadSucceeds_RecoversAndClearsError()
+    {
+        var service = new FakeOperationsDashboardService { Exception = new InvalidOperationException("transient") };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+        Assert.NotNull(viewModel.ErrorMessage);
+        Assert.True(viewModel.ReloadCommand.CanExecute(null));
+
+        service.Exception = null;
+        await viewModel.ReloadCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, service.GetTodayCallCount);
+        Assert.Null(viewModel.ErrorMessage);
+        Assert.False(viewModel.IsLoading);
+        Assert.True(viewModel.HasSnapshot);
+        Assert.NotNull(viewModel.Presentation);
+        Assert.False(viewModel.ShowEmptyOrErrorState);
+    }
+
+    // The same recovery when the first failure is transient SQLite contention ("database is locked").
+    [Fact]
+    public async Task SqliteBusyOnFirstLoad_ThenReloadSucceeds_Recovers()
+    {
+        var service = new FakeOperationsDashboardService { Exception = new Microsoft.Data.Sqlite.SqliteException("database is locked", 5) };
+        var viewModel = new OperationsDashboardViewModel(service);
+        await viewModel.PendingLoad;
+        Assert.NotNull(viewModel.ErrorMessage);
+
+        service.Exception = null;
+        await viewModel.ReloadCommand.ExecuteAsync(null);
+
+        Assert.Null(viewModel.ErrorMessage);
+        Assert.True(viewModel.HasSnapshot);
+    }
+
     [Fact]
     public async Task ReloadCommand_ReloadsFromService()
     {

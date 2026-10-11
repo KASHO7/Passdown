@@ -22,6 +22,41 @@ internal sealed class FakeErtConfigurationService : IErtConfigurationService
 
     public List<DateOnly> RemoveOverrideCalls { get; } = [];
 
+    /// <summary>Phase 18B REL-004: (entity, expected base) for every editor save that found a different stored version.</summary>
+    public List<string> EditorConflicts { get; } = [];
+
+    public async Task<ErtEditorSaveResult> SaveMonthlyFromEditorAsync(MonthlyErtDraft draft, string? expectedContentHash, CancellationToken cancellationToken = default)
+    {
+        var storedHash = IErtConfigurationService.ContentHashOf(_monthly.GetValueOrDefault(MonthlyErtConfiguration.FormatKey(draft.Year, draft.Month)));
+        var saved = await SaveMonthlyAsync(draft, cancellationToken);
+        return Result($"monthly:{saved.YearMonthKey}", storedHash, expectedContentHash, IErtConfigurationService.ContentHashOf(saved));
+    }
+
+    public async Task<ErtEditorSaveResult> SaveOverrideFromEditorAsync(ErtDateOverrideDraft draft, string? expectedContentHash, CancellationToken cancellationToken = default)
+    {
+        var storedHash = IErtConfigurationService.ContentHashOf(_overrides.GetValueOrDefault(draft.OperatingDate));
+        var saved = await SaveOverrideAsync(draft, cancellationToken);
+        return Result($"override:{draft.OperatingDate:yyyy-MM-dd}", storedHash, expectedContentHash, IErtConfigurationService.ContentHashOf(saved));
+    }
+
+    public async Task<ErtEditorSaveResult> RemoveOverrideFromEditorAsync(DateOnly operatingDate, string? expectedContentHash, CancellationToken cancellationToken = default)
+    {
+        var storedHash = IErtConfigurationService.ContentHashOf(_overrides.GetValueOrDefault(operatingDate));
+        await RemoveOverrideAsync(operatingDate, cancellationToken);
+        return Result($"override:{operatingDate:yyyy-MM-dd}", storedHash, expectedContentHash, null);
+    }
+
+    private ErtEditorSaveResult Result(string entity, string? storedHash, string? expectedHash, string? newHash)
+    {
+        var conflict = !string.Equals(storedHash, expectedHash, StringComparison.Ordinal) && !string.Equals(storedHash, newHash, StringComparison.Ordinal);
+        if (conflict)
+        {
+            EditorConflicts.Add(entity);
+        }
+
+        return new ErtEditorSaveResult(newHash, conflict);
+    }
+
     public Task<MonthlyErtConfiguration?> GetMonthlyAsync(int year, int month, CancellationToken cancellationToken = default) =>
         Task.FromResult(_monthly.GetValueOrDefault(MonthlyErtConfiguration.FormatKey(year, month)));
 

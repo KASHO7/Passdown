@@ -1527,4 +1527,312 @@ public class PersonalSyncServiceTests : IDisposable
         public Task<SyncFolderValidationResult> ValidateAsync(string selectedRootPath, CancellationToken cancellationToken = default) =>
             Task.FromResult(SyncFolderValidationResult.Unavailable("Simulated unavailable folder."));
     }
+
+    // ------------------------------------------------------------------
+    // Phase 18B PERF-001: already-validated remote history PDFs are not re-read every pass, without
+    // weakening integrity — anything unverified, changed, or uncertain is fully re-validated.
+    // ------------------------------------------------------------------
+
+    private static byte[] FakePdf(int seed, int length = 4096) =>
+        [0x25, 0x50, 0x44, 0x46, .. Enumerable.Range(0, length - 4).Select(i => (byte)((i * 31 + seed) % 251))];
+
+    private static async Task WriteRemoteHistoryPairAsync(string root, FinalizedPassdown record, Guid deviceId, byte[]? pdfOnDisk = null, int revision = 1)
+    {
+        var payload = FinalizedPassdownSyncPayload.FromDomain(record);
+        var envelope = new SyncEnvelope
+        {
+            SyncSchemaVersion = SyncEnvelopeSerializer.CurrentSyncSchemaVersion,
+            EntityType = SyncEntityType.FinalizedPassdown,
+            EntityId = SyncEntityIdentity.ForFinalizedPassdown(record.Id),
+            DeviceId = deviceId,
+            Revision = revision,
+            ModifiedUtc = record.FinalizedAtUtc,
+            IsDeleted = false,
+            PayloadSchemaVersion = FinalizedPassdownSyncPayload.CurrentSchemaVersion,
+            Payload = JsonSerializer.SerializeToElement(payload, FinalizedPassdownSyncPayloadSerializer.Options),
+            ContentHash = record.ContentHash,
+        };
+        var pdfPath = SyncPathService.GetHistoryPdfFilePath(root, record.PassdownDate, record.Id);
+        Directory.CreateDirectory(Path.GetDirectoryName(pdfPath)!);
+        await File.WriteAllBytesAsync(pdfPath, pdfOnDisk ?? record.PdfBytes!);
+        await File.WriteAllTextAsync(SyncPathService.GetHistoryJsonFilePath(root, record.PassdownDate, record.Id), SyncEnvelopeSerializer.Serialize(envelope));
+    }
+
+    /// <summary>Overwrites the remote PDF with different bytes of the same length and restores its original last-write time.</summary>
+    private void TamperSameLengthForgedTimestamp(FinalizedPassdown record)
+    {
+        var pdfPath = SyncPathService.GetHistoryPdfFilePath(_sharedRoot, record.PassdownDate, record.Id);
+        var originalTime = File.GetLastWriteTimeUtc(pdfPath);
+        var bytes = File.ReadAllBytes(pdfPath);
+        bytes[^1] ^= 0xFF;
+        File.WriteAllBytes(pdfPath, bytes);
+        File.SetLastWriteTimeUtc(pdfPath, originalTime);
+        Assert.Equal(record.PdfSizeBytes, new FileInfo(pdfPath).Length);
+    }
+
+    private async Task<(TestDevice A, TestDevice B, PersonalSyncService BSync, List<FinalizedPassdown> Records)> ImportedHistoryAsync(int count)
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+        var records = new List<FinalizedPassdown>();
+        for (var i = 0; i < count; i++)
+        {
+            var bytes = FakePdf(i);
+            var record = BuildFinalizedPassdown(OperatingDate.AddDays(i), pdfBytes: bytes, dailyFeatureText: $"Day {i}");
+            await a.FinalizedPassdowns.AddAsync(record);
+            records.Add(record);
+        }
+
+        await a.Sync.RunAsync();
+        var first = await b.Sync.RunAsync();
+        Assert.Equal(count, first.HistoryImportedCount);
+        return (a, b, (PersonalSyncService)b.Sync, records);
+    }
+
+    [Fact]
+    public async Task History_PerfSkip_AfterImport_LaterPassesReadNoPdfBytes_AndNeverReimport()
+    {
+        var (_, b, bSync, records) = await ImportedHistoryAsync(5);
+        Assert.Equal(0, bSync.LastPassHistoryPdfRevalidationsSkipped); // the import pass itself read everything
+
+        var second = await b.Sync.RunAsync();
+        var third = await b.Sync.RunAsync();
+
+        Assert.Equal(0, second.HistoryImportedCount);
+        Assert.Equal(0, third.HistoryImportedCount);
+        Assert.Equal(0, second.HistoryConflictCount);
+        Assert.Equal(0L, bSync.LastPassHistoryPdfBytesRead);
+        Assert.Equal(5, bSync.LastPassHistoryPdfRevalidationsSkipped);
+        Assert.Equal(5, (await b.FinalizedPassdowns.ListForSyncAsync()).Count);
+    }
+
+    [Fact]
+    public async Task History_PerfSkip_FirstPassOfAFreshProcess_AlsoSkips_BecauseSyncStateRecordsThePriorValidation()
+    {
+        var (_, b, _, _) = await ImportedHistoryAsync(3);
+        var freshProcess = new PersonalSyncService(
+            new PersonalSyncSettingsService(b.ConfigStore, new SyncFolderValidator(), new FakeOneDriveLocationSuggestionProvider(), new FakeDeviceIdProvider(DeviceBId), b.Clock),
+            b.ConfigStore, new FakeDeviceIdProvider(DeviceBId), b.Drafts, b.NoteRepository, b.FinalizedPassdowns, b.States, b.Conflicts, b.Clock, b.MonthlyErts, b.ErtOverrides);
+
+        var result = await freshProcess.RunAsync();
+
+        Assert.Equal(0, result.HistoryImportedCount);
+        Assert.Equal(0L, freshProcess.LastPassHistoryPdfBytesRead);
+        Assert.Equal(3, freshProcess.LastPassHistoryPdfRevalidationsSkipped);
+    }
+
+    [Fact]
+    public async Task History_NotYetImported_SameLengthTamperedPdfWithForgedTimestamp_IsStillRejected()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+        var record = BuildFinalizedPassdown(OperatingDate, pdfBytes: FakePdf(7));
+        await a.FinalizedPassdowns.AddAsync(record);
+        await a.Sync.RunAsync();
+        TamperSameLengthForgedTimestamp(record);
+
+        var result = await b.Sync.RunAsync();
+
+        Assert.Equal(0, result.HistoryImportedCount);
+        Assert.Equal(1, result.HistoryConflictCount);
+        Assert.Null(await b.FinalizedPassdowns.GetByIdAsync(record.Id));
+        Assert.True(((PersonalSyncService)b.Sync).LastPassHistoryPdfBytesRead > 0);
+    }
+
+    [Fact]
+    public async Task History_AlreadyImported_SameLengthTamperWithForgedTimestamp_LocalCopyStaysImmutable_AndIsNeverReplaced()
+    {
+        var (_, b, _, records) = await ImportedHistoryAsync(1);
+        var record = records[0];
+        TamperSameLengthForgedTimestamp(record);
+
+        var result = await b.Sync.RunAsync();
+
+        // The tampered remote bytes cannot reach this device: the existing local record is immutable
+        // and was hash-verified when imported. (Same-length, same-timestamp remote corruption of an
+        // already-held record is not re-detected without a byte read — the documented trade-off.)
+        Assert.Equal(0, result.HistoryImportedCount);
+        var local = await b.FinalizedPassdowns.GetByIdAsync(record.Id);
+        Assert.Equal(record.PdfBytes, local!.PdfBytes);
+        Assert.Equal(record.PdfSha256, Convert.ToHexStringLower(SHA256.HashData(local.PdfBytes!)));
+    }
+
+    [Fact]
+    public async Task History_AlreadyImported_PdfLengthChanged_IsRevalidated_AndReported()
+    {
+        var (_, b, bSync, records) = await ImportedHistoryAsync(1);
+        var record = records[0];
+        var pdfPath = SyncPathService.GetHistoryPdfFilePath(_sharedRoot, record.PassdownDate, record.Id);
+        await File.WriteAllBytesAsync(pdfPath, record.PdfBytes![..^10]); // truncated
+
+        var result = await b.Sync.RunAsync();
+
+        Assert.Equal(1, result.HistoryConflictCount);
+        Assert.Equal(0, bSync.LastPassHistoryPdfRevalidationsSkipped);
+        Assert.Equal(record.PdfBytes, (await b.FinalizedPassdowns.GetByIdAsync(record.Id))!.PdfBytes);
+    }
+
+    [Fact]
+    public async Task History_AlreadyImported_SameLengthTamperWithChangedTimestamp_IsRevalidated_AndReported()
+    {
+        var (_, b, bSync, records) = await ImportedHistoryAsync(1);
+        var record = records[0];
+        var pdfPath = SyncPathService.GetHistoryPdfFilePath(_sharedRoot, record.PassdownDate, record.Id);
+        var bytes = await File.ReadAllBytesAsync(pdfPath);
+        bytes[100] ^= 0xFF;
+        await File.WriteAllBytesAsync(pdfPath, bytes);
+        File.SetLastWriteTimeUtc(pdfPath, DateTime.UtcNow.AddMinutes(5));
+
+        var result = await b.Sync.RunAsync();
+
+        Assert.Equal(1, result.HistoryConflictCount);
+        Assert.True(bSync.LastPassHistoryPdfBytesRead > 0);
+        Assert.Equal(record.PdfBytes, (await b.FinalizedPassdowns.GetByIdAsync(record.Id))!.PdfBytes);
+    }
+
+    [Fact]
+    public async Task History_AlreadyImported_TimestampOnlyChange_IsRevalidated_AndStaysUnchanged()
+    {
+        var (_, b, bSync, records) = await ImportedHistoryAsync(1);
+        var record = records[0];
+        var pdfPath = SyncPathService.GetHistoryPdfFilePath(_sharedRoot, record.PassdownDate, record.Id);
+        File.SetLastWriteTimeUtc(pdfPath, DateTime.UtcNow.AddMinutes(5)); // e.g. OneDrive re-downloaded identical bytes
+
+        var revalidated = await b.Sync.RunAsync();
+        Assert.Equal(record.PdfSizeBytes, bSync.LastPassHistoryPdfBytesRead);
+        Assert.Equal(0, revalidated.HistoryConflictCount);
+        Assert.Equal(0, revalidated.HistoryImportedCount);
+
+        await b.Sync.RunAsync();
+        Assert.Equal(0L, bSync.LastPassHistoryPdfBytesRead); // validated again → skipped again
+    }
+
+    [Fact]
+    public async Task History_AlreadyImported_JsonContentHashChanged_IsNotSkipped_AndBecomesAnImmutableConflict()
+    {
+        var (_, b, bSync, records) = await ImportedHistoryAsync(1);
+        var original = records[0];
+        var rewritten = BuildFinalizedPassdown(original.PassdownDate, original.Id, dailyFeatureText: "Different content", pdfBytes: original.PdfBytes);
+        await WriteRemoteHistoryPairAsync(_sharedRoot, rewritten, DeviceAId);
+
+        var result = await b.Sync.RunAsync();
+
+        Assert.Equal(1, result.HistoryConflictCount);
+        Assert.Equal(0, bSync.LastPassHistoryPdfRevalidationsSkipped);
+        Assert.Equal(original.ContentHash, (await b.FinalizedPassdowns.GetByIdAsync(original.Id))!.ContentHash); // immutable
+    }
+
+    [Fact]
+    public async Task History_AlreadyImported_JsonDeclaresADifferentPdfHash_IsNotSkipped_AndIsReported()
+    {
+        var (_, b, bSync, records) = await ImportedHistoryAsync(1);
+        var original = records[0];
+        // Same snapshot/content hash, but the JSON now describes (and the folder holds) a different PDF.
+        var otherPdf = FakePdf(99);
+        var forged = original with { PdfBytes = otherPdf, PdfSha256 = Convert.ToHexStringLower(SHA256.HashData(otherPdf)), PdfSizeBytes = otherPdf.LongLength };
+        await WriteRemoteHistoryPairAsync(_sharedRoot, forged, DeviceAId);
+
+        var result = await b.Sync.RunAsync();
+
+        Assert.Equal(0, bSync.LastPassHistoryPdfRevalidationsSkipped);
+        Assert.True(bSync.LastPassHistoryPdfBytesRead > 0);
+        Assert.Equal(0, result.HistoryImportedCount);
+        Assert.Equal(original.PdfBytes, (await b.FinalizedPassdowns.GetByIdAsync(original.Id))!.PdfBytes);
+    }
+
+    [Fact]
+    public async Task History_AlreadyImported_JsonPdfHashForgedButBytesUnchanged_IsNotSkipped_AndIsRejectedAsCorrupt()
+    {
+        var (_, b, _, records) = await ImportedHistoryAsync(1);
+        var original = records[0];
+        var forged = original with { PdfSha256 = new string('0', 64) };
+        await WriteRemoteHistoryPairAsync(_sharedRoot, forged, DeviceAId, pdfOnDisk: original.PdfBytes);
+
+        var result = await b.Sync.RunAsync();
+
+        Assert.Equal(1, result.HistoryConflictCount);
+        Assert.Equal(original.PdfSha256, (await b.FinalizedPassdowns.GetByIdAsync(original.Id))!.PdfSha256);
+    }
+
+    [Fact]
+    public async Task History_RenamedPairForAnotherId_IsMalformed_NeverSkippedNeverImported()
+    {
+        var (_, b, _, records) = await ImportedHistoryAsync(1);
+        var record = records[0];
+        var otherId = Guid.NewGuid();
+        File.Copy(SyncPathService.GetHistoryJsonFilePath(_sharedRoot, record.PassdownDate, record.Id), SyncPathService.GetHistoryJsonFilePath(_sharedRoot, record.PassdownDate, otherId));
+        File.Copy(SyncPathService.GetHistoryPdfFilePath(_sharedRoot, record.PassdownDate, record.Id), SyncPathService.GetHistoryPdfFilePath(_sharedRoot, record.PassdownDate, otherId));
+
+        var result = await b.Sync.RunAsync();
+
+        Assert.Equal(1, result.MalformedCount);
+        Assert.Null(await b.FinalizedPassdowns.GetByIdAsync(otherId));
+    }
+
+    [Fact]
+    public async Task History_NewerRemoteRevisionOfTheSameRecord_IsNotSkipped()
+    {
+        var (_, b, bSync, records) = await ImportedHistoryAsync(1);
+        await WriteRemoteHistoryPairAsync(_sharedRoot, records[0], DeviceAId, revision: 2);
+
+        var result = await b.Sync.RunAsync();
+
+        Assert.Equal(0, bSync.LastPassHistoryPdfRevalidationsSkipped);
+        Assert.Equal(0, result.HistoryConflictCount);
+        Assert.Equal(0, result.HistoryImportedCount);
+
+        await b.Sync.RunAsync();
+        Assert.Equal(1, bSync.LastPassHistoryPdfRevalidationsSkipped);
+    }
+
+    [Fact]
+    public async Task History_IdenticalRecordAlreadyHeldBeforeSync_ConvergesOnce_ThenSkips()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+        var record = BuildFinalizedPassdown(OperatingDate, pdfBytes: FakePdf(3));
+        await a.FinalizedPassdowns.AddAsync(record);
+        await b.FinalizedPassdowns.AddAsync(record);
+        await a.Sync.RunAsync();
+        var bSync = (PersonalSyncService)b.Sync;
+
+        var first = await b.Sync.RunAsync();
+        Assert.Equal(record.PdfSizeBytes, bSync.LastPassHistoryPdfBytesRead); // validated once
+        var second = await b.Sync.RunAsync();
+
+        Assert.Equal(0, first.HistoryConflictCount);
+        Assert.Equal(0, second.HistoryConflictCount);
+        Assert.Equal(0L, bSync.LastPassHistoryPdfBytesRead);
+    }
+
+    [Fact]
+    public async Task History_FolderSwitch_ClearsSyncState_SoEverythingIsRevalidated()
+    {
+        var (_, b, bSync, _) = await ImportedHistoryAsync(2);
+        await b.States.ClearAllAsync(); // what a SyncSpaceId change does (ReconcileSyncSpaceAsync)
+
+        await b.Sync.RunAsync();
+
+        Assert.Equal(0, bSync.LastPassHistoryPdfRevalidationsSkipped);
+        Assert.True(bSync.LastPassHistoryPdfBytesRead > 0);
+    }
+
+    [Fact]
+    public async Task SyncPass_RemovesOnlyStaleTempFiles_FromTheSharedFolder()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        await a.Sync.RunAsync();
+        var staleTemp = SyncPathService.GetDraftFilePath(_sharedRoot, OperatingDate) + ".tmp-0123456789abcdef0123456789abcdef";
+        var freshTemp = SyncPathService.GetDraftFilePath(_sharedRoot, OperatingDate.AddDays(1)) + ".tmp-0123456789abcdef0123456789abcdef";
+        Directory.CreateDirectory(Path.GetDirectoryName(staleTemp)!);
+        File.WriteAllText(staleTemp, "{");
+        File.SetLastWriteTimeUtc(staleTemp, DateTime.UtcNow.AddDays(-2));
+        File.WriteAllText(freshTemp, "{");
+
+        await a.Sync.RunAsync();
+
+        Assert.False(File.Exists(staleTemp));
+        Assert.True(File.Exists(freshTemp));
+        Assert.True(File.Exists(SyncPathService.GetManifestFilePath(_sharedRoot)));
+    }
 }

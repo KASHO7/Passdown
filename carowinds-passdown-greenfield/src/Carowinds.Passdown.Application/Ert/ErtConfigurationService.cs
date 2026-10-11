@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain.Ert;
@@ -41,14 +42,41 @@ public interface IErtConfigurationService
 
     /// <summary>Removes the date's override so the date immediately falls back to the monthly default (spec Part 8/28). A no-op when no override exists.</summary>
     Task RemoveOverrideAsync(DateOnly operatingDate, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 18B REL-004: the Early Ride Time editor's save. <paramref name="expectedContentHash"/> is
+    /// <see cref="ContentHashOf(MonthlyErtConfiguration?)"/> of the record the editor opened with. If the
+    /// stored month has changed since (Personal Sync), the editor's values are still saved but the
+    /// changed version is preserved as an explicit Personal Sync conflict — never silently overwritten.
+    /// </summary>
+    Task<ErtEditorSaveResult> SaveMonthlyFromEditorAsync(MonthlyErtDraft draft, string? expectedContentHash, CancellationToken cancellationToken = default);
+
+    /// <summary>Phase 18B REL-004: <see cref="SaveMonthlyFromEditorAsync"/>'s date-override counterpart.</summary>
+    Task<ErtEditorSaveResult> SaveOverrideFromEditorAsync(ErtDateOverrideDraft draft, string? expectedContentHash, CancellationToken cancellationToken = default);
+
+    /// <summary>Phase 18B REL-004: removal from the editor — a removal on top of a version that changed since the editor opened is preserved as a conflict (this device: deleted; other device: the changed version).</summary>
+    Task<ErtEditorSaveResult> RemoveOverrideFromEditorAsync(DateOnly operatingDate, string? expectedContentHash, CancellationToken cancellationToken = default);
+
+    /// <summary>The canonical Personal Sync content hash of a stored monthly record (<see langword="null"/> when none) — an editor's expected base.</summary>
+    static string? ContentHashOf(MonthlyErtConfiguration? configuration) =>
+        configuration is null ? null : SyncContentHash.ComputeMonthlyErtHash(MonthlyErtSyncPayload.FromDomain(configuration));
+
+    /// <summary>The canonical Personal Sync content hash of a stored date override (<see langword="null"/> when none).</summary>
+    static string? ContentHashOf(ErtDateOverride? dateOverride) =>
+        dateOverride is null ? null : SyncContentHash.ComputeErtDateOverrideHash(ErtDateOverrideSyncPayload.FromDomain(dateOverride));
 }
+
+/// <summary>Phase 18B REL-004: <see cref="ContentHash"/> is the editor's new base (<see langword="null"/> after a removal); <see cref="ConflictDetected"/> means the stored version had changed underneath the editor and is now an explicit Personal Sync conflict.</summary>
+public sealed record ErtEditorSaveResult(string? ContentHash, bool ConflictDetected);
 
 /// <inheritdoc cref="IErtConfigurationService"/>
 public sealed class ErtConfigurationService(
     IMonthlyErtRepository monthlyRepository,
     IErtDateOverrideRepository overrideRepository,
     IClock clock,
-    ISyncChangeTracker? syncChangeTracker = null) : IErtConfigurationService
+    ISyncChangeTracker? syncChangeTracker = null,
+    IUnitOfWorkFactory? unitOfWorkFactory = null,
+    OpenEditorConflictRecorder? openEditorConflictRecorder = null) : IErtConfigurationService
 {
     public Task<MonthlyErtConfiguration?> GetMonthlyAsync(int year, int month, CancellationToken cancellationToken = default) =>
         monthlyRepository.GetAsync(year, month, cancellationToken);
@@ -104,6 +132,139 @@ public sealed class ErtConfigurationService(
 
         await overrideRepository.DeleteAsync(operatingDate, cancellationToken: cancellationToken).ConfigureAwait(false);
         await MarkChangedAsync(SyncEntityType.ErtDateOverride, SyncEntityIdentity.ForErtDateOverride(operatingDate), cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<ErtEditorSaveResult> SaveMonthlyFromEditorAsync(MonthlyErtDraft draft, string? expectedContentHash, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+        ValidateMonth(draft.Month);
+
+        var (state, startTime, rides) = Normalize(draft.State, draft.StartTime, draft.Rides);
+        var configuration = new MonthlyErtConfiguration(draft.Year, draft.Month, state, startTime, rides, NormalizeNote(draft.Note), clock.UtcNow);
+        var newHash = IErtConfigurationService.ContentHashOf(configuration);
+
+        var conflict = await SaveConditionallyAsync(
+            SyncEntityType.MonthlyErt,
+            SyncEntityIdentity.ForMonthlyErt(draft.Year, draft.Month),
+            expectedContentHash,
+            newHash,
+            async () =>
+            {
+                var stored = await monthlyRepository.GetAsync(draft.Year, draft.Month, cancellationToken).ConfigureAwait(false);
+                return stored is null
+                    ? null
+                    : new DivergedStoredVersion(
+                        MonthlyErtSyncPayloadSerializer.Serialize(MonthlyErtSyncPayload.FromDomain(stored)),
+                        MonthlyErtSyncPayload.CurrentSchemaVersion,
+                        IErtConfigurationService.ContentHashOf(stored),
+                        stored.ModifiedUtc);
+            },
+            unitOfWork => monthlyRepository.UpsertAsync(configuration, unitOfWork, cancellationToken),
+            cancellationToken).ConfigureAwait(false);
+
+        return new ErtEditorSaveResult(newHash, conflict);
+    }
+
+    public async Task<ErtEditorSaveResult> SaveOverrideFromEditorAsync(ErtDateOverrideDraft draft, string? expectedContentHash, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+
+        var (state, startTime, rides) = Normalize(draft.State, draft.StartTime, draft.Rides);
+        var dateOverride = new ErtDateOverride(draft.OperatingDate, state, startTime, rides, NormalizeNote(draft.Reason), clock.UtcNow);
+        var newHash = IErtConfigurationService.ContentHashOf(dateOverride);
+
+        var conflict = await SaveConditionallyAsync(
+            SyncEntityType.ErtDateOverride,
+            SyncEntityIdentity.ForErtDateOverride(draft.OperatingDate),
+            expectedContentHash,
+            newHash,
+            () => ReadStoredOverrideAsync(draft.OperatingDate, cancellationToken),
+            unitOfWork => overrideRepository.UpsertAsync(dateOverride, unitOfWork, cancellationToken),
+            cancellationToken).ConfigureAwait(false);
+
+        return new ErtEditorSaveResult(newHash, conflict);
+    }
+
+    public async Task<ErtEditorSaveResult> RemoveOverrideFromEditorAsync(DateOnly operatingDate, string? expectedContentHash, CancellationToken cancellationToken = default)
+    {
+        var conflict = await SaveConditionallyAsync(
+            SyncEntityType.ErtDateOverride,
+            SyncEntityIdentity.ForErtDateOverride(operatingDate),
+            expectedContentHash,
+            newContentHash: null,
+            () => ReadStoredOverrideAsync(operatingDate, cancellationToken),
+            unitOfWork => overrideRepository.DeleteAsync(operatingDate, unitOfWork, cancellationToken),
+            cancellationToken).ConfigureAwait(false);
+
+        return new ErtEditorSaveResult(null, conflict);
+    }
+
+    private async Task<DivergedStoredVersion?> ReadStoredOverrideAsync(DateOnly operatingDate, CancellationToken cancellationToken)
+    {
+        var stored = await overrideRepository.GetAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+        return stored is null
+            ? null
+            : new DivergedStoredVersion(
+                ErtDateOverrideSyncPayloadSerializer.Serialize(ErtDateOverrideSyncPayload.FromDomain(stored)),
+                ErtDateOverrideSyncPayload.CurrentSchemaVersion,
+                IErtConfigurationService.ContentHashOf(stored),
+                stored.ModifiedUtc);
+    }
+
+    /// <summary>
+    /// Phase 18B REL-004: read-compare-write under one write-locked unit of work. Returns whether the
+    /// stored version had diverged from <paramref name="expectedContentHash"/> (and from what is being
+    /// written) — in which case the write still happens and the diverged version is preserved as a
+    /// conflict. A stored version that is already absent when removing, or already identical to what
+    /// is being written, is convergent, not a conflict.
+    /// </summary>
+    private async Task<bool> SaveConditionallyAsync(
+        SyncEntityType entityType,
+        string entityId,
+        string? expectedContentHash,
+        string? newContentHash,
+        Func<Task<DivergedStoredVersion?>> readStored,
+        Func<IUnitOfWork, Task> write,
+        CancellationToken cancellationToken)
+    {
+        if (unitOfWorkFactory is null || openEditorConflictRecorder is null)
+        {
+            // Composition without persistence-transaction support (unit tests of unrelated behavior).
+            await write(null!).ConfigureAwait(false);
+            await MarkChangedAsync(entityType, entityId, cancellationToken).ConfigureAwait(false);
+            return false;
+        }
+
+        var conflict = false;
+        await using (var unitOfWork = await unitOfWorkFactory.BeginAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var stored = await readStored().ConfigureAwait(false);
+            var storedHash = stored?.ContentHash;
+
+            if (stored is null && newContentHash is null)
+            {
+                return false; // Removing something that is already gone — nothing to write, nothing lost.
+            }
+
+            await write(unitOfWork).ConfigureAwait(false);
+
+            if (!string.Equals(storedHash, expectedContentHash, StringComparison.Ordinal)
+                && !string.Equals(storedHash, newContentHash, StringComparison.Ordinal))
+            {
+                await openEditorConflictRecorder.RecordAsync(
+                    entityType,
+                    entityId,
+                    stored ?? new DivergedStoredVersion(null, null, null, clock.UtcNow),
+                    unitOfWork,
+                    cancellationToken).ConfigureAwait(false);
+                conflict = true;
+            }
+
+            await unitOfWork.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await MarkChangedAsync(entityType, entityId, cancellationToken).ConfigureAwait(false);
+        return conflict;
     }
 
     private Task MarkChangedAsync(SyncEntityType entityType, string entityId, CancellationToken cancellationToken) =>

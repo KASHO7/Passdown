@@ -2,6 +2,7 @@ using System.Globalization;
 using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Domain.Ert;
 using Carowinds.Passdown.Domain.Hours;
+using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Desktop.Presentation;
 
@@ -47,7 +48,7 @@ public sealed record OperationsDashboardPresentation(
         ArgumentNullException.ThrowIfNull(snapshot);
 
         var dayLabel = snapshot.OperatingDate.ToDateTime(TimeOnly.MinValue)
-            .ToString("dddd, MMMM d, yyyy", CultureInfo.InvariantCulture);
+            .ToString("dddd, MMMM d, yyyy", PresentationCulture.UnitedStates);
 
         var parkHours = ParkHoursPresentation.Build(snapshot.ParkStatus.Hours);
         var parkBadgeText = snapshot.ParkStatus.Status switch
@@ -76,10 +77,15 @@ public sealed record OperationsDashboardPresentation(
         // does (spec Part 17) — never park hours/North Gate. "Not configured" and "None" are kept
         // deliberately terse (spec §17 "do not redesign Dashboard") rather than the fuller
         // "Not configured for <Month Year>" wording the Associate screen/PDF use.
-        var earlyRideTimeText = snapshot.EarlyRideTime.Kind switch
+        // Phase 17D+ saves Configured ERT with no start time (rides only), so StartTime is optional
+        // here: a legacy record's start time keeps its existing text, otherwise the ride list is
+        // shown with the same rule as AssociateViewModel.EarlyRideTimeStatusText.
+        var earlyRideTimeText = snapshot.EarlyRideTime switch
         {
-            EffectiveErtKind.Configured => $"Starts {OperationalTimeFormatter.Format(snapshot.EarlyRideTime.StartTime!.Value)}",
-            EffectiveErtKind.NoErt => "None",
+            { Kind: EffectiveErtKind.Configured, StartTime: { } startTime } => $"Starts {OperationalTimeFormatter.Format(startTime)}",
+            { Kind: EffectiveErtKind.Configured, Rides.Count: > 0 } => string.Join(", ", snapshot.EarlyRideTime.Rides),
+            { Kind: EffectiveErtKind.Configured } => "Configured",
+            { Kind: EffectiveErtKind.NoErt } => "None",
             _ => "Not configured",
         };
 
@@ -112,8 +118,8 @@ public sealed record OperationsDashboardPresentation(
             passdownText,
             passdownDetail,
             showOpenAction,
-            snapshot.ProjectedAttendance?.ToString(CultureInfo.InvariantCulture) ?? "Not entered",
-            snapshot.PreSolds?.ToString(CultureInfo.InvariantCulture) ?? "Not entered",
+            snapshot.ProjectedAttendance?.ToString(PresentationCulture.UnitedStates) ?? "Not entered",
+            snapshot.PreSolds?.ToString(PresentationCulture.UnitedStates) ?? "Not entered",
             earlyRideTimeText,
             dailyFeatureLabel,
             dailyFeatureText,
@@ -126,7 +132,7 @@ public sealed record OperationsDashboardPresentation(
     }
 
     /// <summary>Shared timestamp formatting, also reused by <see cref="DashboardDataHealthPresentation"/> so "Last verified"/"Last checked" text matches this screen's other timestamps exactly.</summary>
-    internal static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d 'at' h:mm tt", CultureInfo.InvariantCulture);
+    internal static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d 'at' h:mm tt", PresentationCulture.UnitedStates);
 
     /// <summary>Bounds one display string to a maximum length with an ellipsis (Phase 10B Part K) — presentation-only; the underlying draft value is never modified.</summary>
     private static string Truncate(string value, int maxLength)

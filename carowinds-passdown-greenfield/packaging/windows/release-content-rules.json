@@ -1,0 +1,91 @@
+{
+  "_comment": "Phase 18B PKG-002: single source of truth for what a portable release folder/ZIP must and must not contain. Consumed by Test-ReleasePackage.ps1 (run by Build-PortableRelease.ps1 before and after zipping) and mirrored by tests/Carowinds.Passdown.Infrastructure.Tests/Packaging/ReleasePackageValidator.cs. Paths are relative to the release root, '/'-separated, matched case-insensitively.",
+  "requiredFiles": [
+    "Carowinds.Passdown.Desktop.exe",
+    "Carowinds.Passdown.Desktop.dll",
+    "Carowinds.Passdown.Desktop.runtimeconfig.json",
+    "Carowinds.Passdown.Desktop.deps.json",
+    "Carowinds.Passdown.Domain.dll",
+    "Carowinds.Passdown.Application.dll",
+    "Carowinds.Passdown.Infrastructure.dll",
+    "Carowinds.Passdown.Documents.dll",
+    "hostfxr.dll",
+    "hostpolicy.dll",
+    "coreclr.dll",
+    "System.Private.CoreLib.dll",
+    "e_sqlite3.dll",
+    "libSkiaSharp.dll",
+    "libHarfBuzzSharp.dll",
+    "av_libglesv2.dll",
+    "QuestPdfSkia.dll",
+    "Enable Automatic Refresh.cmd",
+    "Disable Automatic Refresh.cmd",
+    "tools/Install-ScheduledRefresh.ps1",
+    "tools/Uninstall-ScheduledRefresh.ps1",
+    "README.txt",
+    "TESTER-GUIDE.txt",
+    "LatoFont/OFL.txt",
+    "THIRD-PARTY-NOTICES.txt",
+    "licenses/dotnet-LICENSE.txt",
+    "licenses/dotnet-THIRD-PARTY-NOTICES.txt",
+    "licenses/ANGLE-LICENSE.txt",
+    "licenses/Inter-OFL.txt",
+    "licenses/SkiaSharp-HarfBuzzSharp-LICENSE.txt",
+    "licenses/SkiaSharp-HarfBuzzSharp-THIRD-PARTY-NOTICES.txt",
+    "licenses/QuestPDF-LICENSE.txt",
+    "licenses/QuestPDF-dependencies/emsdk.txt",
+    "licenses/QuestPDF-dependencies/expat.txt",
+    "licenses/QuestPDF-dependencies/harfbuzz.txt",
+    "licenses/QuestPDF-dependencies/libgrapheme.txt",
+    "licenses/QuestPDF-dependencies/libjpeg-turbo.txt",
+    "licenses/QuestPDF-dependencies/libpng.txt",
+    "licenses/QuestPDF-dependencies/libwebp.txt",
+    "licenses/QuestPDF-dependencies/ninja-build.txt",
+    "licenses/QuestPDF-dependencies/qpdf.txt",
+    "licenses/QuestPDF-dependencies/readme.txt",
+    "licenses/QuestPDF-dependencies/skia.txt",
+    "licenses/QuestPDF-dependencies/wuffs.txt",
+    "licenses/QuestPDF-dependencies/zlib.txt",
+    "licenses/Apache-2.0.txt",
+    "licenses/CommunityToolkit.Mvvm-LICENSE.txt",
+    "licenses/CommunityToolkit.Mvvm-THIRD-PARTY-NOTICES.txt"
+  ],
+  "_noticeComment": "Phase 18C PKG-003: every file matching noticeFilePatterns must be at least minimumNoticeFileBytes long and contain none of noticePlaceholderTokens (case-sensitive). Every required file must be non-empty, and a ZIP must not contain duplicate entries.",
+  "noticeFilePatterns": ["THIRD-PARTY-NOTICES.txt", "LatoFont/OFL.txt", "licenses/*"],
+  "minimumNoticeFileBytes": 100,
+  "noticePlaceholderTokens": ["TODO", "TBD", "FIXME", "XXX", "PLACEHOLDER", "{{", "}}", "<insert", "<version>", "<license>", "<copyright>"],
+  "forbiddenFileNamePatterns": [
+    "*.pdb",
+    "*.cs", "*.csproj", "*.sln", "*.slnx", "*.props", "*.targets", "*.user", "*.axaml",
+    "*.Tests.dll", "*.Tests.exe", "xunit*", "testhost*", "Microsoft.TestPlatform*", "Microsoft.VisualStudio.TestPlatform*", "coverlet*", "Avalonia.Headless*",
+    "*.db", "*.db-wal", "*.db-shm", "*.db-journal", "*.sqlite", "*.sqlite3",
+    "*.log",
+    "*.zip",
+    "*.pdf",
+    "sync-config.json", "device-id.txt", "associate-passdown-template.json", "manifest.json", "*.tmp-*", ".sync-probe-*",
+    "gs*.dll", "gswin*.exe", "gsdll*", "*.ps", "*.eps",
+    ".DS_Store", "._*", "Thumbs.db", "desktop.ini",
+    "*.so", "*.so.*", "*.dylib", "*.a",
+    ".git*", ".env", "*.pfx", "*.pem", "*.key", "*.snk", "secrets.json", "appsettings.*.json",
+    "CLAUDE.md", "AGENT_BUILD_SPEC.md"
+  ],
+  "forbiddenDirectoryNames": [
+    ".git", ".claude", ".vs", ".idea", "obj", "bin", "src", "tests", "docs", "artifacts",
+    "logs", "fixtures", "testdata", "Carowinds Operations Sync", "Carowinds Passdown", "__MACOSX"
+  ],
+  "forbiddenRuntimeIdentifierPrefixes": [
+    "osx", "linux", "unix", "maccatalyst", "ios", "tvos", "android", "freebsd", "illumos", "solaris", "browser", "wasi", "win-arm", "win-x86"
+  ],
+  "ownBinaryPatterns": [
+    "Carowinds.Passdown.*.dll",
+    "Carowinds.Passdown.*.exe"
+  ],
+  "textFilePatterns": [
+    "*.json", "*.txt", "*.cmd", "*.ps1", "*.md", "*.xml", "*.config"
+  ],
+  "forbiddenPathTokens": [
+    "/Users/",
+    "/home/",
+    "C:\\Users\\"
+  ]
+}

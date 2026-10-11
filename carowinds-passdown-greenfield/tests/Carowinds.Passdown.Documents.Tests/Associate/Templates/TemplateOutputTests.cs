@@ -35,8 +35,8 @@ public sealed class TemplateOutputTests
         Assert.Equal(AssociatePassdownPdfStatus.Generated, result.Status);
         var text = PdfInspector.ExtractAllText(result.PdfBytes!);
 
-        // Day/date — printed upper-case as the page's primary heading (Phase 17D §7/§11).
-        Assert.Contains(model.OperatingDateText, text, StringComparison.OrdinalIgnoreCase);
+        // Day/date — printed upper-case as the page's primary heading (Phase 17D §7/§11; Modern on two lines since Phase 17F).
+        PdfTextAssert.ContainsOperatingDate(template, model.OperatingDateText, text);
 
         // Park Hours.
         Assert.Contains(model.ParkHours.HeadlineText, text);
@@ -130,6 +130,7 @@ public sealed class TemplateOutputTests
         var text = PdfInspector.ExtractAllText(result.PdfBytes!);
 
         Assert.DoesNotContain("OPERATIONAL NOTES", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(PdfTextAssert.NotesHeading(template), text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -247,7 +248,7 @@ public sealed class TemplateOutputTests
         var parkHoursIndex = text.IndexOf(model.ParkHours.HeadlineText, StringComparison.Ordinal);
         var featureIndex = text.IndexOf(model.DailyFeature.Text!, StringComparison.Ordinal);
         var firstCategoryIndex = text.IndexOf(model.ProductCategories[0].CategoryName, StringComparison.OrdinalIgnoreCase);
-        var notesIndex = text.IndexOf("OPERATIONAL NOTES", StringComparison.OrdinalIgnoreCase);
+        var notesIndex = text.IndexOf(PdfTextAssert.NotesHeading(template), StringComparison.Ordinal);
 
         Assert.True(parkHoursIndex >= 0, "Park Hours headline not found.");
         Assert.True(featureIndex >= 0, "Daily Feature text not found.");

@@ -49,6 +49,16 @@ public interface IAssociatePassdownService
     Task<AssociateSaveStatus> SaveDraftAsync(DateOnly operatingDate, AssociateDraftPayload draft, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Phase 18B REL-004: the save an open editor uses. Saves <paramref name="draft"/> only on the
+    /// understanding that the stored draft is still the one whose <see cref="AssociateWorkspace.DraftContentHash"/>
+    /// the editor loaded (<paramref name="expectedContentHash"/>; <see langword="null"/> = no draft existed).
+    /// If it has changed since (Personal Sync imported or resolved another device's version), the
+    /// editor's content is still saved — it is never discarded — but the changed version is preserved
+    /// as an explicit Personal Sync conflict instead of being silently overwritten.
+    /// </summary>
+    Task<AssociateDraftSaveResult> SaveEditorDraftAsync(DateOnly operatingDate, AssociateDraftPayload draft, string? expectedContentHash, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Phase 11D: persistent Operational Notes relevant to <paramref name="operatingDate"/> — the
     /// Associate-selected date, not Dashboard's Eastern "today" (spec Phase 11D Part E). Suggestions
     /// only; this never mutates the draft. The caller is responsible for excluding notes already
