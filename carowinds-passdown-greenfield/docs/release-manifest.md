@@ -706,3 +706,71 @@ Verification:
 | Status | Unchanged: **EXPERIMENTAL / DEFERRED**. It publishes and inspects clean, and the fix commit `399d40c…` is embedded in the bundle. Launching it on Windows: **NOT EXECUTED**. |
 
 This build supersedes the Phase 17E artifacts as the current release.
+
+# Release manifest — Phase 17F rebuild (refined PDF templates, Modern section numbering removed)
+
+Rebuilt from commit `8671e92` ("Phase 17F: refine Associate PDF templates; remove Modern section
+numbering"). No code changed during the rebuild itself. Packaging strategy, publish flags, staging
+layout and the 10-step procedure are unchanged from the Phase 17E entry. This entry records the new
+build and its hashes.
+
+Functional change since the Dashboard ERT fix build:
+
+- Modern no longer prints "01/02/…" section numbers. It is told apart by its two-line date and
+  four-column summary grid.
+- All three templates align prices in one fixed right-hand column.
+- A section heading is never left alone at a page bottom.
+- An overflowing PDF is re-rendered once with tighter spacing and kept if that saves a page.
+- On multi-page PDFs the footer shows "1 / 2"; single-page footers are unchanged.
+
+See `docs/associate-passdown-templates.md` §17.
+
+| | |
+|---|---|
+| Product (visible) | Carowinds Operations |
+| Version | `0.1.0-dev` (unchanged; assembly informational version `0.1.0-dev+8671e92a5dfedc3323f294f88905642dfceb06af`) |
+| Target | Windows 11 x64 (`win-x64`), self-contained, R2R |
+| Build commit | `8671e92a5dfedc3323f294f88905642dfceb06af` (HEAD) |
+| Working tree at build time | No source changes. Only the same macOS `.DS_Store` / `.claude/skills/pdf-design/` noise recorded in the Phase 17E entry |
+| DB / Draft / Snapshot / SyncSchemaVersion | 15 / 4 / 2 / 1 (all unchanged, no migration) |
+| Deterministic test count | **2182/2182**: 116 Domain + 642 Application + 210 Documents + 545 Infrastructure + 669 Ui.Tests (631 run together; `Phase15ERealWindowLayoutTests` 10, `RealWindowStartupTimingTests` 2, `OperationsCalendarViewTests` 26 each run alone, per the documented partition) |
+| Build | `dotnet build CarowindsPassdown.slnx -c Release --no-incremental`: 0 warnings, 0 errors |
+| Windows validation | **NOT EXECUTED.** No Windows host or VM was available (macOS dev host). |
+| Known limitations | Same standing gaps as the Phase 17E entry (Personal Sync real-client validation, single-file EXE Windows-launch validation, Windows DPI validation). Manager workflow remains deferred. |
+
+## Primary release: multi-file portable ZIP
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-dev-win-x64.zip` |
+| SHA-256 | `c504c211e175f1da4099e2b5b2436b3fbef81a8668b1329846482d41a41e7b53` |
+| Size | 70,623,278 bytes (67.4 MiB) |
+| File count | 258 files (261 zip entries) |
+
+Verification:
+
+- Stale `artifacts/publish/`, `release-staging/` and `releases/` were removed before publishing.
+- The multi-file publish had 252 files after `.pdb` removal, with no stray `.pdb`/`.dylib`/`.so`/
+  Playwright files.
+- The ZIP was extracted to an isolated scratch directory, and `diff -rq` showed it byte-for-byte
+  identical to the staging folder.
+- The staged and extracted `.exe` SHA-256 values match
+  (`3fb7e3e6341766b360dff11b40944227ec8bd8e80fce1ec001b7a59fd7629134`).
+- `file` reports `PE32+ executable (GUI) x86-64, for MS Windows`.
+- The packaged `Carowinds.Passdown.Desktop.dll` carries informational version `+8671e92…`.
+- `Carowinds.Passdown.Documents.dll` contains the Phase 17F-only `PdfPrimitives`/`PdfDensity`/
+  `KeepSection` symbols, and no longer contains the removed `NumberedSectionLabel`. This is not a
+  stale reuse of an earlier build.
+- Forbidden-pattern check (`.git`, `.db`/`-wal`/`-shm`, `CLAUDE.md`, `AGENT_BUILD_SPEC.md`, `.pdb`,
+  `.DS_Store`): clean.
+
+## Single-file release (still experimental / deferred)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-dev-win-x64.exe` |
+| SHA-256 | `aa8cbe06b1a6c03507ba2799d41980b5abe9730c1828a102fdd568f2f3870cec` |
+| Size | 185,779,002 bytes (177.2 MiB) |
+| Status | Unchanged: **EXPERIMENTAL / DEFERRED**. The publish produced exactly two files before `.pdb` removal (`Carowinds.Passdown.Desktop.exe` and `LatoFont/OFL.txt`). The `PE32+ (GUI) x86-64` header, the `+8671e92…` version stamp, and the `PdfPrimitives`/`PdfDensity` symbols are present in the bundle, and `NumberedSectionLabel` is absent. Launching it on Windows: **NOT EXECUTED**. |
+
+This build supersedes the Dashboard ERT fix artifacts as the current release.
