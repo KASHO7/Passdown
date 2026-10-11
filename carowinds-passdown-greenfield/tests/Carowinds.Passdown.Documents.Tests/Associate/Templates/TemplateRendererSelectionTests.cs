@@ -36,7 +36,7 @@ public sealed class TemplateRendererSelectionTests
         Assert.DoesNotContain("Associate Passdown", text);
 
         var model = BuildModel();
-        Assert.Contains(model.OperatingDateText.ToUpperInvariant(), text);
+        Templates.TestSupport.PdfTextAssert.ContainsOperatingDate(template, model.OperatingDateText, text);
     }
 
     [Fact]

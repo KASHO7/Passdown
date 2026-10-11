@@ -73,39 +73,18 @@ public sealed class TemplateCompositionTests
             $"Expected Modern's Daily Admission/Fast Lane headings on separate rows (large Y gap); actual gap was {Math.Abs(dailyTop.Value - fastTop.Value)}pt.");
     }
 
-    // Spec Part 4/9: Modern is the only template that numbers its sections, and the numbering is
-    // sequential and continues from the product categories into Operational Notes.
-    [Fact]
-    public void Modern_NumbersSectionsSequentially_ThroughProductsAndIntoOperationalNotes()
-    {
-        var result = Generator.Generate(NormalDayModel(), AssociatePassdownTemplate.Modern);
-        var text = PdfInspector.ExtractAllText(result.PdfBytes!);
-
-        var dailyAdmissionIndex = text.IndexOf("DAILY ADMISSION", StringComparison.Ordinal);
-        var fastLaneIndex = text.IndexOf("FAST LANE", StringComparison.Ordinal);
-        var notesIndex = text.IndexOf("OPERATIONAL NOTES", StringComparison.Ordinal);
-
-        Assert.True(dailyAdmissionIndex >= 0);
-        Assert.True(fastLaneIndex >= 0);
-        Assert.True(notesIndex >= 0);
-
-        // "01" appears before Daily Admission's heading, and "05" (four categories precede notes in
-        // NormalDay: Daily Admission, Fast Lane, Season Passes, Add-Ons) appears right before Notes.
-        Assert.Contains("01", text[..dailyAdmissionIndex]);
-        Assert.Contains("05", text.Substring(fastLaneIndex, notesIndex - fastLaneIndex));
-    }
-
-    // Neither Classic nor Compact print gutter section numbers at all — the numbered/accented system
-    // is exclusively Modern's (spec Part 4's own distinguishing trait).
+    // Phase 17F: section numbering ("01 DAILY ADMISSION", ...) was removed from Modern, so no
+    // template prints a standalone two-digit "0N" section-number token anywhere.
     [Theory]
     [InlineData(AssociatePassdownTemplate.Classic)]
     [InlineData(AssociatePassdownTemplate.Compact)]
-    public void ClassicAndCompact_NeverPrintNumberedSectionGutters(AssociatePassdownTemplate template)
+    [InlineData(AssociatePassdownTemplate.Modern)]
+    public void NoTemplate_PrintsNumberedSectionGutters(AssociatePassdownTemplate template)
     {
         var result = Generator.Generate(NormalDayModel(), template);
-        var text = PdfInspector.ExtractAllText(result.PdfBytes!);
+        var words = PdfInspector.Words(result.PdfBytes!, 1);
 
-        Assert.DoesNotContain("01", text);
+        Assert.DoesNotContain(words, word => System.Text.RegularExpressions.Regex.IsMatch(word, @"^0\d$"));
     }
 
     // Spec Part 8: the top summary is a genuinely different composition per template, not just a
@@ -148,7 +127,8 @@ public sealed class TemplateCompositionTests
 
         // Compact pairs (small gap); Classic and Modern do not (large gap) — Compact must differ from
         // both, and this alone is not what makes Classic and Modern differ from each other (that is
-        // proven separately by the numbered-gutter and top-summary-caption tests above).
+        // proven separately by the top-summary-caption test above and Phase17FTemplateRefinementTests'
+        // two-line-date / metadata-grid tests).
         Assert.True(Math.Abs(compactDailyTop!.Value - compactFastTop!.Value) < 3.0);
         Assert.True(Math.Abs(classicDailyTop!.Value - classicFastTop!.Value) > 20.0);
         Assert.True(Math.Abs(modernDailyTop!.Value - modernFastTop!.Value) > 20.0);

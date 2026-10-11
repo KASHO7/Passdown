@@ -105,11 +105,33 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
         // actual, authoritative page count of what was produced (never the pre-render estimate) so
         // the caller can show an unmistakable warning without losing the associate's work. Identical
         // regardless of which renderer composed the page.
-        var document = Document.Create(container => container.Page(page => renderer.Compose(page, model, cancellationToken)));
-        var bytes = document.GeneratePdf();
+        var bytes = Render(renderer, model, PdfDensity.Standard, cancellationToken);
         var pageCount = CountGeneratedPdfPages(bytes);
 
+        // Phase 17F "compress before paginating": a render that spills onto extra pages is retried
+        // once with the renderer's tighter spacing profile (spacing only — same content, composition,
+        // and type sizes), and the tighter output is kept only when it genuinely saves a page. A
+        // one-page render is never re-rendered, so normal days pay no extra cost. Deterministic: the
+        // same (model, template) always takes the same path and yields the same bytes.
+        if (pageCount > 1)
+        {
+            var tightBytes = Render(renderer, model, PdfDensity.Tight, cancellationToken);
+            var tightPageCount = CountGeneratedPdfPages(tightBytes);
+
+            if (tightPageCount < pageCount)
+            {
+                bytes = tightBytes;
+                pageCount = tightPageCount;
+            }
+        }
+
         return new AssociatePassdownPdfResult(AssociatePassdownPdfStatus.Generated, bytes, preflight, pageCount);
+    }
+
+    private static byte[] Render(IAssociatePassdownTemplateRenderer renderer, AssociatePassdownDocumentModel model, PdfDensity density, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Document.Create(container => container.Page(page => renderer.Compose(page, model, density, cancellationToken))).GeneratePdf();
     }
 
     /// <summary>

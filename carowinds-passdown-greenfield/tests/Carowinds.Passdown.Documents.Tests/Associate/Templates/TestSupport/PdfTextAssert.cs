@@ -21,4 +21,27 @@ internal static class PdfTextAssert
     /// <summary>Boolean form of <see cref="ContainsIgnoringWhitespace"/> for callers that need to branch (e.g. scanning which page a snippet landed on) rather than assert directly.</summary>
     public static bool TextContainsIgnoringWhitespace(string actualText, string expectedSubstring) =>
         Collapse(actualText).Contains(Collapse(expectedSubstring));
+
+    /// <summary>
+    /// Phase 17F: the operating-date heading is present for <paramref name="template"/> — one line
+    /// ("FRIDAY, AUGUST 21, 2026") for Classic/Compact, two lines (weekday over "AUGUST 21, 2026") for
+    /// Modern, whose extracted text therefore carries the two parts without the joining comma.
+    /// </summary>
+    public static void ContainsOperatingDate(Carowinds.Passdown.Application.Preferences.AssociatePassdownTemplate template, string operatingDateText, string actualText)
+    {
+        var upper = operatingDateText.ToUpperInvariant();
+        if (template != Carowinds.Passdown.Application.Preferences.AssociatePassdownTemplate.Modern)
+        {
+            Assert.Contains(upper, actualText);
+            return;
+        }
+
+        var split = upper.IndexOf(", ", StringComparison.Ordinal);
+        Assert.Contains(upper[..split], actualText);
+        Assert.Contains(upper[(split + 2)..], actualText);
+    }
+
+    /// <summary>Phase 17F: the per-template Operational Notes heading — Compact's tighter "NOTES", Classic/Modern's "OPERATIONAL NOTES".</summary>
+    public static string NotesHeading(Carowinds.Passdown.Application.Preferences.AssociatePassdownTemplate template) =>
+        template == Carowinds.Passdown.Application.Preferences.AssociatePassdownTemplate.Compact ? "NOTES" : "OPERATIONAL NOTES";
 }

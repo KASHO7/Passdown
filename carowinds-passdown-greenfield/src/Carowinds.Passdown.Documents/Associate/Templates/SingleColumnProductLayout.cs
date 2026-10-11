@@ -16,16 +16,16 @@ namespace Carowinds.Passdown.Documents.Associate.Templates;
 /// </summary>
 internal static class SingleColumnProductLayout
 {
-    /// <summary>Composes every category full width, in display order, and returns how many were composed — the caller can use that count to continue a running section number (Modern's numbered sections) into whatever follows (Operational Notes).</summary>
-    public static int Compose(
+    /// <summary>Composes every category full width, in display order. Phase 17F: no running section number is passed to the caller any more — Modern's "01/02/..." numbering was removed.</summary>
+    public static void Compose(
         ColumnDescriptor column,
         IReadOnlyList<PdfProductCategory> categories,
         float rowSpacing,
-        Action<IContainer, PdfProductCategory, int> composeCategory)
+        Action<IContainer, PdfProductCategory> composeCategory)
     {
         if (categories.Count == 0)
         {
-            return 0;
+            return;
         }
 
         var ordered = InDisplayOrder(categories);
@@ -34,15 +34,11 @@ internal static class SingleColumnProductLayout
         {
             section.Spacing(rowSpacing);
 
-            for (var index = 0; index < ordered.Count; index++)
+            foreach (var category in ordered)
             {
-                var category = ordered[index];
-                var number = index + 1;
-                section.Item().Element(el => composeCategory(el, category, number));
+                section.Item().Element(el => composeCategory(el, category));
             }
         });
-
-        return ordered.Count;
     }
 
     private static List<PdfProductCategory> InDisplayOrder(IReadOnlyList<PdfProductCategory> categories)

@@ -1,4 +1,4 @@
-# Associate Passdown PDF templates — Phase 17C (superseded in part by Phase 17D and Phase 17E — see §16)
+# Associate Passdown PDF templates — Phase 17C (superseded in part by Phase 17D, 17E, and 17F — see §16 and §17)
 
 Adds three selectable Associate Passdown PDF visual templates (Classic/Compact/Modern) and a density
 pass over the Associate Overview UI. Baseline this phase was built against: Phase 17B complete, DB
@@ -489,7 +489,7 @@ non-pairing trait) but composed nothing like Classic:
   (label above value, not inline). Genuinely different shape from Classic's vertical list and
   Compact's inline strip — proven structurally, not just visually, by
   `TemplateCompositionTests.TopSummaryCaption_DiffersByTemplate`.
-- **Numbered sections**: every product category and Operational Notes gets a small accent-colored
+- **Numbered sections** *(removed in Phase 17F — see §17.2)*: every product category and Operational Notes gets a small accent-colored
   gutter number (`NumberedSectionLabel` — "01", "02", ...), continuing sequentially from the last
   product category into Notes. Classic and Compact never print a numbered gutter at all
   (`TemplateCompositionTests.ClassicAndCompact_NeverPrintNumberedSectionGutters`). Daily Feature stays
@@ -612,3 +612,170 @@ or sync code.
   project at all, so that limitation is unchanged and not newly relevant here.
 - Preflight's one-page-fit estimate remains not template-aware (§14's pre-existing limitation,
   unchanged again this phase).
+
+## 17. Phase 17F: visual refinement, Modern numbering removed
+
+Baseline: Phase 17E complete plus the Dashboard load-recovery fix (`399d40c`), DB schema 15, Draft
+schema 4, Snapshot schema 2, SyncSchemaVersion 1, 2150/2150 deterministic tests. Presentation-only:
+only `Documents/Associate/Templates/*`, `AssociatePassdownPdfGenerator`, and Documents tests changed.
+No model, business-rule, persistence, sync, Desktop, or Dashboard code was touched.
+
+### 17.1 Final purpose of each template
+
+| Template | Purpose | Identity at a glance |
+|---|---|---|
+| **Classic** | Traditional, professional operations handout; easiest to annotate by hand | One-line date over a full-width ink rule; "PARK HOURS" caption + vertical label/value list; every section = uppercase heading over a full-width thin rule; single-column rows; moderate whitespace; near-black only. |
+| **Compact** | Maximum useful density; the one-page benchmark | Small date over a heavy rule; three-line inline summary ("HOURS … NG … AVE …" / "ATTENDANCE … PRE-SOLDS …" / "EARLY RIDE …"); paired two-column product sections; "NOTES"; smallest safe type/spacing; one thin rule per heading, no row rules. |
+| **Modern** | Clean editorial, high-hierarchy internal document | Two-line date (letter-spaced weekday over a large month/day/year) over a heavy rule; uncaptioned hours headline; four-column NORTH GATE / AVENUE / ATTENDANCE / PRE-SOLDS metadata grid; separate EARLY RIDE block; strong letter-spaced headings marked by a short accent rule (not full-width); single-column rows on a narrower editorial measure; notes as spaced paragraphs. |
+
+### 17.2 Modern numbering removal
+
+The Phase 17E gutter numbers ("01 DAILY ADMISSION", …, "0N OPERATIONAL NOTES") are gone from
+Modern; nothing replaces them — no letters, numerals, icons, bullets, or badges.
+`SingleColumnProductLayout.Compose` no longer passes a running index to the renderer. Modern stays
+distinct from Classic through structure that tests can see, not numbering:
+
+- **date**: two lines (Modern) vs one line (Classic/Compact): `DateHeading_IsTwoLinesOnlyInModern`
+- **summary**: four labels on one row (Modern grid) vs a vertical list (Classic): `Modern_MetadataGrid_FourLabelsShareOneRow_WhileClassicStacksThem`
+- **rules**: Modern has a short accent rule under each heading, with a full-width hairline only under
+  the Daily Feature (closing the operations block). Classic has a full-width rule under every heading.
+- **measure**: Modern product rows sit on a 400pt measure with an open right margin. Classic rows
+  run the full page width.
+
+### 17.3 Operations vs commercial hierarchy
+
+Hours, gates, attendance, pre-solds, Early Ride, and the Daily Feature form the operations block.
+The product sections that follow are the commercial reference. The two are separated only by extra
+vertical space (Classic +2pt, Modern +3pt at standard density). Compact separates them by its paired
+grid alone. No containers.
+
+### 17.4 Price alignment and long names
+
+All three templates use one shared row primitive, `PdfPrimitives.PriceRow`: a flexible, wrapping name
+column plus a fixed-width, right-aligned price column (Classic 72pt, Modern 76pt, Compact 52pt per
+column). The rules:
+
+- Every price in a section shares one right edge, including "From $X".
+- Classic and Modern share one price column across all sections on the page.
+- A long name wraps at the normal type size inside its own column, never under the price.
+- The price stays on the name's first line.
+- The type is never shrunk to avoid wrapping.
+
+Compact change: a pair member whose partner is absent now stays at column width in the left column,
+so its prices line up with the paired sections; it no longer stretches to full width. When both
+pairings have exactly one member (for example Daily Admission plus Season Passes only), the two lone
+sections share one row. Catalog names are never modified. No PDF display aliases exist in the current
+presentation layer, so Compact prints the model's names unchanged ("Family Pack" and "Gold" style
+shortenings were **not** introduced).
+
+### 17.5 Pagination and orphan control
+
+- **Keep small sections whole.** `PdfPrimitives.KeepSection` gives a section with 10 rows or fewer
+  QuestPDF's `PreventPageBreak`: if it would split, the whole section moves to the next page. Unlike
+  `ShowEntire`, it never throws for content taller than a page.
+- **Let large sections flow.** A larger section gets `EnsureSpace` instead, so its heading always
+  lands with its first rows and the rest flows naturally. This avoids half-empty pages.
+- **What each rule covers.** The rules apply to every product section (Compact applies them per pair
+  row) and to Operational Notes. Notes no longer use `ShowEntire`, so a very long notes list can no
+  longer throw. Daily Feature uses `PreventPageBreak`.
+- **Compress before paginating.** The `IAssociatePassdownTemplateRenderer.Compose` signature now takes
+  a `PdfDensity` (`Standard`/`Tight`). `AssociatePassdownPdfGenerator` renders at `Standard`. Only if
+  that spills past one page does it re-render at `Tight`, which shrinks spacing only: same content,
+  same composition, same type sizes. The tighter result is kept only if it saves a page. Single-page
+  days render once. Output stays deterministic for a given (model, template).
+- **Dynamic note density.** Notes spacing tightens once a list has more than three notes.
+
+### 17.6 Footer
+
+The footer is the timestamp only ("Sep 15 • 3:25 PM"), plus "k / N" at the right **only when the
+document has more than one page**. QuestPDF's `ShowIf(ctx => ctx.TotalPages > 1)` resolves this from
+the real rendered total. The footer never shows an app name, template name, filename, or machine
+name. The existing "Some product pricing has not been recently verified." note keeps its left-hand
+slot, unchanged.
+
+### 17.7 Daily Feature, notes, Add-Ons, special states
+
+- **Daily Feature**: the feature type stays the heading. Classic puts a full-width rule under it,
+  Compact sets the heading tight over the body, and Modern uses a strong heading with a hairline and
+  editorial spacing. Never a card.
+- **Notes**: Classic has readable bullets. Compact has tight bullets under "NOTES". Modern has
+  unbulleted paragraphs with more line spacing than Compact.
+- **Add-Ons**: still printed only when the model carries the category. Classic and Modern render it as
+  a normal single-column section; Compact renders it full width.
+- **Special states**: Closed, Manual Override, and Private Buyout states print the model's existing
+  headline/badge in small italic beside the hours. There are no banners and no new logic.
+
+### 17.8 Visual QA (this phase)
+
+A throwaway harness outside the solution (not committed, per the §15.10/§16.13 precedent) built
+`AssociatePassdownDocumentModel`s directly for scenarios A–J below. It generated each scenario under
+all three templates and rasterized every page with Ghostscript in **grayscale**
+(`gs -sDEVICE=pnggray -r80`, plus spot checks at `-r150`). The pages were inspected side by side and
+individually, revised, and re-rendered. Fixes driven by the review:
+
+- The busy day originally stranded three notes alone on page 2 under Classic/Modern. The tight
+  density retry now fixes this.
+- Compact's lone Promotions section stretched full width, misaligning its prices.
+- Compact's partial-pair day left a blank right half.
+- Modern's prices sat at the far page edge. It now uses the narrower measure.
+
+Grayscale: hierarchy is carried by weight, size, letter-spacing, and rules. Modern's navy accent rule
+and weekday read as solid mid-gray. Nothing depends on color.
+
+| Harness scenario | Classic | Compact | Modern |
+|---|---|---|---|
+| A. Normal day | 1 | 1 | 1 |
+| B. Busy product day (24 rows + 3 notes) | 1 (tight) | 1 | 1 (tight) |
+| C. Minimal/light day | 1 | 1 | 1 |
+| D. SCarowinds day | 1 | 1 | 1 |
+| E. Season-pass-heavy day | 1 | 1 | 1 |
+| F. Operational Notes day (9 notes) | 1 | 1 | 1 |
+| G. Long Daily Feature | 1 | 1 | 1 |
+| H. Add-Ons enabled | 1 | 1 | 1 (tight) |
+| I. Long product names | 1 | 1 | 1 |
+| J. Stress (all sections + 30 custom + 9 notes) | 2 | 2 | 2 |
+
+Committed fixture counts (`RepresentativePageCountTests`) are unchanged from §16.9: every scenario is
+1/1/1 except D. Many notes, which is 2 / **1** / 2. Compact still meets or beats Classic everywhere.
+In stress cases, page 2 is always a substantial continuation (remaining sections plus the full notes
+list), never a stranded heading or a lone note fragment.
+
+### 17.9 Tests
+
+New `Templates/Phase17FTemplateRefinementTests.cs` (glyph-position proofs via the new
+`PdfInspector.FindWordBox`/`Words`) covers:
+
+- no Modern numbering, letters, or numerals beside its headings
+- the two-line date appears only in Modern
+- Modern's metadata grid vs Classic's vertical list
+- Classic's single column; Compact's pairing; two lone pair members sharing one row
+- one price right edge per section, including "From"; one price column across sections in
+  Classic/Modern; lone-pair alignment in Compact
+- long-name wrapping with a first-line price
+- absent sections printing nothing
+- the single-page footer has no page indicator; on multi-page output, every page shows
+  "k / N" plus the timestamp
+- a just-overflowing day recovered to one page
+- no section heading stranded at a page bottom
+
+Updated tests:
+
+- `TemplateCompositionTests`: the Modern-numbering test is replaced by
+  `NoTemplate_PrintsNumberedSectionGutters`.
+- `TemplateOutputTests` and `TemplateRendererSelectionTests`: date and notes-heading assertions are now
+  template-aware via `PdfTextAssert.ContainsOperatingDate`/`NotesHeading`.
+
+Finalized-PDF immutability, snapshot identity across templates, and template preference tests are
+unchanged and passing.
+
+### 17.10 Known limitations
+
+- The QA harness is not committed (same as §15.10/§16.13).
+- The orphan check is "heading never ends a page", not full typographic widow/orphan control inside
+  a wrapped line.
+- Compact display aliases were not added: none exist in the presentation layer, and inventing them
+  was out of scope.
+- The tight-density retry doubles render time for documents that overflow at standard spacing (only
+  those).
+- Preflight remains template-unaware (§14).
+
