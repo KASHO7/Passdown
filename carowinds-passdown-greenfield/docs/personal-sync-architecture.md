@@ -520,10 +520,11 @@ code lives under `PersonalSync/` in Application, Infrastructure, and Desktop.
 [`FileDeviceIdProvider`](../src/Carowinds.Passdown.Infrastructure/PersonalSync/FileDeviceIdProvider.cs).
 One plain-text file, `device-id.txt`, holding a `Guid.ToString("D")`, directly under
 `AppPaths.LocalApplicationDataDirectory` (flat, no `Settings/` subfolder — see "Deviations" below).
-`GetOrCreateDeviceId()` reads and `Guid.TryParse`s the file; a missing file, unparsable content, or a
-read failure (`IOException`/`UnauthorizedAccessException`) all fall through to generating a fresh
-`Guid.NewGuid()` and persisting it via the same temp-then-rename write `FileDeviceIdProvider` uses
-internally. Lazily created on first call — nothing calls this at normal startup unless the Settings
+`GetOrCreateDeviceId()` reads and `Guid.TryParse`s the file; a missing file or unparsable content
+falls through to generating a fresh `Guid.NewGuid()` and persisting it via the same temp-then-rename
+write `FileDeviceIdProvider` uses internally. (Phase 18A REL-006: a read failure on a file that
+*exists* — `IOException`/`UnauthorizedAccessException`, e.g. a scanner holding it — now propagates as
+a retryable `IOException` and never replaces the existing id; see `docs/phase18-comprehensive-audit.md`.) Lazily created on first call — nothing calls this at normal startup unless the Settings
 screen (or, from 16C on, the sync engine) is actually resolved, matching 16A §C's "not at first app
 launch" intent closely enough that a device that never opens Settings never gets a DeviceId file.
 

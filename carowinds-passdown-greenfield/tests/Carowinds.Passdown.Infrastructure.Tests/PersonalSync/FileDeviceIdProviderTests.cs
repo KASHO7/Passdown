@@ -89,4 +89,24 @@ public class FileDeviceIdProviderTests : IDisposable
     {
         Assert.StartsWith(AppPaths.LocalApplicationDataDirectory, FileDeviceIdProvider.DefaultPath);
     }
+
+    /// <summary>
+    /// Phase 18A REL-006: a transient read failure (here: another handle holding the file exclusively,
+    /// as an AV/backup scanner can on Windows) must never mint and persist a new identity. Pre-18A this
+    /// returned a fresh Guid and overwrote the file.
+    /// </summary>
+    [Fact]
+    public void GetOrCreateDeviceId_ExistingFileTemporarilyUnreadable_ThrowsAndNeverReplacesTheId()
+    {
+        var path = PathFor("device-id.txt");
+        var original = new FileDeviceIdProvider(path).GetOrCreateDeviceId();
+
+        using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            Assert.ThrowsAny<IOException>(() => new FileDeviceIdProvider(path).GetOrCreateDeviceId());
+        }
+
+        Assert.Equal(original, new FileDeviceIdProvider(path).GetOrCreateDeviceId());
+        Assert.Equal(original.ToString("D"), File.ReadAllText(path).Trim());
+    }
 }

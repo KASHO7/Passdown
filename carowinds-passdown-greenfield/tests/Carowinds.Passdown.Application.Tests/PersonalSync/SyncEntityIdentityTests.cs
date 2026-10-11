@@ -114,6 +114,7 @@ public class SyncEntityIdentityTests
     [InlineData("2026-09-09")]
     [InlineData("2026-13")]
     [InlineData("2026-00")]
+    [InlineData("0000-05")] // Phase 18A SEC-002: year 0 is not a representable DateOnly year (would later crash `new DateOnly(year, month, 1)`).
     [InlineData("not-a-month")]
     [InlineData("")]
     public void TryParseMonthlyErtId_NonCanonicalText_ReturnsFalse(string text)

@@ -11,8 +11,39 @@ namespace Carowinds.Passdown.Infrastructure.Diagnostics;
 /// list (never throws) when the log directory or any log file does not yet exist, or cannot be read
 /// (Part S "export handles missing log directory").
 /// </summary>
-public sealed class FileScheduledRefreshLogProvider(FileLoggerOptions options) : IScheduledRefreshLogProvider
+public sealed class FileScheduledRefreshLogProvider(FileLoggerOptions options, IReadOnlyList<KeyValuePair<string, string>> pathRedactions) : IScheduledRefreshLogProvider
 {
+    public FileScheduledRefreshLogProvider(FileLoggerOptions options)
+        : this(options, CurrentEnvironmentPathRedactions())
+    {
+    }
+
+    /// <summary>
+    /// Phase 18A PRIV-001: the per-user roots whose literal spelling identifies this person/machine —
+    /// replaced by environment-variable tokens before any log line can enter the diagnostic ZIP (see
+    /// <see cref="DiagnosticPathRedactor"/>).
+    /// </summary>
+    public static IReadOnlyList<KeyValuePair<string, string>> CurrentEnvironmentPathRedactions()
+    {
+        var roots = new List<KeyValuePair<string, string>>
+        {
+            new(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "%LOCALAPPDATA%"),
+            new(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "%APPDATA%"),
+            new(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "%USERPROFILE%"),
+            new(Path.GetTempPath(), "%TEMP%"),
+        };
+
+        foreach (var variable in new[] { "OneDrive", "OneDriveCommercial", "OneDriveConsumer" })
+        {
+            if (Environment.GetEnvironmentVariable(variable) is { Length: > 0 } value)
+            {
+                roots.Add(new(value, $"%{variable}%"));
+            }
+        }
+
+        return roots;
+    }
+
     public Task<IReadOnlyList<string>> GetRecentLogLinesAsync(int maxLines, CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maxLines, 0);
@@ -34,8 +65,9 @@ public sealed class FileScheduledRefreshLogProvider(FileLoggerOptions options) :
             }
 
             var lines = File.ReadLines(latestLogFile).ToList();
-            IReadOnlyList<string> tail = lines.Count <= maxLines ? lines : lines[^maxLines..];
-            return Task.FromResult(tail);
+            var tail = lines.Count <= maxLines ? lines : lines[^maxLines..];
+            IReadOnlyList<string> redacted = tail.Select(line => DiagnosticPathRedactor.Redact(line, pathRedactions)).ToList();
+            return Task.FromResult(redacted);
         }
         catch (IOException)
         {

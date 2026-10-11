@@ -392,7 +392,7 @@ public partial class App : global::Avalonia.Application
         // (see Program.BuildScheduledRefreshServiceProvider).
         services.AddSingleton<FileLoggerOptions>();
         services.AddSingleton<IDatabaseDiagnosticsProvider, SqliteDatabaseDiagnosticsProvider>();
-        services.AddSingleton<IScheduledRefreshLogProvider, FileScheduledRefreshLogProvider>();
+        services.AddSingleton<IScheduledRefreshLogProvider>(provider => new FileScheduledRefreshLogProvider(provider.GetRequiredService<FileLoggerOptions>()));
         services.AddSingleton<IScheduledTaskStatusProvider, ScheduledTaskStatusProvider>();
         services.AddSingleton<IDiagnosticReportBuilder, DiagnosticReportBuilder>();
         services.AddSingleton<IDiagnosticExportService, DiagnosticExportService>();

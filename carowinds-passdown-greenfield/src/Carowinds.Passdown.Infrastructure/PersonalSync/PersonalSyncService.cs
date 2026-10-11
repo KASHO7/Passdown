@@ -211,11 +211,20 @@ public sealed class PersonalSyncService(
 
         if (!envelope.IsDeleted)
         {
+            // Phase 18A SEC-001: a structurally-wrong payload (null/non-object, null members, undefined
+            // enum) is malformed input like unparseable JSON — never allowed to abort the whole pass.
             try
             {
-                remotePayload = AssociateDraftPayloadSerializer.Deserialize(envelope.Payload.GetRawText());
+                remotePayload = envelope.Payload.ValueKind == JsonValueKind.Object
+                    ? AssociateDraftPayloadSerializer.Deserialize(envelope.Payload.GetRawText())
+                    : null;
             }
-            catch (JsonException)
+            catch (Exception ex) when (SyncPayloadValidator.IsPayloadDecodeFailure(ex))
+            {
+                remotePayload = null;
+            }
+
+            if (remotePayload is null || !SyncPayloadValidator.IsValidDraft(remotePayload))
             {
                 counters.Malformed++;
                 return;
@@ -485,11 +494,18 @@ public sealed class PersonalSyncService(
 
         if (!envelope.IsDeleted)
         {
+            // Phase 18A SEC-001/SEC-002: decode failures of any expected kind, null members, undefined
+            // enums, and a payload Id that differs from the file's own note id are all malformed input.
             try
             {
                 remotePayload = OperationalNoteSyncPayloadSerializer.Deserialize(envelope.Payload);
             }
-            catch (JsonException)
+            catch (Exception ex) when (SyncPayloadValidator.IsPayloadDecodeFailure(ex))
+            {
+                remotePayload = null;
+            }
+
+            if (remotePayload is null || !SyncPayloadValidator.IsValidNote(remotePayload, noteId))
             {
                 counters.Malformed++;
                 return;
@@ -747,11 +763,18 @@ public sealed class PersonalSyncService(
 
         if (!envelope.IsDeleted)
         {
+            // Phase 18A SEC-001/SEC-002: see ProcessNoteEnvelopeAsync — the payload's Year/Month must
+            // match the file's own identity.
             try
             {
                 remotePayload = MonthlyErtSyncPayloadSerializer.Deserialize(envelope.Payload);
             }
-            catch (JsonException)
+            catch (Exception ex) when (SyncPayloadValidator.IsPayloadDecodeFailure(ex))
+            {
+                remotePayload = null;
+            }
+
+            if (remotePayload is null || !SyncPayloadValidator.IsValidMonthlyErt(remotePayload, year, month))
             {
                 counters.Malformed++;
                 return;
@@ -1008,11 +1031,18 @@ public sealed class PersonalSyncService(
 
         if (!envelope.IsDeleted)
         {
+            // Phase 18A SEC-001/SEC-002: see ProcessNoteEnvelopeAsync — the payload's OperatingDate must
+            // match the file's own identity.
             try
             {
                 remotePayload = ErtDateOverrideSyncPayloadSerializer.Deserialize(envelope.Payload);
             }
-            catch (JsonException)
+            catch (Exception ex) when (SyncPayloadValidator.IsPayloadDecodeFailure(ex))
+            {
+                remotePayload = null;
+            }
+
+            if (remotePayload is null || !SyncPayloadValidator.IsValidErtDateOverride(remotePayload, operatingDate))
             {
                 counters.Malformed++;
                 return;
@@ -1286,12 +1316,19 @@ public sealed class PersonalSyncService(
             return;
         }
 
-        FinalizedPassdownSyncPayload payload;
+        FinalizedPassdownSyncPayload? payload;
         try
         {
             payload = FinalizedPassdownSyncPayloadSerializer.Deserialize(envelope.Payload);
         }
-        catch (JsonException)
+        catch (Exception ex) when (SyncPayloadValidator.IsPayloadDecodeFailure(ex))
+        {
+            payload = null;
+        }
+
+        // Phase 18A SEC-001: a null SnapshotJson/hash would otherwise throw ArgumentException from the
+        // snapshot serializer below, outside its catch, and abort the whole sync pass.
+        if (payload is null || !SyncPayloadValidator.IsValidFinalizedPassdown(payload))
         {
             counters.Malformed++;
             return;
@@ -1335,6 +1372,14 @@ public sealed class PersonalSyncService(
         byte[] pdfBytes;
         try
         {
+            // Phase 18A SEC-003: never buffer an arbitrarily large untrusted file into memory. A real
+            // frozen passdown PDF is far below this bound (see SyncFileReader.MaxPdfFileBytes).
+            if (payload.PdfSizeBytes > SyncFileReader.MaxPdfFileBytes || new FileInfo(pdfPath).Length > SyncFileReader.MaxPdfFileBytes)
+            {
+                counters.Malformed++;
+                return;
+            }
+
             pdfBytes = await File.ReadAllBytesAsync(pdfPath, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

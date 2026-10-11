@@ -10,6 +10,13 @@ namespace Carowinds.Passdown.Infrastructure.PersonalSync;
 /// unparsable file (first run, or a corrupted/hand-edited one) regenerates safely rather than
 /// throwing — a device ID that changes on reinstall is explicitly acceptable per the architecture
 /// (Phase 16A §C: "safe... conflict rules do not depend on a DeviceId being long-lived").
+/// Phase 18A REL-006: a file that exists but cannot be read <i>right now</i> (an antivirus/backup
+/// scanner holding it, a transient permissions error) is not "missing" — that failure propagates as
+/// an <see cref="IOException"/> and the existing id is left untouched. Pre-18A it was regenerated and
+/// overwritten, so this device's own previously exported sync files suddenly looked "remote" and
+/// every entity with a pending local edit surfaced as a spurious sync conflict. Every caller (the
+/// sync pass, the Settings screen, conflict resolution) already treats an exception as a retryable
+/// failure.
 /// </summary>
 public sealed class FileDeviceIdProvider(string deviceIdFilePath) : IDeviceIdProvider
 {
@@ -38,19 +45,21 @@ public sealed class FileDeviceIdProvider(string deviceIdFilePath) : IDeviceIdPro
             return false;
         }
 
+        string text;
         try
         {
-            var text = File.ReadAllText(DeviceIdFilePath).Trim();
-            return Guid.TryParse(text, out deviceId);
+            text = File.ReadAllText(DeviceIdFilePath).Trim();
         }
-        catch (IOException)
+        catch (FileNotFoundException)
         {
-            return false;
+            return false; // Deleted between the existence check and the read — genuinely missing.
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException ex)
         {
-            return false;
+            throw new IOException("The device ID file exists but could not be read right now; it was left unchanged.", ex);
         }
+
+        return Guid.TryParse(text, out deviceId);
     }
 
     private void WriteDeviceId(Guid deviceId)

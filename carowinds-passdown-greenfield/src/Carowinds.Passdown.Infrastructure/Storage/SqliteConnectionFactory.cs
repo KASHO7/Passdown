@@ -50,6 +50,16 @@ public sealed class SqliteConnectionFactory(string databasePath)
         return connection;
     }
 
+    /// <summary>
+    /// Phase 18A REL-002: built with <see cref="SqliteConnectionStringBuilder"/>, never string
+    /// concatenation, so a path containing a connection-string delimiter (e.g. a redirected
+    /// <c>%LOCALAPPDATA%</c> with a <c>;</c> in a folder name) is quoted rather than parsed as extra
+    /// keywords — the database is always opened at exactly <see cref="DatabasePath"/>.
+    /// </summary>
     private string BuildConnectionString() =>
-        $"Data Source={DatabasePath};Default Timeout={(int)BusyTimeout.TotalSeconds}";
+        new SqliteConnectionStringBuilder
+        {
+            DataSource = DatabasePath,
+            DefaultTimeout = (int)BusyTimeout.TotalSeconds,
+        }.ToString();
 }

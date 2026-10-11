@@ -61,3 +61,40 @@ public class SqliteConnectionFactoryBusyTimeoutTests : IDisposable
         Assert.Equal(1, rowsAffected);
     }
 }
+
+/// <summary>
+/// Phase 18A REL-002: the database path is a value, never connection-string syntax. Pre-18A the path
+/// was concatenated into "Data Source=...;", so a folder name containing ';' split the path and was
+/// parsed as additional keywords (here: an unknown keyword, which throws) instead of opening the file.
+/// </summary>
+public class SqliteConnectionFactoryPathQuotingTests : IDisposable
+{
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), $"carowinds-passdown-quoting-{Guid.NewGuid():N}", "Local;Weird Folder=1");
+
+    public void Dispose()
+    {
+        SqliteConnection.ClearAllPools();
+        var root = Path.GetDirectoryName(_directory)!;
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void OpenConnection_PathContainingConnectionStringDelimiters_OpensExactlyThatFile()
+    {
+        var databasePath = Path.Combine(_directory, "carowinds-passdown.db");
+        var factory = new SqliteConnectionFactory(databasePath);
+
+        using (var connection = factory.OpenConnection())
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = "CREATE TABLE probe (id INTEGER PRIMARY KEY);";
+            command.ExecuteNonQuery();
+        }
+
+        Assert.True(File.Exists(databasePath));
+        Assert.Single(Directory.GetFiles(Path.GetDirectoryName(_directory)!, "*", SearchOption.AllDirectories));
+    }
+}

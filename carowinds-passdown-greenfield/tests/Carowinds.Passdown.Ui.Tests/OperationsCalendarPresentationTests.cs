@@ -128,6 +128,44 @@ public class OperationsCalendarPresentationTests
         Assert.Equal("1 Important", presentation.OperationalNotesImportantText);
     }
 
+    /// <summary>
+    /// Phase 18A BUG-001: the park's prices are USD regardless of the PC's region format. Pre-18A this
+    /// used the machine culture's "C" format, so an English (UK) or German Windows region showed
+    /// "£54.99" / "54,99 €" for a USD price.
+    /// </summary>
+    [Theory]
+    [InlineData("en-GB")]
+    [InlineData("de-DE")]
+    [InlineData("en-US")]
+    public void Build_DailyAdmissionPrice_IsAlwaysUsd_RegardlessOfMachineCulture(string cultureName)
+    {
+        var previous = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo(cultureName);
+            var open = ParkHours(false, new TimeOnly(10, 0), new TimeOnly(22, 0), false, buyoutEnabled: false);
+
+            var exact = OperationsCalendarPresentation.Build(WithAdmission(BuildSnapshot(OperationsCalendarOperatingState.Open, open), Domain.Catalog.PriceKind.ExactDated));
+            var floor = OperationsCalendarPresentation.Build(WithAdmission(BuildSnapshot(OperationsCalendarOperatingState.Open, open), Domain.Catalog.PriceKind.StartingFrom));
+
+            Assert.Equal("$54.99", exact.DailyAdmissionPriceText);
+            Assert.Equal("Starting from $54.99", floor.DailyAdmissionPriceText);
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = previous;
+        }
+    }
+
+    private static OperationsCalendarSnapshot WithAdmission(OperationsCalendarSnapshot snapshot, Domain.Catalog.PriceKind kind) =>
+        snapshot with
+        {
+            Selected = snapshot.Selected with
+            {
+                DailyAdmission = new OperationsCalendarDailyAdmissionPrice(OperationsCalendarDailyAdmissionStatus.Available, "Single Day Ticket", 54.99m, kind, null),
+            },
+        };
+
     private static OperationsCalendarSnapshot BuildSnapshot(
         OperationsCalendarOperatingState state, AssociateParkHoursView parkHours,
         OperationsCalendarPassdownStatus status = OperationsCalendarPassdownStatus.NoDraft,
