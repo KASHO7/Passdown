@@ -777,6 +777,13 @@ This build supersedes the Dashboard ERT fix artifacts as the current release.
 
 # Release manifest — Phase 18C hardened release candidate (third-party notices, packaging validator)
 
+> **Superseded by Phase 18D source changes (not yet rebuilt).** Phase 18D (Conjuring retrieval,
+> North Gate/Avenue overrides, build identification — `docs/phase18-comprehensive-audit.md` §16)
+> changes functional source. Do not distribute or Windows-validate the 18C ZIP/EXE below; rebuild
+> from the Phase 18D commit first. The 18C artifacts share the 18D build's file names
+> (`Carowinds-Operations-0.1.0-dev-win-x64.*`) — tell them apart by SHA-256 or by the
+> informational version's commit (`+5c0ddf2…` = 18C).
+
 Built from commit `5c0ddf292fe5a62ffb23d52a91d7126a921afd35` ("Phase 18C: third-party notices (PKG-003)
 and Desktop.dll build-path leak fix"), on top of the Phase 18A/18B hardening (`5598618`). Docs-only
 commit(s) after `5c0ddf2` do not change any shipped byte.

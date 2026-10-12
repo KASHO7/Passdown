@@ -2856,3 +2856,20 @@ The import pass itself is unchanged (182.5 MB, ~0.86 s). Elapsed time on a real 
 (Files-On-Demand may need to download a dehydrated PDF just to hash it) is expected to benefit more
 but was **not measured** (no Windows/OneDrive host).
 
+## Phase 18D — North Gate / Avenue overrides in the draft
+
+`AssociateDraftPayload` gains two optional per-date fields, `NorthGateOpeningOverride` and
+`AvenueOpeningOverride` (nullable `TimeOnly`; null = use the calculated default). They are ordinary
+draft content, so they travel inside the existing `AssociateDraft` sync entity — no new entity type,
+envelope field, or `SyncSchemaVersion` change (still 1); Draft schema stays 4, DB 15.
+
+- **Hash stability:** both properties are omitted from JSON while null, so a draft without overrides
+  serializes — and therefore content-hashes — exactly as before 18D. Upgrading does not re-export
+  every draft or raise false conflicts.
+- **REL-004:** unchanged mechanism; covered on the real two-device stack
+  (`OpenEditorSyncProtectionTests.Phase18D_*`): overrides sync; a clean editor reloads them; a
+  dirty editor keeps its local value and records an explicit conflict holding the remote one.
+- **Conflict review:** the draft comparison now shows "North Gate Override" and "Avenue Override"
+  ("Default" when none is stored).
+- **Mixed versions:** a pre-18D build ignores the fields and drops them if it re-saves that date's
+  draft (then syncs that version). Run Phase 18D (or later) on every PC that shares a sync folder.

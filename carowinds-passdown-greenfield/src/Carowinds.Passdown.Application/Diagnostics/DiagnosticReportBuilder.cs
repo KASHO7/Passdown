@@ -1,4 +1,3 @@
-using System.Reflection;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Time;
@@ -21,7 +20,8 @@ public sealed class DiagnosticReportBuilder(
     IScheduledTaskStatusProvider scheduledTaskStatusProvider,
     IScheduledRefreshLogProvider logProvider,
     IClock clock,
-    IInteractiveAppLogProvider? appLogProvider = null) : IDiagnosticReportBuilder
+    IInteractiveAppLogProvider? appLogProvider = null,
+    BuildIdentity? buildIdentity = null) : IDiagnosticReportBuilder
 {
     private const int MaxLogLines = 200;
 
@@ -41,9 +41,14 @@ public sealed class DiagnosticReportBuilder(
             ? []
             : await appLogProvider.GetRecentLogLinesAsync(MaxLogLines, cancellationToken).ConfigureAwait(false);
 
-        var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
+        // Phase 18D: the informational version (with its +<commit> suffix), not the numeric assembly
+        // version every build shares — so a support file identifies exactly which copy produced it.
+        var identity = buildIdentity ?? BuildIdentity.Current();
 
-        return new DiagnosticReport(version, clock.UtcNow, sources, database, scheduledTask, logLines, appLogLines);
+        return new DiagnosticReport(identity.FullVersion, clock.UtcNow, sources, database, scheduledTask, logLines, appLogLines)
+        {
+            ExecutablePath = identity.ExecutablePath,
+        };
     }
 
     private static SourceStatusSummary BuildSourceSummary(SourceRegistration registration, SourceStateRecord? state)

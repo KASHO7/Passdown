@@ -1,8 +1,9 @@
 # Phase 18A — Comprehensive Reliability, Security, Privacy, and Release Hardening Audit
 
-Status: **18A complete; 18B complete** — REL-004 fixed in 18B (§13); REL-003, REL-005, REL-007,
-PRIV-002, PERF-001, QUAL-001, PKG-002 fixed in 18B (§14). Windows / two-PC OneDrive validation remains
-**NOT EXECUTED**.
+Status: **18A complete; 18B complete; 18C complete; 18D complete** — REL-004 fixed in 18B (§13);
+REL-003, REL-005, REL-007, PRIV-002, PERF-001, QUAL-001, PKG-002 fixed in 18B (§14); 18C packaging
+(§15); 18D operational corrections (§16). Windows / two-PC OneDrive validation remains
+**NOT EXECUTED**, and the 18C release artifacts are superseded (a Phase 18D rebuild is required).
 
 This document records a whole-application audit of Carowinds Operations (internal name
 Carowinds.Passdown) and the targeted fixes made during it. It is not a certification. A passing test
@@ -466,3 +467,106 @@ All Windows validation (launch, affected-PC Dashboard, existing data, US formatt
 region, app log, diagnostics, PDFs, temp PDF cleanup, Task Scheduler, Personal Sync one-PC and two-PC,
 single-file EXE) — no Windows machine available. Recommendation: **RELEASE BLOCKED pending Windows
 validation** (no open defect).
+
+## 16. Phase 18D — operational corrections and launch-identity audit
+
+Baseline before 18D: HEAD `b2db3ed`, **2484/2484** deterministic, Release 0 warnings / 0 errors,
+DB 15 / Draft 4 / Snapshot 2 / SyncSchemaVersion 1. Unrelated staged files (`.DS_Store`,
+`.claude/skills/pdf-design/SKILL.md`) were left out of the 18D commit.
+
+### 16.1 OPS-001 — "The Conjuring: Beyond Fear" missing (fixed)
+
+Traced official source → DTO → normalization → identity → category → suppression → presentation →
+PDF. Root cause is case **F (not retrieved by any adapter)**:
+
+- Live evidence (2026-10-11, plain GETs of the official pages the app already uses): the product is
+  **not** a card on `/carowinds/add-ons` or `/carowinds/season-pass-add-ons` (only the site-wide
+  promo banner mentions it). It is sold from `/carowinds/events/scarowinds` through its own "Buy
+  Tickets" button, `data-accesso-keyword="THECONJURING"`, next to the Haunted Attractions Pass
+  (`hapwizard`).
+- The official accesso `getkeywordcalendar` endpoint returns, for `THECONJURING`, one package per
+  night — `"The Conjuring: Beyond Fear"`, CT `764`, package ids `10098304`–`10098308` per price tier,
+  `retail_amount` $15 / $20 / $30 — on exactly the same nights as `HAPWizard`, in the identical
+  envelope (single-object `PS.P`).
+- `DatedHauntedSource` only ever queried `HAPWizard`, so nothing downstream could see it. No parser,
+  classification, suppression, or presentation rule dropped it.
+
+Fix (owner decision: SCarowinds / Haunt section, matching the official grouping): `DatedHauntedSource`
+also queries `THECONJURING` for the same single night and merges its packages into the one haunted
+payload. Official package id/name/exact-night price are preserved; nothing is hard-coded. A
+transport/shape failure of either keyword fails the whole category (last-known-good kept, never a
+partial Verified result); "No dates found" for Conjuring only means none that night. It appears in
+the SCarowinds section and prints only when "SCarowinds / Haunt" is selected. Real sanitized
+2026-10-17 responses committed under `fixtures/dated-haunted/`. The four new adapter tests fail on
+the pre-18D code.
+
+### 16.2 OPS-002 — independent North Gate / Avenue overrides (added)
+
+- **Semantics:** each entrance = calculated default (opening −30 / −45 min, unchanged) + optional
+  per-date override; effective = `override ?? default`, computed once in
+  `EffectiveHours`/`ParkHoursCalculator` (Domain), so the Associate screen, PDF, finalized snapshot
+  and Calendar can never disagree. Neither override changes park hours or the other entrance; no
+  ordering rule. On an officially **Closed** date the override stays stored but is not applied (a
+  closed park never shows an entrance opening); it applies on Open (official/manual/buyout) and
+  not-yet-checked dates.
+- **UI:** the existing Day & Operations Gates row — effective time, a subtle "Override" chip, a
+  compact override box (blank = default; the default is never copied in), and Reset. Existing
+  LostFocus/Enter commit, `OperationalTimeParser` validation and canonical AM/PM normalization;
+  malformed text shows the standard inline error and never becomes draft data.
+- **Persistence:** `AssociateDraftPayload.NorthGateOpeningOverride` / `AvenueOpeningOverride`
+  (nullable `TimeOnly`), per operating date. Omitted from JSON while null, so pre-18D drafts load
+  unchanged and a draft without overrides serializes and content-hashes byte-identically to before —
+  upgrading causes no Personal Sync churn or false REL-004 conflicts.
+- **Versions:** Draft **4 (unchanged)** — additive optional fields; nothing reads the draft version
+  to branch, and a bump would not change old builds' behavior. DB **15**, Snapshot **2**,
+  SyncSchemaVersion **1** — all unchanged.
+- **Sync / REL-004:** the fields ride the existing draft entity; tested on the real two-device stack
+  (sync carries them; a clean editor reloads; a dirty editor keeps its value and records a conflict
+  holding the remote one). The conflict comparison lists "North Gate Override"/"Avenue Override".
+  Mixed-version caveat: an older build ignores the fields and would drop them if it re-saves that
+  draft — upgrade both PCs together.
+- **Finalization/History:** the snapshot already freezes the formatted effective `NorthGateText` /
+  `AvenueText`; finalized History is never recalculated.
+- **PDF:** Classic, Compact and Modern print the effective times with no "override" qualifier.
+- **Dashboard/Calendar:** neither displays gate times; nothing added.
+
+### 16.3 OPS-003 — launch identity / stale portable copies (audited; diagnostics improved)
+
+Audited without a Windows host (Windows Search itself NOT EXECUTED):
+
+| Identity | Value | Notes |
+|---|---|---|
+| Window title / Product name | Carowinds Operations | Phase 13G |
+| Executable | `Carowinds.Passdown.Desktop.exe` | legacy, intentional |
+| File description (AssemblyTitle) | `Carowinds.Passdown.Desktop` | SDK default |
+| File version | `0.1.0.0` | **same for every build** |
+| Product version | `0.1.0-dev+<commit>` | distinguishes builds |
+| ZIP / folder | `Carowinds-Operations-0.1.0-dev-win-x64` | **same for every build so far** |
+| Data folder | `%LOCALAPPDATA%\Carowinds Passdown` | legacy, intentional, shared by all copies |
+| Task Scheduler | `Carowinds Passdown Daily Refresh` → absolute exe path | legacy, intentional |
+| Start Menu shortcut | none created by packaging | |
+
+Finding LAUNCH-001 (LOW, mitigated): copies are hard to tell apart — the in-app diagnostics printed
+the numeric `0.1.0.0` for every build, and repeated extractions produce identically named folders, so
+a Windows Search hit (indexed file/folder, recent item, or hand-made shortcut) may be an older copy
+running older code against the same data. Not asserted as the cause of the earlier Dashboard report.
+Changes: `BuildIdentity` (Application); Settings → **About this build** (name, `0.1.0-dev (commit)`,
+running folder with the profile shown as `%USERPROFILE%`); exported diagnostics now carry the full
+`version+commit` and a redacted executable path; the app and scheduled-refresh logs record both at
+start. No paths, tasks or names were renamed; no folders/shortcuts are deleted. The rides-only ERT
+Dashboard fix and its regression tests are untouched.
+
+### 16.4 Tests and validation
+
++52 deterministic tests (Domain +9, Application +10, Documents +11, Infrastructure +4, Ui +18).
+Release build `--no-incremental`: **0 warnings / 0 errors**. Deterministic partition: **2536/2536**
+= 125 Domain + 671 Application + 237 Documents + 752 Infrastructure + 713 Ui together + 26
+`OperationsCalendarViewTests` + 10 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests`
+alone (`-c Release`, `--filter "Category!=LiveSmoke"`).
+
+### 16.5 Not executed / required next
+
+- Release rebuild: **required** — the Phase 18C ZIP/EXE must not be used after 18D.
+- Windows: Search stale-copy checklist (`docs/support-troubleshooting.md` "Which copy is running?"),
+  gate-override UI, Conjuring on a live SCarowinds night, two-PC sync of overrides — NOT EXECUTED.
+

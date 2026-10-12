@@ -93,9 +93,12 @@ public partial class App : global::Avalonia.Application
             AttachInteractiveFileLog(services);
 
             var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+            // Phase 18D: full version (+commit) and the executable path, so the app log proves which
+            // copy was launched (e.g. by Windows Search vs. the current release folder).
+            var build = BuildIdentity.FromAssembly(typeof(App).Assembly, Environment.ProcessPath);
             logger.LogInformation(
-                "Carowinds Operations starting (version {Version}, OS {OS}, 64-bit {Is64Bit}).",
-                typeof(App).Assembly.GetName().Version, Environment.OSVersion.VersionString, Environment.Is64BitProcess);
+                "Carowinds Operations starting (version {Version}, executable {ExecutablePath}, OS {OS}, 64-bit {Is64Bit}).",
+                build.FullVersion, build.ExecutablePath ?? "unknown", Environment.OSVersion.VersionString, Environment.Is64BitProcess);
 
             // Storage must be ready (spec §17 Phase 1: "establish ... storage
             // migrations before building the production UI") before any

@@ -1,4 +1,4 @@
-using System.Reflection;
+using Carowinds.Passdown.Application.Diagnostics;
 using Carowinds.Passdown.Application.Time;
 using Microsoft.Extensions.Logging;
 
@@ -26,8 +26,13 @@ public sealed class ScheduledRefreshRunner(
             throw new ArgumentOutOfRangeException(nameof(mode), mode, $"{nameof(ScheduledRefreshRunner)} never runs in {nameof(RefreshMode.UserForced)} mode — that mode has its own entry point.");
         }
 
-        var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
-        logger.LogInformation("Scheduled refresh started ({Mode}) at {StartedAt} (version {Version}).", mode, clock.UtcNow, version);
+        // Phase 18D: full version (+commit) and executable path, so the log shows exactly which copy
+        // Task Scheduler launched (a task registered from an old portable folder keeps running it).
+        // Exported diagnostics redact the path (DiagnosticPathRedactor).
+        var build = BuildIdentity.Current();
+        logger.LogInformation(
+            "Scheduled refresh started ({Mode}) at {StartedAt} (version {Version}, executable {ExecutablePath}).",
+            mode, clock.UtcNow, build.FullVersion, build.ExecutablePath ?? "unknown");
 
         var summary = await orchestrator.RunDeepRefreshAsync(bypassFreshness: false, focusDate: null, progress: null, cancellationToken).ConfigureAwait(false);
 

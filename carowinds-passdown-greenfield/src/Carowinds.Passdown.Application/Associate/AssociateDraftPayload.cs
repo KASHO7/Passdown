@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Carowinds.Passdown.Application.OperationalNotes;
 
 namespace Carowinds.Passdown.Application.Associate;
@@ -132,6 +133,20 @@ public sealed record AssociateDraftPayload(
     /// migrated-forward field.
     /// </summary>
     public const int CurrentSchemaVersion = 4;
+
+    /// <summary>
+    /// Phase 18D: manual North Gate opening time for this operating date, or null for "use the
+    /// calculated default" (never a copy of the default). Additive and optional — a pre-18D draft
+    /// simply has no such property and loads as "no override", so <see cref="CurrentSchemaVersion"/>
+    /// is unchanged. Omitted from the JSON while null so a draft without overrides serializes (and
+    /// therefore content-hashes, Personal Sync/REL-004) byte-identically to a pre-18D draft.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TimeOnly? NorthGateOpeningOverride { get; init; }
+
+    /// <summary>Phase 18D: manual Avenue opening time for this operating date — same contract as <see cref="NorthGateOpeningOverride"/>, fully independent of it.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TimeOnly? AvenueOpeningOverride { get; init; }
 
     /// <summary>The draft an operating date starts with before an associate has entered anything (spec §8.3's "no draft -> default draft").</summary>
     public static AssociateDraftPayload CreateDefault() => new(

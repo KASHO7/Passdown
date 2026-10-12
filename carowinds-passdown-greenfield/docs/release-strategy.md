@@ -219,7 +219,7 @@ does not assign one yet (CLAUDE.md "do not invent data" applies to version numbe
 release is cut; there is no semantic-release automation, per the explicit instruction not to build
 one.
 
-`<Product>Carowinds Passdown</Product>` (also in `Directory.Build.props`) sets the built
+`<Product>Carowinds Operations</Product>` (also in `Directory.Build.props`; "Carowinds Passdown" before the Phase 13G rename) sets the built
 executable's file-properties "Product name" to the user-facing name, independent of the binary
 file name (see "Application/executable name" below). `tests/Carowinds.Passdown.Ui.Tests/Release/ReleaseVersionTests.cs`
 guards that both actually flow into the built Desktop assembly, rather than silently reverting to
@@ -235,7 +235,7 @@ Executable stays `Carowinds.Passdown.Desktop.exe`. Renaming it would touch:
 - Every packaging script path assumption going forward
 
 None of that is justified by a cosmetic rename — the *displayed* product name is already
-"Carowinds Passdown" (window title, and now the `.exe`'s file-properties "Product name" field via
+"Carowinds Operations" since Phase 13G (window title, and the `.exe`'s file-properties "Product name" field via
 `<Product>` above), which is what a nontechnical user actually sees. The internal binary file name
 being the assembly name is normal and not a release blocker. Deferred, not forgotten.
 
@@ -3076,3 +3076,38 @@ The release ZIP/EXE were **not** rebuilt in Phase 18B.
   fails until the two agree.
 - The single-file EXE carries no notices when distributed alone; it stays experimental.
 - Details and hashes: `docs/release-manifest.md` "Phase 18C".
+
+## Phase 18D — launch identity and stale portable copies
+
+**Visible product:** Carowinds Operations (window title, exe Product name, ZIP/folder name,
+diagnostics ZIP name, Settings → About this build).
+
+**Legacy/internal identities that intentionally remain** (renaming any would orphan existing data,
+registered tasks, or sync folders — no proven bug requires it; guarded by
+`LaunchIdentityTests.LegacyInternalIdentities_RemainIntentionallyStable` and `ProductBrandingTests`):
+
+| Identity | Value | Why it stays |
+|---|---|---|
+| Executable | `Carowinds.Passdown.Desktop.exe` | Task Scheduler action, scripts, docs (see "Application / executable name") |
+| File description | `Carowinds.Passdown.Desktop` | SDK default from the assembly name — what Windows Search tokenizes as "Carowinds Passdown" |
+| Local data | `%LOCALAPPDATA%\Carowinds Passdown` | every existing install's database, drafts, history |
+| Task Scheduler | `Carowinds Passdown Daily Refresh` | already registered on existing machines |
+| Sync manifest product | `Carowinds Passdown Personal Sync` | existing shared sync folders |
+
+**Stale-copy risk:** the release is portable (no installer, no Start Menu entry). Every build so far
+has file version `0.1.0.0` and the same ZIP/folder name `Carowinds-Operations-0.1.0-dev-win-x64`, and
+all copies share one data folder — so an older extracted copy found by Windows Search runs older code
+against current data and is hard to tell apart. Phase 18D makes the running build identifiable
+(Settings → About this build: version + source commit + running folder; diagnostics/app log/
+scheduled-refresh log: full `0.1.0-dev+<commit>` and executable path; Explorer → Properties →
+Details → Product version). Old copies are never deleted automatically; the manual procedure is in
+`docs/support-troubleshooting.md` "Which copy is running?". Windows Search behavior itself is NOT
+EXECUTED (no Windows host).
+
+**Recommendation (owner decision, not implemented):** give each rebuilt release a distinct
+`<Version>` (e.g. a pre-release suffix per RC) so ZIP names, folder names, and file properties differ
+between builds.
+
+**Release status:** Phase 18D changes functional source — the Phase 18C ZIP/EXE are superseded and a
+Phase 18D rebuild is required before Windows validation.
+

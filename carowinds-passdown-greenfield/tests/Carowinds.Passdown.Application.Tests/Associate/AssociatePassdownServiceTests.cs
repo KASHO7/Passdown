@@ -1479,4 +1479,120 @@ public class AssociatePassdownServiceTests
         Assert.Equal("South Gate scanner #3 out of service", selection.Title);
         Assert.Equal(OperationalNoteSourceComparisonState.ContentChanged, workspace.SelectedOperationalNoteSourceStates![note.Id]);
     }
+
+    // ===================== Phase 18D: The Conjuring: Beyond Fear =====================
+
+    // The product arrives in the HauntedAttractions dated payload (official keyword THECONJURING,
+    // docs/retrieval/dated-haunted-source.md Phase 18D addendum) and must surface beside the
+    // Haunted Attractions passes in the SCarowinds section — never Add-Ons, never suppressed.
+    [Fact]
+    public async Task Phase18D_ConjuringInHauntedPayload_AppearsInSCarowindsSectionWithItsExactNightPrice()
+    {
+        var env = CreateEnvironment();
+        await SeedHauntedAsync(env.DatedResults, Date, FixedNow,
+            new DatedHauntedProduct("10098524", "Haunted Attractions Pass", 25m, null, null, Date),
+            new DatedHauntedProduct("10098530", "Haunted Attractions Express Pass", 75m, null, null, Date),
+            new DatedHauntedProduct("10098308", "The Conjuring: Beyond Fear", 30m, null, null, Date));
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+
+        var conjuring = Assert.Single(workspace.Products, p => p.DisplayName == "The Conjuring: Beyond Fear");
+        Assert.Equal(SourceCategory.HauntedAttractions, conjuring.Category);
+        Assert.Equal(30m, conjuring.OfficialPriceAmount);
+        Assert.True(conjuring.DateSpecific);
+        Assert.Equal(Date, conjuring.ApplicableDate);
+        Assert.True(conjuring.IncludeOnPdf);
+        Assert.Equal(ProductDisplaySection.SCarowinds, ProductDisplaySectionResolver.Resolve(conjuring));
+
+        var resolved = ProductDisplaySectionResolver.ResolveAll(workspace.Products);
+        Assert.Equal(3, resolved.Count(entry => entry.Section == ProductDisplaySection.SCarowinds));
+        Assert.DoesNotContain(resolved, entry => entry.Section == ProductDisplaySection.AddOns);
+    }
+
+    // ===================== Phase 18D: North Gate / Avenue overrides =====================
+
+    [Fact]
+    public async Task Phase18D_GateOverrides_PersistWithTheDraft_AndSurviveAServiceRestart()
+    {
+        var env = CreateEnvironment();
+        await SeedParkHoursAsync(env.DatedResults, Date, new TimeOnly(11, 0), new TimeOnly(20, 0), FixedNow);
+        await env.Service.SaveDraftAsync(Date, AssociateDraftPayload.CreateDefault() with { AvenueOpeningOverride = new TimeOnly(10, 0) });
+
+        // "Restart": a brand-new service over the same stores.
+        var restarted = new AssociatePassdownService(env.Drafts, env.DatedResults, env.CatalogProducts, env.RefreshOrchestrator, env.OperationalNotes, env.Clock);
+        var workspace = await restarted.LoadAssociateDateAsync(Date);
+
+        Assert.Equal(new TimeOnly(10, 0), workspace.Draft.AvenueOpeningOverride);
+        Assert.Null(workspace.Draft.NorthGateOpeningOverride);
+        Assert.Equal(new TimeOnly(11, 0), workspace.ParkHours.Effective.Opening);
+        Assert.Equal(new TimeOnly(10, 30), workspace.ParkHours.Effective.NorthGateOpening);
+        Assert.Equal(new TimeOnly(10, 0), workspace.ParkHours.Effective.AvenueOpening);
+
+        var otherDate = await restarted.LoadAssociateDateAsync(OtherDate);
+        Assert.Null(otherDate.Draft.AvenueOpeningOverride); // per operating date, never global.
+    }
+
+    [Fact]
+    public async Task Phase18D_OfficialDefaultChangesAfterAnOverride_OverrideStays_ResetUsesTheCurrentDefault()
+    {
+        var env = CreateEnvironment();
+        await SeedParkHoursAsync(env.DatedResults, Date, new TimeOnly(11, 0), new TimeOnly(20, 0), FixedNow);
+        await env.Service.SaveDraftAsync(Date, AssociateDraftPayload.CreateDefault() with { AvenueOpeningOverride = new TimeOnly(10, 0) });
+
+        await SeedParkHoursAsync(env.DatedResults, Date, new TimeOnly(12, 0), new TimeOnly(20, 0), FixedNow.AddHours(1));
+        var changed = await env.Service.LoadAssociateDateAsync(Date);
+        Assert.Equal(new TimeOnly(10, 0), changed.ParkHours.Effective.AvenueOpening);
+        Assert.Equal(new TimeOnly(11, 30), changed.ParkHours.Effective.NorthGateOpening);
+
+        await env.Service.SaveDraftAsync(Date, changed.Draft with { AvenueOpeningOverride = null });
+        var reset = await env.Service.LoadAssociateDateAsync(Date);
+        Assert.Equal(new TimeOnly(11, 15), reset.ParkHours.Effective.AvenueOpening);
+        Assert.False(reset.ParkHours.Effective.IsAvenueOverridden);
+    }
+
+    [Fact]
+    public async Task Phase18D_PreGateOverrideDraftJson_LoadsWithNoOverrides()
+    {
+        var env = CreateEnvironment();
+        // A schema-4 draft exactly as Phase 18C wrote it: no gate-override properties at all.
+        var legacyJson = JsonSerializer.Serialize(AssociateDraftPayload.CreateDefault() with { ProjectedAttendance = 4200 });
+        Assert.DoesNotContain("OpeningOverride", legacyJson);
+        await env.Drafts.SaveAsync(new AssociateDraft(Date, 4, legacyJson, FixedNow));
+
+        var workspace = await env.Service.LoadAssociateDateAsync(Date);
+
+        Assert.Equal(4200, workspace.Draft.ProjectedAttendance);
+        Assert.Null(workspace.Draft.NorthGateOpeningOverride);
+        Assert.Null(workspace.Draft.AvenueOpeningOverride);
+    }
+
+    [Fact]
+    public void Phase18D_DraftWithoutOverrides_SerializesAndHashesExactlyAsBefore_SoUpgradingCausesNoSyncChurn()
+    {
+        var draft = AssociateDraftPayload.CreateDefault() with { PreSolds = 12 };
+        var canonical = JsonSerializer.Serialize(draft, new JsonSerializerOptions { Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } });
+
+        Assert.DoesNotContain("NorthGateOpeningOverride", JsonSerializer.Serialize(draft));
+        Assert.DoesNotContain("AvenueOpeningOverride", canonical);
+
+        var withOverride = draft with { NorthGateOpeningOverride = new TimeOnly(9, 45) };
+        Assert.Contains("\"NorthGateOpeningOverride\":\"09:45:00\"", JsonSerializer.Serialize(withOverride));
+        Assert.NotEqual(SyncContentHash.ComputeDraftHash(draft), SyncContentHash.ComputeDraftHash(withOverride));
+        Assert.Equal(
+            new TimeOnly(9, 45),
+            AssociateDraftPayloadSerializer.Deserialize(JsonSerializer.Serialize(withOverride)).NorthGateOpeningOverride);
+    }
+
+    [Fact]
+    public void Phase18D_ConflictComparison_ShowsBothGateOverrides()
+    {
+        var local = AssociateDraftPayload.CreateDefault() with { NorthGateOpeningOverride = new TimeOnly(9, 45) };
+        var remote = AssociateDraftPayload.CreateDefault() with { AvenueOpeningOverride = new TimeOnly(10, 0) };
+
+        var rows = new DraftConflictDetail(Date, local, remote, false, false, Guid.NewGuid(), FixedNow, false)
+            .BuildFieldComparisons().ToDictionary(r => r.Label);
+
+        Assert.Equal(("9:45 AM", "Default"), (rows["North Gate Override"].LocalValue, rows["North Gate Override"].RemoteValue));
+        Assert.Equal(("Default", "10:00 AM"), (rows["Avenue Override"].LocalValue, rows["Avenue Override"].RemoteValue));
+    }
 }

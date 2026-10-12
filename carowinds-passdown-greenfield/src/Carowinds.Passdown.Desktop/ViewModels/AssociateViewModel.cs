@@ -126,6 +126,16 @@ public partial class AssociateViewModel : ViewModelBase
     private string? _privateBuyoutOpeningTimeParseError;
     private string? _privateBuyoutClosingTimeParseError;
 
+    /// <summary>
+    /// Phase 18D: the last valid committed North Gate/Avenue override for the selected date (null =
+    /// use the calculated default), kept apart from the editable <c>*Text</c> exactly like the
+    /// Manual Hours fields above so a malformed entry can never become draft data.
+    /// </summary>
+    private TimeOnly? _northGateOverride;
+    private TimeOnly? _avenueOverride;
+    private string? _northGateOverrideParseError;
+    private string? _avenueOverrideParseError;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasWorkspace))]
     [NotifyPropertyChangedFor(nameof(ParkHours))]
@@ -265,6 +275,38 @@ public partial class AssociateViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial string? PrivateBuyoutDetails { get; set; }
+
+    /// <summary>
+    /// Phase 18D: free-typed North Gate override (blank = use the calculated default — the default is
+    /// never copied in). Same LostFocus commit/normalize/parse path as the Manual Hours fields.
+    /// </summary>
+    [ObservableProperty]
+    public partial string? NorthGateOverrideText { get; set; }
+
+    /// <summary>Phase 18D: free-typed Avenue override — same contract as <see cref="NorthGateOverrideText"/>, independent of it.</summary>
+    [ObservableProperty]
+    public partial string? AvenueOverrideText { get; set; }
+
+    public string? NorthGateOverrideError => _northGateOverrideParseError;
+
+    public string? AvenueOverrideError => _avenueOverrideParseError;
+
+    /// <summary>True while a North Gate override is in effect for the selected date — drives the subtle "Override" caption and the Reset action.</summary>
+    public bool NorthGateIsOverridden => LiveParkHours?.Effective.IsNorthGateOverridden ?? false;
+
+    public bool AvenueIsOverridden => LiveParkHours?.Effective.IsAvenueOverridden ?? false;
+
+    /// <summary>True whenever an override is stored for the selected date — even on a Closed date where it is not applied — so Reset is always reachable.</summary>
+    public bool CanResetNorthGateOverride => _northGateOverride is not null;
+
+    public bool CanResetAvenueOverride => _avenueOverride is not null;
+
+    /// <summary>Phase 18D "Reset to default": removes the override only (the field goes blank); the effective time falls back to whatever the current calculated default is.</summary>
+    [RelayCommand]
+    private void ResetNorthGateOverride() => NorthGateOverrideText = null;
+
+    [RelayCommand]
+    private void ResetAvenueOverride() => AvenueOverrideText = null;
 
     [ObservableProperty]
     public partial string? ProjectedAttendanceText { get; set; }
@@ -631,7 +673,8 @@ public partial class AssociateViewModel : ViewModelBase
             return RecomputeParkHours(
                 workspace.ParkHours,
                 ManualHoursOverrideEnabled, _manualOpeningTime, _manualClosingTime,
-                PrivateBuyoutEnabled, _privateBuyoutOpeningTime, _privateBuyoutClosingTime);
+                PrivateBuyoutEnabled, _privateBuyoutOpeningTime, _privateBuyoutClosingTime,
+                _northGateOverride, _avenueOverride);
         }
     }
 
@@ -680,12 +723,14 @@ public partial class AssociateViewModel : ViewModelBase
     private static AssociateParkHoursView RecomputeParkHours(
         AssociateParkHoursView official,
         bool manualOverrideEnabled, TimeOnly? manualOpening, TimeOnly? manualClosing,
-        bool privateBuyoutEnabled, TimeOnly? buyoutOpening, TimeOnly? buyoutClosing)
+        bool privateBuyoutEnabled, TimeOnly? buyoutOpening, TimeOnly? buyoutClosing,
+        TimeOnly? northGateOverride, TimeOnly? avenueOverride)
     {
         var effective = ParkHoursCalculator.Calculate(
             official.OfficialIsClosed, official.OfficialOpening, official.OfficialClosing,
             manualOverrideEnabled, manualOpening, manualClosing,
-            privateBuyoutEnabled, buyoutOpening, buyoutClosing);
+            privateBuyoutEnabled, buyoutOpening, buyoutClosing,
+            northGateOverride, avenueOverride);
 
         return official with { Effective = effective };
     }
@@ -1277,9 +1322,17 @@ public partial class AssociateViewModel : ViewModelBase
         ApplyWorkspaceToFields(workspace);
     }
 
-    partial void OnManualHoursOverrideEnabledChanged(bool value) => ScheduleAutosave();
+    partial void OnManualHoursOverrideEnabledChanged(bool value)
+    {
+        NotifyGateOverrideDependents();
+        ScheduleAutosave();
+    }
 
-    partial void OnPrivateBuyoutEnabledChanged(bool value) => ScheduleAutosave();
+    partial void OnPrivateBuyoutEnabledChanged(bool value)
+    {
+        NotifyGateOverrideDependents(); // a buyout can turn a Closed date Open, which is when entrance overrides apply.
+        ScheduleAutosave();
+    }
 
     partial void OnPrivateBuyoutDetailsChanged(string? value) => ScheduleAutosave();
 
@@ -1367,6 +1420,31 @@ public partial class AssociateViewModel : ViewModelBase
             OnPropertyChanged(nameof(PrivateBuyoutHoursWarningText));
         });
 
+    partial void OnNorthGateOverrideTextChanged(string? value) => CommitOperationalTimeText(
+        value,
+        setCommitted: v => _northGateOverride = v,
+        setParseError: e => { _northGateOverrideParseError = e; OnPropertyChanged(nameof(NorthGateOverrideError)); },
+        setNormalizedText: t => NorthGateOverrideText = t,
+        notifyDependents: NotifyGateOverrideDependents);
+
+    partial void OnAvenueOverrideTextChanged(string? value) => CommitOperationalTimeText(
+        value,
+        setCommitted: v => _avenueOverride = v,
+        setParseError: e => { _avenueOverrideParseError = e; OnPropertyChanged(nameof(AvenueOverrideError)); },
+        setNormalizedText: t => AvenueOverrideText = t,
+        notifyDependents: NotifyGateOverrideDependents);
+
+    private void NotifyGateOverrideDependents()
+    {
+        OnPropertyChanged(nameof(NorthGateOverrideError));
+        OnPropertyChanged(nameof(AvenueOverrideError));
+        OnPropertyChanged(nameof(ParkHours));
+        OnPropertyChanged(nameof(NorthGateIsOverridden));
+        OnPropertyChanged(nameof(AvenueIsOverridden));
+        OnPropertyChanged(nameof(CanResetNorthGateOverride));
+        OnPropertyChanged(nameof(CanResetAvenueOverride));
+    }
+
     partial void OnProjectedAttendanceTextChanged(string? value)
     {
         if (TryParseNonNegativeInt(value, out var parsed, out var error))
@@ -1439,6 +1517,14 @@ public partial class AssociateViewModel : ViewModelBase
             _privateBuyoutClosingTimeParseError = null;
             PrivateBuyoutClosingTimeText = FormatTimeOrNull(draft.PrivateBuyout.ClosingTime);
             PrivateBuyoutDetails = draft.PrivateBuyout.Details;
+
+            _northGateOverride = draft.NorthGateOpeningOverride;
+            _northGateOverrideParseError = null;
+            NorthGateOverrideText = FormatTimeOrNull(draft.NorthGateOpeningOverride);
+            _avenueOverride = draft.AvenueOpeningOverride;
+            _avenueOverrideParseError = null;
+            AvenueOverrideText = FormatTimeOrNull(draft.AvenueOpeningOverride);
+            NotifyGateOverrideDependents();
 
             _projectedAttendance = draft.ProjectedAttendance;
             ProjectedAttendanceText = draft.ProjectedAttendance?.ToString(CultureInfo.InvariantCulture);
@@ -1557,6 +1643,8 @@ public partial class AssociateViewModel : ViewModelBase
         {
             ManualHoursOverride = new ManualHoursOverride(ManualHoursOverrideEnabled, _manualOpeningTime, _manualClosingTime),
             PrivateBuyout = new PrivateBuyoutOverride(PrivateBuyoutEnabled, _privateBuyoutOpeningTime, _privateBuyoutClosingTime, NullIfBlank(PrivateBuyoutDetails)),
+            NorthGateOpeningOverride = _northGateOverride,
+            AvenueOpeningOverride = _avenueOverride,
             ProjectedAttendance = _projectedAttendance,
             PreSolds = _preSolds,
             OperationalNotes = ParseLines(OperationalNotesText),
@@ -1661,7 +1749,8 @@ public partial class AssociateViewModel : ViewModelBase
                 var parkHours = RecomputeParkHours(
                     current.ParkHours,
                     draft.ManualHoursOverride.Enabled, draft.ManualHoursOverride.OpeningTime, draft.ManualHoursOverride.ClosingTime,
-                    draft.PrivateBuyout.Enabled, draft.PrivateBuyout.OpeningTime, draft.PrivateBuyout.ClosingTime);
+                    draft.PrivateBuyout.Enabled, draft.PrivateBuyout.OpeningTime, draft.PrivateBuyout.ClosingTime,
+                    draft.NorthGateOpeningOverride, draft.AvenueOpeningOverride);
 
                 // Phase 13D Part AC/AD: the just-saved draft's per-product include/price overrides must
                 // also be reflected onto Workspace.Products immediately — this is what

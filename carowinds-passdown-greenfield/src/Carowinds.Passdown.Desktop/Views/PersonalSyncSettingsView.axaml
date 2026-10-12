@@ -252,6 +252,26 @@
           </StackPanel>
         </Border>
 
+        <!-- Phase 18D: identifies the exact running build (docs/support-troubleshooting.md "Which copy
+             is running?") — compare the folder with the current release folder to spot a stale copy. -->
+        <TextBlock Text="About this build" Classes="sectionTitle" Margin="0" />
+        <Border Classes="panel">
+          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="14" RowSpacing="4">
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="App" Classes="muted" />
+            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding BuildProductName}" FontWeight="Medium"
+                       AutomationProperties.Name="{Binding BuildProductName, StringFormat='App: {0}'}" />
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Version" Classes="muted" />
+            <SelectableTextBlock Grid.Row="1" Grid.Column="1" Text="{Binding BuildVersionText}" FontWeight="Medium"
+                                 AutomationProperties.Name="{Binding BuildVersionText, StringFormat='Version: {0}'}" />
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Running from" Classes="muted" />
+            <SelectableTextBlock Grid.Row="2" Grid.Column="1" Text="{Binding BuildExecutablePathText}" TextWrapping="Wrap"
+                                 FontFamily="Consolas,Menlo,monospace" FontSize="12.5"
+                                 AutomationProperties.Name="{Binding BuildExecutablePathText, StringFormat='Running from: {0}'}" />
+            <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Classes="muted" TextWrapping="Wrap" Margin="0,4,0,0"
+                       Text="If this folder is not the release folder you extracted most recently, Windows opened an older copy." />
+          </Grid>
+        </Border>
+
       </StackPanel>
     </ScrollViewer>
 

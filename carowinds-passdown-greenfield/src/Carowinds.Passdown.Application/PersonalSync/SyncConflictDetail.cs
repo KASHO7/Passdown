@@ -74,6 +74,8 @@ internal static class DraftConflictComparer
         [
             new ConflictFieldComparison("Manual Hours", L(FormatManualHours), R(FormatManualHours)),
             new ConflictFieldComparison("Private Buyout", L(FormatPrivateBuyout), R(FormatPrivateBuyout)),
+            new ConflictFieldComparison("North Gate Override", L(p => FormatGateOverride(p.NorthGateOpeningOverride)), R(p => FormatGateOverride(p.NorthGateOpeningOverride))),
+            new ConflictFieldComparison("Avenue Override", L(p => FormatGateOverride(p.AvenueOpeningOverride)), R(p => FormatGateOverride(p.AvenueOpeningOverride))),
             new ConflictFieldComparison("Projected Attendance", L(p => p.ProjectedAttendance?.ToString(PresentationCulture.UnitedStates) ?? "—"), R(p => p.ProjectedAttendance?.ToString(PresentationCulture.UnitedStates) ?? "—")),
             new ConflictFieldComparison("Pre-Solds", L(p => p.PreSolds?.ToString(PresentationCulture.UnitedStates) ?? "—"), R(p => p.PreSolds?.ToString(PresentationCulture.UnitedStates) ?? "—")),
             new ConflictFieldComparison("Daily Feature", L(FormatDailyFeature), R(FormatDailyFeature)),
@@ -90,6 +92,10 @@ internal static class DraftConflictComparer
     private static string FormatPrivateBuyout(AssociateDraftPayload p) => p.PrivateBuyout.Enabled
         ? string.Create(PresentationCulture.UnitedStates, $"{p.PrivateBuyout.OpeningTime:h\\:mm tt} – {p.PrivateBuyout.ClosingTime:h\\:mm tt}{(string.IsNullOrWhiteSpace(p.PrivateBuyout.Details) ? "" : $" ({p.PrivateBuyout.Details})")}")
         : "Off";
+
+    /// <summary>Phase 18D: "Default" when no override is stored — the calculated default itself is not part of the draft.</summary>
+    private static string FormatGateOverride(TimeOnly? time) =>
+        time is { } value ? value.ToString("h:mm tt", PresentationCulture.UnitedStates) : "Default";
 
     private static string FormatDailyFeature(AssociateDraftPayload p) =>
         p.DailyFeatureType is null ? "—" : $"{p.DailyFeatureType}: {p.DailyFeatureText}";

@@ -1,0 +1,50 @@
+{
+  "SERVICE": {
+    "keyword_image": "",
+    "request_type": "GetKeywordCalendar",
+    "session_id": "test-session",
+    "status": "OK",
+    "DATES": {
+      "D": {
+        "bookings_sold_out": "null",
+        "date": "2026-10-17",
+        "lowest_price": "0.00",
+        "lowest_price_customer_type": "",
+        "lowest_price_package": "",
+        "lowest_price_savings": "",
+        "PS": {
+          "P": [
+            {
+              "available": "14",
+              "capacity": "14",
+              "event_id": "10049161",
+              "id": "10098524",
+              "name": "Haunted Attractions Pass",
+              "CT": {
+                "fee_amount": "0",
+                "id": "758",
+                "retail_amount": "25.00",
+                "tax_amount": "0.00"
+              }
+            },
+            {
+              "available": "14",
+              "capacity": "14",
+              "event_id": "10049162",
+              "id": "10098530",
+              "name": "Haunted Attractions Express Pass",
+              "CT": {
+                "fee_amount": "0",
+                "id": "759",
+                "retail_amount": "75.00",
+                "tax_amount": "0.00"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "request_token": "TESTTOKEN0000000000000000000032",
+    "_client_ip": "0.0.0.0"
+  }
+}

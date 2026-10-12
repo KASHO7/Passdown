@@ -779,3 +779,10 @@ unchanged and passing.
   those).
 - Preflight remains template-unaware (§14).
 
+### Phase 18D — effective gate times
+
+Classic, Compact and Modern print `model.ParkHours.NorthGateText` / `AvenueText`, which now carry the
+**effective** entrance times: a per-date manual override when one is set, otherwise the calculated
+default (opening −30 / −45 min). No "override" qualifier is printed — the PDF states the operational
+time for the day. Template structure is unchanged. The finalized snapshot freezes the same strings,
+so History shows what was printed.

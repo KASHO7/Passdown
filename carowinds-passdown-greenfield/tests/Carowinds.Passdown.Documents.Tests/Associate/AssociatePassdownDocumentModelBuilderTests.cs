@@ -250,4 +250,52 @@ public sealed class AssociatePassdownDocumentModelBuilderTests
         Verification: AssociateVerificationInfo.NotCheckedYet,
         IncludeOnPdf: true,
         DisplayPriceOverride: null);
+
+    // Phase 18D: "The Conjuring: Beyond Fear" is a HauntedAttractions product (official keyword
+    // THECONJURING); it prints under SCarowinds only when SCarowinds / Haunt is selected, and is
+    // never moved into Add-Ons whether or not Add-Ons is selected.
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public void Phase18D_Conjuring_PrintsUnderSCarowindsOnlyWhenThatSectionIsSelected(bool includeHaunted, bool includeAddOns)
+    {
+        var date = new DateOnly(2026, 10, 17);
+        var conjuring = new AssociateProduct(
+            AssociateProductIdentity.ForDatedProduct(SourceCategory.HauntedAttractions, "10098308"),
+            "The Conjuring: Beyond Fear",
+            SourceCategory.HauntedAttractions,
+            IsCustom: false,
+            OfficialPriceAmount: 30m,
+            OfficialDisplayPrice: null,
+            ComparisonPriceAmount: null,
+            PriceQualifier: null,
+            DateSpecific: true,
+            ApplicableDate: date,
+            Verification: AssociateVerificationInfo.NotCheckedYet,
+            IncludeOnPdf: true,
+            DisplayPriceOverride: null);
+        var workspace = AssociateWorkspaceFixtures.NormalDay();
+        workspace = workspace with
+        {
+            Products = [.. workspace.Products, conjuring],
+            Draft = workspace.Draft with
+            {
+                SectionSelection = PassdownSectionSelection.AllIncluded with { IncludeHauntedAttractions = includeHaunted, IncludeAddOns = includeAddOns },
+            },
+        };
+
+        var model = AssociatePassdownDocumentModelBuilder.Build(workspace, GeneratedAt);
+
+        var printed = model.ProductCategories.Where(c => c.Products.Any(p => p.DisplayName == "The Conjuring: Beyond Fear")).ToList();
+        if (includeHaunted)
+        {
+            Assert.Equal("SCarowinds", Assert.Single(printed).CategoryName);
+        }
+        else
+        {
+            Assert.Empty(printed);
+        }
+    }
 }

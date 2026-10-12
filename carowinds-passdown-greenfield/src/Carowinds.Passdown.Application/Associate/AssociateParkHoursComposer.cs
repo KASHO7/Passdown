@@ -43,7 +43,9 @@ public static class AssociateParkHoursComposer
             draft.ManualHoursOverride.ClosingTime,
             draft.PrivateBuyout.Enabled,
             draft.PrivateBuyout.OpeningTime,
-            draft.PrivateBuyout.ClosingTime);
+            draft.PrivateBuyout.ClosingTime,
+            draft.NorthGateOpeningOverride,
+            draft.AvenueOpeningOverride);
 
         return new AssociateParkHoursView(
             effective,
