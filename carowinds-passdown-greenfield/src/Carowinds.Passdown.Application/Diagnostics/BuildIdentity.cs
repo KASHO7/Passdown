@@ -6,9 +6,9 @@ namespace Carowinds.Passdown.Application.Diagnostics;
 /// Phase 18D: which exact build is running — the visible product name, the release version, the
 /// source commit it was built from, and the executable it was launched from. Exists so a stale
 /// portable copy (e.g. one Windows Search found instead of the current release folder) can be told
-/// apart from the current build at a glance: every build shares the numeric assembly version
-/// (0.1.0.0), so only the informational version's <c>+&lt;commit&gt;</c> suffix and the executable
-/// path actually distinguish two copies.
+/// apart from the current build at a glance: builds before Phase 18E all shared the version
+/// 0.1.0-dev (numeric 0.1.0.0), so only the informational version's <c>+&lt;commit&gt;</c> suffix and
+/// the executable path distinguish them; release candidates since 0.1.0-rc.1 also differ by version.
 /// </summary>
 public sealed record BuildIdentity(string ProductName, string Version, string? SourceRevision, string? ExecutablePath)
 {
@@ -21,10 +21,10 @@ public sealed record BuildIdentity(string ProductName, string Version, string? S
     public string? ShortSourceRevision =>
         SourceRevision is { Length: > ShortRevisionLength } revision ? revision[..ShortRevisionLength] : SourceRevision;
 
-    /// <summary>"0.1.0-dev (b2db3ed)" — for on-screen display.</summary>
+    /// <summary>"0.1.0-rc.1 (096bc4a)" — for on-screen display.</summary>
     public string DisplayVersion => ShortSourceRevision is { } revision ? $"{Version} ({revision})" : Version;
 
-    /// <summary>"0.1.0-dev+b2db3ed5…" — the full, unambiguous form for support files.</summary>
+    /// <summary>"0.1.0-rc.1+096bc4a8…" — the full, unambiguous form for support files.</summary>
     public string FullVersion => SourceRevision is { } revision ? $"{Version}+{revision}" : Version;
 
     /// <summary>

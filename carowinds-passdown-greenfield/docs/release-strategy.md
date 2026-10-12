@@ -3111,3 +3111,46 @@ between builds.
 **Release status:** Phase 18D changes functional source — the Phase 18C ZIP/EXE are superseded and a
 Phase 18D rebuild is required before Windows validation.
 
+
+## Phase 18E — Release candidate versioning
+
+Phase 18D's recommendation is now adopted. Release candidates are numbered:
+
+    0.1.0-rc.1
+    0.1.0-rc.2
+    0.1.0-rc.3
+    …
+
+**Rule:** once an RC artifact exists, any change to shipped code (or any rebuild that produces
+different shipped bytes) gets the next RC number. An RC identity is never reused for different
+bytes. Docs-only commits after the version commit do not change shipped bytes and do not need a new
+number.
+
+To cut the next candidate, edit `Directory.Build.props` only:
+
+- `<Version>` → `0.1.0-rc.N`
+- `<FileVersion>` → `0.1.0.N` (the SDK would otherwise stamp every candidate `0.1.0.0`;
+  `ReleaseVersionTests.DesktopAssembly_ReleaseCandidateFileVersionCarriesTheCandidateNumber` fails
+  if the two disagree)
+
+`Build-PortableRelease.ps1` reads `<Version>` from that file, so each candidate gets its own:
+
+| | Example (rc.1) |
+|---|---|
+| ZIP | `Carowinds-Operations-0.1.0-rc.1-win-x64.zip` |
+| Extracted folder | `Carowinds-Operations-0.1.0-rc.1-win-x64\` |
+| Experimental EXE | `Carowinds-Operations-0.1.0-rc.1-win-x64.exe` |
+| Settings → About this build | `0.1.0-rc.1 (<commit>)` |
+| Diagnostics / app log / scheduled log | `0.1.0-rc.1+<full commit>` |
+| Explorer → Properties → Details | Product version `0.1.0-rc.1+<commit>`, File version `0.1.0.1` |
+| Release manifest | one entry per candidate |
+
+`<commit>` is the commit the artifact was **built from**, which is the version commit, not
+the feature commit before it. The SDK takes it from `HEAD` at build time, so build only from a clean,
+committed tree; a candidate built from uncommitted changes would carry a commit that does not match
+its bytes.
+
+**Unchanged on purpose** (Phase 18D table above): `Carowinds.Passdown.Desktop.exe`,
+`%LOCALAPPDATA%\Carowinds Passdown`, the `Carowinds Passdown Daily Refresh` task, the sync manifest
+product, and `AssemblyVersion` `0.1.0.0`. The RC number exists to identify stale builds, not to move
+data.

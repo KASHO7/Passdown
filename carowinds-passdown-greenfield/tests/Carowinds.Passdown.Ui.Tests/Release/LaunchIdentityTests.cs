@@ -26,8 +26,9 @@ public class LaunchIdentityTests
         var identity = BuildIdentity.FromAssembly(typeof(Desktop.App).Assembly, null);
 
         Assert.Equal("Carowinds Operations", identity.ProductName);
-        Assert.Contains("-dev", identity.Version);
-        Assert.DoesNotContain("+", identity.Version);
+        // A development version or a numbered release candidate (docs/release-strategy.md "Release
+        // candidate versioning"); the "+<commit>" suffix is split off into SourceRevision.
+        Assert.Matches(@"^\d+\.\d+\.\d+-(dev|rc\.\d+)$", identity.Version);
     }
 
     [Fact]

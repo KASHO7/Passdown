@@ -35,7 +35,7 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
 
     public string BuildProductName => Build.ProductName;
 
-    /// <summary>"0.1.0-dev (b2db3ed)" — the release version plus the source commit it was built from.</summary>
+    /// <summary>"0.1.0-rc.1 (096bc4a)" — the release version plus the source commit it was built from.</summary>
     public string BuildVersionText => Build.DisplayVersion;
 
     /// <summary>
