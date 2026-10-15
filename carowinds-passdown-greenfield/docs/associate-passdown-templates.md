@@ -697,7 +697,7 @@ slot, unchanged.
 
 - **Daily Feature**: the feature type stays the heading. Classic puts a full-width rule under it,
   Compact sets the heading tight over the body, and Modern uses a strong heading with a hairline and
-  editorial spacing. Never a card.
+  editorial spacing. Never a card. (Phase 18F: printed only when text was entered — see "Phase 18F" below.)
 - **Notes**: Classic has readable bullets. Compact has tight bullets under "NOTES". Modern has
   unbulleted paragraphs with more line spacing than Compact.
 - **Add-Ons**: still printed only when the model carries the category. Classic and Modern render it as
@@ -786,3 +786,23 @@ Classic, Compact and Modern print `model.ParkHours.NorthGateText` / `AvenueText`
 default (opening −30 / −45 min). No "override" qualifier is printed — the PDF states the operational
 time for the day. Template structure is unchanged. The finalized snapshot freezes the same strings,
 so History shows what was printed.
+
+### Phase 18F — empty Daily Feature is omitted
+
+The Daily Feature section prints only when real (non-whitespace) Quote/Question/Fact text was
+entered for the date: `PdfDailyFeature.HasContent` is now `!string.IsNullOrWhiteSpace(Text)`. A
+selected feature type alone is **not** content. When there is no text, Classic, Compact and Modern
+render nothing for the section — no type heading, no "Daily Feature" fallback heading, no
+"Not entered." placeholder, no rule/hairline, and no reserved space; the first product section moves
+up. The one-page preflight estimate no longer budgets lines for an omitted feature.
+
+With text, nothing changed: the feature type is the heading and each template keeps its own treatment
+(§17.7). Finalized History PDFs are frozen bytes and are never re-rendered, so already-finalized
+passdowns that printed "Not entered." keep it. No document-model, snapshot, or schema shape changed.
+
+Tests: `Templates/DailyFeatureOmissionTests` (all three templates: null / empty / whitespace /
+type-only omitted; text present rendered; following section moves up; type-only lays out identically
+to no feature at all).
+
+The Associate screen's Teams "Copy" actions (Phase 18F) read this same document model — see
+`docs/phase18f-teams-copy.md`.

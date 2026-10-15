@@ -70,6 +70,7 @@ public partial class AssociateViewModel : ViewModelBase
     private readonly IDiagnosticExportService _diagnosticExportService;
     private readonly IDiagnosticExportFilePicker _diagnosticExportPicker;
     private readonly IAssociatePassdownTemplatePreferenceStore _templatePreferenceStore;
+    private readonly IClipboardService _clipboardService;
     private readonly ILogger<AssociateViewModel>? _logger;
     private readonly TimeSpan _autosaveDebounce;
     private readonly Func<TimeSpan, CancellationToken, Task> _autosaveDelay;
@@ -147,6 +148,7 @@ public partial class AssociateViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(SaveStatus))]
     [NotifyPropertyChangedFor(nameof(SaveStatusText))]
     [NotifyCanExecuteChangedFor(nameof(CreatePdfCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CopyForTeamsCommand))]
     public partial AssociateWorkspace? Workspace { get; set; }
 
     /// <summary>
@@ -203,12 +205,14 @@ public partial class AssociateViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsBusy))]
     [NotifyCanExecuteChangedFor(nameof(CheckOnlineCommand))]
     [NotifyCanExecuteChangedFor(nameof(CreatePdfCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CopyForTeamsCommand))]
     public partial bool IsLoadingDate { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBusy))]
     [NotifyCanExecuteChangedFor(nameof(CheckOnlineCommand))]
     [NotifyCanExecuteChangedFor(nameof(CreatePdfCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CopyForTeamsCommand))]
     public partial bool IsCheckingOnline { get; set; }
 
     /// <summary>Concise in-progress copy such as "Checked Fast Lane — 3 of 4 complete" (spec Part F). Null while not refreshing.</summary>
@@ -478,6 +482,14 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     public partial string? DiagnosticsExportMessage { get; set; }
 
+    /// <summary>Phase 18F: subtle feedback for the last Copy action ("Today's pricing copied", "No pricing selected", or a short failure message). Null when there is nothing to say.</summary>
+    [ObservableProperty]
+    public partial string? CopyMessage { get; set; }
+
+    /// <summary>True when <see cref="CopyMessage"/> reports a clipboard failure (shown in the error color) rather than a confirmation.</summary>
+    [ObservableProperty]
+    public partial bool CopyMessageIsError { get; set; }
+
     public AssociateViewModel(
         IAssociatePassdownService service,
         IClock clock,
@@ -490,7 +502,8 @@ public partial class AssociateViewModel : ViewModelBase
         IDiagnosticExportFilePicker? diagnosticExportPicker = null,
         IErtConfigurationService? ertConfigurationService = null,
         IAssociatePassdownTemplatePreferenceStore? templatePreferenceStore = null,
-        ISyncLocalChangeNotifier? syncLocalChangeNotifier = null)
+        ISyncLocalChangeNotifier? syncLocalChangeNotifier = null,
+        IClipboardService? clipboardService = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -505,6 +518,7 @@ public partial class AssociateViewModel : ViewModelBase
         _diagnosticExportService = diagnosticExportService ?? new UnavailableDiagnosticExportService();
         _diagnosticExportPicker = diagnosticExportPicker ?? new UnavailableDiagnosticExportFilePicker();
         _templatePreferenceStore = templatePreferenceStore ?? new FileAssociatePassdownTemplatePreferenceStore(FileAssociatePassdownTemplatePreferenceStore.DefaultPath);
+        _clipboardService = clipboardService ?? new UnavailableClipboardService();
 
         // "Today" in the park's own wall-clock time (spec §6.5/§6.6 use the same Eastern
         // convention for "today") rather than the host machine's arbitrary local time zone.
@@ -804,7 +818,11 @@ public partial class AssociateViewModel : ViewModelBase
     /// could reach the network. Spec Part H: the previous date's pending edits are flushed/saved
     /// before the new date's workspace is composed and applied.
     /// </summary>
-    partial void OnSelectedDateChanged(DateOnly value) => _pendingLoad = SwitchDateAsync(value);
+    partial void OnSelectedDateChanged(DateOnly value)
+    {
+        CopyMessage = null; // a "copied" confirmation belongs to the date it was copied from.
+        _pendingLoad = SwitchDateAsync(value);
+    }
 
     private async Task SwitchDateAsync(DateOnly newDate)
     {
@@ -962,6 +980,57 @@ public partial class AssociateViewModel : ViewModelBase
     }
 
     private bool CanCreatePdf() => HasWorkspace && !IsBusy && !IsExportingPdf;
+
+    /// <summary>
+    /// Phase 18F: copies Teams-friendly plain text for the currently open date. Built from the same
+    /// <see cref="AssociatePassdownDocumentModelBuilder"/> model the PDF renders — over the current
+    /// editable fields projected onto <see cref="Workspace"/> in memory (<see cref="WithDraftApplied"/>)
+    /// — so copied pricing follows the PDF's section/product selections exactly. Never retrieves,
+    /// refreshes, saves, finalizes, or changes the selected date; a clipboard failure is logged and
+    /// reported as a short message, never thrown.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanCopyForTeams))]
+    private async Task CopyForTeamsAsync(AssociateTeamsCopyKind kind)
+    {
+        CopyMessage = null;
+        CopyMessageIsError = false;
+
+        if (Workspace is not { } workspace)
+        {
+            return;
+        }
+
+        var effective = _draftDateInEdit == workspace.OperatingDate ? WithDraftApplied(workspace, BuildDraft()) : workspace;
+        var model = AssociatePassdownDocumentModelBuilder.Build(effective, DateTimeOffset.Now);
+        var text = AssociateTeamsTextFormatter.Format(model, kind);
+
+        if (text is null)
+        {
+            CopyMessage = "No pricing selected";
+            return;
+        }
+
+        try
+        {
+            await _clipboardService.SetTextAsync(text).ConfigureAwait(true);
+            CopyMessage = kind switch
+            {
+                AssociateTeamsCopyKind.OperationsSummary => "Operations summary copied",
+                AssociateTeamsCopyKind.TodaysPricing => "Today's pricing copied",
+                _ => AssociateTeamsTextFormatter.FormatPricing(model) is not null
+                    ? "Operations and pricing copied"
+                    : "Operations summary copied (no pricing selected)",
+            };
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogError(ex, "Copy for Teams ({CopyKind}) failed for {OperatingDate}.", kind, workspace.OperatingDate);
+            CopyMessage = "Couldn't copy to the clipboard. Try again.";
+            CopyMessageIsError = true;
+        }
+    }
+
+    private bool CanCopyForTeams(AssociateTeamsCopyKind kind) => HasWorkspace && !IsBusy;
 
     /// <summary>
     /// Phase 7F Part F/G: builds the sanitized diagnostic export ZIP (local-only — never triggers a
@@ -1742,44 +1811,7 @@ public partial class AssociateViewModel : ViewModelBase
 
             if (Workspace is { } current && current.OperatingDate == date)
             {
-                // The just-saved draft's manual/buyout override must be reflected in the workspace's
-                // own ParkHours immediately, not only in the live ParkHours getter above — CreatePdfAsync
-                // (and anything else reading Workspace directly) builds from this field, and until the
-                // next full load/Check Online it would otherwise still show the pre-edit hours.
-                var parkHours = RecomputeParkHours(
-                    current.ParkHours,
-                    draft.ManualHoursOverride.Enabled, draft.ManualHoursOverride.OpeningTime, draft.ManualHoursOverride.ClosingTime,
-                    draft.PrivateBuyout.Enabled, draft.PrivateBuyout.OpeningTime, draft.PrivateBuyout.ClosingTime,
-                    draft.NorthGateOpeningOverride, draft.AvenueOpeningOverride);
-
-                // Phase 13D Part AC/AD: the just-saved draft's per-product include/price overrides must
-                // also be reflected onto Workspace.Products immediately — this is what
-                // AssociatePassdownDocumentModelBuilder actually reads (via AssociateProduct.EffectiveDisplayPrice/
-                // IncludeOnPdf), not Draft.ProductOverrides directly. Before this fix, CreatePdfAsync's
-                // FlushPendingAutosaveAsync -> SaveDraftNowAsync path updated Draft (so the override
-                // survived a reload) but left Products holding whatever official/default values the last
-                // full compose (initial load / date switch / Check Online) produced, so a custom value
-                // typed and saved just before "Create PDF" never reached the PDF unless something else
-                // happened to force a full recompose in between. Applies to every official product
-                // (dated or catalog) uniformly — never special-cased by category/name.
-                var updatedProducts = current.Products
-                    .Select(product =>
-                    {
-                        if (product.IsCustom)
-                        {
-                            return product;
-                        }
-
-                        var productOverride = draft.ProductOverrides.GetValueOrDefault(product.ProductIdentity, ProductDraftOverride.Default);
-                        return product with
-                        {
-                            IncludeOnPdf = productOverride.IncludeOnPdf,
-                            DisplayPriceOverride = productOverride.DisplayPriceOverride,
-                        };
-                    })
-                    .ToList();
-
-                Workspace = current with { Draft = draft, SaveStatus = status, ParkHours = parkHours, Products = updatedProducts, DraftContentHash = saveResult.ContentHash };
+                Workspace = WithDraftApplied(current, draft) with { SaveStatus = status, DraftContentHash = saveResult.ContentHash };
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -1793,6 +1825,55 @@ public partial class AssociateViewModel : ViewModelBase
             AutosaveState = _isDirty ? AssociateAutosaveState.Unsaved : AssociateAutosaveState.Saved;
             _saveSemaphore.Release();
         }
+    }
+
+    /// <summary>
+    /// <paramref name="current"/> with <paramref name="draft"/> applied the way the PDF reads it: the
+    /// draft itself, park hours recomputed from its manual/buyout/gate overrides, and its per-product
+    /// include/price overrides reflected onto <see cref="AssociateWorkspace.Products"/>. Pure — used by
+    /// <see cref="SaveDraftNowAsync"/> after a save and (Phase 18F) by <see cref="CopyForTeamsAsync"/>
+    /// to see unsaved edits without saving them.
+    /// </summary>
+    private static AssociateWorkspace WithDraftApplied(AssociateWorkspace current, AssociateDraftPayload draft)
+    {
+        // The draft's manual/buyout override must be reflected in the workspace's
+        // own ParkHours immediately, not only in the live ParkHours getter above — CreatePdfAsync
+        // (and anything else reading Workspace directly) builds from this field, and until the
+        // next full load/Check Online it would otherwise still show the pre-edit hours.
+        var parkHours = RecomputeParkHours(
+            current.ParkHours,
+            draft.ManualHoursOverride.Enabled, draft.ManualHoursOverride.OpeningTime, draft.ManualHoursOverride.ClosingTime,
+            draft.PrivateBuyout.Enabled, draft.PrivateBuyout.OpeningTime, draft.PrivateBuyout.ClosingTime,
+            draft.NorthGateOpeningOverride, draft.AvenueOpeningOverride);
+
+        // Phase 13D Part AC/AD: the draft's per-product include/price overrides must
+        // also be reflected onto Workspace.Products immediately — this is what
+        // AssociatePassdownDocumentModelBuilder actually reads (via AssociateProduct.EffectiveDisplayPrice/
+        // IncludeOnPdf), not Draft.ProductOverrides directly. Before this fix, CreatePdfAsync's
+        // FlushPendingAutosaveAsync -> SaveDraftNowAsync path updated Draft (so the override
+        // survived a reload) but left Products holding whatever official/default values the last
+        // full compose (initial load / date switch / Check Online) produced, so a custom value
+        // typed and saved just before "Create PDF" never reached the PDF unless something else
+        // happened to force a full recompose in between. Applies to every official product
+        // (dated or catalog) uniformly — never special-cased by category/name.
+        var updatedProducts = current.Products
+            .Select(product =>
+            {
+                if (product.IsCustom)
+                {
+                    return product;
+                }
+
+                var productOverride = draft.ProductOverrides.GetValueOrDefault(product.ProductIdentity, ProductDraftOverride.Default);
+                return product with
+                {
+                    IncludeOnPdf = productOverride.IncludeOnPdf,
+                    DisplayPriceOverride = productOverride.DisplayPriceOverride,
+                };
+            })
+            .ToList();
+
+        return current with { Draft = draft, ParkHours = parkHours, Products = updatedProducts };
     }
 
     /// <summary>
@@ -1899,6 +1980,13 @@ public partial class AssociateViewModel : ViewModelBase
     {
         public Task<PdfSaveResult> SaveAsync(byte[] pdfBytes, string suggestedFileName, CancellationToken cancellationToken = default) =>
             Task.FromResult(PdfSaveResult.Failed("PDF export is not available."));
+    }
+
+    /// <summary>Default <see cref="IClipboardService"/> when none is supplied — only reachable if the composition root failed to register the real one; every production path registers <see cref="Services.AvaloniaClipboardService"/>.</summary>
+    private sealed class UnavailableClipboardService : IClipboardService
+    {
+        public Task SetTextAsync(string text, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Clipboard is not available.");
     }
 
     /// <summary>Default <see cref="IDiagnosticExportService"/> when none is supplied — only reachable if the composition root failed to register the real one; every production path registers <see cref="Infrastructure.Diagnostics.DiagnosticExportService"/>.</summary>

@@ -44,10 +44,15 @@ public sealed record PdfEarlyRideTime(
     IReadOnlyList<string> Rides,
     string? Note);
 
-/// <summary>One of the three Daily Feature types (Phase 8A; formerly "Daily Fun"), pre-labeled by the builder — Documents never decides how <c>DailyFeatureType</c> reads as text.</summary>
+/// <summary>
+/// One of the three Daily Feature types (Phase 8A; formerly "Daily Fun"), pre-labeled by the builder —
+/// Documents never decides how <c>DailyFeatureType</c> reads as text. Phase 18F: the section renders
+/// only when <see cref="HasContent"/> — real, non-whitespace text. A selected type alone is not
+/// content; every template then omits the whole section (heading, rule, placeholder, and spacing).
+/// </summary>
 public sealed record PdfDailyFeature(string? TypeLabel, string? Text)
 {
-    public bool HasContent => TypeLabel is not null || !string.IsNullOrWhiteSpace(Text);
+    public bool HasContent => !string.IsNullOrWhiteSpace(Text);
 }
 
 /// <summary>

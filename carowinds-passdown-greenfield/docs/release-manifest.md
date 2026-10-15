@@ -926,6 +926,11 @@ This build supersedes the Phase 17F artifacts as the current build.
 
 # Release manifest — 0.1.0-rc.1 (Phase 18E, first uniquely-versioned release candidate)
 
+> **Superseded by 0.1.0-rc.2 (Phase 18G).** Phase 18F (`8020edb`, Copy ▾ Teams text, empty Daily
+> Feature omission) changed shipped code after these artifacts were built. RC.1 was never
+> Windows-validated; do not distribute or validate it. The RC.1 files stay in `artifacts/releases/`
+> under their own names and hashes.
+
 **Status: built and validated on the build host. Windows validation PENDING**, to be run by the owner
 on the affected x64 PC with `docs/phase18e-rc1-windows-checklist.md`. Every Windows item below stays
 **NOT EXECUTED** until results come back. They will be filled in here, not inferred.
@@ -1039,4 +1044,129 @@ above. That covers the checklist's Step 0 hash check and steps 9–27.
   passes (tests, clean Release build, packaging validator, structure, path scan, notices). The
   acceptance gate needs the ZIP to launch on Windows, the Dashboard, overrides, PDFs, logs,
   diagnostics and the scheduler to work there, and none of that has run yet.
+- **Distribution: LICENSE DECISION PENDING** (QuestPDF, above).
+
+# Release manifest — 0.1.0-rc.2 (Phase 18G, rebuild of the Phase 18F source)
+
+**Status: built and validated on the build host. Windows validation PENDING**, to be run by the owner
+on the affected x64 PC with `docs/phase18g-rc2-windows-checklist.md`. No Windows PC was reachable from
+the build session (a Windows 11 ARM64 VMware VM exists on the build Mac but was not running, is not
+the affected x64 PC, and has no Teams/OneDrive setup known to this session). Every Windows item below
+stays **NOT EXECUTED** until results come back. They will be filled in here, not inferred.
+
+| | |
+|---|---|
+| Product (visible) | Carowinds Operations |
+| Version | **`0.1.0-rc.2`**, file version `0.1.0.2`, informational `0.1.0-rc.2+dbaa7531242bcfecd21b139e007d18d07c6f1021` (read from the packaged `Carowinds.Passdown.Desktop.exe`/`.dll` version resources and the single-file EXE; neither contains `0.1.0-rc.1` or `0.1.0.1`) |
+| Source commit (features) | `8020edb` (Phase 18F: Teams copy actions and empty Daily Feature omission) |
+| Release/version commit | `dbaa753`: `Directory.Build.props` only (`<Version>` and `<FileVersion>`). No functional source change, no test change. Artifacts were built from this commit |
+| About this build | `0.1.0-rc.2 (dbaa753)` |
+| Target | Windows 11 x64 (`win-x64`), self-contained, R2R |
+| Build host | macOS 27.0 (Darwin 27.0.0), Apple Silicon arm64; .NET SDK 10.0.400; PowerShell 7.6.6 (local `dotnet tool` in a scratch folder, nothing installed system-wide) |
+| DB / Draft / Snapshot / SyncSchemaVersion | 15 / 4 / 2 / 1 (unchanged; no migration; no sync format change) |
+| Legacy identities | Unchanged: `Carowinds.Passdown.Desktop.exe`, `%LOCALAPPDATA%\Carowinds Passdown`, `Carowinds Passdown Daily Refresh` task, sync product identity, AssemblyVersion `0.1.0.0` |
+| Deterministic tests | Baseline at `8020edb`: **2620/2620**. Final at `dbaa753`: **2620/2620** = 125 Domain + 671 Application + 307 Documents + 752 Infrastructure + 727 Ui together + 26 `OperationsCalendarViewTests` + 10 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` alone (`-c Release --filter "Category!=LiveSmoke"`). No tests added: the RC rule tests (`ReleaseVersionTests`, `LaunchIdentityTests`) already check the rc.N / file-version pairing |
+| Build | `dotnet build CarowindsPassdown.slnx -c Release --no-incremental`: 0 warnings, 0 errors (before and after the version change) |
+| Superseded | RC.1 (`…-0.1.0-rc.1-win-x64.zip/.exe`) and the Phase 18C `…-0.1.0-dev-…` artifacts. Both remain in `artifacts/releases/` under different names; neither is nested in RC.2. Do not distribute |
+
+## Primary release: multi-file portable ZIP (RECOMMENDED)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.2-win-x64.zip` |
+| Bytes | 73,461,483 |
+| SHA-256 | `3b8fdb219755991ab3a401d58218d8c626faf35d696da3974a6cd0df73ce2d22` |
+| Extracted folder | `Carowinds-Operations-0.1.0-rc.2-win-x64\` |
+| Content | 282 files / 282 entries, 154 MB uncompressed |
+
+- **Packaging validator (`Test-ReleasePackage.ps1`): PASS** on the staging folder and on the final ZIP
+  (282 files each), run by the real `Build-PortableRelease.ps1` under PowerShell 7.6.6 on macOS. The
+  C# mirror (`CAROWINDS_RELEASE_ZIP=… --filter RealReleaseZip`) also PASSES on the final ZIP. Nothing
+  bypassed. Not yet run on Windows.
+- **ZIP structure: PASS.** CRC test clean; exactly one top-level folder; 282 entries, no duplicates;
+  no backslash names; no empty files; no `.DS_Store`/`__MACOSX`/`.pdb`/`.db`/`-wal`/`-shm`/`.log`/
+  `.zip`/`.pdf`/`.png`/`.dylib`/`.so`/source/test-assembly/`0.1.0-dev`/`rc.1` names. Extracted to a
+  scratch folder outside `artifacts/`, it is byte-identical (`diff -rq`) to the staging folder.
+  Executable, `README.txt`, `TESTER-GUIDE.txt`, both `Enable/Disable Automatic Refresh.cmd`,
+  `tools\Install-/Uninstall-ScheduledRefresh.ps1`, `THIRD-PARTY-NOTICES.txt`, `licenses\` (23 files),
+  `LatoFont\OFL.txt`, and the native `e_sqlite3`/`libSkiaSharp`/`libHarfBuzzSharp`/`av_libglesv2`
+  all present. The `.exe` is `PE32+ (GUI) x86-64`.
+- **Developer-path scan: PASS.** The checkout path, the repository folder name and the build user's
+  name appear in no file (UTF-8 and UTF-16). `/Users/`, `/home/` and `C:\Users\` appear in no
+  project-owned file. They appear only in the documented Phase 18B vendor exception:
+  `SQLitePCLRaw.batteries_v2.dll`, `SQLitePCLRaw.core.dll`, `SQLitePCLRaw.provider.e_sqlite3.dll`
+  (`/Users/eric/…`) and `MicroCom.Runtime.dll` (`/home/kekekeks/…`).
+- **Third-party notices: PASS (preserved).** `THIRD-PARTY-NOTICES.txt` and `licenses\` are
+  byte-identical to the repository sources, unchanged since Phase 18C (`5c0ddf2`). Shipped versions in
+  `Carowinds.Passdown.Desktop.deps.json` match the notices table: Avalonia/Avalonia.Fonts.Inter
+  12.1.1, ANGLE 2.1.27548.20260419, .NET runtime/Microsoft.Data.Sqlite.Core 10.0.11, SkiaSharp
+  3.119.4, HarfBuzzSharp 8.3.1.3, QuestPDF 2026.7.3, SQLitePCLRaw 2.1.12, CommunityToolkit.Mvvm 8.4.2,
+  MicroCom.Runtime 0.11.6, Tmds.DBus.Protocol 0.94.1. No license text regenerated.
+
+## Single-file release (EXPERIMENTAL)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.2-win-x64.exe` |
+| Bytes | 186,155,852 |
+| SHA-256 | `156da1bad68bcbca983718682d606b2c1f74c6dcfa8276d77095685590a30578` |
+| Checks | `PE32+ (GUI) x86-64`; carries `0.1.0-rc.2+dbaa753…` and file version `0.1.0.2`; no checkout path or user name; only SQLitePCLRaw's `/Users/eric/` and MicroCom's `/home/kekekeks/` vendor paths |
+| Status | EXPERIMENTAL. Ships without `THIRD-PARTY-NOTICES.txt`/`licenses\` when distributed alone, so do **not** hand it out independently. The ZIP stays the distribution |
+
+## QuestPDF licence
+
+Unchanged from RC.1: QuestPDF 2026.7.3 shipped, licence texts included, `LicenseType.Community`
+selected in code. No legal conclusion is drawn here.
+
+**DISTRIBUTION LICENSE DECISION: PENDING USER/ORGANIZATION CONFIRMATION**
+
+## Windows validation
+
+To be run with `docs/phase18g-rc2-windows-checklist.md` against the exact hashes above.
+
+| Item | Result |
+|---|---|
+| Windows machine record | NOT EXECUTED (pending) |
+| Hash check on Windows (ZIP, EXE) | NOT EXECUTED (pending) |
+| Windows Search stale-copy check | NOT EXECUTED (pending) — cause of the earlier Dashboard confusion not yet determined |
+| Direct ZIP launch, second launch, About = `0.1.0-rc.2 (dbaa753)`, running folder | NOT EXECUTED (pending) |
+| Affected-PC Dashboard (rides-only ERT, existing data) | NOT EXECUTED (pending) |
+| Conjuring live retrieval, PDF/copy inclusion by SCarowinds selection | NOT EXECUTED (pending; automated tests remain the evidence) |
+| North Gate / Avenue / both overrides, persistence, copy, Reset | NOT EXECUTED (pending) |
+| History freeze of effective gate times | NOT EXECUTED (pending) |
+| Empty Daily Feature — Classic / Compact / Modern | NOT EXECUTED (pending) |
+| Copy ▾ menu keyboard/UI | NOT EXECUTED (pending) |
+| Real Teams paste — Today's Pricing / Operations Summary / Operations + Pricing | NOT EXECUTED (pending) |
+| PDF/copy pricing selection consistency | NOT EXECUTED (pending; automated tests cover the shared model) |
+| No-pricing-selected behavior | NOT EXECUTED (pending) |
+| Clipboard failure | NOT EXECUTED (pending; optional) |
+| Scaling 100% / 125% / 150% | NOT EXECUTED / NOT EXECUTED / NOT EXECUTED (pending) |
+| US formatting under non-US region | NOT EXECUTED (pending) |
+| App log | NOT EXECUTED (pending) |
+| Diagnostics export | NOT EXECUTED (pending) |
+| Task Scheduler install/run/uninstall from RC.2 folder | NOT EXECUTED (pending) |
+| One-PC Personal Sync | NOT EXECUTED (pending) |
+| Two-PC sync | NOT EXECUTED (pending; requires a second PC on RC.2) |
+| Single-file EXE launch | NOT EXECUTED (pending) |
+| Packaging validator on Windows | NOT EXECUTED (PASS on macOS under PowerShell 7.6.6) |
+
+## Known limitations
+
+- All Windows and two-PC validation above is outstanding, including the first real Teams paste and
+  the first DPI-scaling check of the Copy ▾ menu.
+- Copy prices use the PDF's `$59.00` / `From $37.00` form; products with no price are left out of the
+  copy while the PDF prints "-". Both intentional (`docs/phase18f-teams-copy.md`).
+- Do not mix RC.2 with older builds on synced PCs.
+- Single-file EXE: experimental; no bundled notices.
+- QuestPDF distribution licence decision pending.
+- Developer build scripts need PowerShell 7 (unchanged from 18C).
+- Blocker policy: any shipped-code fix found during Windows validation becomes `0.1.0-rc.3`. These
+  RC.2 bytes and hashes are never replaced under the same name.
+
+## Release status
+
+- **Technical: RELEASE BLOCKED, pending Windows validation.** No defect is open. Every build-host gate
+  passes (tests, clean Release build, packaging validator, ZIP structure, path scan, notices). The
+  acceptance gate needs the ZIP to launch on Windows and the Dashboard, overrides, PDFs, clipboard,
+  Teams paste, scaling, logs, diagnostics and the scheduler to work there. None of that has run yet.
 - **Distribution: LICENSE DECISION PENDING** (QuestPDF, above).
