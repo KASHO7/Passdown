@@ -16,6 +16,7 @@ public static class DiagnosticReportFormatter
         sb.AppendLine("Carowinds Operations — Diagnostic Summary");
         sb.AppendLine(CultureInfo.InvariantCulture, $"Generated (UTC): {report.GeneratedAtUtc:O}");
         sb.AppendLine(CultureInfo.InvariantCulture, $"Application version: {report.AppVersion}");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"Executable (sanitized): {SanitizedExecutablePath(report)}");
         sb.AppendLine();
         sb.AppendLine("Database:");
         AppendDatabaseLines(sb, report.Database);
@@ -37,6 +38,7 @@ public static class DiagnosticReportFormatter
         var sb = new StringBuilder();
         sb.AppendLine("System information");
         sb.AppendLine(CultureInfo.InvariantCulture, $"Application version: {report.AppVersion}");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"Executable (sanitized): {SanitizedExecutablePath(report)}");
         sb.AppendLine(CultureInfo.InvariantCulture, $"OS: {Environment.OSVersion.VersionString}");
         sb.AppendLine(CultureInfo.InvariantCulture, $"64-bit OS: {Environment.Is64BitOperatingSystem}");
         sb.AppendLine(CultureInfo.InvariantCulture, $"Report generated (UTC): {report.GeneratedAtUtc:O}");
@@ -80,6 +82,14 @@ public static class DiagnosticReportFormatter
             sb.AppendLine(CultureInfo.InvariantCulture, $"  note: {database.Note}");
         }
     }
+
+    /// <summary>
+    /// Phase 18D: which copy produced this export, with the user-profile part replaced
+    /// (<c>%USERPROFILE%\Downloads\Carowinds-Operations-…\Carowinds.Passdown.Desktop.exe</c>) — enough
+    /// to spot a stale portable copy without disclosing the user name.
+    /// </summary>
+    private static string SanitizedExecutablePath(DiagnosticReport report) =>
+        report.ExecutablePath is { } path ? DiagnosticPathRedactor.Redact(path, []) : "unknown";
 
     private static string FormatTimestamp(DateTimeOffset? value) =>
         value is { } timestamp ? timestamp.ToString("O", CultureInfo.InvariantCulture) : "never";

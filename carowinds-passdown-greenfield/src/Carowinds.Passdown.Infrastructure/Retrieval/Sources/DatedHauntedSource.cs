@@ -29,6 +29,13 @@ public sealed class DatedHauntedSource(IRetrievalHttpClient httpClient, IClock c
 {
     private const string Keyword = "HAPWizard";
 
+    /// <summary>
+    /// Phase 18D: the official SCarowinds page's "The Conjuring: Beyond Fear" Buy Tickets button
+    /// (<c>data-accesso-keyword="THECONJURING"</c>) — same endpoint and envelope as
+    /// <see cref="Keyword"/>, live-confirmed 2026-10-11 (docs/retrieval/dated-haunted-source.md).
+    /// </summary>
+    private const string ConjuringKeyword = "THECONJURING";
+
     /// <summary>Directly observed for this keyword (docs/retrieval/dated-haunted-source.md) — same value as `FastLaneOnly`, independently confirmed here rather than copied.</summary>
     private const string DisplayZeroCapacity = "0";
 
@@ -69,49 +76,37 @@ public sealed class DatedHauntedSource(IRetrievalHttpClient httpClient, IClock c
             return primaryResult.Error!;
         }
 
-        var primaryService = primaryResult.Service!;
-        if (string.Equals(primaryService.Status, "OK", StringComparison.OrdinalIgnoreCase))
+        var products = new List<DatedHauntedProduct>();
+        var primaryRead = ReadExactDateProducts(primaryResult.Service!, timeChecked, requestedDate);
+        if (primaryRead.IsError)
         {
-            var entries = primaryService.Dates?.Entries ?? [];
-            if (entries.Count != 1)
-            {
-                return Error(
-                    timeChecked,
-                    requestedDate,
-                    new InvalidOperationException(
-                        $"Single-day getkeywordcalendar request for {requestedDate:yyyy-MM-dd} returned {entries.Count} date entries; expected exactly 1."));
-            }
+            return primaryRead.Error!;
+        }
 
-            if (!DateOnly.TryParseExact(entries[0].Date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var confirmedDate))
-            {
-                return Error(
-                    timeChecked,
-                    requestedDate,
-                    new InvalidOperationException($"Unparseable date '{entries[0].Date}' in calendar response."));
-            }
+        products.AddRange(primaryRead.Products);
 
-            if (confirmedDate != requestedDate)
-            {
-                // Never observed live — defensive rejection per spec §5.4's "never substitute": a
-                // successful response that doesn't actually confirm the date we asked for must not
-                // be treated as data for that date.
-                return Error(
-                    timeChecked,
-                    requestedDate,
-                    new InvalidOperationException(
-                        $"Requested {requestedDate:yyyy-MM-dd} but the response confirmed '{entries[0].Date}'."),
-                    "We couldn't confirm haunted-attraction availability for the requested date.");
-            }
+        // Phase 18D: "The Conjuring: Beyond Fear" is sold through its own keyword on the same
+        // official SCarowinds page (docs/retrieval/dated-haunted-source.md, Phase 18D addendum), so
+        // it is queried for the same single night and merged into this one haunted payload. A
+        // transport/shape failure fails the whole category so a partial result never overwrites
+        // last-known-good; a plain "No dates found" just means no Conjuring that night.
+        var conjuringBody = AccessoKeywordCalendarRequest.BuildBody(ConjuringKeyword, DisplayZeroCapacity, requestedDate, requestedDate);
+        var conjuringResult = await CallCalendarAsync(conjuringBody, timeChecked, requestedDate, cancellationToken).ConfigureAwait(false);
+        if (conjuringResult.IsError)
+        {
+            return conjuringResult.Error!;
+        }
 
-            var products = BuildProducts(entries[0].Packages?.P ?? [], requestedDate);
-            if (products is null)
-            {
-                return Error(
-                    timeChecked,
-                    requestedDate,
-                    new InvalidOperationException($"Matched date entry for {requestedDate:yyyy-MM-dd} had no usable packages."));
-            }
+        var conjuringRead = ReadExactDateProducts(conjuringResult.Service!, timeChecked, requestedDate);
+        if (conjuringRead.IsError)
+        {
+            return conjuringRead.Error!;
+        }
 
+        products.AddRange(conjuringRead.Products);
+
+        if (products.Count > 0)
+        {
             return SourceResult<DatedHauntedPayload>.Success(
                 SourceId,
                 new SourceEvidence(
@@ -126,7 +121,7 @@ public sealed class DatedHauntedSource(IRetrievalHttpClient httpClient, IClock c
                 new DatedHauntedPayload(products));
         }
 
-        // Primary request found nothing for this exact date. That alone doesn't say whether the
+        // Neither keyword had anything for this exact date. That alone doesn't say whether the
         // date is beyond the published horizon, a dark night inside an active season, or before the
         // season has started at all — a second, wider request is needed to tell (docs).
         var windowEnd = requestedDate > today.AddDays(HorizonPaddingDays) ? requestedDate : today.AddDays(HorizonPaddingDays);
@@ -183,6 +178,59 @@ public sealed class DatedHauntedSource(IRetrievalHttpClient httpClient, IClock c
         return requestedDate > maxDate
             ? NotPublished(timeChecked, requestedDate)
             : Unavailable(timeChecked, requestedDate, DefaultUnavailableDetail(requestedDate));
+    }
+
+    /// <summary>
+    /// Reads one single-night <c>getkeywordcalendar</c> response for either keyword. A non-OK
+    /// status ("No dates found") yields no products; an OK response must confirm exactly the
+    /// requested date with usable packages, otherwise it is an <see cref="RetrievalStatus.Error"/>
+    /// (spec §5.4's "never substitute").
+    /// </summary>
+    private ExactDateRead ReadExactDateProducts(AccessoKeywordCalendarService service, DateTimeOffset timeChecked, DateOnly requestedDate)
+    {
+        if (!string.Equals(service.Status, "OK", StringComparison.OrdinalIgnoreCase))
+        {
+            return ExactDateRead.None;
+        }
+
+        var entries = service.Dates?.Entries ?? [];
+        if (entries.Count != 1)
+        {
+            return ExactDateRead.Failed(Error(
+                timeChecked,
+                requestedDate,
+                new InvalidOperationException(
+                    $"Single-day getkeywordcalendar request for {requestedDate:yyyy-MM-dd} returned {entries.Count} date entries; expected exactly 1.")));
+        }
+
+        if (!DateOnly.TryParseExact(entries[0].Date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var confirmedDate))
+        {
+            return ExactDateRead.Failed(Error(
+                timeChecked,
+                requestedDate,
+                new InvalidOperationException($"Unparseable date '{entries[0].Date}' in calendar response.")));
+        }
+
+        if (confirmedDate != requestedDate)
+        {
+            // Never observed live — defensive rejection per spec §5.4's "never substitute": a
+            // successful response that doesn't actually confirm the date we asked for must not
+            // be treated as data for that date.
+            return ExactDateRead.Failed(Error(
+                timeChecked,
+                requestedDate,
+                new InvalidOperationException(
+                    $"Requested {requestedDate:yyyy-MM-dd} but the response confirmed '{entries[0].Date}'."),
+                "We couldn't confirm haunted-attraction availability for the requested date."));
+        }
+
+        var products = BuildProducts(entries[0].Packages?.P ?? [], requestedDate);
+        return products is null
+            ? ExactDateRead.Failed(Error(
+                timeChecked,
+                requestedDate,
+                new InvalidOperationException($"Matched date entry for {requestedDate:yyyy-MM-dd} had no usable packages.")))
+            : new ExactDateRead(products, null);
     }
 
     /// <summary>
@@ -319,6 +367,16 @@ public sealed class DatedHauntedSource(IRetrievalHttpClient httpClient, IClock c
                 requestedDate));
 
     private static string Truncate(string value) => value.Length <= 500 ? value : value[..500] + "…";
+
+    /// <summary>Products read from one single-night response, or an already-built <see cref="RetrievalStatus.Error"/> result to return as-is.</summary>
+    private readonly record struct ExactDateRead(IReadOnlyList<DatedHauntedProduct> Products, SourceResult<DatedHauntedPayload>? Error)
+    {
+        public static ExactDateRead None => new([], null);
+
+        public bool IsError => Error is not null;
+
+        public static ExactDateRead Failed(SourceResult<DatedHauntedPayload> error) => new([], error);
+    }
 
     /// <summary>Result of one raw <c>getkeywordcalendar</c> call: either a parsed <see cref="AccessoKeywordCalendarService"/> to interpret, or an already-built <see cref="RetrievalStatus.Error"/> result to return as-is.</summary>
     private readonly struct CalendarCallResult

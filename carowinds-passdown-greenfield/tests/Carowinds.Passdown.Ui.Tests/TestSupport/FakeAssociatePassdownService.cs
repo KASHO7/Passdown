@@ -266,15 +266,19 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
         };
     }
 
-    /// <summary>Mirrors production <c>AssociatePassdownService.ComposeParkHours</c>'s override precedence (no official hours ever set here — this fake has no dated-source data) so a test's saved-then-reloaded draft round-trips its manual/buyout override the same way the real service does, instead of always coming back "not checked yet".</summary>
-    private static AssociateParkHoursView ComposeParkHoursFromDraft(AssociateDraftPayload draft)
+    /// <summary>Phase 18D: optional official hours for this fake (default none, as before) so gate-time tests have a real calculated default to override.</summary>
+    public (TimeOnly Opening, TimeOnly Closing)? OfficialHours { get; set; }
+
+    /// <summary>Mirrors production <c>AssociateParkHoursComposer.Compose</c>'s override precedence (official hours only when a test sets <see cref="OfficialHours"/>) so a test's saved-then-reloaded draft round-trips its manual/buyout/gate overrides the same way the real service does, instead of always coming back "not checked yet".</summary>
+    private AssociateParkHoursView ComposeParkHoursFromDraft(AssociateDraftPayload draft)
     {
         var effective = ParkHoursCalculator.Calculate(
-            officialIsClosed: false, officialOpening: null, officialClosing: null,
+            officialIsClosed: false, OfficialHours?.Opening, OfficialHours?.Closing,
             draft.ManualHoursOverride.Enabled, draft.ManualHoursOverride.OpeningTime, draft.ManualHoursOverride.ClosingTime,
-            draft.PrivateBuyout.Enabled, draft.PrivateBuyout.OpeningTime, draft.PrivateBuyout.ClosingTime);
+            draft.PrivateBuyout.Enabled, draft.PrivateBuyout.OpeningTime, draft.PrivateBuyout.ClosingTime,
+            draft.NorthGateOpeningOverride, draft.AvenueOpeningOverride);
 
-        return new AssociateParkHoursView(effective, AssociateVerificationInfo.NotCheckedYet, OfficialIsClosed: false, OfficialOpening: null, OfficialClosing: null);
+        return new AssociateParkHoursView(effective, AssociateVerificationInfo.NotCheckedYet, OfficialIsClosed: false, OfficialOpening: OfficialHours?.Opening, OfficialClosing: OfficialHours?.Closing);
     }
 
     public static AssociateWorkspace DefaultWorkspace(DateOnly date) => new(

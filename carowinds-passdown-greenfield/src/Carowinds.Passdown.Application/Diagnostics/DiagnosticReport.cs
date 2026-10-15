@@ -56,4 +56,7 @@ public sealed record DiagnosticReport(
 {
     /// <summary>Phase 18B REL-005: bounded, path-redacted tail of the interactive app log; empty when none exists.</summary>
     public IReadOnlyList<string> RecentAppLogLines { get; init; } = RecentAppLogLines ?? [];
+
+    /// <summary>Phase 18D: the running executable's full path. Exported files only ever print it redacted (<see cref="DiagnosticReportFormatter"/>).</summary>
+    public string? ExecutablePath { get; init; }
 }

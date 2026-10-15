@@ -18,9 +18,17 @@
     Carowinds.Passdown.Desktop.exe binary itself — the internal project/assembly identity stays
     Carowinds.Passdown throughout (docs/release-strategy.md "Application name";
     docs/phase13-hardening.md "Phase 13G").
+
+    Phase 18E: release candidates are numbered 0.1.0-rc.1, 0.1.0-rc.2, … — every artifact build that
+    ships changed code gets the next number, so ZIP/folder names, About this build and Explorer's
+    file properties differ between candidates (docs/release-strategy.md "Release candidate
+    versioning"). <FileVersion> is set explicitly because the SDK would otherwise give every
+    candidate the same numeric 0.1.0.0: its fourth part is the RC number and must be bumped together
+    with <Version> (guarded by ReleaseVersionTests). AssemblyVersion intentionally stays 0.1.0.0.
   -->
   <PropertyGroup>
-    <Version>0.1.0-dev</Version>
+    <Version>0.1.0-rc.1</Version>
+    <FileVersion>0.1.0.1</FileVersion>
     <Product>Carowinds Operations</Product>
   </PropertyGroup>
 

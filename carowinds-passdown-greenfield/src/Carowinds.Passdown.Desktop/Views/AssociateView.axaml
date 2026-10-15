@@ -411,11 +411,53 @@
                   </Border>
                 </StackPanel>
 
-                <!-- Gates row: North Gate | Avenue. -->
+                <!-- Gates row: North Gate | Avenue. Phase 18D: each shows its effective time, a subtle
+                     "Override" chip while a per-date override is active, a compact override box
+                     (blank = calculated default; the default is never copied in) and Reset. -->
                 <TextBlock Grid.Row="1" Grid.Column="0" Text="North Gate" Classes="fieldLabel" VerticalAlignment="Center" />
-                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ParkHours.NorthGateText, FallbackValue='—'}" FontWeight="Medium" VerticalAlignment="Center" />
+                <StackPanel Grid.Row="1" Grid.Column="1" Spacing="0" Margin="0,0,10,0" VerticalAlignment="Center">
+                  <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="4">
+                    <TextBlock Text="{Binding ParkHours.NorthGateText, FallbackValue='—'}" FontWeight="Medium" VerticalAlignment="Center" MinWidth="64"
+                               AutomationProperties.Name="{Binding ParkHours.NorthGateText, StringFormat='North Gate opens {0}'}" />
+                    <Border Classes="chip" IsVisible="{Binding NorthGateIsOverridden}" VerticalAlignment="Center">
+                      <TextBlock Text="Override" />
+                    </Border>
+                    <TextBox Text="{Binding NorthGateOverrideText, UpdateSourceTrigger=LostFocus}"
+                             PlaceholderText="Override" MinWidth="96" VerticalAlignment="Center"
+                             KeyDown="TimeTextBox_OnKeyDown"
+                             AutomationProperties.Name="North Gate override time" />
+                    <Button Content="Reset" Classes="secondaryAction" VerticalAlignment="Center"
+                            IsVisible="{Binding CanResetNorthGateOverride}"
+                            Command="{Binding ResetNorthGateOverrideCommand}"
+                            AutomationProperties.Name="Reset North Gate to default time" />
+                  </WrapPanel>
+                  <TextBlock Text="{Binding NorthGateOverrideError}"
+                             IsVisible="{Binding NorthGateOverrideError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                             Classes="fieldError" TextWrapping="Wrap"
+                             AutomationProperties.Name="{Binding NorthGateOverrideError}" />
+                </StackPanel>
                 <TextBlock Grid.Row="1" Grid.Column="2" Text="Avenue" Classes="fieldLabel" VerticalAlignment="Center" />
-                <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding ParkHours.AvenueText, FallbackValue='—'}" FontWeight="Medium" VerticalAlignment="Center" />
+                <StackPanel Grid.Row="1" Grid.Column="3" Spacing="0" VerticalAlignment="Center">
+                  <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="4">
+                    <TextBlock Text="{Binding ParkHours.AvenueText, FallbackValue='—'}" FontWeight="Medium" VerticalAlignment="Center" MinWidth="64"
+                               AutomationProperties.Name="{Binding ParkHours.AvenueText, StringFormat='Avenue opens {0}'}" />
+                    <Border Classes="chip" IsVisible="{Binding AvenueIsOverridden}" VerticalAlignment="Center">
+                      <TextBlock Text="Override" />
+                    </Border>
+                    <TextBox Text="{Binding AvenueOverrideText, UpdateSourceTrigger=LostFocus}"
+                             PlaceholderText="Override" MinWidth="96" VerticalAlignment="Center"
+                             KeyDown="TimeTextBox_OnKeyDown"
+                             AutomationProperties.Name="Avenue override time" />
+                    <Button Content="Reset" Classes="secondaryAction" VerticalAlignment="Center"
+                            IsVisible="{Binding CanResetAvenueOverride}"
+                            Command="{Binding ResetAvenueOverrideCommand}"
+                            AutomationProperties.Name="Reset Avenue to default time" />
+                  </WrapPanel>
+                  <TextBlock Text="{Binding AvenueOverrideError}"
+                             IsVisible="{Binding AvenueOverrideError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                             Classes="fieldError" TextWrapping="Wrap"
+                             AutomationProperties.Name="{Binding AvenueOverrideError}" />
+                </StackPanel>
 
                 <!-- Waterpark hours / verification / stale note — full width, collapses to zero space when absent. -->
                 <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="4" Spacing="2">

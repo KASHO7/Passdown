@@ -143,6 +143,63 @@ public sealed class OpenEditorSyncProtectionTests : IDisposable
 
     // ------------------------------------------------------------------ Associate draft
 
+    // Phase 18D: the North Gate/Avenue overrides are ordinary draft fields, so they ride the same
+    // draft sync entity and the same REL-004 protection — no separate sync entity.
+
+    [Fact]
+    public async Task Phase18D_GateOverrides_SyncToTheOtherDevice_AndACleanEditorReloadsThem()
+    {
+        var a = CreateDevice("a", Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
+        var b = CreateDevice("b", Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"));
+        var editorA = await OpenAssociateEditorAsync(a);
+        editorA.AvenueOverrideText = "10:00 AM";
+        await editorA.FlushPendingAutosaveAsync();
+        await a.Sync.RunAsync();
+
+        await b.Sync.RunAsync();
+        var onB = await StoredDraftAsync(b);
+        Assert.Equal(new TimeOnly(10, 0), onB!.AvenueOpeningOverride);
+        Assert.Null(onB.NorthGateOpeningOverride);
+
+        // B overrides North Gate; A's clean editor reloads both values.
+        await RemoteDeviceEditsDraftAsync(b, onB with { NorthGateOpeningOverride = new TimeOnly(9, 45) });
+        await a.Sync.RunAsync();
+        await editorA.HandleSyncLocalChangesAsync(a.Published.ToList());
+
+        Assert.Equal("9:45 AM", editorA.NorthGateOverrideText);
+        Assert.Equal("10:00 AM", editorA.AvenueOverrideText);
+        Assert.Null(editorA.SyncConflictMessage);
+    }
+
+    [Fact]
+    public async Task Phase18D_DirtyGateOverrideEdit_PreservesTheLocalValue_AndKeepsTheRemoteOneAsAConflict()
+    {
+        var a = CreateDevice("a", Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
+        var b = CreateDevice("b", Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"));
+        var editor = await OpenAssociateEditorAsync(a);
+        editor.AvenueOverrideText = "10:00 AM";
+        await editor.FlushPendingAutosaveAsync();
+        await a.Sync.RunAsync();
+
+        await RemoteDeviceEditsDraftAsync(b, Payload() with { AvenueOpeningOverride = new TimeOnly(9, 30) });
+
+        editor.AvenueOverrideText = "9:50 AM"; // unsaved local edit
+        await a.Sync.RunAsync();
+        await editor.HandleSyncLocalChangesAsync(a.Published.ToList());
+        Assert.Equal("9:50 AM", editor.AvenueOverrideText); // dirty editor untouched
+
+        await editor.FlushPendingAutosaveAsync();
+
+        Assert.Equal(new TimeOnly(9, 50), (await StoredDraftAsync(a))!.AvenueOpeningOverride);
+        var conflict = await a.Conflicts.GetAsync(SyncEntityType.AssociateDraft, DraftEntityId);
+        Assert.NotNull(conflict);
+        Assert.Equal(new TimeOnly(9, 30), AssociateDraftPayloadSerializer.Deserialize(conflict.RemotePayloadJson!).AvenueOpeningOverride);
+        Assert.Equal(AssociateViewModel.DraftSyncConflictMessage, editor.SyncConflictMessage);
+        await b.Sync.RunAsync();
+        Assert.Equal(new TimeOnly(9, 30), (await StoredDraftAsync(b))!.AvenueOpeningOverride); // never silently overwritten
+    }
+
+
     [Fact]
     public async Task DirtyDraftEditor_SyncImportUnderneath_SaveKeepsBothVersionsAsAnExplicitConflict()
     {

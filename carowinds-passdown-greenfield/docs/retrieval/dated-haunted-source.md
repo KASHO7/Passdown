@@ -250,3 +250,27 @@ envelope DTOs are.
 - `fallwizard` (the admission+maze bundle keyword) was found but deliberately not investigated
   further or implemented — out of scope per spec §5.1's specific naming of the HAPWizard checkout
   for haunted attractions.
+
+## Phase 18D addendum — "The Conjuring: Beyond Fear" (`THECONJURING`)
+
+Live re-check from this dev host on 2026-10-11 (in season), prompted by a report that a Conjuring
+add-on never appeared:
+
+- Not on `/carowinds/add-ons` or `/carowinds/season-pass-add-ons` as a product card — only in the
+  site-wide SCarowinds promo banner text.
+- `/carowinds/events/scarowinds` carries an editorial "The Conjuring: Beyond Fear" block whose "Buy
+  Tickets" button is `data-accesso-keyword="THECONJURING"` (alongside `hapwizard`, `fallwizard`,
+  `FALLMERCH`). No price is printed on the page.
+- `getkeywordcalendar` with `keyword: "THECONJURING"` (same endpoint, headers, body and
+  `display_zero_capacity` as `HAPWizard`; `"0"` and `"1"` returned identical data) answers in the
+  identical envelope: one package per night, always a single-object `PS.P`, name
+  `"The Conjuring: Beyond Fear"`, CT id `764`, package ids `10098304`–`10098308` repeating per price
+  tier, `retail_amount` `15.00`/`20.00`/`30.00`. Its published nights (2026-10-11 … 2026-11-07)
+  match `HAPWizard`'s exactly. Same `FAILED` "No dates found" shape for a night without it.
+
+`DatedHauntedSource` now queries `THECONJURING` for the same single night right after the
+`HAPWizard` primary call and merges its packages into the same `DatedHauntedPayload` (no new
+category, source id, or cache key). Status rules: either keyword's transport/shape error ⇒ `Error`
+for the category (last-known-good retained); products from either keyword ⇒ `Verified`; neither ⇒
+the existing `HAPWizard` horizon probe classifies `Unavailable`/`NotPublished`. Fixtures:
+`published-2026-10-17.json` and `conjuring-published-2026-10-17.json` (real, sanitized).

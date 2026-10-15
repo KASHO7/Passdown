@@ -35,6 +35,29 @@ public class ReleaseVersionTests
         Assert.Contains('-', informationalVersion);
     }
 
+    /// <summary>
+    /// Phase 18E: a release candidate's numeric file version (Explorer → Properties → Details) must
+    /// carry its RC number, so two candidates never show the same file version. Checks the rule, not a
+    /// specific number.
+    /// </summary>
+    [Fact]
+    public void DesktopAssembly_ReleaseCandidateFileVersionCarriesTheCandidateNumber()
+    {
+        var informationalVersion = DesktopAssembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()!
+            .InformationalVersion;
+        var version = informationalVersion.Split('+')[0];
+        var fileVersion = FileVersionInfo.GetVersionInfo(DesktopAssembly.Location).FileVersion;
+
+        var match = System.Text.RegularExpressions.Regex.Match(version, @"^(\d+\.\d+\.\d+)-rc\.(\d+)$");
+        if (!match.Success)
+        {
+            return; // not a release candidate (e.g. a development version) — the rule does not apply
+        }
+
+        Assert.Equal($"{match.Groups[1].Value}.{match.Groups[2].Value}", fileVersion);
+    }
+
     [Fact]
     public void DesktopAssembly_ProductNameIsTheUserFacingApplicationName()
     {

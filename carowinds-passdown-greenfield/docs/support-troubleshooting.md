@@ -121,6 +121,61 @@ needing remote access to the tester's machine.
 - Never delete or reset local data to clear this error. A genuinely corrupt draft row deliberately
   still produces this error rather than being "recovered", and the row is left untouched.
 
+## Which copy is running? (Windows Search / stale portable copies, Phase 18D)
+
+Symptom: opening `Carowinds.Passdown.Desktop.exe` from the current release folder works, but
+launching "Carowinds Passdown" / "Carowinds Operations" from Windows Search behaves differently.
+
+**Why this can happen (audited from source, not yet proven on Windows):** the release is a portable
+ZIP — nothing registers a Start Menu entry, so Windows Search finds the app only through indexed
+files/folders, the "recently opened" list, or shortcuts a user made by hand. Every build has the
+same executable name and file description (`Carowinds.Passdown.Desktop`). Builds before 0.1.0-rc.1
+also share the file version `0.1.0.0` and the folder name `Carowinds-Operations-0.1.0-dev-win-x64`,
+so an older `-dev` copy (e.g. `Downloads\Carowinds-Operations-0.1.0-dev-win-x64 (1)`) looks identical
+to every other `-dev` copy in search results. Since Phase 18E each release candidate has its own
+version and folder name (`Carowinds-Operations-0.1.0-rc.1-win-x64`, `…-rc.2-…`), so a folder named
+`…-0.1.0-dev-…` is always an older build than any RC. All copies share the same data folder (`%LOCALAPPDATA%\Carowinds Passdown`), so an
+older copy opens the *same* data with *older* code. Do not assume Windows Search is at fault until
+the checklist below proves which file it launched.
+
+**How to tell (in the app):** Settings → **About this build** shows the app name, the version with
+the source commit it was built from (e.g. `0.1.0-rc.1 (3cace78)`), and the folder it is running
+from (`%USERPROFILE%\…` — the user name is never shown). The app log
+(`logs\app-YYYYMMDD.log`) records the same version and full executable path at every start; an
+exported diagnostics `summary.txt`/`system.txt` contains the version and the sanitized executable
+path. Builds before Phase 18D do not have the About panel or the commit in diagnostics — their
+absence is itself a sign of an older copy; a window titled "Carowinds Passdown" (not "Carowinds
+Operations") is a pre-Phase-13G copy.
+
+**Manual Windows check (Windows host required — NOT EXECUTED yet):**
+
+1. Press Start and search "Carowinds Passdown", then "Carowinds Operations".
+2. For each result, right-click → **Open file location** (for a shortcut, right-click the shortcut →
+   Properties → **Target**).
+3. Note the exact folder and the `.exe` it points at.
+4. Compare it with the folder you extracted the current release ZIP into.
+5. Launch the search result and the current-folder `.exe` explicitly, one at a time.
+6. In each, open Settings → About this build and compare **Version** and **Running from**.
+   (Alternatively: right-click each `.exe` → Properties → Details → **Product version** shows the
+   same `0.1.0-rc.N+<commit>` value. *File version* is `0.1.0.N` for release candidate N, and
+   `0.1.0.0` for every older `-dev` build.)
+7. If they differ, the search result is a stale copy. Note its folder.
+8. Also check the scheduled task, which can keep running an old copy:
+   `(Get-ScheduledTask -TaskName "Carowinds Passdown Daily Refresh").Actions.Execute` — if it is not
+   the current folder, re-run `Enable Automatic Refresh.cmd` from the current folder. The
+   scheduled-refresh log now records the executable path of each run too.
+
+**Cleaning up (manual, deliberate):** the app never deletes old folders or shortcuts. Remove an
+old program folder only after confirming both: (a) it is not the copy you are running (About this
+build → **Running from** points somewhere else), and (b) the scheduled task does not point at it
+(step 8). Then close it and delete *that copy's folder*. Never delete `%LOCALAPPDATA%\Carowinds
+Passdown` — it holds the shared database, drafts, notes and History for every copy. Unpin/delete any
+hand-made shortcut that pointed at the removed folder.
+
+**Mixing builds on synced PCs:** builds before 0.1.0-rc.1 do not know the North Gate / Avenue
+override fields and may drop them if they re-save an Associate draft. Put every PC that uses Personal
+Sync on the same RC before editing on any of them.
+
 ## Unsupported / newer database
 
 - If the app fails to open citing a schema/version problem (`UnsupportedSchemaVersionException`,
@@ -144,9 +199,13 @@ needing remote access to the tester's machine.
 ## Reading the diagnostics export
 
 - `summary.txt` — version, database existence/schema version/size, automatic-refresh registration
-  status.
-- `system.txt` — OS version, generation timestamp, the sanitized `%LOCALAPPDATA%\Carowinds Passdown`
-  path (never the tester's actual home-directory path).
+  status. Since Phase 18D the version is the full `<version>+<commit>` build identity, e.g.
+  `0.1.0-rc.1+3cace78…` (earlier
+  builds printed `0.1.0.0` for every build) followed by `Executable (sanitized): %USERPROFILE%\…` —
+  the folder the exporting copy ran from.
+- `system.txt` — OS version, generation timestamp, the same version/sanitized executable path, and
+  the sanitized `%LOCALAPPDATA%\Carowinds Passdown` path (never the tester's actual home-directory
+  path).
 - `source-status.txt` — one block per official data source: derived status (`Ok`/`Error`/
   `NeverChecked`), last successful check, last attempt, consecutive failure count. Local-only —
   generating it never performs a network check.

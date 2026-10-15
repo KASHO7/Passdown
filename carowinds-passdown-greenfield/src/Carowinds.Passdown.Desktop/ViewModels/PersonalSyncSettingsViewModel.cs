@@ -1,4 +1,5 @@
 using Avalonia.Threading;
+using Carowinds.Passdown.Application.Diagnostics;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Desktop.Services;
@@ -28,6 +29,22 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
     private readonly ILogger<PersonalSyncSettingsViewModel>? _logger;
 
     private Task _pendingLoad = Task.CompletedTask;
+
+    /// <summary>Phase 18D "About this build": which exact copy is running (support/stale-copy troubleshooting).</summary>
+    public BuildIdentity Build { get; }
+
+    public string BuildProductName => Build.ProductName;
+
+    /// <summary>"0.1.0-rc.1 (096bc4a)" — the release version plus the source commit it was built from.</summary>
+    public string BuildVersionText => Build.DisplayVersion;
+
+    /// <summary>
+    /// The running executable's folder and file, with the Windows profile prefix shown as
+    /// <c>%USERPROFILE%</c> so the user name is never displayed — the rest of the path is intact, which
+    /// is what tells the current release folder apart from an older portable copy.
+    /// </summary>
+    public string BuildExecutablePathText =>
+        Build.ExecutablePath is { } path ? DiagnosticPathRedactor.Redact(path, []) : "Unknown";
     private bool _isApplyingSnapshot;
 
     [ObservableProperty]
@@ -99,7 +116,8 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         ISyncFolderPicker folderPicker,
         IPersonalSyncConflictResolutionService conflictService,
         IPersonalSyncCoordinator coordinator,
-        ILogger<PersonalSyncSettingsViewModel>? logger = null)
+        ILogger<PersonalSyncSettingsViewModel>? logger = null,
+        BuildIdentity? buildIdentity = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(folderPicker);
@@ -111,6 +129,7 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         _conflictService = conflictService;
         _coordinator = coordinator;
         _logger = logger;
+        Build = buildIdentity ?? BuildIdentity.Current();
 
         AutomationStatus = coordinator.CurrentStatus;
         // This ViewModel is resolved exactly once for the app's session (MainViewModel's own

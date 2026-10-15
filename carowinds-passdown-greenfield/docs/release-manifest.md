@@ -777,6 +777,13 @@ This build supersedes the Dashboard ERT fix artifacts as the current release.
 
 # Release manifest — Phase 18C hardened release candidate (third-party notices, packaging validator)
 
+> **Superseded by Phase 18D source changes (not yet rebuilt).** Phase 18D (Conjuring retrieval,
+> North Gate/Avenue overrides, build identification — `docs/phase18-comprehensive-audit.md` §16)
+> changes functional source. Do not distribute or Windows-validate the 18C ZIP/EXE below; rebuild
+> from the Phase 18D commit first. The 18C artifacts share the 18D build's file names
+> (`Carowinds-Operations-0.1.0-dev-win-x64.*`) — tell them apart by SHA-256 or by the
+> informational version's commit (`+5c0ddf2…` = 18C).
+
 Built from commit `5c0ddf292fe5a62ffb23d52a91d7126a921afd35` ("Phase 18C: third-party notices (PKG-003)
 and Desktop.dll build-path leak fix"), on top of the Phase 18A/18B hardening (`5598618`). Docs-only
 commit(s) after `5c0ddf2` do not change any shipped byte.
@@ -916,3 +923,120 @@ After those pass on a Windows PC, the ZIP above (unchanged hash) can be called t
 release candidate. Without two PCs it would be "READY WITH UNVALIDATED TWO-PC SYNC".
 
 This build supersedes the Phase 17F artifacts as the current build.
+
+# Release manifest — 0.1.0-rc.1 (Phase 18E, first uniquely-versioned release candidate)
+
+**Status: built and validated on the build host. Windows validation PENDING**, to be run by the owner
+on the affected x64 PC with `docs/phase18e-rc1-windows-checklist.md`. Every Windows item below stays
+**NOT EXECUTED** until results come back. They will be filled in here, not inferred.
+
+| | |
+|---|---|
+| Product (visible) | Carowinds Operations |
+| Version | **`0.1.0-rc.1`**, file version `0.1.0.1`, informational `0.1.0-rc.1+3cace7856ad36141eeed98a8d70dbf8c5ff23fed` (read from the packaged `Carowinds.Passdown.Desktop.exe`/`.dll` version resources and the single-file EXE) |
+| Source commit (features) | `096bc4a` (Phase 18D: Conjuring retrieval, North Gate/Avenue overrides, build identification) |
+| Release/version commit | `3cace78`: version bump, FileVersion, RC numbering rule, two version-only test updates. No functional source change. Artifacts were built from this clean commit |
+| About this build | `0.1.0-rc.1 (3cace78)`. The SDK stamps the commit the bytes were built from. That is the version commit, not `096bc4a`, because the version string itself is part of the shipped code |
+| Target | Windows 11 x64 (`win-x64`), self-contained, R2R |
+| Build host | macOS 27.0.1 (Darwin 27.0.0), Apple Silicon arm64; .NET SDK 10.0.400; PowerShell 7.6.6 (local `dotnet tool` in a scratch folder, nothing installed system-wide) |
+| DB / Draft / Snapshot / SyncSchemaVersion | 15 / 4 / 2 / 1 (unchanged; no migration; no sync format change) |
+| Deterministic tests | Baseline at `096bc4a`: **2536/2536**. Final at `3cace78`: **2537/2537** = 125 Domain + 671 Application + 237 Documents + 752 Infrastructure + 714 Ui together + 26 `OperationsCalendarViewTests` + 10 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` alone (`-c Release --filter "Category!=LiveSmoke"`). +1: `ReleaseVersionTests.DesktopAssembly_ReleaseCandidateFileVersionCarriesTheCandidateNumber`. `LaunchIdentityTests.DesktopAssembly_IdentifiesAsTheVisibleProduct_WithAReleaseVersion` updated: it hard-coded `-dev` and now accepts `-dev` or `-rc.N` |
+| Build | `dotnet build CarowindsPassdown.slnx -c Release --no-incremental`: 0 warnings, 0 errors (before and after the version change) |
+| Superseded | The Phase 18C `Carowinds-Operations-0.1.0-dev-win-x64.zip/.exe` (still in `artifacts/releases/`, different names, not nested in RC.1). Do not distribute |
+
+## Primary release: multi-file portable ZIP (RECOMMENDED)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.1-win-x64.zip` |
+| Bytes | 73,446,617 |
+| SHA-256 | `28fad2675f1b71ecbcdcaa71503352c55108cc432a9dd23120474c57887bec42` |
+| Extracted folder | `Carowinds-Operations-0.1.0-rc.1-win-x64\` |
+| Content | 282 files / 282 entries, 154 MB uncompressed |
+
+- **Packaging validator (`Test-ReleasePackage.ps1`): PASS** on the staging folder and on the final ZIP
+  (282 files each), run by the real `Build-PortableRelease.ps1` under PowerShell 7.6.6 on macOS. The
+  C# mirror (`CAROWINDS_RELEASE_ZIP=… --filter RealReleaseZip`) also PASSES on the final ZIP. Nothing
+  bypassed. Not yet run on Windows.
+- **ZIP structure: PASS.** CRC test clean; exactly one top-level folder; no duplicate entries; no
+  backslash names; no empty files; no `.DS_Store`/`__MACOSX`/`.pdb`/`.db`/`.log`/`.zip`/`0.1.0-dev`
+  names. Extracted to a scratch folder outside `artifacts/`, it is byte-identical (SHA-256 per file)
+  to the staging folder. Executable, `README.txt`, `TESTER-GUIDE.txt`, both
+  `Enable/Disable Automatic Refresh.cmd`, `tools\Install-/Uninstall-ScheduledRefresh.ps1`,
+  `THIRD-PARTY-NOTICES.txt`, `licenses\` (23 files), `LatoFont\OFL.txt` all present.
+- **Developer-path scan: PASS.** The checkout path and the build user's name appear in no file
+  (UTF-8 and UTF-16). `/Users/`, `/home/` and `C:\Users\` appear in no project-owned file
+  (`Carowinds.Passdown.*` binaries and all text files). They appear only in the documented Phase 18B
+  vendor exception: `SQLitePCLRaw.batteries_v2.dll`, `SQLitePCLRaw.core.dll` and
+  `SQLitePCLRaw.provider.e_sqlite3.dll` (`/Users/eric/dev/SQLitePCL.raw/…`), and
+  `MicroCom.Runtime.dll` (`/home/`).
+- **Third-party notices: PASS (preserved).** `THIRD-PARTY-NOTICES.txt` and `licenses\` are
+  byte-identical to the repository sources, which are unchanged since Phase 18C (`5c0ddf2`). Shipped
+  dependency versions in `Carowinds.Passdown.Desktop.deps.json` match the notices table exactly:
+  Avalonia 12.1.1, ANGLE 2.1.27548.20260419, .NET/Microsoft.* 10.0.11, SkiaSharp 3.119.4,
+  HarfBuzzSharp 8.3.1.3, QuestPDF 2026.7.3, SQLitePCLRaw 2.1.12, CommunityToolkit.Mvvm 8.4.2,
+  MicroCom.Runtime 0.11.6, Tmds.DBus.Protocol 0.94.1. `RepositoryNoticeSources_MatchTheRequiredSet_AndAreComplete`
+  passes.
+
+## Single-file release (EXPERIMENTAL)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.1-win-x64.exe` |
+| Bytes | 186,106,700 |
+| SHA-256 | `493087311ab65d416278f049c069bb2648f2e5871024c458768684c59b989ab2` |
+| Checks | `PE32+ (GUI) x86-64`; carries `0.1.0-rc.1+3cace78…` and file version `0.1.0.1`; no checkout path or user name; only SQLitePCLRaw's vendor `/Users/eric/…` paths and one `/home/` (MicroCom) |
+| Status | EXPERIMENTAL. Ships without `THIRD-PARTY-NOTICES.txt`/`licenses\` when distributed alone, so do **not** hand it out independently. The ZIP stays the distribution |
+
+## QuestPDF licence
+
+QuestPDF 2026.7.3 is a shipped dependency (`QuestPDF.dll`, `QuestPdfSkia.dll`, `qpdf.dll`). Its licence
+text ships as `licenses\QuestPDF-LICENSE.txt` plus `licenses\QuestPDF-dependencies\`, it is indexed in
+`THIRD-PARTY-NOTICES.txt` §6, and the app selects `LicenseType.Community` in code. No legal conclusion
+is drawn here.
+
+**DISTRIBUTION LICENSE DECISION: PENDING USER/ORGANIZATION CONFIRMATION**
+
+## Windows validation
+
+To be run on the affected x64 PC with `docs/phase18e-rc1-windows-checklist.md`, against the exact hashes
+above. That covers the checklist's Step 0 hash check and steps 9–27.
+
+| Item | Result |
+|---|---|
+| Windows machine record | NOT EXECUTED (pending) |
+| Windows Search before RC.1 (stale-copy evidence) | NOT EXECUTED (pending) |
+| Direct ZIP launch, second launch, About = `0.1.0-rc.1 (3cace78)`, running folder | NOT EXECUTED (pending) |
+| Affected-PC Dashboard (rides-only ERT, existing data) | NOT EXECUTED (pending) |
+| Conjuring live retrieval | NOT EXECUTED (pending; automated tests remain the evidence) |
+| North Gate / Avenue / both overrides, persistence, Reset | NOT EXECUTED (pending) |
+| History freeze of effective gate times | NOT EXECUTED (pending) |
+| Classic / Compact / Modern PDFs with override | NOT EXECUTED (pending) |
+| US formatting under non-US region | NOT EXECUTED (pending) |
+| App log | NOT EXECUTED (pending) |
+| Diagnostics export | NOT EXECUTED (pending) |
+| Task Scheduler install/run/uninstall from RC.1 folder | NOT EXECUTED (pending) |
+| Windows Search after RC.1 | NOT EXECUTED (pending) |
+| One-PC Personal Sync | NOT EXECUTED (pending) |
+| Two-PC Associate / gate override / Notes / ERT sync | NOT EXECUTED (pending; requires a second PC on RC.1) |
+| Single-file EXE launch | NOT EXECUTED (pending) |
+| Packaging validator on Windows | NOT EXECUTED (PASS on macOS under PowerShell 7.6.6) |
+
+## Known limitations
+
+- All Windows and two-PC validation above is outstanding.
+- Do not mix RC.1 with older builds on synced PCs: pre-RC.1 builds may drop the gate-override fields
+  when they re-save an Associate draft.
+- Single-file EXE: experimental; no bundled notices.
+- QuestPDF distribution licence decision pending.
+- Developer build scripts need PowerShell 7 (unchanged from 18C).
+- Blocker policy: any shipped-code fix found during Windows validation becomes `0.1.0-rc.2`. These
+  RC.1 bytes and hashes are never replaced under the same name.
+
+## Release status
+
+- **Technical: RELEASE BLOCKED, pending Windows validation.** No defect is open. Every build-host gate
+  passes (tests, clean Release build, packaging validator, structure, path scan, notices). The
+  acceptance gate needs the ZIP to launch on Windows, the Dashboard, overrides, PDFs, logs,
+  diagnostics and the scheduler to work there, and none of that has run yet.
+- **Distribution: LICENSE DECISION PENDING** (QuestPDF, above).

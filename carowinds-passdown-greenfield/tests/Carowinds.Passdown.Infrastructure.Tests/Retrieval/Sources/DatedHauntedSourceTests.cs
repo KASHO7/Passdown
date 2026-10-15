@@ -32,7 +32,7 @@ public class DatedHauntedSourceTests
 
     private static DatedHauntedSource BuildSource(RetrievalHttpResponse primaryResponse, out StubHttpClient httpClient)
     {
-        httpClient = new StubHttpClient([primaryResponse]);
+        httpClient = new StubHttpClient([primaryResponse, NoConjuring()]);
         return new DatedHauntedSource(httpClient, new FakeClock(SampleUtcNow));
     }
 
@@ -41,9 +41,12 @@ public class DatedHauntedSourceTests
         RetrievalHttpResponse horizonResponse,
         out StubHttpClient httpClient)
     {
-        httpClient = new StubHttpClient([primaryResponse, horizonResponse]);
+        httpClient = new StubHttpClient([primaryResponse, NoConjuring(), horizonResponse]);
         return new DatedHauntedSource(httpClient, new FakeClock(SampleUtcNow));
     }
+
+    /// <summary>Phase 18D: every exact-date check also asks the official `THECONJURING` keyword; this is its real "No dates found" shape.</summary>
+    private static RetrievalHttpResponse NoConjuring() => JsonResponse("no-dates-found.json");
 
     private static RetrievalRequest Request(DateOnly date) =>
         new("dated-haunted.official", SourceCategory.HauntedAttractions, date);
@@ -61,7 +64,7 @@ public class DatedHauntedSourceTests
         Assert.Equal(RetrievalStrategy.DirectApi, result.Evidence.Strategy);
         Assert.NotNull(result.Payload);
         Assert.Equal(2, result.Payload!.Products.Count);
-        Assert.Single(httpClient.Requests); // only the primary call was needed
+        Assert.Equal(2, httpClient.Requests.Count); // HAPWizard + THECONJURING; no horizon probe needed
 
         var pass = result.Payload.Products.Single(p => p.DisplayName == "Haunted Attractions Pass");
         Assert.Equal("10098520", pass.PackageId);
@@ -123,7 +126,7 @@ public class DatedHauntedSourceTests
 
         Assert.Equal(RetrievalStatus.Unavailable, result.Evidence.Status);
         Assert.Null(result.Payload);
-        Assert.Equal(2, httpClient.Requests.Count);
+        Assert.Equal(3, httpClient.Requests.Count);
     }
 
     [Fact]
@@ -333,8 +336,9 @@ public class DatedHauntedSourceTests
 
         await source.RetrieveAsync(Request(new DateOnly(2026, 9, 13)), CancellationToken.None);
 
-        Assert.Contains("\"start_date\":\"2026-08-20\"", httpClient.Requests[1].Body);
-        Assert.Contains($"\"end_date\":\"{Today.AddDays(120):yyyy-MM-dd}\"", httpClient.Requests[1].Body);
+        Assert.Contains("\"keyword\":\"HAPWizard\"", httpClient.Requests[2].Body);
+        Assert.Contains("\"start_date\":\"2026-08-20\"", httpClient.Requests[2].Body);
+        Assert.Contains($"\"end_date\":\"{Today.AddDays(120):yyyy-MM-dd}\"", httpClient.Requests[2].Body);
     }
 
     [Fact]
@@ -345,5 +349,71 @@ public class DatedHauntedSourceTests
         var result = await source.RetrieveAsync(Request(new DateOnly(2026, 9, 11)), CancellationToken.None);
 
         Assert.Equal(EasternTimeZone.ConvertFromUtc(SampleUtcNow), result.Evidence.TimeChecked);
+    }
+
+    // ---- Phase 18D: "The Conjuring: Beyond Fear" (official keyword THECONJURING) ----
+
+    [Fact]
+    public async Task RetrieveAsync_ConjuringPublishedForTheNight_IsMergedWithItsOfficialIdentityAndExactPrice()
+    {
+        // Real 2026-10-17 responses for both official keywords (fixtures/dated-haunted/*2026-10-17*).
+        // Before Phase 18D the adapter never asked THECONJURING, so this product could not appear.
+        var requestedDate = new DateOnly(2026, 10, 17);
+        var httpClient = new StubHttpClient([JsonResponse("published-2026-10-17.json"), JsonResponse("conjuring-published-2026-10-17.json")]);
+        var source = new DatedHauntedSource(httpClient, new FakeClock(SampleUtcNow));
+
+        var result = await source.RetrieveAsync(Request(requestedDate), CancellationToken.None);
+
+        Assert.Equal(RetrievalStatus.Verified, result.Evidence.Status);
+        Assert.Equal(requestedDate, result.Evidence.ConfirmedDate);
+        Assert.Equal(3, result.Payload!.Products.Count);
+        var conjuring = result.Payload.Products.Single(p => p.DisplayName == "The Conjuring: Beyond Fear");
+        Assert.Equal("10098308", conjuring.PackageId);
+        Assert.Equal(30.00m, conjuring.ExactDatePrice);
+        Assert.Null(conjuring.ComparisonPrice);
+        Assert.Null(conjuring.PriceQualifier);
+        Assert.Equal(requestedDate, conjuring.ApplicableDate);
+        Assert.Contains(result.Payload.Products, p => p.DisplayName == "Haunted Attractions Pass" && p.ExactDatePrice == 25.00m);
+
+        Assert.Contains("\"keyword\":\"THECONJURING\"", httpClient.Requests[1].Body);
+        Assert.Contains("\"start_date\":\"2026-10-17\"", httpClient.Requests[1].Body);
+        Assert.Contains("\"end_date\":\"2026-10-17\"", httpClient.Requests[1].Body);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_ConjuringCallFails_FailsTheWholeCategoryInsteadOfReturningAPartialVerifiedResult()
+    {
+        var httpClient = new StubHttpClient([JsonResponse("published-2026-10-17.json"), JsonResponse("malformed.json")]);
+        var source = new DatedHauntedSource(httpClient, new FakeClock(SampleUtcNow));
+
+        var result = await source.RetrieveAsync(Request(new DateOnly(2026, 10, 17)), CancellationToken.None);
+
+        Assert.Equal(RetrievalStatus.Error, result.Evidence.Status);
+        Assert.Null(result.Payload);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_ConjuringConfirmsADifferentDate_ReturnsErrorRatherThanSubstituting()
+    {
+        var httpClient = new StubHttpClient([JsonResponse("no-dates-found.json"), JsonResponse("conjuring-published-2026-10-17.json")]);
+        var source = new DatedHauntedSource(httpClient, new FakeClock(SampleUtcNow));
+
+        var result = await source.RetrieveAsync(Request(new DateOnly(2026, 10, 16)), CancellationToken.None);
+
+        Assert.Equal(RetrievalStatus.Error, result.Evidence.Status);
+        Assert.Null(result.Payload);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_OnlyConjuringPublishedForTheNight_IsStillVerifiedWithoutAHorizonProbe()
+    {
+        var httpClient = new StubHttpClient([JsonResponse("no-dates-found.json"), JsonResponse("conjuring-published-2026-10-17.json")]);
+        var source = new DatedHauntedSource(httpClient, new FakeClock(SampleUtcNow));
+
+        var result = await source.RetrieveAsync(Request(new DateOnly(2026, 10, 17)), CancellationToken.None);
+
+        Assert.Equal(RetrievalStatus.Verified, result.Evidence.Status);
+        Assert.Equal("The Conjuring: Beyond Fear", Assert.Single(result.Payload!.Products).DisplayName);
+        Assert.Equal(2, httpClient.Requests.Count);
     }
 }

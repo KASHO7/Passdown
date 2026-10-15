@@ -20,6 +20,9 @@ public static class ParkHoursCalculator
     ///    verified official time or an enabled manager override").
     /// 4. Otherwise, verified (or last-known-good/stale — still the best available) official hours apply.
     /// 5. Otherwise nothing has ever been confirmed for this date: <see cref="EffectiveHoursStatus.NotCheckedYet"/>.
+    /// Phase 18D: <paramref name="northGateOverride"/>/<paramref name="avenueOverride"/> are the
+    /// draft's independent per-entrance overrides; they never change the park hours or each other
+    /// (see <see cref="EffectiveHours"/> for how they combine with the calculated defaults).
     /// </summary>
     public static EffectiveHours Calculate(
         bool officialIsClosed,
@@ -30,11 +33,13 @@ public static class ParkHoursCalculator
         TimeOnly? manualClosing,
         bool privateBuyoutEnabled,
         TimeOnly? buyoutOpening,
-        TimeOnly? buyoutClosing)
+        TimeOnly? buyoutClosing,
+        TimeOnly? northGateOverride = null,
+        TimeOnly? avenueOverride = null)
     {
         if (privateBuyoutEnabled)
         {
-            return new EffectiveHours(EffectiveHoursStatus.Open, buyoutOpening, buyoutClosing, isManualOverrideApplied: false, isPrivateBuyoutApplied: true);
+            return new EffectiveHours(EffectiveHoursStatus.Open, buyoutOpening, buyoutClosing, isManualOverrideApplied: false, isPrivateBuyoutApplied: true, northGateOverride, avenueOverride);
         }
 
         if (officialIsClosed)
@@ -44,14 +49,14 @@ public static class ParkHoursCalculator
 
         if (manualOverrideEnabled)
         {
-            return new EffectiveHours(EffectiveHoursStatus.Open, manualOpening, manualClosing, isManualOverrideApplied: true, isPrivateBuyoutApplied: false);
+            return new EffectiveHours(EffectiveHoursStatus.Open, manualOpening, manualClosing, isManualOverrideApplied: true, isPrivateBuyoutApplied: false, northGateOverride, avenueOverride);
         }
 
         if (officialOpening is not null && officialClosing is not null)
         {
-            return new EffectiveHours(EffectiveHoursStatus.Open, officialOpening, officialClosing, isManualOverrideApplied: false, isPrivateBuyoutApplied: false);
+            return new EffectiveHours(EffectiveHoursStatus.Open, officialOpening, officialClosing, isManualOverrideApplied: false, isPrivateBuyoutApplied: false, northGateOverride, avenueOverride);
         }
 
-        return new EffectiveHours(EffectiveHoursStatus.NotCheckedYet, null, null, isManualOverrideApplied: false, isPrivateBuyoutApplied: false);
+        return new EffectiveHours(EffectiveHoursStatus.NotCheckedYet, null, null, isManualOverrideApplied: false, isPrivateBuyoutApplied: false, northGateOverride, avenueOverride);
     }
 }
