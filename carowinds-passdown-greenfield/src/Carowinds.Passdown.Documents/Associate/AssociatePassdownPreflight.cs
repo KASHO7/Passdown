@@ -108,9 +108,12 @@ public sealed class AssociatePassdownPreflightService : IAssociatePassdownPrefli
 
         lines += EstimateEarlyRideTimeLines(model.EarlyRideTime);
 
-        // Daily Feature is mandatory content (spec Phase 17D §15) — always one heading line plus at
-        // least one content/"Not entered." line, regardless of whether text was actually entered.
-        lines += 1 + Math.Max(1, EstimateWrappedLines(model.DailyFeature.Text, WrapCharsPerLine));
+        // Daily Feature (Phase 18F): one heading line plus its wrapped text, or nothing at all when no
+        // text was entered — every template omits the whole section in that case.
+        if (model.DailyFeature.HasContent)
+        {
+            lines += 1 + Math.Max(1, EstimateWrappedLines(model.DailyFeature.Text, WrapCharsPerLine));
+        }
 
         return lines;
     }

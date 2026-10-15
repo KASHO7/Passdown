@@ -129,21 +129,20 @@ public sealed class ClassicAssociatePassdownTemplateRenderer : IAssociatePassdow
             row.RelativeItem().Text(value).FontSize(9.5f).SemiBold();
         });
 
-    /// <summary>Mandatory content — always rendered, even with no text entered, under its feature-type heading and a full-width rule. No shaded card.</summary>
-    private static void ComposeDailyFeature(ColumnDescriptor column, AssociatePassdownDocumentModel model, Metrics m) =>
+    /// <summary>The feature-type heading over a full-width rule, then the text. No shaded card. Phase 18F: omitted entirely (no heading, rule, placeholder, or spacing) when no text was entered.</summary>
+    private static void ComposeDailyFeature(ColumnDescriptor column, AssociatePassdownDocumentModel model, Metrics m)
+    {
+        if (!model.DailyFeature.HasContent)
+        {
+            return;
+        }
+
         column.Item().PreventPageBreak().Column(section =>
         {
             SectionHeading(section, model.DailyFeature.TypeLabel ?? "Daily Feature", m);
-
-            if (model.DailyFeature.Text is { } featureText)
-            {
-                section.Item().Text(featureText).FontSize(10).Italic().LineHeight(1.2f);
-            }
-            else
-            {
-                section.Item().Text("Not entered.").FontSize(10).Italic().FontColor(MutedTextColor);
-            }
+            section.Item().Text(model.DailyFeature.Text!).FontSize(10).Italic().LineHeight(1.2f);
         });
+    }
 
     /// <summary>One category: heading + full-width rule, then one aligned name/price row per product (no cards, no per-row rules).</summary>
     private static void ComposeCategory(IContainer container, PdfProductCategory category, Metrics m) =>

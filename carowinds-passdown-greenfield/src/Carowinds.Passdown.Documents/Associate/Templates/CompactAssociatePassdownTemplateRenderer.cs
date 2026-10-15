@@ -129,14 +129,21 @@ public sealed class CompactAssociatePassdownTemplateRenderer : IAssociatePassdow
             });
         });
 
-    /// <summary>Mandatory content, always present — a tight heading line directly over its body, no rule, no panel.</summary>
-    private static void ComposeDailyFeature(ColumnDescriptor column, AssociatePassdownDocumentModel model) =>
+    /// <summary>A tight heading line directly over its body, no rule, no panel. Phase 18F: omitted entirely when no text was entered.</summary>
+    private static void ComposeDailyFeature(ColumnDescriptor column, AssociatePassdownDocumentModel model)
+    {
+        if (!model.DailyFeature.HasContent)
+        {
+            return;
+        }
+
         column.Item().PreventPageBreak().Column(section =>
         {
             section.Spacing(1f);
             section.Item().Text((model.DailyFeature.TypeLabel ?? "Daily Feature").ToUpperInvariant()).FontSize(7.5f).Bold().LetterSpacing(0.03f);
-            section.Item().Text(model.DailyFeature.Text ?? "Not entered.").FontSize(BodySize).Italic();
+            section.Item().Text(model.DailyFeature.Text!).FontSize(BodySize).Italic();
         });
+    }
 
     private static void ComposeCategory(IContainer container, PdfProductCategory category, Metrics m) =>
         container.Column(section =>

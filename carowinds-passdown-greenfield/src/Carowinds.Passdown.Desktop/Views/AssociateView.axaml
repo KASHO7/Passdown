@@ -3,6 +3,7 @@
              xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
              xmlns:presentation="using:Carowinds.Passdown.Desktop.Presentation"
              xmlns:converters="using:Carowinds.Passdown.Desktop.Converters"
+             xmlns:documents="using:Carowinds.Passdown.Documents.Associate"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="860"
@@ -52,6 +53,10 @@
       <Setter Property="FontSize" Value="11.5" />
       <Setter Property="Margin" Value="0,3,0,0" />
     </Style>
+    <Style Selector="TextBlock.copyError">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownErrorBrush}" />
+    </Style>
+
     <Style Selector="TextBlock.fieldWarning">
       <Setter Property="Foreground" Value="{DynamicResource PassdownWarningBrush}" />
       <Setter Property="FontSize" Value="11.5" />
@@ -331,6 +336,35 @@
                   Classes="secondaryAction"
                   AutomationProperties.Name="Create PDF"
                   AutomationProperties.HelpText="Builds today's Associate Passdown PDF and lets you choose where to save it." />
+
+          <!-- Phase 18F: one compact Copy menu for pasting into Microsoft Teams. Enter/Space opens it,
+               arrow keys move between items; nothing is hover-only. Copies only what is already on
+               screen — never checks online, saves, or changes the date. -->
+          <Button Content="Copy ▾"
+                  Margin="8,0,0,6"
+                  Classes="secondaryAction"
+                  IsEnabled="{Binding HasWorkspace}"
+                  AutomationProperties.Name="Copy for Teams"
+                  AutomationProperties.HelpText="Opens a menu to copy the operations summary, today's selected pricing, or both as plain text for Microsoft Teams.">
+            <Button.Flyout>
+              <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                <MenuItem Header="Operations Summary"
+                          Command="{Binding CopyForTeamsCommand}"
+                          CommandParameter="{x:Static documents:AssociateTeamsCopyKind.OperationsSummary}"
+                          AutomationProperties.Name="Copy operations summary"
+                          AutomationProperties.HelpText="Copies park hours, gate times, attendance, pre-solds, and Early Ride Time." />
+                <MenuItem Header="Today's Pricing"
+                          Command="{Binding CopyForTeamsCommand}"
+                          CommandParameter="{x:Static documents:AssociateTeamsCopyKind.TodaysPricing}"
+                          AutomationProperties.Name="Copy today's pricing"
+                          AutomationProperties.HelpText="Copies only the products and sections selected for the PDF." />
+                <MenuItem Header="Operations + Pricing"
+                          Command="{Binding CopyForTeamsCommand}"
+                          CommandParameter="{x:Static documents:AssociateTeamsCopyKind.OperationsAndPricing}"
+                          AutomationProperties.Name="Copy operations summary and pricing" />
+              </MenuFlyout>
+            </Button.Flyout>
+          </Button>
         </WrapPanel>
 
         <ProgressBar IsIndeterminate="True" Height="3"
@@ -348,6 +382,13 @@
         <TextBlock Text="{Binding RefreshStatusMessage}"
                    IsVisible="{Binding RefreshStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                    Classes="muted" />
+
+        <!-- Phase 18F: subtle Copy feedback — muted on success, error color on a clipboard failure. -->
+        <TextBlock Text="{Binding CopyMessage}"
+                   IsVisible="{Binding CopyMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   Classes.muted="{Binding !CopyMessageIsError}"
+                   Classes.copyError="{Binding CopyMessageIsError}"
+                   AutomationProperties.LiveSetting="Polite" />
 
         <TextBlock Text="{Binding LoadErrorMessage}"
                    IsVisible="{Binding LoadErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
@@ -705,9 +746,9 @@
             </Border>
 
             <!-- Passdown Builder section selection (Phase 8A; SCarowinds/Haunt added Phase 8B): Day
-                 of week, Date, Park Hours, Attendance, Early Ride Time, and Daily Feature above
-                 always print and have no checkbox here — only these seven sections can be
-                 independently shown/hidden. -->
+                 of week, Date, Park Hours, Attendance, and Early Ride Time above always print, and
+                 Daily Feature prints whenever text is entered (Phase 18F); none has a checkbox
+                 here — only these seven sections can be independently shown/hidden. -->
             <Border Classes="panel">
               <StackPanel Spacing="8">
                 <TextBlock Text="Include in Passdown" Classes="sectionTitle" Margin="0,0,0,4" />

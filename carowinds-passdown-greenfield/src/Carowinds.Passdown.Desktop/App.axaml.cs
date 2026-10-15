@@ -382,6 +382,9 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IAssociatePassdownPdfExportService, AssociatePassdownPdfExportService>();
         services.AddSingleton<IPdfSaveFilePicker, AvaloniaPdfSaveFilePicker>();
 
+        // Phase 18F: plain-text clipboard seam for the Associate screen's Teams "Copy" actions.
+        services.AddSingleton<IClipboardService, AvaloniaClipboardService>();
+
         // Phase 17C §15/§39: the local Associate Passdown template preference (Classic/Compact/
         // Modern) — one flat JSON file, mirroring the PersonalSync file-based stores below. Consumed
         // by both AssociateViewModel (for Preview PDF) and FinalizedPassdownFinalizationService (so a

@@ -168,25 +168,24 @@ public sealed class ModernAssociatePassdownTemplateRenderer : IAssociatePassdown
         });
 
     /// <summary>
-    /// Mandatory content, always present. The one Modern section that keeps a full-width hairline — it
-    /// closes the operations block before the commercial reference begins. Restrained editorial
-    /// spacing, no shaded card.
+    /// The one Modern section that keeps a full-width hairline — it closes the operations block before
+    /// the commercial reference begins. Restrained editorial spacing, no shaded card. Phase 18F:
+    /// omitted entirely (hairline included) when no text was entered.
     /// </summary>
-    private static void ComposeDailyFeature(ColumnDescriptor column, AssociatePassdownDocumentModel model) =>
+    private static void ComposeDailyFeature(ColumnDescriptor column, AssociatePassdownDocumentModel model)
+    {
+        if (!model.DailyFeature.HasContent)
+        {
+            return;
+        }
+
         column.Item().PreventPageBreak().Column(section =>
         {
             section.Item().Text((model.DailyFeature.TypeLabel ?? "Daily Feature").ToUpperInvariant()).Bold().FontSize(10).LetterSpacing(0.12f);
             section.Item().PaddingTop(3).PaddingBottom(5).Height(0.75f).Background(HairlineColor);
-
-            if (model.DailyFeature.Text is { } featureText)
-            {
-                section.Item().Text(featureText).FontSize(10.5f).Italic().LineHeight(1.25f);
-            }
-            else
-            {
-                section.Item().Text("Not entered.").FontSize(10.5f).Italic().FontColor(MutedTextColor);
-            }
+            section.Item().Text(model.DailyFeature.Text!).FontSize(10.5f).Italic().LineHeight(1.25f);
         });
+    }
 
     private static void ComposeCategory(IContainer container, PdfProductCategory category, Metrics m) =>
         container.KeepSection(category.Products.Count, headingWithFirstRowsHeight: 80f).MaxWidth(ReferenceMeasure).Column(section =>

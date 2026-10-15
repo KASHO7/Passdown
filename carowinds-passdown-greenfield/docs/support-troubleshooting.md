@@ -176,6 +176,20 @@ hand-made shortcut that pointed at the removed folder.
 override fields and may drop them if they re-save an Associate draft. Put every PC that uses Personal
 Sync on the same RC before editing on any of them.
 
+## Copy for Teams does nothing / shows "Couldn't copy to the clipboard" (Phase 18F)
+
+The Associate screen's **Copy ▾** menu (Operations Summary, Today's Pricing, Operations + Pricing)
+puts plain text on the Windows clipboard; paste it into Teams with Ctrl+V.
+
+- "Couldn't copy to the clipboard. Try again." — another program briefly had the clipboard locked
+  (common with clipboard managers or remote-desktop clipboard sync). Try again; nothing in the draft
+  is lost. The technical error is written to the application log.
+- "No pricing selected" — no product section (or no product) is selected for the PDF, so there is no
+  pricing to copy. Select sections/products the same way as for the PDF.
+- Copied prices or gate times look wrong — Copy uses exactly what is on screen for the open date, the
+  same as the PDF would. It never checks online; use **Check Online** first if the data is old.
+- Real Teams @mentions are not supported: typed "@Name" text pastes as plain text.
+
 ## Unsupported / newer database
 
 - If the app fails to open citing a schema/version problem (`UnsupportedSchemaVersionException`,
