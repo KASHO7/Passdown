@@ -37,10 +37,11 @@ default. On it you should see:
 - Data Status — a summary of how current the underlying park data is, plus a
   "Check Online" button.
 
-Clicking "Refresh" near the top of the Dashboard only re-reads what's already saved
-on your computer — it should be instant and never needs the internet. "Check Online"
-(in the Data Status card) is the one action on this screen that actually contacts
-Carowinds' official sources — see step 10.
+There is no Refresh button: the Dashboard updates itself whenever something is saved
+on your computer (for example attendance or a gate time typed on Associate Passdown).
+A small line near the top says "Official data checked <time>" — the app checks
+Carowinds' official sources by itself when it starts and every four hours while it
+is open. "Check Online" (in the Data Status card) checks right away — see step 11.
 
 4. Open Passdown / Open Notes / Open History
 ------------------------------------------------

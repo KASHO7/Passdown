@@ -1191,3 +1191,142 @@ RC.3 was not packaged in this phase. The next candidate containing Phase 19A + 1
 `docs/phase19b-seasonal-catalog.md` §13. Schemas unchanged: DB 15, Draft 4, Snapshot 2,
 SyncSchemaVersion 1. Deterministic tests at the Phase 19B commit: 2780/2780; Release build
 0 warnings / 0 errors.
+
+# Release manifest — 0.1.0-rc.3 (Phase 19C: Phase 19A automatic refresh + Phase 19B seasonal catalog)
+
+**Status: built and validated on the build host. Windows validation PENDING.** The owner should run it
+on the affected x64 PC with `docs/phase19c-rc3-windows-checklist.md`. No Windows PC was reachable
+from the build session. Every Windows item below stays **NOT EXECUTED** until results come back; they
+will be filled in here, not inferred.
+
+| | |
+|---|---|
+| Product (visible) | Carowinds Operations |
+| Version | **`0.1.0-rc.3`**, file version `0.1.0.3`, informational `0.1.0-rc.3+1744320378628fc9a00e402551e169feb06b7697`. Read from the packaged `Carowinds.Passdown.Desktop.dll`, the apphost `.exe` version resource and the single-file EXE; none contains `0.1.0-rc.2`, `0.1.0-rc.1` or `0.1.0.2` |
+| Source commits (features) | `2c610fb` (Phase 19A) and `97de18f` (Phase 19B) |
+| Release/version commit | `1744320`: `Directory.Build.props` only (`<Version>` and `<FileVersion>`). Artifacts were built from this commit |
+| About this build | `0.1.0-rc.3 (1744320)` |
+| Target | Windows 11 x64 (`win-x64`), self-contained, R2R |
+| Build host | macOS 27.0.1 (Darwin), Apple Silicon arm64; .NET SDK 10.0.400; PowerShell 7.6.7 (local `dotnet tool` in a scratch folder, nothing installed system-wide) |
+| DB / Draft / Snapshot / SyncSchemaVersion | 15 / 4 / 2 / 1 (unchanged; no migration; no sync format change) |
+| Legacy identities | Unchanged: `Carowinds.Passdown.Desktop.exe`, `%LOCALAPPDATA%\Carowinds Passdown`, `Carowinds Passdown Daily Refresh` task, database file name, sync product identity, AssemblyVersion `0.1.0.0` |
+| Deterministic tests | Baseline at `97de18f`: **2780/2780**. Final at `1744320`: **2780/2780** = 125 Domain + 779 Application + 762 Infrastructure + 309 Documents + 767 Ui together + 26 `OperationsCalendarViewTests` + 10 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` alone (`-c Release --filter "Category!=LiveSmoke"`). No tests added |
+| Build | `dotnet build CarowindsPassdown.slnx -c Release --no-incremental`: 0 warnings, 0 errors (before and after the version change) |
+| Superseded | RC.2, RC.1 and the `0.1.0-dev` artifacts stay in `artifacts/releases/` under their own names, unmodified. RC.2 hashes were re-verified after this build: unchanged. None of them is nested in RC.3. Do not distribute |
+
+## Primary release: multi-file portable ZIP (RECOMMENDED)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.3-win-x64.zip` |
+| Bytes | 73,547,365 |
+| SHA-256 | `6f08a796473abee5d94efe4e7e0cee47b6830537b1856d023a962efc929980eb` |
+| Extracted folder | `Carowinds-Operations-0.1.0-rc.3-win-x64\` |
+| Content | 282 files / 282 entries, 154.2 MB uncompressed |
+
+- **Packaging validator (`Test-ReleasePackage.ps1`): PASS** on the staging folder and on the final ZIP
+  (282 files each), run by the real `Build-PortableRelease.ps1` under PowerShell 7.6.7 on macOS. The
+  C# mirror (`CAROWINDS_RELEASE_ZIP=… --filter RealReleaseZip`) also PASSES on the final ZIP. Nothing
+  bypassed. Not yet run on Windows.
+- **ZIP structure: PASS.** CRC test clean. Exactly one top-level folder. 282 entries, no duplicates,
+  no backslash names, no empty files. No `.DS_Store`, `__MACOSX`, `.pdb`, `.db`, `-wal`, `-shm`,
+  `.log`, `.zip`, `.pdf`, `.png`, `.dylib`, `.so`, source files, test assemblies, or
+  `0.1.0-dev`/`rc.1`/`rc.2` names. Extracted to a scratch folder outside `artifacts/`, it is
+  byte-identical (`diff -rq`) to the staging folder. The executable, `README.txt`, `TESTER-GUIDE.txt`,
+  both `Enable/Disable Automatic Refresh.cmd` files, the `tools\` scheduler scripts,
+  `THIRD-PARTY-NOTICES.txt`, `licenses\` and the native libraries are all present. The `.exe` is
+  `PE32+ (GUI) x86-64`.
+- **Developer-path scan: PASS.** The checkout path, the repository folder name and the build user's
+  name appear in no file (UTF-8 and UTF-16), including the single-file EXE. `/Users/` and `/home/`
+  appear only in the documented Phase 18B vendor exceptions: `SQLitePCLRaw.batteries_v2.dll`,
+  `SQLitePCLRaw.core.dll` and `SQLitePCLRaw.provider.e_sqlite3.dll` (`/Users/eric`), and
+  `MicroCom.Runtime.dll` (`/home/kekekeks`). `C:\Users\` appears nowhere.
+- **Third-party notices: PASS (preserved).** `THIRD-PARTY-NOTICES.txt` and `licenses\` are
+  byte-identical to the repository sources, unchanged since Phase 18C (`5c0ddf2`). Shipped
+  `deps.json` versions match the notices table exactly: Avalonia/Avalonia.Fonts.Inter 12.1.1, ANGLE
+  2.1.27548.20260419, .NET runtime/Microsoft.Data.Sqlite.Core 10.0.11, SkiaSharp 3.119.4,
+  HarfBuzzSharp 8.3.1.3, QuestPDF 2026.7.3, SQLitePCLRaw 2.1.12, CommunityToolkit.Mvvm 8.4.2,
+  MicroCom.Runtime 0.11.6, Tmds.DBus.Protocol 0.94.1. No licence text was regenerated.
+- **Known packaging note (docs only, not a code defect):** the `TESTER-GUIDE.txt` inside this ZIP
+  still describes the Dashboard "Refresh" button that Phase 19A removed (step 3). Under the
+  never-rebuild rule the RC.3 bytes are kept. The repository copy was corrected after packaging, so
+  the next RC ships the fixed text. Testers are told to ignore that sentence in the checklist.
+
+## Single-file release (EXPERIMENTAL)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.3-win-x64.exe` |
+| Bytes | 186,606,412 |
+| SHA-256 | `915cc5488c734299d80a236a639808932e5006297a3906dea0164680bcc4ff72` |
+| Checks | Built with the Phase 15F single-file command. Carries `0.1.0-rc.3+1744320…` and file version `0.1.0.3`. No checkout path or user name; only the SQLitePCLRaw `/Users/eric` and MicroCom `/home/kekekeks` vendor paths |
+| Status | EXPERIMENTAL. Ships without `THIRD-PARTY-NOTICES.txt`/`licenses\` when distributed alone, so do **not** hand it out independently. The ZIP stays the distribution |
+
+## QuestPDF licence
+
+**Technical status:** QuestPDF 2026.7.3 is shipped, its licence texts are included, and
+`LicenseType.Community` is selected in code. No legal conclusion is drawn here.
+
+**DISTRIBUTION LICENSE DECISION: PENDING USER/ORGANIZATION CONFIRMATION**
+
+## Build-host evidence for Phase 19A / 19B behaviour (not Windows)
+
+| Area | Evidence |
+|---|---|
+| Startup background refresh, 4-hour coordinator, startup fresh-skip, Deep Refresh clock reset, today/future auto-check, past-date silence, freshness indicator, offline failure state | Phase 19A deterministic tests (part of 2780) |
+| Dashboard reactive propagation (attendance, pre-solds, ERT, gate overrides and resets) | Phase 19A deterministic tests |
+| Duo ended offer | Live 2026-10-15: the official calendar answers "No dates found" for `SUBAF50`. The opt-in live test passes (result is NotPublished, not Error). Duo card absent from `daily-tickets` |
+| Confirmed absence (2 successful misses), Error never counts, reactivation, SCarowinds → WinterFest, season overlap, History immutability, PDF/copy consistency, empty seasonal section | `SeasonalCatalogLifecycleTests`, `AssociateTeamsTextFormatterTests`, `AssociateViewModelTests` (PASS BY SIMULATION) |
+| No hard-coded season dates | `ProductSeasonClassifier` takes no date input. Availability comes only from official source results |
+
+## Windows validation
+
+To be run with `docs/phase19c-rc3-windows-checklist.md` against the exact hashes above.
+
+| Item | Result |
+|---|---|
+| Windows machine record, hash check (ZIP, EXE) | NOT EXECUTED (pending) |
+| Windows Search stale-copy check | NOT EXECUTED (pending) |
+| Direct ZIP launch, second launch, About = `0.1.0-rc.3 (1744320)`, running folder | NOT EXECUTED (pending) |
+| Startup background refresh / duplicate suppression / 4-hour coordinator | NOT EXECUTED (pending) |
+| Dashboard propagation: projected, pre-solds, ERT, Avenue, North Gate, reset | NOT EXECUTED (pending) |
+| Today / future / past auto-check, rapid date switching | NOT EXECUTED (pending) |
+| Check Online, Deep Refresh, freshness indicator | NOT EXECUTED (pending) |
+| Offline startup, sleep/resume | NOT EXECUTED (pending) |
+| Task Scheduler coexistence from the RC.3 folder | NOT EXECUTED (pending) |
+| Duo no false failure; retirement after two checks | NOT EXECUTED on Windows (live source behaviour verified on the build host) |
+| SCarowinds current behaviour, Conjuring, PDF/copy by selection | NOT EXECUTED (pending) |
+| SCarowinds end-of-season, WinterFest | NOT EXECUTED LIVE: PASS BY SIMULATION |
+| Retired-product presentation, dated NotPublished vs global | NOT EXECUTED (pending; PASS BY SIMULATION) |
+| Classic / Compact / Modern PDF | NOT EXECUTED (pending) |
+| Teams paste: pricing, operations, both | NOT EXECUTED (pending) |
+| History immutability, old-draft compatibility | NOT EXECUTED (pending; PASS BY SIMULATION) |
+| One-PC / two-PC Personal Sync | NOT EXECUTED / NOT EXECUTED (two-PC needs a second RC.3 PC) |
+| App log, diagnostics export | NOT EXECUTED (pending) |
+| Scaling 100% / 125% / 150%, US formatting | NOT EXECUTED (pending) |
+| Single-file EXE launch | NOT EXECUTED (pending) |
+| Packaging validator on Windows | NOT EXECUTED (PASS on macOS under PowerShell 7.6.7) |
+
+## Known limitations
+
+- All Windows and two-PC validation is outstanding, including the first Windows run of automatic
+  refresh, reactive Dashboard updates and the lifecycle changes.
+- The shipped `TESTER-GUIDE.txt` still mentions the removed Dashboard Refresh button (docs only;
+  fixed in source for the next RC).
+- Live SCarowinds end-of-season and WinterFest arrival cannot be observed yet; they are simulated
+  only.
+- Season tags are internal (not shown in the UI). Event products whose names do not mention the
+  event stay unclassified.
+- Single-file EXE: experimental; no bundled notices. QuestPDF distribution licence decision pending.
+- Do not mix RC.3 with older builds on synced PCs.
+- Blocker policy: any shipped-code fix found during Windows validation becomes `0.1.0-rc.4`. These
+  RC.3 bytes and hashes are never replaced under the same name.
+
+## Release status
+
+- **Technical: RELEASE BLOCKED, pending Windows validation.** No defect is open. Every build-host gate
+  passes: tests, clean Release build, packaging validator, ZIP structure, path scan, notices, and the
+  live Duo source behaviour. The acceptance gate needs the ZIP to launch on Windows and the automatic
+  refresh, reactive Dashboard, auto-check, freshness indicator, lifecycle presentation, PDF/Teams
+  copy and the scheduler to work there. None of that has run yet.
+- **Distribution: DISTRIBUTION LICENSE DECISION PENDING** (QuestPDF, above).
