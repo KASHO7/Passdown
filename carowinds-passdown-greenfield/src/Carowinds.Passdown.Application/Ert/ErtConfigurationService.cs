@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.Changes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Time;
@@ -76,7 +77,8 @@ public sealed class ErtConfigurationService(
     IClock clock,
     ISyncChangeTracker? syncChangeTracker = null,
     IUnitOfWorkFactory? unitOfWorkFactory = null,
-    OpenEditorConflictRecorder? openEditorConflictRecorder = null) : IErtConfigurationService
+    OpenEditorConflictRecorder? openEditorConflictRecorder = null,
+    IDataChangeNotifier? dataChangeNotifier = null) : IErtConfigurationService
 {
     public Task<MonthlyErtConfiguration?> GetMonthlyAsync(int year, int month, CancellationToken cancellationToken = default) =>
         monthlyRepository.GetAsync(year, month, cancellationToken);
@@ -267,8 +269,21 @@ public sealed class ErtConfigurationService(
         return conflict;
     }
 
-    private Task MarkChangedAsync(SyncEntityType entityType, string entityId, CancellationToken cancellationToken) =>
-        syncChangeTracker?.MarkLocalChangeAsync(entityType, entityId, cancellationToken) ?? Task.CompletedTask;
+    /// <summary>Runs after every committed save/remove. Phase 19A: also the one place an ERT change is announced to local projections (the Dashboard's Early Ride Time) — never a network trigger.</summary>
+    private async Task MarkChangedAsync(SyncEntityType entityType, string entityId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (syncChangeTracker is not null)
+            {
+                await syncChangeTracker.MarkLocalChangeAsync(entityType, entityId, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            dataChangeNotifier?.Publish(new DataChange(DataChangeKind.EarlyRideTime));
+        }
+    }
 
     private static void ValidateMonth(int month)
     {

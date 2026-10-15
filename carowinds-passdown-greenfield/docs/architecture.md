@@ -872,3 +872,35 @@ section; this entry only records the API-contract/schema changes future phases n
 `FinalizedPassdownSnapshot` schema stays 1 — neither was touched; both waterpark hours
 (`ParkHoursPayload`'s two new nullable fields) and PDF page count (`AssociatePassdownPdfResult.PageCount`)
 are additive-nullable/transient values that needed no schema change of their own.
+
+## Phase 19A additions — automatic refresh and live local propagation
+
+Full design: `docs/phase19a-automatic-refresh.md`. Two deliberately separate mechanisms:
+
+- **Local propagation** — `Application.Changes.IDataChangeNotifier`/`DataChangeNotifier` (singleton): a
+  purely in-process invalidation signal published after a committed save by `AssociatePassdownService`
+  (draft saves), `ErtConfigurationService` and `OperationalNotesService` (all via new optional
+  constructor parameters), forwarded from Personal Sync's `ISyncLocalChangeNotifier`, and raised when any
+  online refresh finishes. `OperationsDashboardViewModel` reloads its local projection from it (coalesced,
+  no polling); `AssociateViewModel` re-reads its selected date after newer official data when clean. It
+  never triggers network activity.
+- **Automatic official refresh** — `Application.Refresh.OfficialDataRefreshCoordinator` (singleton,
+  started once in `App.OnFrameworkInitializationCompleted`, stopped in `AttachShutdownFlush`, never in
+  `--scheduled-refresh`). It absorbed and retired `Desktop.Startup.StartupCatchUpRefresh`: startup
+  finalization, missed-daily-maintenance catch-up only when today's maintenance has not run, then one
+  comprehensive check unless every source was already checked within the 60-minute startup grace; then a check every
+  `OfficialRefreshPolicy.AutomaticInterval` (4 h) from the latest qualifying comprehensive check; plus
+  quiet today/future Associate date checks when date-specific data is missing/stale
+  (`DateCheckFreshness`, reusing the daily `FreshnessPolicy`). `IRefreshOrchestrator` gained
+  `RunComprehensiveRefreshAsync` (`RefreshJobType.Comprehensive`: every source over the rolling window,
+  unconditional, records `source_state`).
+- **Concurrency** — `Application.Concurrency.IOfficialRefreshGate`/`OfficialRefreshGate` is the single
+  in-process entry for every online refresh and holds the existing cross-process
+  `IScheduledRefreshLock` while held. `AssociatePassdownService` (Check Online) and
+  `OperationsDashboardService` (Deep Refresh) use it when supplied (new optional parameters).
+- **Status** — `OfficialDataStatus` is derived from persisted `source_state` only (also used by the
+  diagnostics summary); `Desktop.ViewModels.OfficialDataStatusViewModel` (single instance) renders it on
+  the Dashboard header and Associate screen. `Desktop.Services.IUiDispatcher` marshals background events
+  onto the UI thread.
+
+No Domain change; no schema/payload change (DB 15, Draft 4, Snapshot 2, SyncSchemaVersion 1).

@@ -48,7 +48,8 @@ public class DashboardViewTests
         Assert.Contains("Open Passdown", names);
         Assert.Contains("Open History", names);
         Assert.Contains("Open Notes", names);
-        Assert.Contains("Refresh today's operations summary", names);
+        // Phase 19A: the header "Refresh" button is gone (the Dashboard reloads itself on local changes).
+        Assert.DoesNotContain("Refresh today's operations summary", names);
         Assert.Contains("Latest finalized passdown", names);
         Assert.Contains("Data status", names);
         Assert.Contains("Check Online", names);
@@ -66,6 +67,48 @@ public class DashboardViewTests
         Assert.Contains("Passdown Notes", names);
         Assert.Contains("Active operational notes", names);
         Assert.Contains("Open operational notes", names);
+    }
+
+    // Phase 19A: no header Refresh button remains; the header holds the shared official-data
+    // freshness line instead. Bound values are asserted on the view model/presentation (this assembly's
+    // headless setup evaluates bindings thread-dependently); here the real XAML loads with the status
+    // view model, the control exists, and its markup binds the shared text and accessible name.
+    [Fact]
+    public async Task DashboardView_HeaderShowsOfficialDataStatus_NotARefreshButton()
+    {
+        var coordinator = new FakeOfficialDataRefreshCoordinator();
+        var status = new OfficialDataStatusViewModel(coordinator, new FakeClock(new DateTimeOffset(2026, 10, 15, 17, 0, 0, TimeSpan.Zero)), new ImmediateUiDispatcher());
+        var viewModel = new OperationsDashboardViewModel(new FakeOperationsDashboardService(), officialDataStatus: status);
+        await viewModel.PendingLoad;
+
+        var view = new DashboardView { DataContext = viewModel };
+        var controls = view.GetLogicalDescendants().OfType<Control>().ToList();
+
+        Assert.DoesNotContain(controls.OfType<Button>(), b => Equals(b.Content, "Refresh"));
+        Assert.Single(controls.OfType<TextBlock>(), t => t.Name == "OfficialDataStatusText");
+
+        var markup = File.ReadAllText(FindRepoFile("src/Carowinds.Passdown.Desktop/Views/DashboardView.axaml"));
+        Assert.Contains("Text=\"{Binding OfficialDataStatus.Presentation.Text}\"", markup);
+        Assert.Contains("AutomationProperties.Name=\"{Binding OfficialDataStatus.Presentation.AutomationText}\"", markup);
+        Assert.DoesNotContain("Command=\"{Binding ReloadCommand}\"\n                  AutomationProperties.Name=\"Refresh today's operations summary\"", markup);
+        Assert.Equal("Official data not checked yet", status.Presentation.Text);
+    }
+
+    private static string FindRepoFile(string relativePath)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var candidate = Path.Combine(directory.FullName, relativePath);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException($"Could not locate '{relativePath}' above {AppContext.BaseDirectory}.");
     }
 
     // Phase 10E Part R: a dedicated busy indicator for Check Online (distinct from the header's

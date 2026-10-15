@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Application.Diagnostics;
@@ -59,4 +60,7 @@ public sealed record DiagnosticReport(
 
     /// <summary>Phase 18D: the running executable's full path. Exported files only ever print it redacted (<see cref="DiagnosticReportFormatter"/>).</summary>
     public string? ExecutablePath { get; init; }
+
+    /// <summary>Phase 19A: the aggregate official-data status the in-app automatic refresh works from (derived from <see cref="Sources"/>' persisted state; never a network call).</summary>
+    public OfficialDataStatus? OfficialData { get; init; }
 }

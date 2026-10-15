@@ -757,4 +757,61 @@ public class RefreshOrchestratorTests
         Assert.NotNull(state);
         Assert.NotNull(state!.LastSuccessAt);
     }
+    // ------------------------------------------------------------------ Phase 19A comprehensive check
+
+    // Every source runs even though each just succeeded (the daily due-gate would otherwise skip them
+    // all for the rest of the day), dated sources over the rolling window, catalog sources once — and
+    // Park Hours is NOT widened to Deep Refresh's whole-month coverage window.
+    [Fact]
+    public async Task RunComprehensiveRefreshAsync_RunsEverySourceUnconditionally_OverTheRollingWindowOnly()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var catalogProducts = new InMemoryCatalogProductRepository();
+        var parkHours = AlwaysSucceedsDated("park-hours.official", SourceCategory.ParkHours, datedResults);
+        var fastLane = AlwaysSucceedsDated("fast-lane", SourceCategory.DatedFastLane, datedResults);
+        var promotions = CatalogRegistration("promotions", SourceCategory.Promotions, CreateReconciliationService(catalogProducts),
+            (_, _) => Task.FromResult(SourceResult<CatalogPayload>.Success("promotions", FakeEvidence.Verified(FixedNow), new CatalogPayload([FakeProduct(SourceCategory.Promotions, "Deal")]))));
+        var env = CreateEnvironment([parkHours, fastLane, promotions]);
+        foreach (var (id, category) in new[] { ("park-hours.official", SourceCategory.ParkHours), ("fast-lane", SourceCategory.DatedFastLane), ("promotions", SourceCategory.Promotions) })
+        {
+            await env.SourceStates.SaveAsync(new SourceStateRecord(id, category, env.Clock.UtcNow, env.Clock.UtcNow, env.Clock.UtcNow.AddDays(1), null, 0));
+        }
+
+        var summary = await env.Orchestrator.RunComprehensiveRefreshAsync();
+
+        var window = env.RollingDatePlanner.GetRefreshWindow();
+        Assert.Equal(RefreshJobType.Comprehensive, summary.JobType);
+        Assert.Equal(window, summary.Results.Where(r => r.SourceId == "park-hours.official").Select(r => r.RequestedDate!.Value).Order());
+        Assert.Equal(window, summary.Results.Where(r => r.SourceId == "fast-lane").Select(r => r.RequestedDate!.Value).Order());
+        Assert.Single(summary.Results, r => r.SourceId == "promotions" && r.RequestedDate is null);
+        Assert.Equal(window.Count * 2 + 1, summary.OperationsAttempted);
+    }
+
+    // The comprehensive check is a genuine fresh check, so it records source state (unlike Check Online)
+    // — that is what the app's freshness indicator and four-hour clock are derived from.
+    [Fact]
+    public async Task RunComprehensiveRefreshAsync_RecordsSourceState_FailureKeepsLastSuccessAndLastKnownGood()
+    {
+        var datedResults = new InMemoryDatedResultRepository();
+        var ok = AlwaysSucceedsDated("park-hours.official", SourceCategory.ParkHours, datedResults);
+        var failing = DatedRegistration("fast-lane", SourceCategory.DatedFastLane, datedResults, (request, _) => Task.FromResult(
+            SourceResult<FakePayload>.WithoutPayload("fast-lane", FakeEvidence.Error(FixedNow, request.RequestedDate))));
+        var env = CreateEnvironment([ok, failing], windowOptions: new RollingWindowOptions { WindowLengthDays = 1 });
+        var earlier = FixedNow.AddHours(-5);
+        var today = new DateOnly(2026, 8, 20);
+        await env.SourceStates.SaveAsync(new SourceStateRecord("fast-lane", SourceCategory.DatedFastLane, earlier, earlier, null, null, 0));
+        await datedResults.RecordSuccessAsync(new DatedResultKey(SourceCategory.DatedFastLane, today), FakeEvidence.Verified(earlier, today), "{\"Value\":\"good\"}");
+
+        await env.Orchestrator.RunComprehensiveRefreshAsync();
+
+        var okState = await env.SourceStates.GetAsync("park-hours.official");
+        Assert.Equal(FixedNow, okState!.LastSuccessAt);
+        var failedState = await env.SourceStates.GetAsync("fast-lane");
+        Assert.Equal(FixedNow, failedState!.LastAttemptAt);
+        Assert.Equal(earlier, failedState.LastSuccessAt);
+        Assert.Equal(1, failedState.ConsecutiveFailureCount);
+
+        var cached = await datedResults.GetAsync(new DatedResultKey(SourceCategory.DatedFastLane, today));
+        Assert.Equal("{\"Value\":\"good\"}", cached!.SuccessPayloadJson); // last-known-good preserved.
+    }
 }

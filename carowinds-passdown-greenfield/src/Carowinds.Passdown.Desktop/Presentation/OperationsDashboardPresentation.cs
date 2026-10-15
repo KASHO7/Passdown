@@ -35,8 +35,7 @@ public sealed record OperationsDashboardPresentation(
     IReadOnlyList<string> NotesPreviewLines,
     DashboardOperationalNotesPresentation ActiveOperationalNotes,
     DashboardDataHealthPresentation DataHealth,
-    PassdownHistorySummaryPresentation? LatestFinalized,
-    string GeneratedAtText)
+    PassdownHistorySummaryPresentation? LatestFinalized)
 {
     /// <summary>Presentation-only bound (spec Phase 10B Part K) — never applied to persisted draft data, only to the Dashboard's own read-only display strings.</summary>
     private const int MaxDailyFeaturePreviewLength = 140;
@@ -127,8 +126,7 @@ public sealed record OperationsDashboardPresentation(
             notesPreviewLines,
             activeOperationalNotes,
             dataHealth,
-            latestFinalized,
-            $"Updated {FormatTimestamp(snapshot.GeneratedAt)}");
+            latestFinalized);
     }
 
     /// <summary>Shared timestamp formatting, also reused by <see cref="DashboardDataHealthPresentation"/> so "Last verified"/"Last checked" text matches this screen's other timestamps exactly.</summary>

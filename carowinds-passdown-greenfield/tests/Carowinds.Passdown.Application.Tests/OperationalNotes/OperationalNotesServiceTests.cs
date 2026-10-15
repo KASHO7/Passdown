@@ -393,7 +393,9 @@ public class OperationalNotesServiceTests
 
         // Phase 18B REL-004 sanctions two more persistence-only dependencies (the unit-of-work factory and
         // the open-editor conflict recorder) for the editor's conditional save — still no network/retrieval.
-        Assert.Equal(5, parameterTypes.Length);
+        // Phase 19A adds the local-only data-change notifier (in-process invalidation for the Dashboard).
+        Assert.Equal(6, parameterTypes.Length);
+        Assert.Contains(parameterTypes, t => t == typeof(Carowinds.Passdown.Application.Changes.IDataChangeNotifier));
         Assert.Contains(parameterTypes, t => t == typeof(IOperationalNoteRepository));
         Assert.Contains(parameterTypes, t => t == typeof(IClock));
         Assert.Contains(parameterTypes, t => t == typeof(ISyncChangeTracker));

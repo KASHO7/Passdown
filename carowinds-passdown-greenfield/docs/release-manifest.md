@@ -1170,3 +1170,12 @@ To be run with `docs/phase18g-rc2-windows-checklist.md` against the exact hashes
   acceptance gate needs the ZIP to launch on Windows and the Dashboard, overrides, PDFs, clipboard,
   Teams paste, scaling, logs, diagnostics and the scheduler to work there. None of that has run yet.
 - **Distribution: LICENSE DECISION PENDING** (QuestPDF, above).
+
+## Unreleased development since RC.2 — Phase 19A
+
+Phase 19A (automatic refresh and live local propagation, `docs/phase19a-automatic-refresh.md`) changes
+shipped code after RC.2. The RC.2 artifacts, hashes and Windows validation above are unchanged and
+still describe the pre-19A candidate; they were not rebuilt. A build containing Phase 19A must be
+packaged as a new release candidate (`0.1.0-rc.3` unless sequencing changes) and validated with the
+Phase 19A Windows checklist. Schemas unchanged: DB 15, Draft 4, Snapshot 2, SyncSchemaVersion 1.
+Deterministic tests at the Phase 19A commit: 2735/2735; Release build 0 warnings / 0 errors.

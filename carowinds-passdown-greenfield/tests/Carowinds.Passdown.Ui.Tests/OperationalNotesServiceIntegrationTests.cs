@@ -146,7 +146,9 @@ public class OperationalNotesServiceIntegrationTests
         var parameters = typeof(OperationalNotesService).GetConstructors(BindingFlags.Public | BindingFlags.Instance).Single().GetParameters();
 
         // Phase 18B REL-004: plus the persistence-only unit-of-work factory and open-editor conflict recorder.
-        Assert.Equal(5, parameters.Length);
+        // Phase 19A: plus the local-only data-change notifier (in-process invalidation, never a network path).
+        Assert.Equal(6, parameters.Length);
+        Assert.Contains(parameters, p => p.ParameterType == typeof(Carowinds.Passdown.Application.Changes.IDataChangeNotifier));
         Assert.Contains(parameters, p => p.ParameterType == typeof(IOperationalNoteRepository));
         Assert.Contains(parameters, p => p.ParameterType == typeof(Carowinds.Passdown.Application.Time.IClock));
         Assert.Contains(parameters, p => p.ParameterType == typeof(Carowinds.Passdown.Application.PersonalSync.ISyncChangeTracker));

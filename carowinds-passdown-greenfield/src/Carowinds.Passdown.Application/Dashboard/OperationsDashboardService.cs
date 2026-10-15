@@ -30,7 +30,8 @@ public sealed class OperationsDashboardService(
     IClock clock,
     IRefreshOrchestrator? refreshOrchestrator = null,
     IDeepRefreshStatusRepository? deepRefreshStatusRepository = null,
-    Func<IScheduledRefreshLock>? refreshLockFactory = null) : IOperationsDashboardService
+    Func<IScheduledRefreshLock>? refreshLockFactory = null,
+    IOfficialRefreshGate? refreshGate = null) : IOperationsDashboardService
 {
     public Task<OperationsDashboardSnapshot> GetTodayAsync(CancellationToken cancellationToken = default) =>
         LoadAsync(TodayEastern(), cancellationToken);
@@ -83,6 +84,18 @@ public sealed class OperationsDashboardService(
         var today = TodayEastern();
         RefreshSummary summary;
 
+        if (refreshGate is not null)
+        {
+            // Phase 19A: an automatic check running inside the app is waited for (then this still runs
+            // in full); only another process holding the cross-process lock reports "already in progress".
+            using var entry = await refreshGate.TryEnterAsync(new OfficialRefreshActivity(OfficialRefreshKind.DeepRefresh), waitForInProcessWork: true, cancellationToken).ConfigureAwait(false);
+            summary = entry is null
+                ? RefreshSummary.AlreadyInProgress(clock.UtcNow)
+                : await refreshOrchestrator.RunDeepRefreshAsync(bypassFreshness: true, focusDate: today, progress, cancellationToken).ConfigureAwait(false);
+
+            return await BuildDeepRefreshActionResultAsync(today, summary, cancellationToken).ConfigureAwait(false);
+        }
+
         var refreshLock = refreshLockFactory?.Invoke();
         if (refreshLock is not null && !refreshLock.TryAcquire())
         {
@@ -100,6 +113,11 @@ public sealed class OperationsDashboardService(
             }
         }
 
+        return await BuildDeepRefreshActionResultAsync(today, summary, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<DeepRefreshActionResult> BuildDeepRefreshActionResultAsync(DateOnly today, RefreshSummary summary, CancellationToken cancellationToken)
+    {
         var snapshot = await LoadAsync(today, cancellationToken).ConfigureAwait(false);
         var status = await GetDeepRefreshStatusAsync(cancellationToken).ConfigureAwait(false);
         return new DeepRefreshActionResult(snapshot, summary, status);

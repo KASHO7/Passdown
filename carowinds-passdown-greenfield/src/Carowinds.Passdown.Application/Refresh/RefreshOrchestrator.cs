@@ -64,6 +64,23 @@ public sealed class RefreshOrchestrator(
             .ConfigureAwait(false);
     }
 
+    public async Task<RefreshSummary> RunComprehensiveRefreshAsync(IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)
+    {
+        // The same rolling-window shape PlanScheduledOperationsAsync produces, minus its due-gate:
+        // with every category on a daily 6 AM cadence, the due-gate alone would skip every source for
+        // the rest of the day, which would make a four-hour check meaningless.
+        var window = rollingDatePlanner.GetRefreshWindow();
+        var operations = registrations
+            .SelectMany(r => r.Scope == SourceScope.Dated
+                ? window.Select((date, rank) => new PlannedOperation(r, date, rank))
+                : [new PlannedOperation(r, RequestedDate: null, window.Count)])
+            .OrderBy(p => p.Rank)
+            .ToList();
+
+        return await ExecuteJobAsync(RefreshJobType.Comprehensive, operations, updateSourceState: true, progress, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<RefreshSummary> RunDeepRefreshAsync(
         bool bypassFreshness,
         DateOnly? focusDate = null,

@@ -51,6 +51,34 @@ needing remote access to the tester's machine.
 - Check `logs\scheduled-refresh-YYYYMMDD.log` under `%LOCALAPPDATA%\Carowinds Passdown` (also
   excerpted in the diagnostics export) for what the last scheduled run actually did.
 
+## Official data status / data looks out of date (Phase 19A)
+
+The Dashboard header and Associate screen show one quiet line:
+
+- **"Official data checked 12:41 PM"** — every official source was verified at (or since) that time.
+  "Checked" means verified, even if no value changed.
+- **"Checking official data…"** — an automatic check (startup, every four hours) or a Deep Refresh is
+  running. The app stays usable.
+- **"Some official data couldn't be updated · Last checked …"** — one or more sources failed (names in
+  the second line/tooltip). Last-known-good values are still shown. Usually a site hiccup or no internet.
+- **"Official data not checked yet"** — a fresh install before the first check.
+
+The app checks automatically at startup (skipped if everything was checked in the last hour, e.g. by the
+6 AM scheduled task), every four hours while open, and quietly for a today/future Associate date whose
+data is missing or stale ("Checking online for this date…"). Past dates are never checked automatically.
+To check **now**, use **Check Online** (one date) or **Run Deep Refresh** (everything, including next
+month's park hours) — both work at any time and reset nothing the user typed. Manual values (attendance,
+pre-solds, ERT, gate overrides, price overrides) are never replaced by downloaded data.
+
+The Dashboard no longer has a Refresh button: it updates itself whenever something is saved locally or
+synced. If it ever shows "Unable to load today's operations summary.", use its **Try again** button.
+
+Log lines to look for in `app-yyyyMMdd.log`: "Startup official-data check …", "Automatic official-data
+refresh started/completed/partially failed/failed", "Associate date auto-check …", "Dashboard local data
+invalidated". The diagnostics `summary.txt` has an "Automatic official-data refresh" section (last check,
+next check estimate, sources not updated). After a network outage the next automatic attempt is four
+hours after the failed one (no rapid retries) — press Check Online to retry sooner.
+
 ## PDF does not save
 
 - Confirm the tester picked a destination they can actually write to (not a read-only network

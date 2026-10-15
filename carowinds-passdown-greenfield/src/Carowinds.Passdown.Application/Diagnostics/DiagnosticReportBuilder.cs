@@ -28,10 +28,12 @@ public sealed class DiagnosticReportBuilder(
     public async Task<DiagnosticReport> BuildAsync(CancellationToken cancellationToken = default)
     {
         var sources = new List<SourceStatusSummary>(sourceRegistrations.Count);
+        var states = new List<(SourceRegistration, SourceStateRecord?)>(sourceRegistrations.Count);
         foreach (var registration in sourceRegistrations)
         {
             var state = await sourceStateRepository.GetAsync(registration.SourceId, cancellationToken).ConfigureAwait(false);
             sources.Add(BuildSourceSummary(registration, state));
+            states.Add((registration, state));
         }
 
         var database = await databaseDiagnosticsProvider.GetAsync(cancellationToken).ConfigureAwait(false);
@@ -48,6 +50,7 @@ public sealed class DiagnosticReportBuilder(
         return new DiagnosticReport(identity.FullVersion, clock.UtcNow, sources, database, scheduledTask, logLines, appLogLines)
         {
             ExecutablePath = identity.ExecutablePath,
+            OfficialData = OfficialDataStatus.Compute(states),
         };
     }
 

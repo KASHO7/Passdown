@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.Changes;
 using Carowinds.Passdown.Application.Diagnostics;
 using Carowinds.Passdown.Application.Ert;
 using Carowinds.Passdown.Application.OperationalNotes;
@@ -71,6 +72,8 @@ public partial class AssociateViewModel : ViewModelBase
     private readonly IDiagnosticExportFilePicker _diagnosticExportPicker;
     private readonly IAssociatePassdownTemplatePreferenceStore _templatePreferenceStore;
     private readonly IClipboardService _clipboardService;
+    private readonly IOfficialDataRefreshCoordinator? _refreshCoordinator;
+    private readonly IUiDispatcher _uiDispatcher;
     private readonly ILogger<AssociateViewModel>? _logger;
     private readonly TimeSpan _autosaveDebounce;
     private readonly Func<TimeSpan, CancellationToken, Task> _autosaveDelay;
@@ -83,6 +86,13 @@ public partial class AssociateViewModel : ViewModelBase
     private Task _pendingTemplatePreferenceSave = Task.CompletedTask;
     private bool _isLoadingTemplatePreference;
     private CancellationTokenSource? _debounceCts;
+
+    // Phase 19A: the quiet automatic check of the selected date (cancelled/superseded whenever the date
+    // changes or Check Online starts), and a newer-official-data reload deferred until the editor is clean.
+    private CancellationTokenSource? _autoCheckCts;
+    private Task _pendingAutoCheck = Task.CompletedTask;
+    private Task _pendingOfficialDataReload = Task.CompletedTask;
+    private bool _officialDataReloadDeferred;
 
     /// <summary>The operating date the current editable fields belong to — distinct from <see cref="SelectedDate"/>, which may already hold a newer date while a flush-then-load is still switching over (Part H).</summary>
     private DateOnly? _draftDateInEdit;
@@ -214,6 +224,17 @@ public partial class AssociateViewModel : ViewModelBase
     [NotifyCanExecuteChangedFor(nameof(CreatePdfCommand))]
     [NotifyCanExecuteChangedFor(nameof(CopyForTeamsCommand))]
     public partial bool IsCheckingOnline { get; set; }
+
+    /// <summary>
+    /// Phase 19A: true while the quiet automatic check of the selected (today/future, missing/stale)
+    /// date is actually online. Deliberately separate from <see cref="IsCheckingOnline"/>: it never
+    /// disables Check Online, Create PDF, or Copy, and never blocks the screen.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsAutoCheckingDate { get; set; }
+
+    /// <summary>Phase 19A: the shared app-wide official-data freshness line (null only in tests that do not supply one).</summary>
+    public OfficialDataStatusViewModel? OfficialDataStatus { get; }
 
     /// <summary>Concise in-progress copy such as "Checked Fast Lane — 3 of 4 complete" (spec Part F). Null while not refreshing.</summary>
     [ObservableProperty]
@@ -503,7 +524,11 @@ public partial class AssociateViewModel : ViewModelBase
         IErtConfigurationService? ertConfigurationService = null,
         IAssociatePassdownTemplatePreferenceStore? templatePreferenceStore = null,
         ISyncLocalChangeNotifier? syncLocalChangeNotifier = null,
-        IClipboardService? clipboardService = null)
+        IClipboardService? clipboardService = null,
+        IOfficialDataRefreshCoordinator? refreshCoordinator = null,
+        IDataChangeNotifier? dataChangeNotifier = null,
+        OfficialDataStatusViewModel? officialDataStatus = null,
+        IUiDispatcher? uiDispatcher = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -519,6 +544,9 @@ public partial class AssociateViewModel : ViewModelBase
         _diagnosticExportPicker = diagnosticExportPicker ?? new UnavailableDiagnosticExportFilePicker();
         _templatePreferenceStore = templatePreferenceStore ?? new FileAssociatePassdownTemplatePreferenceStore(FileAssociatePassdownTemplatePreferenceStore.DefaultPath);
         _clipboardService = clipboardService ?? new UnavailableClipboardService();
+        _refreshCoordinator = refreshCoordinator;
+        _uiDispatcher = uiDispatcher ?? new AvaloniaUiDispatcher();
+        OfficialDataStatus = officialDataStatus;
 
         // "Today" in the park's own wall-clock time (spec §6.5/§6.6 use the same Eastern
         // convention for "today") rather than the host machine's arbitrary local time zone.
@@ -534,6 +562,162 @@ public partial class AssociateViewModel : ViewModelBase
             syncLocalChangeNotifier.LocalDataChanged += (_, changed) =>
                 Dispatcher.UIThread.Post(() => _pendingSyncReload = HandleSyncLocalChangesAsync(changed));
         }
+
+        // Phase 19A: newer official data (an automatic check, or a refresh started elsewhere) reloads the
+        // presentation of the selected date. Personal Sync changes keep their own REL-004 path above.
+        if (dataChangeNotifier is not null)
+        {
+            dataChangeNotifier.Changed += (_, change) =>
+            {
+                if (change.Kind == DataChangeKind.OfficialData)
+                {
+                    _uiDispatcher.Post(() => _pendingOfficialDataReload = HandleOfficialDataChangedAsync(change));
+                }
+            };
+        }
+    }
+
+    /// <summary>The in-flight (or most recent) automatic date check, so a test can await it.</summary>
+    public Task PendingAutoCheck => _pendingAutoCheck;
+
+    /// <summary>The in-flight (or most recent) reload triggered by newer official data, so a test can await it.</summary>
+    public Task PendingOfficialDataReload => _pendingOfficialDataReload;
+
+    /// <summary>
+    /// Phase 19A: after a date's local data is shown, quietly check it online when it is today or a
+    /// future date whose official data is missing or stale (the coordinator decides; past dates never
+    /// go online automatically). Any earlier automatic check is superseded first, so rapid date changes
+    /// never fan out into overlapping requests, and a late result can never be applied to another date
+    /// — the reload it triggers is keyed to the date it checked.
+    /// </summary>
+    private void StartAutomaticDateCheck(DateOnly date)
+    {
+        CancelAutomaticDateCheck();
+        if (_refreshCoordinator is null)
+        {
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _autoCheckCts = cts;
+        _pendingAutoCheck = RunAutomaticDateCheckAsync(date, cts);
+    }
+
+    private void CancelAutomaticDateCheck()
+    {
+        _autoCheckCts?.Cancel();
+        _autoCheckCts = null;
+        IsAutoCheckingDate = false;
+    }
+
+    private async Task RunAutomaticDateCheckAsync(DateOnly date, CancellationTokenSource cts)
+    {
+        try
+        {
+            await _refreshCoordinator!.CheckDateIfStaleAsync(
+                date,
+                onCheckStarted: () => _uiDispatcher.Post(() =>
+                {
+                    if (_autoCheckCts == cts)
+                    {
+                        IsAutoCheckingDate = true;
+                    }
+                }),
+                cts.Token).ConfigureAwait(true);
+
+            // A completed check publishes an OfficialData change for this date; HandleOfficialDataChangedAsync
+            // applies it (only if this date is still selected and the editor is clean).
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by another date, Check Online, or shutdown.
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Automatic online check failed for {OperatingDate}; cached information is still shown.", date);
+        }
+        finally
+        {
+            if (_autoCheckCts == cts)
+            {
+                _autoCheckCts = null;
+                IsAutoCheckingDate = false;
+            }
+
+            cts.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Phase 19A: re-reads the selected date's local workspace after official cached data changed, so
+    /// Associate, Create PDF and Copy all read the same newer prices (they all consume
+    /// <see cref="Workspace"/>). Never touches the network, never autosaves (a load is applied through
+    /// <see cref="ApplyWorkspaceToFields"/>, which is not a user edit), and never overwrites unsaved
+    /// edits: a dirty editor defers the reload until its next successful autosave. Manual values
+    /// (attendance, pre-solds, gate/hours overrides, display-price overrides) live in the draft, which an
+    /// online refresh never writes, so they always survive. Internal so tests can drive it directly.
+    /// </summary>
+    internal async Task HandleOfficialDataChangedAsync(DataChange change)
+    {
+        try
+        {
+            var date = SelectedDate;
+            if (!change.MayAffect(date) || IsCheckingOnline || _draftDateInEdit != date)
+            {
+                return; // Check Online applies its own result; a load in flight reads fresh data itself.
+            }
+
+            if (_isDirty || _saveInFlight || IsErtEditorDirty())
+            {
+                _officialDataReloadDeferred = true;
+                return;
+            }
+
+            await ReloadOfficialDataAsync(date).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogWarning(ex, "Failed to show newer official data for the selected date; the previous information is still shown.");
+        }
+    }
+
+    private async Task ReloadOfficialDataAsync(DateOnly date)
+    {
+        _officialDataReloadDeferred = false;
+        var ertPanelWasOpen = IsErtEditorOpen;
+
+        var workspace = await _service.LoadAssociateDateAsync(date).ConfigureAwait(true);
+        if (date != SelectedDate || _draftDateInEdit != date || _isDirty || _saveInFlight || IsCheckingOnline || IsErtEditorDirty())
+        {
+            _officialDataReloadDeferred = date == SelectedDate;
+            return;
+        }
+
+        if (Workspace is { } current && current.OperatingDate == date && HasSameEditableOfficialContent(current, workspace))
+        {
+            // Nothing an associate edits changed (only verification timestamps): swap the workspace in
+            // without rebuilding the product rows, so focus and scroll position are left alone.
+            Workspace = workspace;
+            _draftBaseHash = workspace.DraftContentHash;
+            return;
+        }
+
+        ApplyWorkspaceToFields(workspace);
+        IsErtEditorOpen = ertPanelWasOpen;
+    }
+
+    /// <summary>True when two workspaces for the same date show the same official products, prices and hours — differing at most in when they were verified.</summary>
+    private static bool HasSameEditableOfficialContent(AssociateWorkspace current, AssociateWorkspace reloaded)
+    {
+        var unverified = AssociateVerificationInfo.NotCheckedYet;
+        if (current.ParkHours with { Verification = unverified } != reloaded.ParkHours with { Verification = unverified }
+            || current.Products.Count != reloaded.Products.Count)
+        {
+            return false;
+        }
+
+        return current.Products.Zip(reloaded.Products).All(pair =>
+            pair.First with { Verification = unverified } == pair.Second with { Verification = unverified });
     }
 
     private Task _pendingSyncReload = Task.CompletedTask;
@@ -821,6 +1005,7 @@ public partial class AssociateViewModel : ViewModelBase
     partial void OnSelectedDateChanged(DateOnly value)
     {
         CopyMessage = null; // a "copied" confirmation belongs to the date it was copied from.
+        CancelAutomaticDateCheck(); // Phase 19A: an automatic check of the previous date is superseded.
         _pendingLoad = SwitchDateAsync(value);
     }
 
@@ -845,7 +1030,14 @@ public partial class AssociateViewModel : ViewModelBase
             }
 
             ApplyWorkspaceToFields(workspace);
+            _officialDataReloadDeferred = false;
             await RefreshOperationalNoteSuggestionsAsync(date).ConfigureAwait(true);
+
+            // Phase 19A: cached data is already on screen; only now consider a quiet online check.
+            if (version == _loadVersion)
+            {
+                StartAutomaticDateCheck(date);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -881,6 +1073,7 @@ public partial class AssociateViewModel : ViewModelBase
     private async Task CheckOnlineAsync()
     {
         var date = SelectedDate;
+        CancelAutomaticDateCheck(); // Phase 19A: the explicit request runs now, never queued behind the quiet one.
         IsCheckingOnline = true;
         RefreshResultMessage = null;
         RefreshHadFailures = false;
@@ -1824,6 +2017,13 @@ public partial class AssociateViewModel : ViewModelBase
             _saveInFlight = false;
             AutosaveState = _isDirty ? AssociateAutosaveState.Unsaved : AssociateAutosaveState.Saved;
             _saveSemaphore.Release();
+        }
+
+        // Phase 19A: newer official data arrived while this editor had unsaved edits; now that they are
+        // saved (and nothing new was typed meanwhile), show it.
+        if (_officialDataReloadDeferred && !_isDirty && _draftDateInEdit == date && date == SelectedDate && !IsCheckingOnline)
+        {
+            _pendingOfficialDataReload = HandleOfficialDataChangedAsync(new DataChange(DataChangeKind.OfficialData, date));
         }
     }
 

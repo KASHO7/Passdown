@@ -383,6 +383,20 @@
                    IsVisible="{Binding RefreshStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                    Classes="muted" />
 
+        <!-- Phase 19A: quiet status only — the shared app-wide official-data freshness line, plus a note
+             while this date's missing/stale data is being checked automatically. Neither blocks the
+             screen or disables any action; Check Online stays the explicit way to check right now. -->
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <TextBlock x:Name="AssociateOfficialDataStatusText" Text="{Binding OfficialDataStatus.Presentation.Text}" Classes="muted"
+                     TextWrapping="Wrap"
+                     IsVisible="{Binding OfficialDataStatus, Converter={x:Static ObjectConverters.IsNotNull}}"
+                     AutomationProperties.Name="{Binding OfficialDataStatus.Presentation.AutomationText}"
+                     ToolTip.Tip="{Binding OfficialDataStatus.Presentation.DetailText}" />
+          <TextBlock x:Name="AutoCheckStatusText" Text="Checking online for this date…" Classes="muted"
+                     IsVisible="{Binding IsAutoCheckingDate}"
+                     AutomationProperties.LiveSetting="Polite" />
+        </StackPanel>
+
         <!-- Phase 18F: subtle Copy feedback — muted on success, error color on a clipboard failure. -->
         <TextBlock Text="{Binding CopyMessage}"
                    IsVisible="{Binding CopyMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"

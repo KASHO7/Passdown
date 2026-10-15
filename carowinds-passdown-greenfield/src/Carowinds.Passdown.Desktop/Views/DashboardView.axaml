@@ -116,22 +116,28 @@
 
     <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceTintBrush}"
             BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
-      <!-- Phase 15E: the title column is "*" (not Auto) so the Refresh action group (a fixed Auto
-           column) always stays fully visible and reachable at the 960×640 minimum window size — a long
-           real operating-day label ("Wednesday, September 30, 2026") previously could push the Refresh
-           button/timestamp partially off the window since two Auto columns cannot both shrink to fit. -->
+      <!-- Phase 15E: the title column is "*" (not Auto) so the right-hand status group (a fixed Auto
+           column) always stays fully visible at the 960×640 minimum window size — a long real
+           operating-day label ("Wednesday, September 30, 2026") previously could push it partially off
+           the window since two Auto columns cannot both shrink to fit.
+           Phase 19A: the header "Refresh" button is gone — the Dashboard now reloads itself whenever local
+           data changes — and its place holds the shared, subtle official-data freshness line. -->
       <Grid ColumnDefinitions="*,Auto">
         <StackPanel Grid.Column="0" Spacing="2">
           <TextBlock Text="TODAY" Classes="sectionTitle" Margin="0" />
           <TextBlock Text="{Binding Presentation.OperatingDayLabel}" Classes="pageTitle"
                      TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
         </StackPanel>
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-          <TextBlock Text="{Binding Presentation.GeneratedAtText}" Classes="muted" VerticalAlignment="Center"
-                     IsVisible="{Binding HasSnapshot}" />
-          <Button Content="Refresh" Classes="secondaryAction" Command="{Binding ReloadCommand}"
-                  AutomationProperties.Name="Refresh today's operations summary"
-                  AutomationProperties.HelpText="Reloads today's summary from your saved local information. Does not check the website." />
+        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center" HorizontalAlignment="Right"
+                    IsVisible="{Binding OfficialDataStatus, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <TextBlock x:Name="OfficialDataStatusText" Text="{Binding OfficialDataStatus.Presentation.Text}" Classes="muted"
+                     HorizontalAlignment="Right" TextWrapping="NoWrap"
+                     AutomationProperties.Name="{Binding OfficialDataStatus.Presentation.AutomationText}"
+                     AutomationProperties.LiveSetting="Polite"
+                     ToolTip.Tip="{Binding OfficialDataStatus.Presentation.DetailText}" />
+          <TextBlock Text="{Binding OfficialDataStatus.Presentation.DetailText}" Classes="muted" FontSize="11"
+                     HorizontalAlignment="Right" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" MaxWidth="420"
+                     IsVisible="{Binding OfficialDataStatus.Presentation.DetailText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         </StackPanel>
       </Grid>
     </Border>
@@ -141,8 +147,13 @@
 
         <ProgressBar IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoading}" />
 
-        <TextBlock Text="{Binding ErrorMessage}" Classes="fieldError" TextWrapping="Wrap"
-                   IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <StackPanel Orientation="Horizontal" Spacing="12"
+                    IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+          <TextBlock Text="{Binding ErrorMessage}" Classes="fieldError" TextWrapping="Wrap" VerticalAlignment="Center" />
+          <Button Content="Try again" Classes="secondaryAction" Command="{Binding ReloadCommand}"
+                  AutomationProperties.Name="Try loading today's operations summary again"
+                  AutomationProperties.HelpText="Reloads today's summary from your saved local information. Does not check the website." />
+        </StackPanel>
 
         <StackPanel Spacing="16" IsVisible="{Binding HasSnapshot}">
 

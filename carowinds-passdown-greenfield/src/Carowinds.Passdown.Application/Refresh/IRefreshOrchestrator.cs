@@ -49,4 +49,14 @@ public interface IRefreshOrchestrator
         DateOnly? focusDate = null,
         IProgress<RefreshProgress>? progress = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 19A: the automatic comprehensive official-data check (<see cref="RefreshJobType.Comprehensive"/>)
+    /// the interactive app runs at startup and every four hours. Every registered dated source runs
+    /// for every date in the normal rolling window and every catalog source runs once, regardless of
+    /// due-ness. Updates scheduled-cadence source state for every source it touches, which is what
+    /// lets the app's freshness status and four-hour clock be derived from persisted state alone.
+    /// Park Hours stays within the rolling window — widening coverage remains Deep Refresh's job.
+    /// </summary>
+    Task<RefreshSummary> RunComprehensiveRefreshAsync(IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default);
 }

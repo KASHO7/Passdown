@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Carowinds.Passdown.Application.Catalog;
+using Carowinds.Passdown.Application.Changes;
 using Carowinds.Passdown.Application.Concurrency;
 using Carowinds.Passdown.Application.Ert;
 using Carowinds.Passdown.Application.Freshness;
@@ -42,7 +43,9 @@ public sealed class AssociatePassdownService(
     ISyncChangeTracker? syncChangeTracker = null,
     IEffectiveErtResolver? effectiveErtResolver = null,
     IUnitOfWorkFactory? unitOfWorkFactory = null,
-    OpenEditorConflictRecorder? openEditorConflictRecorder = null) : IAssociatePassdownService
+    OpenEditorConflictRecorder? openEditorConflictRecorder = null,
+    IOfficialRefreshGate? refreshGate = null,
+    IDataChangeNotifier? dataChangeNotifier = null) : IAssociatePassdownService
 {
     private static readonly SourceCategory[] CatalogCategories =
     [
@@ -81,6 +84,11 @@ public sealed class AssociatePassdownService(
         // A null factory (every pre-13B test/caller) means no overlap protection at all, matching
         // ScheduledRefreshHost's own optional-lock-factory default — this never changes behavior for
         // a caller that doesn't supply one.
+        if (refreshGate is not null)
+        {
+            return await RunGatedForcedRefreshAsync(refreshGate, operatingDate, progress, cancellationToken).ConfigureAwait(false);
+        }
+
         if (refreshLockFactory is null)
         {
             return await RunForcedRefreshAsync(operatingDate, progress, cancellationToken).ConfigureAwait(false);
@@ -105,6 +113,29 @@ public sealed class AssociatePassdownService(
         {
             refreshLock.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Phase 19A: Check Online through the app-wide <see cref="IOfficialRefreshGate"/> (which also holds
+    /// the cross-process lock). An automatic check already running inside the app is waited for rather
+    /// than reported as "already in progress" — the explicit request then still runs in full, bypassing
+    /// every automatic freshness/cooldown rule. Only a different process (the scheduled task) holding the
+    /// lock still yields <see cref="RefreshSummary.AlreadyInProgress"/>.
+    /// </summary>
+    private async Task<AssociateOnlineCheckResult> RunGatedForcedRefreshAsync(IOfficialRefreshGate gate, DateOnly operatingDate, IProgress<RefreshProgress>? progress, CancellationToken cancellationToken)
+    {
+        var kind = deepRefreshStatusRepository is not null && await NeedsDeepRefreshAsync(cancellationToken).ConfigureAwait(false)
+            ? OfficialRefreshKind.DeepRefresh
+            : OfficialRefreshKind.DateCheck;
+
+        using var entry = await gate.TryEnterAsync(new OfficialRefreshActivity(kind, operatingDate), waitForInProcessWork: true, cancellationToken).ConfigureAwait(false);
+        if (entry is null)
+        {
+            var currentWorkspace = await ComposeAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+            return new AssociateOnlineCheckResult(currentWorkspace, RefreshSummary.AlreadyInProgress(clock.UtcNow));
+        }
+
+        return await RunForcedRefreshAsync(operatingDate, progress, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<AssociateOnlineCheckResult> RunForcedRefreshAsync(DateOnly operatingDate, IProgress<RefreshProgress>? progress, CancellationToken cancellationToken)
@@ -151,6 +182,7 @@ public sealed class AssociatePassdownService(
             await syncChangeTracker.MarkLocalChangeAsync(SyncEntityType.AssociateDraft, SyncEntityIdentity.ForDraft(operatingDate), cancellationToken).ConfigureAwait(false);
         }
 
+        dataChangeNotifier?.Publish(new DataChange(DataChangeKind.AssociateDraft, operatingDate));
         return new AssociateSaveStatus(AssociateSaveState.Saved, now);
     }
 
@@ -206,6 +238,8 @@ public sealed class AssociatePassdownService(
             await syncChangeTracker.MarkLocalChangeAsync(SyncEntityType.AssociateDraft, SyncEntityIdentity.ForDraft(operatingDate), cancellationToken).ConfigureAwait(false);
         }
 
+        // Phase 19A: committed — let local projections (the Dashboard) re-read it. Never a network trigger.
+        dataChangeNotifier?.Publish(new DataChange(DataChangeKind.AssociateDraft, operatingDate));
         return new AssociateDraftSaveResult(new AssociateSaveStatus(AssociateSaveState.Saved, now), newHash, conflictDetected);
     }
 

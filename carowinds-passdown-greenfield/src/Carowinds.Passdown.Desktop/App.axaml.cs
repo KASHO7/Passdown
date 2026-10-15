@@ -4,6 +4,7 @@ using Avalonia.Markup.Xaml;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Calendar;
 using Carowinds.Passdown.Application.Catalog;
+using Carowinds.Passdown.Application.Changes;
 using Carowinds.Passdown.Application.Concurrency;
 using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Diagnostics;
@@ -20,7 +21,6 @@ using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Retrieval.Browser;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Services;
-using Carowinds.Passdown.Desktop.Startup;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
 using Carowinds.Passdown.Documents.Associate;
@@ -122,7 +122,8 @@ public partial class App : global::Avalonia.Application
             var mainViewModelResolvedMs = ElapsedSinceProcessStartMs();
 
             var syncCoordinator = services.GetRequiredService<IPersonalSyncCoordinator>();
-            AttachShutdownFlush(desktop, mainViewModel, syncCoordinator, logger);
+            var refreshCoordinator = services.GetRequiredService<IOfficialDataRefreshCoordinator>();
+            AttachShutdownFlush(desktop, mainViewModel, syncCoordinator, refreshCoordinator, logger);
 
             // Phase 15D: the closest available cross-platform proxy for "the shell became visible" —
             // Window.Opened fires once the platform has actually shown the window, well after
@@ -147,7 +148,16 @@ public partial class App : global::Avalonia.Application
             // this can never delay the first usable window the way a blocking bootstrap would.
             syncCoordinator.Start();
 
-            StartCatchUpRefresh(services);
+            // Phase 19A: replaces the Phase 6B startup catch-up. Started once, after the window is
+            // assigned, for the interactive app's whole lifetime: it finalizes/catches up a missed daily
+            // maintenance run, makes sure official data is fresh (skipping that when it was just checked),
+            // then keeps it fresh every four hours — all on a background task, so cached data is usable
+            // immediately. Never started by the headless --scheduled-refresh host.
+            refreshCoordinator.Start();
+            logger.LogInformation(
+                "Automatic official-data refresh started (interval {IntervalHours}h, startup grace {GraceMinutes}min).",
+                OfficialRefreshPolicy.AutomaticInterval.TotalHours, OfficialRefreshPolicy.StartupFreshnessGrace.TotalMinutes);
+
             StartTempPdfCleanup(logger);
         }
 
@@ -164,7 +174,7 @@ public partial class App : global::Avalonia.Application
     /// again to actually close; the <c>flushed</c> guard prevents that second request from looping
     /// back into this handler.
     /// </summary>
-    private static void AttachShutdownFlush(IClassicDesktopStyleApplicationLifetime desktop, MainViewModel mainViewModel, IPersonalSyncCoordinator syncCoordinator, ILogger logger)
+    private static void AttachShutdownFlush(IClassicDesktopStyleApplicationLifetime desktop, MainViewModel mainViewModel, IPersonalSyncCoordinator syncCoordinator, IOfficialDataRefreshCoordinator refreshCoordinator, ILogger logger)
     {
         var flushed = false;
 
@@ -198,6 +208,19 @@ public partial class App : global::Avalonia.Application
                 logger.LogWarning(ex, "Failed to stop the Personal Sync coordinator during shutdown; closing anyway.");
             }
 
+            // Phase 19A: cancels any automatic official-data check in flight (cancelled operations never
+            // overwrite last-known-good data or source state) — bounded, so a slow network can never hold
+            // the window open.
+            try
+            {
+                var stop = refreshCoordinator.StopAsync();
+                await Task.WhenAny(stop, Task.Delay(RefreshStopTimeout)).ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to stop automatic official-data refresh during shutdown; closing anyway.");
+            }
+
             flushed = true;
             desktop.Shutdown();
         }
@@ -210,6 +233,9 @@ public partial class App : global::Avalonia.Application
     /// answer to "how long is a database allowed to look stuck before this app stops waiting on it."
     /// </summary>
     private static readonly TimeSpan ShutdownFlushTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>Phase 19A: the most shutdown waits for an in-flight automatic official-data check to observe cancellation.</summary>
+    private static readonly TimeSpan RefreshStopTimeout = TimeSpan.FromSeconds(2);
 
     /// <summary>
     /// The actual drain-before-exit work, split out from <see cref="AttachShutdownFlush"/> so it can
@@ -281,19 +307,6 @@ public partial class App : global::Avalonia.Application
         });
 
     /// <summary>
-    /// Phase 6B Part C: fires the missed-run catch-up (spec §6.6) as a detached background task —
-    /// deliberately not awaited, so a slow or failing refresh can never delay or block the window
-    /// that was just assigned above. See <see cref="StartupCatchUpRefresh"/> for the guard/failure
-    /// semantics.
-    /// </summary>
-    private static void StartCatchUpRefresh(IServiceProvider services)
-    {
-        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("StartupCatchUpRefresh");
-        var scheduledLock = new FileScheduledRefreshLock(FileScheduledRefreshLock.DefaultPath);
-        _ = StartupCatchUpRefresh.RunAsync(services, scheduledLock, logger);
-    }
-
-    /// <summary>
     /// Phase 15F: appsettings.json is an embedded resource (Carowinds.Passdown.Desktop.csproj),
     /// not a physical file read via AppContext.BaseDirectory — see the csproj comment for why a
     /// single-file publish makes the physical-file approach unreliable. Caller disposes the stream
@@ -360,10 +373,17 @@ public partial class App : global::Avalonia.Application
         // RefreshMode.UserForced entry point, shared by Dashboard and Associate's own Check Online
         // actions) uses this factory to guard against running concurrently with a scheduled refresh
         // or startup catch-up already holding the same file lock. A fresh FileScheduledRefreshLock
-        // instance per attempt is deliberate (mirrors ScheduledRefreshHost/StartupCatchUpRefresh's own
+        // instance per attempt is deliberate (mirrors ScheduledRefreshHost/OfficialRefreshGate's own
         // pattern) — OS-level exclusive file access is what actually enforces the single-holder
         // guarantee, not shared C# instance state.
         services.AddSingleton<Func<IScheduledRefreshLock>>(_ => () => new FileScheduledRefreshLock(FileScheduledRefreshLock.DefaultPath));
+
+        // Phase 19A: the one in-process gate every online refresh passes through (automatic checks,
+        // Check Online, Deep Refresh) — it also holds the cross-process lock above while held — and the
+        // one local data-change signal (draft/ERT/notes saves, Personal Sync imports, finished refreshes)
+        // the Dashboard and Associate screens react to without any network traffic.
+        services.AddSingleton<IOfficialRefreshGate>(provider => new OfficialRefreshGate(provider.GetRequiredService<Func<IScheduledRefreshLock>>()));
+        services.AddSingleton<IDataChangeNotifier, DataChangeNotifier>();
 
         // Phase 17B: the persistent monthly Early Ride Time foundation, registered ahead of
         // IAssociatePassdownService so its IEffectiveErtResolver constructor dependency resolves.
@@ -402,7 +422,7 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IFinalizedPassdownPdfRetrievalService, FinalizedPassdownPdfRetrievalService>();
 
         // Phase 9B: the 6:00 AM automatic finalization coordinator, invoked by ScheduledRefreshHost
-        // and StartupCatchUpRefresh before either ever runs a source refresh.
+        // and the interactive startup catch-up (OfficialDataRefreshCoordinator) before either runs a source refresh.
         services.AddSingleton<IScheduledPassdownFinalizer, ScheduledPassdownFinalizer>();
 
         // Phase 9D: the read-only Passdown History screen. IPassdownHistoryService reads
@@ -516,6 +536,15 @@ public partial class App : global::Avalonia.Application
         // reuses this same BuildServiceProvider but has no interactive session to run automatic sync for
         // (spec §31 — Personal Sync operates only while the interactive app is running).
         services.AddSingleton<IPersonalSyncCoordinator, PersonalSyncCoordinator>();
+
+        // Phase 19A: automatic official-data refresh — one coordinator for the interactive app's lifetime
+        // (never per screen), started in OnFrameworkInitializationCompleted and stopped in
+        // AttachShutdownFlush; the headless --scheduled-refresh host never resolves or starts it. The
+        // shared status view model is likewise a single instance, so Dashboard and Associate always show
+        // the same freshness line.
+        services.AddSingleton<IOfficialDataRefreshCoordinator, OfficialDataRefreshCoordinator>();
+        services.AddSingleton<IUiDispatcher, AvaloniaUiDispatcher>();
+        services.AddSingleton<OfficialDataStatusViewModel>();
 
         services.AddTransient<PersonalSyncSettingsViewModel>();
 

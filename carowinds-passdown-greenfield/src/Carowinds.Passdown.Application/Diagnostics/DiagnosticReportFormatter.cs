@@ -28,6 +28,12 @@ public static class DiagnosticReportFormatter
             sb.AppendLine(CultureInfo.InvariantCulture, $"  detail: {report.ScheduledTask.Detail}");
         }
 
+        if (report.OfficialData is { } officialData)
+        {
+            sb.AppendLine();
+            AppendOfficialDataLines(sb, officialData, report.GeneratedAtUtc);
+        }
+
         sb.AppendLine();
         sb.AppendLine(CultureInfo.InvariantCulture, $"See source-status.txt for per-source detail ({report.Sources.Count} sources) and logs/ for recent scheduled-refresh and app activity.");
         return sb.ToString();
@@ -69,6 +75,23 @@ public static class DiagnosticReportFormatter
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>Phase 19A: supportable automatic-refresh facts — timestamps, the fixed interval, and failing source ids only.</summary>
+    private static void AppendOfficialDataLines(StringBuilder sb, Refresh.OfficialDataStatus status, DateTimeOffset generatedAtUtc)
+    {
+        sb.AppendLine("Automatic official-data refresh (while the app is open):");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"  interval: {Refresh.OfficialRefreshPolicy.AutomaticInterval.TotalHours:0} hours");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"  aggregate status: {status.State}");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"  last check (any source): {FormatTimestamp(status.LastCheckedAt)}");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"  last comprehensive check: {FormatTimestamp(status.LastComprehensiveCheckAt)}");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"  last fully successful check: {FormatTimestamp(status.LastSuccessfulCheckAt)}");
+        var next = status.NextAutomaticCheckAt(generatedAtUtc);
+        sb.AppendLine(CultureInfo.InvariantCulture, $"  next automatic check (estimate): {(next is { } due ? due.ToString("O", CultureInfo.InvariantCulture) : "at next app start / as soon as possible")}");
+        if (status.FailedSources.Count > 0)
+        {
+            sb.AppendLine(CultureInfo.InvariantCulture, $"  not updated on last attempt: {string.Join(", ", status.FailedSources.Select(s => s.SourceId))}");
+        }
     }
 
     private static void AppendDatabaseLines(StringBuilder sb, DatabaseDiagnostics database)

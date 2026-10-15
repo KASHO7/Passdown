@@ -5,8 +5,10 @@ using Avalonia.VisualTree;
 using Carowinds.Passdown.Application.Calendar;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Persistence;
+using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
+using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Infrastructure.Time;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
 
@@ -163,23 +165,33 @@ public class Phase15ERealWindowLayoutTests
     [Theory]
     [InlineData(1280d, 860d)]
     [InlineData(960d, 640d)]
-    public void DashboardView_Header_RefreshActionStaysWithinWindowBoundsWithARealisticLongDateLabel(double width, double height)
+    public void DashboardView_Header_OfficialDataStatusStaysWithinWindowBoundsWithARealisticLongDateLabel(double width, double height)
     {
-        // FakeOperationsDashboardService's default snapshot runs through the same production
-        // OperationsDashboardPresentation.Create formatter real data uses, so OperatingDayLabel is
-        // already a realistic long value ("Friday, August 21, 2026") — not a fabricated stress case.
-        var viewModel = new OperationsDashboardViewModel(new FakeOperationsDashboardService());
+        // Phase 19A: the header's former Refresh button is replaced by the shared official-data
+        // freshness line; its longest realistic state (partial failure, with the failed-source detail
+        // line) must stay fully inside the window next to a realistic long operating-day label
+        // ("Friday, August 21, 2026", from the same production presentation formatter real data uses).
+        var coordinator = new FakeOfficialDataRefreshCoordinator();
+        var checkedAt = new DateTimeOffset(2026, 8, 21, 16, 41, 0, TimeSpan.Zero);
+        coordinator.SetStatus(new OfficialDataStatus(OfficialDataCheckState.PartiallyFailed, checkedAt, null, checkedAt,
+        [
+            new OfficialSourceIssue("dated-fast-lane.official", SourceCategory.DatedFastLane),
+            new OfficialSourceIssue("military-first-responder.official", SourceCategory.MilitaryFirstResponder),
+            new OfficialSourceIssue("dated-bring-a-friend.official", SourceCategory.DatedBringAFriend),
+        ]));
+        var status = new OfficialDataStatusViewModel(coordinator, new FakeClock(checkedAt), new ImmediateUiDispatcher());
+        var viewModel = new OperationsDashboardViewModel(new FakeOperationsDashboardService(), officialDataStatus: status);
         var view = new DashboardView { DataContext = viewModel };
         var window = RealizeInWindow(view, width, height);
 
-        var refreshButton = window.GetVisualDescendants().OfType<Button>()
-            .Single(b => AutomationProperties.GetName(b) == "Refresh today's operations summary");
-        var bounds = AbsoluteBounds(refreshButton, window);
+        var statusText = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "OfficialDataStatusText");
+        var bounds = AbsoluteBounds(statusText, window);
         var clientWidth = window.ClientSize.Width;
 
-        Assert.True(bounds.Width > 0, "Refresh action realized with zero width — it is unreachable.");
+        Assert.DoesNotContain(window.GetVisualDescendants().OfType<Button>(), b => AutomationProperties.GetName(b) == "Refresh today's operations summary");
+        Assert.True(bounds.Width > 0, "Official-data status realized with zero width — it is unreadable.");
         Assert.True(bounds.Right <= clientWidth + 1.0,
-            $"Refresh action right edge {bounds.Right} exceeds window client width {clientWidth}.");
+            $"Official-data status right edge {bounds.Right} exceeds window client width {clientWidth}.");
 
         window.Close();
     }
