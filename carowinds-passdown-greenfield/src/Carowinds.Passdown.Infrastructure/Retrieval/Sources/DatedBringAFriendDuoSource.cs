@@ -135,6 +135,15 @@ public sealed class DatedBringAFriendDuoSource(IRetrievalHttpClient httpClient, 
         }
 
         var horizonService = horizonResult.Service!;
+
+        // Phase 19B: a limited-time offer that has ended (live-confirmed for this keyword on
+        // 2026-10-15) has no dates anywhere from today onward — a successful "not currently
+        // published" answer, never a retrieval failure.
+        if (horizonService.IsNoDatesFound)
+        {
+            return NotPublished(timeChecked, requestedDate);
+        }
+
         if (!string.Equals(horizonService.Status, "OK", StringComparison.OrdinalIgnoreCase))
         {
             return Error(

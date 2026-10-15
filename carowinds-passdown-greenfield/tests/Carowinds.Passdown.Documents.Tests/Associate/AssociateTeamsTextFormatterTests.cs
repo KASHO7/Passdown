@@ -520,4 +520,50 @@ public sealed class AssociateTeamsTextFormatterTests
         Assert.DoesNotContain("**", text);
         Assert.DoesNotContain("\t", text);
     }
+
+    // ---------------------------------------------------------------- Phase 19B product lifecycle
+
+    private static readonly PassdownSectionSelection AllSections = new(true, true, true, true, true, true, true);
+
+    private static List<AssociateProduct> WithLimitedPromotion() =>
+        [.. EveryProduct(), Product("Limited Weekend Offer", SourceCategory.Promotions, 39m, PriceKind.Sale, comparison: 80m, qualifier: "Sale Price")];
+
+    // §42: a retired product is simply absent from the composed workspace, so the PDF and the copy
+    // drop it together; a reactivated one comes back in both. No clipboard-specific lifecycle logic.
+    [Fact]
+    public void RetiredThenReactivatedProduct_PdfAndPricingCopyStayConsistent()
+    {
+        var published = Workspace(AllSections, WithLimitedPromotion());
+        var retired = Workspace(AllSections, EveryProduct());
+        var reactivated = Workspace(AllSections, WithLimitedPromotion());
+
+        static bool PdfHas(AssociateWorkspace w) => Model(w).ProductCategories.SelectMany(c => c.Products).Any(p => p.DisplayName == "Limited Weekend Offer");
+
+        Assert.True(PdfHas(published));
+        Assert.Contains("Limited Weekend Offer", Pricing(published));
+        Assert.False(PdfHas(retired));
+        Assert.DoesNotContain("Limited Weekend Offer", Pricing(retired));
+        Assert.True(PdfHas(reactivated));
+        Assert.Contains("Limited Weekend Offer", Pricing(reactivated));
+    }
+
+    // §43/§27: once every SCarowinds product has retired (and SCarowinds is not published for the
+    // date), no empty SCarowinds section reaches the PDF or the copied pricing.
+    [Fact]
+    public void AllScarowindsProductsRetired_NoEmptyScarowindsSectionInPdfOrPricingCopy()
+    {
+        var regularOnly = EveryProduct().Where(p => p.Category != SourceCategory.HauntedAttractions).ToList();
+        var workspace = Workspace(AllSections, regularOnly) with
+        {
+            CategoryStatuses = [new AssociateProductCategoryStatus(SourceCategory.HauntedAttractions, AssociateVerificationState.NotPublished, GeneratedAt, "Not published.")],
+        };
+
+        var model = Model(workspace);
+        var text = Pricing(workspace)!;
+
+        Assert.DoesNotContain(model.ProductCategories, c => c.Section == ProductDisplaySection.SCarowinds);
+        Assert.All(model.ProductCategories, c => Assert.NotEmpty(c.Products));
+        Assert.DoesNotContain("SCarowinds", text);
+        Assert.Contains("Daily Admission", text);
+    }
 }

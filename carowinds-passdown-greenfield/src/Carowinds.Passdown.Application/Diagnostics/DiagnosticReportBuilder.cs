@@ -1,7 +1,9 @@
+using Carowinds.Passdown.Application.Catalog;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Catalog;
 
 namespace Carowinds.Passdown.Application.Diagnostics;
 
@@ -21,7 +23,8 @@ public sealed class DiagnosticReportBuilder(
     IScheduledRefreshLogProvider logProvider,
     IClock clock,
     IInteractiveAppLogProvider? appLogProvider = null,
-    BuildIdentity? buildIdentity = null) : IDiagnosticReportBuilder
+    BuildIdentity? buildIdentity = null,
+    ICatalogProductRepository? catalogProductRepository = null) : IDiagnosticReportBuilder
 {
     private const int MaxLogLines = 200;
 
@@ -51,7 +54,33 @@ public sealed class DiagnosticReportBuilder(
         {
             ExecutablePath = identity.ExecutablePath,
             OfficialData = OfficialDataStatus.Compute(states),
+            CatalogLifecycle = await BuildCatalogLifecycleAsync(cancellationToken).ConfigureAwait(false),
         };
+    }
+
+    private async Task<CatalogLifecycleDiagnostics?> BuildCatalogLifecycleAsync(CancellationToken cancellationToken)
+    {
+        if (catalogProductRepository is null)
+        {
+            return null;
+        }
+
+        var records = new List<CatalogProductRecord>();
+        foreach (var category in sourceRegistrations.Where(r => r.Scope == SourceScope.Catalog).Select(r => r.Category).Distinct())
+        {
+            records.AddRange(await catalogProductRepository.GetByCategoryAsync(category, lifecycleState: null, cancellationToken).ConfigureAwait(false));
+        }
+
+        var active = records.Where(r => r.LifecycleState == ProductLifecycleState.Active).ToList();
+        var activeTags = active.Select(r => ProductSeasonClassifier.Classify(r.Category, r.DisplayName)).ToList();
+        return new CatalogLifecycleDiagnostics(
+            Active: active.Count,
+            PendingConfirmation: records.Count(r => r.LifecycleState == ProductLifecycleState.PendingConfirmation),
+            Inactive: records.Count(r => r.LifecycleState is ProductLifecycleState.Archived or ProductLifecycleState.Expired),
+            ActiveCarowinds: activeTags.Count(t => t.HasFlag(ProductSeasonTags.Carowinds)),
+            ActiveSCarowinds: activeTags.Count(t => t.HasFlag(ProductSeasonTags.SCarowinds)),
+            ActiveWinterFest: activeTags.Count(t => t.HasFlag(ProductSeasonTags.WinterFest)),
+            ActiveUnclassified: activeTags.Count(t => t == ProductSeasonTags.None));
     }
 
     private static SourceStatusSummary BuildSourceSummary(SourceRegistration registration, SourceStateRecord? state)

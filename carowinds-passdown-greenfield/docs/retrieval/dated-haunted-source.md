@@ -274,3 +274,12 @@ category, source id, or cache key). Status rules: either keyword's transport/sha
 for the category (last-known-good retained); products from either keyword ⇒ `Verified`; neither ⇒
 the existing `HAPWizard` horizon probe classifies `Unavailable`/`NotPublished`. Fixtures:
 `published-2026-10-17.json` and `conjuring-published-2026-10-17.json` (real, sanitized).
+
+## Phase 19B correction — whole-horizon "No dates found"
+
+The "Off-season behavior" section above stated an off-season answer is never `Error`, but the code
+treated a `FAILED` "No dates found" for the *entire* today→+120-day horizon (fully off-season, e.g.
+after SCarowinds ends and before next season is published) as an unexpected shape and returned
+`Error`. Phase 19B makes that `NotPublished` (live-confirmed shape, see
+`AccessoKeywordCalendarService.IsNoDatesFound`); any other FAILED message is still `Error`. The
+Associate screen omits the empty SCarowinds section for a `NotPublished` date.

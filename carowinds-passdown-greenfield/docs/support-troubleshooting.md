@@ -313,3 +313,19 @@ regardless of the PC's Windows region or display language. A UK, French, or Germ
 does not change month/day names, date order, AM/PM, or the dollar sign. This is intentional — not a
 bug — and there is no setting to change it. Times of day for park operations remain Eastern Time.
 
+## A product disappeared / seasonal products changed (Phase 19B)
+
+Products come and go with the official site — that is normal, not an error:
+
+- A product missing from **one** successful check is kept; after **two** consecutive successful checks
+  without it, it is retired from the current product list, PDF and Teams copy. Nothing is deleted;
+  History is unchanged. If it is published again later it comes back automatically.
+- A failed check (no internet, site error) **never** removes a product.
+- Ended limited-time offers (e.g. Bring-A-Friend Duo) and the end of SCarowinds no longer cause
+  "Some official data couldn't be updated". If that message appears, a source genuinely failed.
+- After SCarowinds ends, dates without SCarowinds show no SCarowinds section at all.
+
+Log lines in `app-yyyyMMdd.log`: "Catalog product discovered", "missing from a successful … check
+(candidate absence …)", "now inactive (retired from the current catalog)", "reactivated", "season tags
+changed", "checked successfully with zero products". The diagnostics `summary.txt` has an "Official
+catalog lifecycle" section (active / missing once / inactive / season-tag counts).

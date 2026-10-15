@@ -2,6 +2,8 @@ using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Catalog;
 using Carowinds.Passdown.Domain.Retrieval;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Carowinds.Passdown.Application.Catalog;
 
@@ -11,12 +13,19 @@ namespace Carowinds.Passdown.Application.Catalog;
 /// decisions are made here by driving <see cref="CatalogProductLifecycle"/>'s
 /// existing transition rules (spec §7.3) — this class never re-implements them;
 /// repositories only persist whatever state results.
+///
+/// Phase 19B: logs each lifecycle transition (discovered, candidate absence, retired, reactivated,
+/// expired, season tags changed) and a successful check that returned zero products — never an
+/// unchanged product, a raw payload, or anything user-authored.
 /// </summary>
 public sealed class ProductReconciliationService(
     ICatalogProductRepository catalogRepository,
     IProductHistoryRepository historyRepository,
-    IUnitOfWorkFactory unitOfWorkFactory) : IProductReconciliationService
+    IUnitOfWorkFactory unitOfWorkFactory,
+    ILogger<ProductReconciliationService>? logger = null) : IProductReconciliationService
 {
+    private readonly ILogger _logger = logger ?? (ILogger)NullLogger.Instance;
+
     public async Task<ReconciliationResult> ReconcileAsync(
         SourceCategory category,
         SourceEvidence evidence,
@@ -62,8 +71,60 @@ public sealed class ProductReconciliationService(
             results.Add(await ReconcileMissingAsync(record, evidence, cancellationToken).ConfigureAwait(false));
         }
 
+        LogTransitions(category, evidence, observedProducts.Count, results);
         return new ReconciliationResult(category, results);
     }
+
+    private void LogTransitions(SourceCategory category, SourceEvidence evidence, int observedCount, IReadOnlyList<ReconciledProduct> results)
+    {
+        if (observedCount == 0)
+        {
+            _logger.LogInformation(
+                "Catalog source {SourceName} ({Category}) checked successfully with zero products.", evidence.SourceName, category);
+        }
+
+        foreach (var result in results)
+        {
+            switch (result.Outcome)
+            {
+                case ReconciliationOutcome.Added:
+                    _logger.LogInformation(
+                        "Catalog product discovered: {ProductKey} '{DisplayName}' (season tags: {SeasonTags}).",
+                        result.ProductKey, result.DisplayName, result.SeasonTags);
+                    break;
+                case ReconciliationOutcome.PendingRemoval:
+                    _logger.LogInformation(
+                        "Catalog product missing from a successful {SourceName} check (candidate absence, {Threshold} needed to retire): {ProductKey} '{DisplayName}'.",
+                        evidence.SourceName, CatalogProductLifecycle.ConfirmedAbsenceThreshold, result.ProductKey, result.DisplayName);
+                    break;
+                case ReconciliationOutcome.Archived when result.HistoryAppended: // already archived for the same reason → silent
+                    _logger.LogInformation(
+                        "Catalog product now inactive (retired from the current catalog): {ProductKey} '{DisplayName}'.",
+                        result.ProductKey, result.DisplayName);
+                    break;
+                case ReconciliationOutcome.Expired when result.HistoryAppended: // already expired for the same reason → silent
+                    _logger.LogInformation(
+                        "Catalog product expired (valid-through date passed): {ProductKey} '{DisplayName}'.",
+                        result.ProductKey, result.DisplayName);
+                    break;
+                case ReconciliationOutcome.Reactivated:
+                    _logger.LogInformation(
+                        "Catalog product reactivated (published again): {ProductKey} '{DisplayName}'.",
+                        result.ProductKey, result.DisplayName);
+                    break;
+            }
+
+            if (result.SeasonTagsChanged)
+            {
+                _logger.LogInformation(
+                    "Catalog product season tags changed from {PreviousSeasonTags} to {SeasonTags}: {ProductKey}.",
+                    result.PreviousSeasonTags, result.SeasonTags, result.ProductKey);
+            }
+        }
+    }
+
+    private static ProductSeasonTags SeasonTagsOf(SourceCategory category, string displayName) =>
+        ProductSeasonClassifier.Classify(category, displayName);
 
     /// <summary>Handles one retrieved product, whether it's brand new or already known.</summary>
     private async Task<ReconciledProduct> ReconcileObservedAsync(
@@ -93,10 +154,13 @@ public sealed class ProductReconciliationService(
 
             var newUpsert = BuildUpsert(lifecycle, observed);
             await PersistAsync(newUpsert, reason, cancellationToken).ConfigureAwait(false);
-            return new ReconciledProduct(keyText, outcome, HistoryAppended: true);
+            return new ReconciledProduct(
+                keyText, outcome, HistoryAppended: true, observed.DisplayName, SeasonTagsOf(observed.Key.Category, observed.DisplayName));
         }
 
         var existingLifecycle = Rehydrate(existing);
+        var seasonTags = SeasonTagsOf(observed.Key.Category, observed.DisplayName);
+        var previousSeasonTags = SeasonTagsOf(existing.Category, existing.DisplayName);
 
         if (expiredValidThrough is { } validThrough)
         {
@@ -108,7 +172,8 @@ public sealed class ProductReconciliationService(
             var expiredUpsert = BuildUpsert(expiredLifecycle, observed);
             await PersistAsync(expiredUpsert, alreadyExpiredForTheSameReason ? null : expiredLifecycle.ArchivedReason, cancellationToken)
                 .ConfigureAwait(false);
-            return new ReconciledProduct(keyText, ReconciliationOutcome.Expired, HistoryAppended: !alreadyExpiredForTheSameReason);
+            return new ReconciledProduct(
+                keyText, ReconciliationOutcome.Expired, HistoryAppended: !alreadyExpiredForTheSameReason, observed.DisplayName, seasonTags, previousSeasonTags);
         }
 
         if (observed.IsExplicitlyUnavailable)
@@ -122,7 +187,8 @@ public sealed class ProductReconciliationService(
             var archivedUpsert = BuildUpsert(archivedLifecycle, observed);
             await PersistAsync(archivedUpsert, alreadyArchivedForTheSameReason ? null : archivedLifecycle.ArchivedReason, cancellationToken)
                 .ConfigureAwait(false);
-            return new ReconciledProduct(keyText, ReconciliationOutcome.Archived, HistoryAppended: !alreadyArchivedForTheSameReason);
+            return new ReconciledProduct(
+                keyText, ReconciliationOutcome.Archived, HistoryAppended: !alreadyArchivedForTheSameReason, observed.DisplayName, seasonTags, previousSeasonTags);
         }
 
         var confirmedLifecycle = existingLifecycle.ConfirmPresent(evidence);
@@ -133,7 +199,8 @@ public sealed class ProductReconciliationService(
         var confirmedOutcome = existing.LifecycleState != ProductLifecycleState.Active
             ? ReconciliationOutcome.Reactivated
             : ReconciliationOutcome.Confirmed;
-        return new ReconciledProduct(keyText, confirmedOutcome, HistoryAppended: changeReason is not null);
+        return new ReconciledProduct(
+            keyText, confirmedOutcome, HistoryAppended: changeReason is not null, observed.DisplayName, seasonTags, previousSeasonTags);
     }
 
     /// <summary>Handles one previously known product that this retrieval did not return at all.</summary>
@@ -169,7 +236,8 @@ public sealed class ProductReconciliationService(
             : ReconciliationOutcome.PendingRemoval;
 
         await PersistAsync(upsert, reason, cancellationToken).ConfigureAwait(false);
-        return new ReconciledProduct(existing.ProductKey, outcome, HistoryAppended: true);
+        var tags = SeasonTagsOf(existing.Category, existing.DisplayName);
+        return new ReconciledProduct(existing.ProductKey, outcome, HistoryAppended: true, existing.DisplayName, tags, tags);
     }
 
     /// <summary>

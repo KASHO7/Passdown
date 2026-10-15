@@ -477,3 +477,24 @@ adapter. That conclusion was wrong: Phase 15A found a genuinely anonymous keywor
 (`BAFWizardDailyTickets`) against the same `getkeywordcalendar` endpoint and added
 `DatedBringAFriendSource`/`SourceCategory.DatedBringAFriend`. Full investigation trail in
 `docs/retrieval/special-ticket-sources.md` and `docs/phase13-hardening.md`'s Phase 15A section.
+
+## Phase 19B — lifecycle roles and the "no dates found" correction (2026-10-15)
+
+Live re-check 2026-10-15 (anonymous GET/POST only): `daily-tickets` cards = "2027 Silver Pass",
+"Park Ticket", "SCarowinds Bundles" (the Bring-A-Friend Duo card is gone); `special-offers` cards =
+"Bring-A-Friend Ticket", "Tricks and Treats Family Pack". `getkeywordcalendar` for `SUBAF50` (Duo)
+returns `status: "FAILED"`, `error_msg: "No dates found that meet requirements"` for both a single day
+and a today→+120-day window (fixture `dated-bring-a-friend-duo/ended-no-dates-in-horizon.json`).
+
+| Role | Sources |
+|---|---|
+| A. catalog/discovery | Promotions (2 pages), Season Passes, Season-Pass Add-Ons, General Add-Ons, Military/First Responder |
+| B. dated pricing | Park Hours, Dated Admission, Dated Fast Lane |
+| C. optional specific-product (dated) | Dated Bring-A-Friend, Dated Bring-A-Friend Duo |
+| D. seasonal (dated) | Dated Haunted + Conjuring (SCarowinds) |
+
+Before 19B, every dated source in B–D turned the horizon-wide "No dates found" answer into `Error`
+(the ended Duo made every automatic refresh "partially failed"). It is now `NotPublished`; every other
+FAILED message and every shape anomaly is still `Error`. Catalog sources were already correct (empty
+valid page = `Verified` with zero products; parse/transport failure = `Error`). Full detail:
+`docs/phase19b-seasonal-catalog.md`.

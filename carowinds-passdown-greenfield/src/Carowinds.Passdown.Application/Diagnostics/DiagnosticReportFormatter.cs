@@ -34,6 +34,12 @@ public static class DiagnosticReportFormatter
             AppendOfficialDataLines(sb, officialData, report.GeneratedAtUtc);
         }
 
+        if (report.CatalogLifecycle is { } catalog)
+        {
+            sb.AppendLine();
+            AppendCatalogLifecycleLines(sb, catalog);
+        }
+
         sb.AppendLine();
         sb.AppendLine(CultureInfo.InvariantCulture, $"See source-status.txt for per-source detail ({report.Sources.Count} sources) and logs/ for recent scheduled-refresh and app activity.");
         return sb.ToString();
@@ -92,6 +98,17 @@ public static class DiagnosticReportFormatter
         {
             sb.AppendLine(CultureInfo.InvariantCulture, $"  not updated on last attempt: {string.Join(", ", status.FailedSources.Select(s => s.SourceId))}");
         }
+    }
+
+    /// <summary>Phase 19B: counts only — never product names, prices or payloads.</summary>
+    private static void AppendCatalogLifecycleLines(StringBuilder sb, CatalogLifecycleDiagnostics catalog)
+    {
+        sb.AppendLine("Official catalog lifecycle:");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"  active: {catalog.Active}");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"  missing once (awaiting confirmation): {catalog.PendingConfirmation}");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"  inactive (retired/expired, kept for history): {catalog.Inactive}");
+        sb.AppendLine(CultureInfo.InvariantCulture,
+            $"  active season tags: Carowinds {catalog.ActiveCarowinds}, SCarowinds {catalog.ActiveSCarowinds}, WinterFest {catalog.ActiveWinterFest}, unclassified {catalog.ActiveUnclassified}");
     }
 
     private static void AppendDatabaseLines(StringBuilder sb, DatabaseDiagnostics database)

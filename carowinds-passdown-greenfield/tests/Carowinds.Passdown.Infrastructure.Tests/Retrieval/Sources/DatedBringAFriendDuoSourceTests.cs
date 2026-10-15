@@ -121,6 +121,47 @@ public class DatedBringAFriendDuoSourceTests
         Assert.Null(result.Payload);
     }
 
+    [Theory]
+    [InlineData(2026, 8, 27)] // today
+    [InlineData(2026, 9, 15)] // inside the horizon window
+    [InlineData(2027, 6, 15)] // beyond the horizon window
+    public async Task RetrieveAsync_OfferEndedNoDatesFromTodayOnward_ReturnsNotPublishedNotError(int year, int month, int day)
+    {
+        // Phase 19B: ended-no-dates-in-horizon.json is the live 2026-10-15 response for the ended
+        // Duo offer (IP/session sanitized). A successful "nothing published" answer, never Error.
+        var source = BuildSource(JsonResponse("no-dates-found.json"), JsonResponse("ended-no-dates-in-horizon.json"), out var httpClient);
+
+        var result = await source.RetrieveAsync(Request(new DateOnly(year, month, day)), CancellationToken.None);
+
+        Assert.Equal(RetrievalStatus.NotPublished, result.Evidence.Status);
+        Assert.True(result.Evidence.Status.IsSuccessfulCompletion());
+        Assert.Null(result.Payload);
+        Assert.Null(result.Evidence.TechnicalDetail);
+        Assert.Equal(2, httpClient.Requests.Count);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_HorizonFailedWithAnyOtherMessage_StillReturnsError()
+    {
+        // The live-observed contract-failure message (a malformed request) is not a "no dates" answer.
+        var source = BuildSource(JsonResponse("no-dates-found.json"), JsonResponse("unexpected-failed-message.json"), out _);
+
+        var result = await source.RetrieveAsync(Request(Today), CancellationToken.None);
+
+        Assert.Equal(RetrievalStatus.Error, result.Evidence.Status);
+        Assert.Null(result.Payload);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_HorizonOkButEmptyEntries_StillReturnsErrorDefensively()
+    {
+        var source = BuildSource(JsonResponse("no-dates-found.json"), JsonResponse("empty-entries.json"), out _);
+
+        var result = await source.RetrieveAsync(Request(Today), CancellationToken.None);
+
+        Assert.Equal(RetrievalStatus.Error, result.Evidence.Status);
+    }
+
     [Fact]
     public async Task RetrieveAsync_PastDate_ReturnsUnavailableWithoutAnyRequest()
     {

@@ -1,4 +1,6 @@
+using Carowinds.Passdown.Application.Catalog;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Catalog;
 
 namespace Carowinds.Passdown.Application.Associate;
 
@@ -170,8 +172,9 @@ public static class ProductDisplaySectionResolver
         return SeasonPassTierWords.Any(tier => displayName.Contains(tier, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>Phase 19B: the one SCarowinds name rule, shared with season tagging (<see cref="ProductSeasonClassifier"/>).</summary>
     private static bool IsScarowindsSpecific(string displayName) =>
-        displayName.Contains("SCarowinds", StringComparison.OrdinalIgnoreCase);
+        ProductSeasonClassifier.FromOfficialName(displayName).HasFlag(ProductSeasonTags.SCarowinds);
 
     /// <summary>Same normalization as <see cref="ProductDisplayIdentity"/> — trims, lowercases, and collapses internal whitespace so cosmetic source variation never creates a false duplicate or a false mismatch.</summary>
     private static string NormalizeName(string displayName) => ProductDisplayIdentity.FromDisplayName(displayName).NormalizedDisplayName;

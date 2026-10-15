@@ -1179,3 +1179,15 @@ still describe the pre-19A candidate; they were not rebuilt. A build containing 
 packaged as a new release candidate (`0.1.0-rc.3` unless sequencing changes) and validated with the
 Phase 19A Windows checklist. Schemas unchanged: DB 15, Draft 4, Snapshot 2, SyncSchemaVersion 1.
 Deterministic tests at the Phase 19A commit: 2735/2735; Release build 0 warnings / 0 errors.
+
+## Unreleased development since RC.2 — Phase 19B
+
+Phase 19B (seasonal catalog and product lifecycle, `docs/phase19b-seasonal-catalog.md`) is a further
+shipped-code change after RC.2: ended promotions and the end of SCarowinds no longer produce false
+refresh errors, retired products leave current presentation automatically, and non-exclusive
+Carowinds/SCarowinds/WinterFest season tags are supported internally. RC.2 artifacts are unchanged and
+RC.3 was not packaged in this phase. The next candidate containing Phase 19A + 19B should be
+`0.1.0-rc.3`, validated with the Phase 19A Windows checklist plus
+`docs/phase19b-seasonal-catalog.md` §13. Schemas unchanged: DB 15, Draft 4, Snapshot 2,
+SyncSchemaVersion 1. Deterministic tests at the Phase 19B commit: 2780/2780; Release build
+0 warnings / 0 errors.

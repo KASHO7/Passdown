@@ -904,3 +904,24 @@ Full design: `docs/phase19a-automatic-refresh.md`. Two deliberately separate mec
   onto the UI thread.
 
 No Domain change; no schema/payload change (DB 15, Draft 4, Snapshot 2, SyncSchemaVersion 1).
+
+## Phase 19B additions — seasonal catalog and product lifecycle
+
+Full design: `docs/phase19b-seasonal-catalog.md`. The existing catalog lifecycle
+(`CatalogProductLifecycle`, 2-check confirmed absence, Error never counts) is unchanged.
+
+- **Domain** — `Catalog.ProductSeasonTags` (`[Flags]`: Carowinds, SCarowinds, WinterFest);
+  `CatalogProductLifecycle.ConfirmedAbsenceThreshold` made public (value 2, unchanged).
+- **Application** — `Catalog.ProductSeasonClassifier` (source category + official event name; never the
+  calendar date; never persisted); `AssociateProduct.SeasonTags` (computed);
+  `ProductDisplaySectionResolver` shares its SCarowinds name rule from the classifier;
+  `ProductReconciliationService` gains an optional `ILogger` and reports `DisplayName`/`SeasonTags`/
+  `PreviousSeasonTags` on `ReconciledProduct`; `DiagnosticReportBuilder` gains an optional
+  `ICatalogProductRepository` for `CatalogLifecycleDiagnostics` (counts only).
+- **Infrastructure** — `AccessoKeywordCalendarService.IsNoDatesFound`; the five dated accesso
+  adapters return `NotPublished` (not `Error`) when nothing is published from today onward.
+- **Desktop** — `CategoryStatusPresentation.Build` omits the empty section of an event-only seasonal
+  category (SCarowinds) whose state is `NotPublished`.
+
+No schema/payload change (DB 15, Draft 4, Snapshot 2, SyncSchemaVersion 1); no new event bus — the
+Phase 19A `OfficialData` change already invalidates screens after reconciliation.

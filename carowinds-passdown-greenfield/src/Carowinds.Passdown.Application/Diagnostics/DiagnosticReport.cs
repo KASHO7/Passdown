@@ -63,4 +63,21 @@ public sealed record DiagnosticReport(
 
     /// <summary>Phase 19A: the aggregate official-data status the in-app automatic refresh works from (derived from <see cref="Sources"/>' persisted state; never a network call).</summary>
     public OfficialDataStatus? OfficialData { get; init; }
+
+    /// <summary>Phase 19B: aggregate catalog lifecycle and season-tag counts — counts only, never product rows.</summary>
+    public CatalogLifecycleDiagnostics? CatalogLifecycle { get; init; }
 }
+
+/// <summary>
+/// Phase 19B: how many official catalog products are currently active, awaiting a confirming absence
+/// check, or inactive (retired after confirmed absence, explicitly unavailable, or expired), plus the
+/// active products' non-exclusive season-tag counts (a product with two tags counts under both).
+/// </summary>
+public sealed record CatalogLifecycleDiagnostics(
+    int Active,
+    int PendingConfirmation,
+    int Inactive,
+    int ActiveCarowinds,
+    int ActiveSCarowinds,
+    int ActiveWinterFest,
+    int ActiveUnclassified);

@@ -159,3 +159,20 @@ finalizations.
   adapter has live evidence for one — deferred, not scheduled as 17B/17C work specifically.
 - Any Monthly ERT changes, Manager workflow, or UI redesign remain explicitly out of scope per
   CLAUDE.md's current-release decisions and are not addressed by this document.
+
+## 8. Phase 19B — season tags, retirement and seasonal sections
+
+- **Retired** = `Archived` after `CatalogProductLifecycle.ConfirmedAbsenceThreshold` (2) consecutive
+  successful absent checks. Kept distinct from: *suppressed* (hidden by app rules such as
+  `ResolveAll` duplicate removal or `SuppressGenericFallbacksSupersededByExactDated`, or by the user's
+  include/section choices), *NotPublished* (a successful dated answer that the product is not offered
+  for that date — never retires anything globally), and *Error* (could not be determined — never
+  counts as absence).
+- **Season tags** (`ProductSeasonTags`, non-exclusive flags) come from `ProductSeasonClassifier`:
+  official source category first, then the event brand ("SCarowinds"/"WinterFest") in the official
+  name — the SCarowinds rule in §1 step 3 now lives there and is shared. Never from the calendar date;
+  unclassified when there is no evidence.
+- **Empty seasonal section**: an event-only category (SCarowinds) that is `NotPublished` for the date
+  gets no Associate section/banner; PDF and Teams copy already omitted empty sections.
+
+See `docs/phase19b-seasonal-catalog.md`.

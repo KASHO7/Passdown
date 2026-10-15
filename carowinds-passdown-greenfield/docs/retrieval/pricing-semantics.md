@@ -248,3 +248,13 @@ removed the dedicated section: `ProductDisplaySectionResolver` now maps `SourceC
 to no display section at all, so only the Promotions catalog card (already carrying the correct
 bundle/per-person breakdown) is shown. The dated `SUBAF50` retrieval itself, its freshness cadence,
 and its Dashboard health visibility are all untouched — only its *display* composition changed.
+
+## Phase 19B addendum — lifecycle never changes price semantics
+
+A retired (confirmed-absent) catalog product is excluded from current composition, so its price
+simply stops appearing in the Associate screen, PDF and Today's Pricing copy — no "Retired"/"Ended"
+price label exists. A dated keyword with nothing published from today onward now answers
+`NotPublished` (successful, no payload), never `Error`; no price is fabricated for it. Exact-dated vs
+"Starting From" precedence, Bring-A-Friend merging and bundle/per-person semantics are unchanged.
+Season tags (`ProductSeasonTags`) are classification only and never affect price kind or inclusion.
+See `docs/phase19b-seasonal-catalog.md`.

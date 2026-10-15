@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.Catalog;
 using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Desktop.Presentation;
@@ -12,13 +13,21 @@ public sealed record CategoryStatusPresentation(string CategoryDisplayName, stri
 {
     /// <summary>
     /// Null when <paramref name="productRowCount"/> is positive: a category that already has
-    /// visible product rows does not need a redundant status banner above them.
+    /// visible product rows does not need a redundant status banner above them. Also null (Phase 19B)
+    /// for an event-only seasonal category (SCarowinds) whose source confirmed nothing is published
+    /// for the date — the event simply isn't running then, so its empty section is omitted instead of
+    /// showing a heading with no products. Errors, stale data and in-season dark nights still show.
     /// </summary>
     public static CategoryStatusPresentation? Build(AssociateProductCategoryStatus status, int productRowCount)
     {
         ArgumentNullException.ThrowIfNull(status);
 
         if (productRowCount > 0)
+        {
+            return null;
+        }
+
+        if (status.State == AssociateVerificationState.NotPublished && ProductSeasonClassifier.IsEventOnlyCategory(status.Category))
         {
             return null;
         }

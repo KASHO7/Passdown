@@ -112,6 +112,14 @@ public sealed class DatedAdmissionSource(IRetrievalHttpClient httpClient, IClock
                 new InvalidOperationException($"Unexpected response shape from {AccessoKeywordCalendarRequest.Endpoint}: no SERVICE object. Body: {Truncate(response.Body)}"));
         }
 
+        // Phase 19B: the endpoint's own "no dates found" answer for a window starting today is a
+        // successful "nothing published from today onward" check, never a retrieval failure
+        // (live-confirmed shape; see AccessoKeywordCalendarService.IsNoDatesFound).
+        if (service.IsNoDatesFound)
+        {
+            return NotPublished(timeChecked, requestedDate);
+        }
+
         if (!string.Equals(service.Status, "OK", StringComparison.OrdinalIgnoreCase))
         {
             // The requested window always spans from "today" through at least HorizonPaddingDays,
