@@ -113,6 +113,26 @@ public sealed class AssociateTeamsTextFormatterTests
             text);
     }
 
+    /// <summary>
+    /// Phase 21A: a verified exact Military/First Responder price for the date (merged into the
+    /// catalog row by composition) prints as that exact amount on both the PDF row and the Teams
+    /// pricing copy — one shared presentation, no renderer-specific rule — while the same row without
+    /// an exact price stays "From".
+    /// </summary>
+    [Theory]
+    [InlineData(PriceKind.ExactDated, 55, "$55.00")]
+    [InlineData(PriceKind.StartingFrom, 40, "From $40.00")]
+    public void Pricing_MilitaryExactOrFrom_IsIdenticalOnPdfAndTeams(PriceKind kind, int amount, string expected)
+    {
+        var workspace = Workspace(Only(dailyAdmission: true),
+            [Product("Military & First Responder Tickets", SourceCategory.MilitaryFirstResponder, amount, kind, comparison: 80m)]);
+
+        var pdfRow = Model(workspace).ProductCategories.SelectMany(c => c.Products).Single();
+
+        Assert.Equal(expected, pdfRow.EffectivePriceText);
+        Assert.Equal($"Ticket Prices:\r\n\r\nDaily Admission\r\nMilitary & First Responder Tickets: {expected}", Pricing(workspace));
+    }
+
     [Fact]
     public void Pricing_OnlyFastLane()
     {

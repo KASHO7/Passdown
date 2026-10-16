@@ -51,6 +51,7 @@ public sealed class ProductReconciliationService(
         var existingByKey = (await catalogRepository.GetByCategoryAsync(category, lifecycleState: null, cancellationToken)
                 .ConfigureAwait(false))
             .ToDictionary(record => record.ProductKey);
+        observedProducts = SeparatePassYears(category, observedProducts, existingByKey);
         var observedKeys = observedProducts.Select(p => p.Key.ToString()).ToHashSet();
 
         var results = new List<ReconciledProduct>();
@@ -79,6 +80,58 @@ public sealed class ProductReconciliationService(
 
         LogTransitions(category, evidence, observedProducts.Count, results);
         return new ReconciliationResult(category, results);
+    }
+
+    /// <summary>
+    /// Phase 21A pass-year identity: a pass's validity year is part of what the product is — a 2026
+    /// Gold Pass and a 2027 Gold Pass are different products with separate price timelines even if
+    /// the official site were to reuse one CMS id (or name/url) for both. Identity precedence (official
+    /// id &gt; url &gt; source+name) is unchanged; only when the stored product under the observed key
+    /// states a different pass year than the observation (<see cref="PassValidityYear.StatesDifferentYear"/>)
+    /// is the observation filed under <see cref="CatalogProductKey.WithPassYear"/> instead. The stored
+    /// product keeps its key, history and price timeline and retires through the normal two-absence
+    /// rule; nothing is rewritten. A name without a year never splits anything, and the year always
+    /// comes from the official name, never the observation date. Limited to the pass-family categories
+    /// Season Price History tracks.
+    /// </summary>
+    private IReadOnlyList<ObservedProduct> SeparatePassYears(
+        SourceCategory category,
+        IReadOnlyList<ObservedProduct> observedProducts,
+        IReadOnlyDictionary<string, CatalogProductRecord> existingByKey)
+    {
+        if (!PriceHistoryTrackingPolicy.CandidateCategories.Contains(category))
+        {
+            return observedProducts;
+        }
+
+        List<ObservedProduct>? remapped = null;
+        for (var i = 0; i < observedProducts.Count; i++)
+        {
+            var observed = observedProducts[i];
+            if (!existingByKey.TryGetValue(observed.Key.ToString(), out var existing))
+            {
+                continue;
+            }
+
+            if (PassValidityYear.StatesDifferentYear(existing.DisplayName, observed.DisplayName))
+            {
+                var yearKey = observed.Key.WithPassYear(PassValidityYear.FromDisplayName(observed.DisplayName)!.Value);
+                _logger.LogInformation(
+                    "Pass validity year differs under one official identity: {ProductKey} is '{StoredName}', observed '{ObservedName}'; tracking the observed pass separately as {PassYearKey}.",
+                    existing.ProductKey, existing.DisplayName, observed.DisplayName, yearKey.ToString());
+                remapped ??= [.. observedProducts];
+                remapped[i] = observed with { Key = yearKey };
+            }
+            else if (PassValidityYear.FromDisplayName(existing.DisplayName) is not null &&
+                     PassValidityYear.FromDisplayName(observed.DisplayName) is null)
+            {
+                _logger.LogInformation(
+                    "Pass year not stated by the official name for {ProductKey} ('{ObservedName}', previously '{StoredName}'); keeping the existing identity.",
+                    existing.ProductKey, observed.DisplayName, existing.DisplayName);
+            }
+        }
+
+        return remapped ?? observedProducts;
     }
 
     private void LogTransitions(SourceCategory category, SourceEvidence evidence, int observedCount, IReadOnlyList<ReconciledProduct> results)

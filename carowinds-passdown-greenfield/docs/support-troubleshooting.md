@@ -371,3 +371,17 @@ catalog lifecycle" section (active / missing once / inactive / season-tag counts
   earlier) will refuse to open it.
 - Log lines: "Price history baseline created", "Price changed", "Price semantics changed". Diagnostics
   `summary.txt` has a "Season price history" section (counts only).
+
+## Pricing on past dates and Military prices (Phase 21A)
+
+- A past date (after 6:00 AM the next morning) shows only prices recorded for that date. "Historical
+  pricing not available for this date." means the app never captured official prices for that day;
+  official ticket calendars do not offer past dates, so it cannot be fetched now. This is not an error.
+- Current products (e.g. SCarowinds, today's pass prices) are intentionally not shown on past dates.
+- Military & First Responder shows the exact price for the selected date when the official store
+  publishes one (e.g. `$55.00`), otherwise the official minimum (`From $40.00`).
+- Dashboard → Open Passdown always opens today's date. Use the date picker or Calendar for other dates.
+- January 1–3, 2026 have no park hours: the official feed no longer publishes dates before late March
+  2026.
+- Diagnostics `summary.txt` has a "Historical pricing sources" section; logs mention "Dashboard Open
+  Passdown reset the Associate date" and "Pass validity year differs".

@@ -339,6 +339,9 @@ public sealed class OperationsDashboardService(
     [
         SourceCategory.BringAFriendDuo,
         SourceCategory.DatedBringAFriend,
+        // Phase 21A: a date the Military store does not sell (e.g. a closed day) is normal; the
+        // catalog's "Starting From" row still represents the product for that date.
+        SourceCategory.DatedMilitaryFirstResponder,
     ];
 
     private static DashboardSourceStatus ClassifyDatedCategory(SourceCategory category, AssociateVerificationState state) =>

@@ -36,6 +36,18 @@ public class DiagnosticReportFormatterTests
         Assert.Contains(GeneratedAt.ToString("O"), text);
     }
 
+    /// <summary>Phase 21A: the support summary states each pricing source's historical capability — fixed findings, no prices or user content.</summary>
+    [Fact]
+    public void BuildSummaryText_IncludesHistoricalPricingSourceCapabilities()
+    {
+        var text = DiagnosticReportFormatter.BuildSummaryText(BuildReport());
+
+        Assert.Contains("Historical pricing sources (past dates show only prices recorded for that date):", text);
+        Assert.Contains("  DatedMilitaryFirstResponder: StoredObservationsOnly", text);
+        Assert.Contains("  SeasonPasses: CurrentOnly", text);
+        Assert.DoesNotContain("$", text);
+    }
+
     [Fact]
     public void BuildSummaryText_DatabaseMissing_ReportsExistsNoWithoutSchemaVersion()
     {

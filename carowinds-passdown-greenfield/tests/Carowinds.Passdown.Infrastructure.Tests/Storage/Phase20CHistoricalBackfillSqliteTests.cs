@@ -217,6 +217,44 @@ public sealed class Phase20CHistoricalBackfillSqliteTests(ITestOutputHelper outp
         Assert.Equal(sizeAfterFirst, CheckpointedDatabaseSize());
     }
 
+    /// <summary>
+    /// Phase 21A (Jan 1–3, 2026 investigation): the live feed answered 404 for 2026-01-01..03 and every
+    /// date before 2026-03-25 on 2026-10-16. Those dates are in scope (current calendar year, even
+    /// though they belong to the previous WinterFest season), are probed, and stay without hours — no
+    /// value is inferred from a neighboring date.
+    /// </summary>
+    [Fact]
+    public async Task Phase21A_EarlyJanuaryNotRetainedByTheFeed_StaysUnavailableAndIsNeverInferred()
+    {
+        var (service, http, repository) = Create(ObservedRetentionStart);
+
+        await service.RunSessionAsync();
+
+        Assert.Contains(ObservedRetentionStart.AddDays(-1), http.Requests); // the boundary probe reaches before March 25
+        foreach (var day in new[] { 1, 2, 3 })
+        {
+            Assert.Null(await repository.GetAsync(new DatedResultKey(SourceCategory.ParkHours, new DateOnly(2026, 1, day))));
+        }
+
+        Assert.Equal(ObservedRetentionStart.AddDays(-1), service.CurrentStatus.OldestNotRetainedDate);
+        Assert.NotNull((await repository.GetAsync(new DatedResultKey(SourceCategory.ParkHours, ObservedRetentionStart)))!.SuccessEvidence);
+    }
+
+    /// <summary>Phase 21A: the boundary is whatever the feed answers — not a hard-coded March 25. If the feed served early January, those verified hours are stored like any other date.</summary>
+    [Fact]
+    public async Task Phase21A_FeedRetainingEarlyJanuary_StoresVerifiedJanuaryHours_NoFixedCutoff()
+    {
+        var (service, _, repository) = Create(new DateOnly(2026, 1, 2));
+
+        await service.RunSessionAsync();
+
+        Assert.Null(await repository.GetAsync(new DatedResultKey(SourceCategory.ParkHours, Jan1)));
+        var jan2 = await repository.GetAsync(new DatedResultKey(SourceCategory.ParkHours, new DateOnly(2026, 1, 2)));
+        Assert.Equal(new DateOnly(2026, 1, 2), jan2!.SuccessEvidence!.ConfirmedDate);
+        Assert.NotNull(await repository.GetAsync(new DatedResultKey(SourceCategory.ParkHours, new DateOnly(2026, 3, 1))));
+        Assert.Equal(0L, Scalar<long>("SELECT COUNT(*) FROM dated_results WHERE requested_date < '2026-01-01';")); // never a prior calendar year
+    }
+
     [Fact]
     public async Task Offline_WritesNothing_AndKeepsAnExistingValue()
     {

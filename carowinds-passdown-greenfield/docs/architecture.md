@@ -976,3 +976,21 @@ Full design and measurements: `docs/phase20c-historical-backfill.md`. The two wo
   `HistoricalBackfillStatusPresentation` as one muted header line.
 
 Schemas: DB **16**, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged. Nothing new is synced.
+
+## Phase 21A — pricing accuracy, historical integrity, pass-year identity
+
+See `docs/phase21a-pricing-historical-integrity.md`.
+
+- **Domain** — `SourceCategory.DatedMilitaryFirstResponder`; `PassValidityYear` (explicit year in an
+  official pass name); `CatalogProductKey.WithPassYear`.
+- **Application** — `HistoricalPricingPolicy` (a date is historical from its 6:00 AM finalization
+  cutoff; only rows with evidence for that exact date are composed), `AssociateWorkspace.PricingTimeframe`
+  / `IsHistoricalPricingUnavailable`, `IAssociatePassdownService.LoadAssociateDateForFinalizationAsync`
+  (used by the scheduled finalizer; History unchanged), Military exact-date merge in
+  `AssociatePassdownService`, pass-year separation in `ProductReconciliationService`,
+  `HistoricalPricingSourceCapabilities` (diagnostics).
+- **Infrastructure** — `DatedMilitaryFirstResponderSource` (anonymous `getkeywordcalendar`, keyword
+  `MilitaryWizardDailyTickets`).
+- **Desktop** — Products historical notice; Dashboard Open Passdown → `AssociateViewModel.SelectEasternToday`.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged. No new background service.

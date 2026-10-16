@@ -163,6 +163,34 @@ public class SeasonPriceHistorySqliteTests : IDisposable
 
         public Task<SeasonPriceHistorySummary> GetSummaryAsync(CancellationToken cancellationToken = default) => inner.GetSummaryAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// Phase 21A pass-year identity against the real DB 16 schema: an existing pass row and its
+    /// history stay exactly as stored, a reused official id for the next pass year becomes a separate
+    /// <c>|pass-year:</c> product with its own timeline, and repeated refreshes add no duplicates — no
+    /// migration involved.
+    /// </summary>
+    [Fact]
+    public async Task Phase21A_PassYearSplit_OnRealSchema_PreservesExistingRowsAndAddsNoDuplicates()
+    {
+        var factory = _fixture.ConnectionFactory;
+        var reconciliation = Reconciliation(factory);
+        var gold2026 = new ObservedProduct(CatalogProductKey.FromOfficialId(SourceCategory.SeasonPasses, "gold"), "2026 Gold Pass", 120m, "$120", null, null, false, null);
+
+        await reconciliation.ReconcileAsync(SourceCategory.SeasonPasses, Verified(Day(1)), [gold2026]);
+        var before = await Repository().GetHistoryAsync("SeasonPasses:id:gold");
+
+        for (var day = 2; day <= 4; day++)
+        {
+            await reconciliation.ReconcileAsync(SourceCategory.SeasonPasses, Verified(Day(day)), [Gold(99m)]);
+        }
+
+        var catalog = await new SqliteCatalogProductRepository(factory).GetByCategoryAsync(SourceCategory.SeasonPasses, null);
+        Assert.Equal(new[] { "SeasonPasses:id:gold", "SeasonPasses:id:gold|pass-year:2027" }, catalog.Select(r => r.ProductKey).Order());
+        Assert.Equal("2026 Gold Pass", catalog.Single(r => r.ProductKey == "SeasonPasses:id:gold").DisplayName);
+        Assert.Equal(before, await Repository().GetHistoryAsync("SeasonPasses:id:gold"));
+        Assert.Equal(new[] { 99m }, (await Repository().GetHistoryAsync("SeasonPasses:id:gold|pass-year:2027")).Select(i => i.Amount));
+    }
 }
 
 /// <summary>Phase 20A: upgrading a schema-15 database — backfill from authoritative product_history rows only.</summary>

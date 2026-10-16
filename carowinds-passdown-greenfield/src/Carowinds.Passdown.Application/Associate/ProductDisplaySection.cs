@@ -43,6 +43,11 @@ public static class ProductDisplaySectionResolver
     /// <item><see cref="SourceCategory.DatedBringAFriend"/> — never an independent row at all; its
     /// exact per-date price is merged directly into the existing Promotions "Bring-A-Friend Ticket"
     /// catalog row by <c>AssociatePassdownService.MergeExactDatedBringAFriend</c>.</item>
+    /// <item><see cref="SourceCategory.DatedMilitaryFirstResponder"/> (Phase 21A) — its exact per-date
+    /// price is merged into the Military &amp; First Responder catalog row, or composed as rows under
+    /// <see cref="SourceCategory.MilitaryFirstResponder"/>, by
+    /// <c>AssociatePassdownService.MergeExactDatedMilitaryFirstResponder</c>; its status never gets a
+    /// banner of its own (Daily Admission already has one).</item>
     /// </list>
     /// </summary>
     public static ProductDisplaySection? Resolve(SourceCategory category) => category switch
@@ -56,6 +61,7 @@ public static class ProductDisplaySectionResolver
         SourceCategory.Promotions => ProductDisplaySection.Promotions,
         SourceCategory.BringAFriendDuo => null,
         SourceCategory.DatedBringAFriend => null,
+        SourceCategory.DatedMilitaryFirstResponder => null,
         _ => ProductDisplaySection.Promotions,
     };
 

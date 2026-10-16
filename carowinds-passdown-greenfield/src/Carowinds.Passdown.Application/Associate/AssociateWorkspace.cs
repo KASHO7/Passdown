@@ -60,6 +60,20 @@ public sealed record AssociateWorkspace(
     /// silently overwritten — see <see cref="IAssociatePassdownService.SaveEditorDraftAsync"/>.
     /// </summary>
     public string? DraftContentHash { get; init; }
+
+    /// <summary>
+    /// Phase 21A: <see cref="AssociatePricingTimeframe.Historical"/> when <see cref="OperatingDate"/>
+    /// is a past date whose <see cref="Products"/> were limited to prices recorded for that exact date
+    /// (<see cref="HistoricalPricingPolicy"/>). Presentation only — never persisted in a draft or snapshot.
+    /// </summary>
+    public AssociatePricingTimeframe PricingTimeframe { get; init; } = AssociatePricingTimeframe.Current;
+
+    /// <summary>Phase 21A: how many current-catalog rows were withheld from a historical date (diagnostics only).</summary>
+    public int WithheldCurrentCatalogProductCount { get; init; }
+
+    /// <summary>Phase 21A: a past date with no official price recorded for it — show <see cref="HistoricalPricingPolicy.UnavailableMessage"/>, never today's prices.</summary>
+    public bool IsHistoricalPricingUnavailable =>
+        PricingTimeframe == AssociatePricingTimeframe.Historical && !Products.Any(product => !product.IsCustom);
 }
 
 /// <summary>

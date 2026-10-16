@@ -498,3 +498,14 @@ Before 19B, every dated source in B–D turned the horizon-wide "No dates found"
 FAILED message and every shape anomaly is still `Error`. Catalog sources were already correct (empty
 valid page = `Verified` with zero products; parse/transport failure = `Error`). Full detail:
 `docs/phase19b-seasonal-catalog.md`.
+
+## Phase 21A addendum
+
+- New dated source: Military/First Responder exact per-date prices (`DatedMilitaryFirstResponderSource`,
+  `SourceCategory.DatedMilitaryFirstResponder`, daily freshness). The Military catalog card adapter is
+  unchanged and remains the "Starting From" fallback.
+- Historical capability audit (live 2026-10-16): every dated keyword returns no past dates (stored
+  observations only); every catalog page is current-only. No historical pricing backfill exists.
+- Pass-year identity: identity precedence unchanged; a reused official id whose stored product states
+  a different pass year is tracked as `{key}|pass-year:{year}` (pass-family categories only, no
+  migration). See `docs/phase21a-pricing-historical-integrity.md`.

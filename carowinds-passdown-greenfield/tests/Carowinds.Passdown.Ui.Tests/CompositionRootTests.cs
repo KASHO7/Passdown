@@ -34,7 +34,7 @@ public class CompositionRootTests
     }
 
     [Fact]
-    public void BuildServiceProvider_RegistersElevenSourceRegistrations()
+    public void BuildServiceProvider_RegistersTwelveSourceRegistrations()
     {
         var provider = App.BuildServiceProvider();
 
@@ -42,8 +42,9 @@ public class CompositionRootTests
 
         // Phase 13C added 2: dated-bring-a-friend-duo.official and military-first-responder.official.
         // Phase 15A added 1 more: dated-bring-a-friend.official.
-        Assert.Equal(11, registrations.Count);
-        Assert.Equal(11, registrations.Select(r => r.SourceId).Distinct().Count());
+        // Phase 21A added 1 more: dated-military-first-responder.official.
+        Assert.Equal(12, registrations.Count);
+        Assert.Equal(12, registrations.Select(r => r.SourceId).Distinct().Count());
     }
 
     /// <summary>
@@ -70,6 +71,7 @@ public class CompositionRootTests
                 SourceCategory.HauntedAttractions,
                 SourceCategory.BringAFriendDuo,
                 SourceCategory.DatedBringAFriend,
+                SourceCategory.DatedMilitaryFirstResponder,
             },
             datedCategories);
 

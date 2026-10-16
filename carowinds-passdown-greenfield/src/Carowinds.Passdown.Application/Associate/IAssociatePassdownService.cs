@@ -28,6 +28,16 @@ public interface IAssociatePassdownService
     Task<AssociateWorkspace> LoadAssociateDateAsync(DateOnly operatingDate, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Phase 21A: the local-only composition the scheduled finalizer freezes into History. Identical
+    /// to <see cref="LoadAssociateDateAsync"/> except that the historical selected-date pricing rule
+    /// (<see cref="HistoricalPricingPolicy"/>) is not applied — a date is finalized exactly when it
+    /// becomes historical, and its passdown must freeze as it stood at the end of its day, unchanged
+    /// from before this phase.
+    /// </summary>
+    Task<AssociateWorkspace> LoadAssociateDateForFinalizationAsync(DateOnly operatingDate, CancellationToken cancellationToken = default) =>
+        LoadAssociateDateAsync(operatingDate, cancellationToken);
+
+    /// <summary>
     /// Explicit "Check Online" (spec §6.3, Phase 13B Part B/K — <see cref="Refresh.RefreshMode.UserForced"/>):
     /// runs the user-forced refresh (every dated source for <paramref name="operatingDate"/>, every
     /// catalog source once, all unconditionally) then recomposes the view from whatever is cached

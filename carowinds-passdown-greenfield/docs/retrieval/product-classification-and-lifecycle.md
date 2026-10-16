@@ -190,3 +190,14 @@ See `docs/phase19b-seasonal-catalog.md`.
 - Identity is the existing `CatalogProductKey`; a display-name change never splits history.
 
 See `docs/phase20a-spellcheck-price-history.md`.
+
+## Phase 21A addendum
+
+- Lifecycle rules are unchanged (two successful confirmed absences retire; Error never counts;
+  reactivation keeps identity). Historical *views* no longer depend on today's lifecycle: a past date
+  shows only prices recorded for that date, and a recorded exact Bring-A-Friend price stays visible on
+  its date after the catalog card retired.
+- Pass-year identity: within Season Passes / Add-Ons / Military-First Responder, an observation whose
+  official name states a different pass year than the stored product under the same key becomes a
+  separate product `{key}|pass-year:{year}`; the old one retires normally with its history intact. A
+  name without a year never splits. See `docs/phase21a-pricing-historical-integrity.md`.

@@ -216,3 +216,12 @@ Re-investigated live on 2026-10-16 (plain GETs, no Playwright):
 
 The retention window is observed behavior, not a documented contract; the backfill re-probes it once
 per session. See `docs/phase20c-historical-backfill.md`.
+
+## Phase 21A — January 1–3, 2026
+
+Checked live 2026-10-16: the feed returns HTTP 404 "Not Found" for 2026-01-01..03, for the `202601`
+and `202512` month files, and for every date before 2026-03-25 (CloudFront "Error from cloudfront").
+The official WinterFest/park-hours pages now describe only the 2026–27 season. These dates are no
+longer exposed by the official source; the Phase 20C backfill includes them in scope (calendar year
+2026 even though they belong to the previous WinterFest season), probes the boundary from the 404,
+and stores nothing. No hours are inferred from neighboring dates; no cutoff date is hard-coded.

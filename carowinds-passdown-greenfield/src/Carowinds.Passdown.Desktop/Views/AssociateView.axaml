@@ -807,6 +807,13 @@
                     Command="{Binding OpenPriceHistoryCommand}"
                     AutomationProperties.Name="Open season pass and add-on price history" />
 
+            <!-- Phase 21A: a past date shows only prices recorded for that exact date, never today's
+                 catalog; this says so, and says plainly when nothing was recorded. -->
+            <Border Classes="panel" IsVisible="{Binding HasHistoricalPricingNotice}">
+              <TextBlock Text="{Binding HistoricalPricingNotice}" TextWrapping="Wrap"
+                         AutomationProperties.Name="{Binding HistoricalPricingNotice}" />
+            </Border>
+
             <!-- Products (Part F): editable, data-driven per-category product sections. No product
                  names or category counts are hard-coded — sections and rows come straight from the
                  composed workspace. -->

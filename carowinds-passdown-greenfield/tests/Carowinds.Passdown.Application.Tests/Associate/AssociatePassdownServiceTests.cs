@@ -899,11 +899,12 @@ public class AssociatePassdownServiceTests
         // Phase 13C added SourceCategory.BringAFriendDuo as a fourth status-tracked dated category;
         // Phase 15A added SourceCategory.DatedBringAFriend as a fifth (Dashboard-visible only — it
         // never gets its own Associate Products/PDF section, see ProductDisplaySectionResolver).
+        // Phase 21A added SourceCategory.DatedMilitaryFirstResponder as a sixth, on the same terms.
         Assert.Equal(
             new[]
             {
                 SourceCategory.DatedAdmissionTickets, SourceCategory.DatedFastLane, SourceCategory.HauntedAttractions,
-                SourceCategory.BringAFriendDuo, SourceCategory.DatedBringAFriend,
+                SourceCategory.BringAFriendDuo, SourceCategory.DatedBringAFriend, SourceCategory.DatedMilitaryFirstResponder,
             },
             workspace.CategoryStatuses.Select(s => s.Category));
         Assert.DoesNotContain(workspace.CategoryStatuses, s => s.Category == SourceCategory.ParkHours);

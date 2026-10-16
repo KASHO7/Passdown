@@ -1604,3 +1604,17 @@ To be run with `docs/phase20d-rc5-windows-checklist.md` against the hashes above
   resume, storage, scheduled task and 19A/19B/20A/PDF/Teams regressions exercised there.
 - **TWO-PC SYNC VALIDATION PENDING.**
 - **Distribution: DISTRIBUTION LICENSE DECISION PENDING** (QuestPDF).
+
+# Unreleased development — Phase 21A (after RC.5)
+
+Not a release. Phase 21A (`docs/phase21a-pricing-historical-integrity.md`) changes shipped code:
+Military/First Responder exact dated pricing, historical selected-date pricing rule, pass-year identity
+guard, Dashboard Open Passdown → today. RC.5 artifacts are unchanged. The next packaged candidate must
+be **`0.1.0-rc.6`**; `Directory.Build.props` still says `0.1.0-rc.5` until that packaging phase.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged) |
+| Deterministic tests | **3040/3040** (baseline 2952 at `6cd8d96`; +88 Phase 21A) |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 21A doc |

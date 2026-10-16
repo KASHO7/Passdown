@@ -55,6 +55,14 @@ public static class DiagnosticReportFormatter
             AppendHistoricalBackfillLines(sb, history);
         }
 
+        // Phase 21A: what each pricing source can say about a past date (fixed audit findings; no data).
+        sb.AppendLine();
+        sb.AppendLine("Historical pricing sources (past dates show only prices recorded for that date):");
+        foreach (var capability in Associate.HistoricalPricingSourceCapabilities.All)
+        {
+            sb.AppendLine(CultureInfo.InvariantCulture, $"  {capability.Category}: {capability.Capability} — {capability.Finding}");
+        }
+
         sb.AppendLine();
         sb.AppendLine(CultureInfo.InvariantCulture, $"See source-status.txt for per-source detail ({report.Sources.Count} sources) and logs/ for recent scheduled-refresh and app activity.");
         return sb.ToString();

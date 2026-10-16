@@ -65,6 +65,8 @@ public partial class AssociateViewModel : ViewModelBase
     private static readonly IReadOnlyDictionary<Guid, OperationalNoteSourceComparisonState> EmptySourceStates = new Dictionary<Guid, OperationalNoteSourceComparisonState>();
 
     private readonly IAssociatePassdownService _service;
+
+    private readonly IClock _clock;
     private readonly IErtConfigurationService _ertConfigurationService;
     private readonly IAssociatePassdownPdfExportService _pdfExportService;
     private readonly IPdfSaveFilePicker _pdfSavePicker;
@@ -534,6 +536,7 @@ public partial class AssociateViewModel : ViewModelBase
         ArgumentNullException.ThrowIfNull(clock);
 
         _service = service;
+        _clock = clock;
         _ertConfigurationService = ertConfigurationService ?? new UnavailableErtConfigurationService();
         _logger = logger;
         _autosaveDebounce = autosaveDebounce ?? DefaultAutosaveDebounce;
@@ -972,6 +975,17 @@ public partial class AssociateViewModel : ViewModelBase
     public bool HasProductSections => ProductSections.Count > 0;
 
     /// <summary>
+    /// Phase 21A: shown on the Products section for a past date — either that only prices recorded for
+    /// that date are listed, or <see cref="HistoricalPricingPolicy.UnavailableMessage"/> when none were.
+    /// Null for today/future dates. Rebuilt with <see cref="ProductSections"/>.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasHistoricalPricingNotice))]
+    public partial string? HistoricalPricingNotice { get; set; }
+
+    public bool HasHistoricalPricingNotice => HistoricalPricingNotice is not null;
+
+    /// <summary>
     /// Phase 20A: asks the app shell to open the read-only Season Price History screen — with a
     /// product key from a tracked row's "Price history" action, or null from the Products section's
     /// general entry point (which also reaches retired products). Navigation only; no retrieval.
@@ -1014,6 +1028,29 @@ public partial class AssociateViewModel : ViewModelBase
     /// could reach the network. Spec Part H: the previous date's pending edits are flushed/saved
     /// before the new date's workspace is composed and applied.
     /// </summary>
+    /// <summary>Today's operational date: the park's Eastern calendar date at this moment, never the host machine's local date.</summary>
+    public DateOnly EasternToday => DateOnly.FromDateTime(EasternTimeZone.ConvertFromUtc(_clock.UtcNow).DateTime);
+
+    /// <summary>
+    /// Phase 21A: Dashboard's "Open Passdown" always lands on today's Eastern date — read at click
+    /// time, so a date rollover since the last load is honored. Goes through the ordinary
+    /// <see cref="SelectedDate"/> path (unsaved edits on the previous date are flushed first); when
+    /// today is already selected nothing reloads, so there is no redundant load or check. Returns
+    /// true when the date changed. Calendar and History routes keep their explicit dates.
+    /// </summary>
+    public bool SelectEasternToday()
+    {
+        var today = EasternToday;
+        if (SelectedDate == today)
+        {
+            return false;
+        }
+
+        _logger?.LogInformation("Dashboard Open Passdown reset the Associate date from {PreviousDate} to today ({Today}).", SelectedDate, today);
+        SelectedDate = today;
+        return true;
+    }
+
     partial void OnSelectedDateChanged(DateOnly value)
     {
         CopyMessage = null; // a "copied" confirmation belongs to the date it was copied from.
@@ -1899,10 +1936,18 @@ public partial class AssociateViewModel : ViewModelBase
         }
 
         ProductSections = result;
+        HistoricalPricingNotice = BuildHistoricalPricingNotice(workspace);
 
         CustomProducts = new ObservableCollection<CustomProductRowViewModel>(
             workspace.Draft.CustomProducts.Select(custom => new CustomProductRowViewModel(custom, ScheduleAutosave, RemoveCustomProduct)));
     }
+
+    internal static string? BuildHistoricalPricingNotice(AssociateWorkspace workspace) =>
+        workspace.PricingTimeframe != AssociatePricingTimeframe.Historical
+            ? null
+            : workspace.IsHistoricalPricingUnavailable
+                ? HistoricalPricingPolicy.UnavailableMessage
+                : $"Showing prices recorded for {workspace.OperatingDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}. Current catalog products are not shown for past dates.";
 
     /// <summary>Converts the current editable fields into a full <see cref="AssociateDraftPayload"/>, including product overrides/custom products read from the current <see cref="ProductSections"/>/<see cref="CustomProducts"/> row view models (spec Phase 4D Parts D/E/F).</summary>
     private AssociateDraftPayload BuildDraft()

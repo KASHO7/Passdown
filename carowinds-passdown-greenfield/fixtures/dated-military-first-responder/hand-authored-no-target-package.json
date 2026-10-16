@@ -1,0 +1,37 @@
+{
+  "SERVICE": {
+    "keyword_image": "",
+    "request_type": "GetKeywordCalendar",
+    "session_id": "fixture",
+    "status": "OK",
+    "DATES": {
+      "D": {
+        "bookings_sold_out": "null",
+        "date": "2026-10-16",
+        "lowest_price": "55.00",
+        "lowest_price_customer_type": "427",
+        "lowest_price_package": "10098283",
+        "lowest_price_savings": "",
+        "PS": {
+          "P": [
+            {
+              "available": "6",
+              "capacity": "6",
+              "event_id": "1",
+              "id": "1",
+              "name": "Parking",
+              "CT": {
+                "fee_amount": "0",
+                "id": "1",
+                "retail_amount": "30.00",
+                "tax_amount": "0"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "request_token": "FIXTURE",
+    "_client_ip": "0.0.0.0"
+  }
+}
