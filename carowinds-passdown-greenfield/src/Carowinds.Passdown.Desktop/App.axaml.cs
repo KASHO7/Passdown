@@ -582,6 +582,7 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IUiDispatcher, AvaloniaUiDispatcher>();
         services.AddSingleton<OfficialDataStatusViewModel>();
 
+        services.AddTransient<DiagnosticsExportViewModel>();
         services.AddTransient<PersonalSyncSettingsViewModel>();
         services.AddTransient<PriceHistoryViewModel>();
 

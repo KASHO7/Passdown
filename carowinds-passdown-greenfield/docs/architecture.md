@@ -994,3 +994,19 @@ See `docs/phase21a-pricing-historical-integrity.md`.
 - **Desktop** — Products historical notice; Dashboard Open Passdown → `AssociateViewModel.SelectEasternToday`.
 
 Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged. No new background service.
+
+## Phase 21B — Associate navigation and toolbar
+
+See `docs/phase21b-associate-navigation-toolbar.md`. Desktop only; no Domain/Application/Infrastructure
+change.
+
+- **Desktop** — `AssociateDateNavigationPresentation` (date header text, Today/Yesterday/Tomorrow from
+  the Eastern date, host-vs-Eastern guard for the calendar's built-in today marker);
+  `AssociateViewModel.GoToTodayCommand` (same `SelectEasternToday` path as Dashboard → Open Passdown),
+  `DateNavigation`, `SelectTemplateCommand`; `AssociateView` date popup = `Button` + `Flyout` +
+  built-in `Calendar`, with commit/dismiss handled in view-only code-behind that hands the date to the
+  existing `SelectedDateForPicker` adapter. `DiagnosticsExportViewModel` (moved out of
+  `AssociateViewModel`, exposed as `PersonalSyncSettingsViewModel.Diagnostics`, shown under Settings →
+  Diagnostics); diagnostics generation stays in Infrastructure's `DiagnosticExportService`.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged.

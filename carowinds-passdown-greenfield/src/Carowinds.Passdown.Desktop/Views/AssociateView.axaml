@@ -5,6 +5,7 @@
              xmlns:presentation="using:Carowinds.Passdown.Desktop.Presentation"
              xmlns:converters="using:Carowinds.Passdown.Desktop.Converters"
              xmlns:documents="using:Carowinds.Passdown.Documents.Associate"
+             xmlns:preferences="using:Carowinds.Passdown.Application.Preferences"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="860"
@@ -159,6 +160,173 @@
       <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
     </Style>
 
+    <!-- Phase 21B: date header + toolbar. Quiet, outlined controls in the app's divider/accent
+         colors; one height (34px) for every control on the bar so the row reads as one unit. -->
+    <Style Selector="Button.dateNavIcon, Button.dateButton, Button.toolbarButton">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="MinHeight" Value="34" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.dateNavIcon">
+      <Setter Property="Width" Value="34" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.dateButton">
+      <Setter Property="Padding" Value="12,5" />
+      <Setter Property="MinWidth" Value="360" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="Button.toolbarButton">
+      <Setter Property="Padding" Value="12,6" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.dateNavIcon:pointerover /template/ ContentPresenter, Button.dateButton:pointerover /template/ ContentPresenter, Button.toolbarButton:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
+    </Style>
+    <Style Selector="Button.dateButton:flyout-open /template/ ContentPresenter, Button.toolbarButton:flyout-open /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
+    </Style>
+    <Style Selector="Path.navGlyph">
+      <Setter Property="Width" Value="16" />
+      <Setter Property="Height" Value="16" />
+      <Setter Property="Stroke" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="StrokeThickness" Value="1.8" />
+      <Setter Property="StrokeLineCap" Value="Round" />
+      <Setter Property="StrokeJoin" Value="Round" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Path.navGlyph.small">
+      <Setter Property="Width" Value="12" />
+      <Setter Property="Height" Value="12" />
+      <Setter Property="Stretch" Value="Uniform" />
+      <Setter Property="Stroke" Value="{DynamicResource TextControlPlaceholderForeground}" />
+      <Setter Property="StrokeThickness" Value="1.5" />
+    </Style>
+    <Style Selector="Path.calendarGlyph">
+      <Setter Property="Width" Value="16" />
+      <Setter Property="Height" Value="16" />
+      <Setter Property="Stroke" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="StrokeThickness" Value="1.4" />
+      <Setter Property="StrokeLineCap" Value="Round" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.selectedDate">
+      <Setter Property="FontSize" Value="15" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <!-- Today/Yesterday/Tomorrow next to the date: the word carries the meaning; "Today" additionally
+         gets the accent chip. -->
+    <Style Selector="Border.relativeDayChip">
+      <Setter Property="Background" Value="{DynamicResource PassdownChipBrush}" />
+      <Setter Property="CornerRadius" Value="9" />
+      <Setter Property="Padding" Value="8,1" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.relativeDayChip TextBlock">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Border.relativeDayChip.today">
+      <Setter Property="Background" Value="{DynamicResource PassdownChipAccentBrush}" />
+    </Style>
+    <Style Selector="Border.relativeDayChip.today TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownChipAccentForegroundBrush}" />
+    </Style>
+    <Style Selector="TextBlock.buttonDetail">
+      <Setter Property="FontWeight" Value="Normal" />
+      <Setter Property="Opacity" Value="0.8" />
+    </Style>
+    <Style Selector="Button.linkAction">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Padding" Value="8,4" />
+    </Style>
+    <Style Selector="Button.linkAction:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
+    </Style>
+
+    <!-- Calendar popup: compact (Fluent's default day text is 20px), selected day
+         as a filled accent tile with bold text, today as an accent ring — so the two never rely on
+         the same cue, and a selected today shows both. Adjacent-month days stay muted (Fluent). -->
+    <Style Selector="FlyoutPresenter.datePopup">
+      <Setter Property="Padding" Value="6" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="MaxWidth" Value="360" />
+    </Style>
+    <Style Selector="Calendar.datePopupCalendar">
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Calendar.datePopupCalendar /template/ CalendarItem /template/ Border#BackgroundLayer">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Calendar.datePopupCalendar /template/ CalendarItem /template/ Grid#PART_YearView">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Calendar.datePopupCalendar /template/ CalendarItem /template/ Button#PART_HeaderButton">
+      <Setter Property="FontSize" Value="15" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Calendar.datePopupCalendar CalendarDayButton, Calendar.datePopupCalendar CalendarButton">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Calendar.datePopupCalendar CalendarDayButton">
+      <Setter Property="MinWidth" Value="38" />
+      <Setter Property="MinHeight" Value="38" />
+    </Style>
+    <Style Selector="Calendar.datePopupCalendar CalendarDayButton /template/ Border#Root, Calendar.datePopupCalendar CalendarDayButton /template/ Border#Border">
+      <Setter Property="CornerRadius" Value="5" />
+    </Style>
+    <Style Selector="Calendar.datePopupCalendar CalendarDayButton:pointerover /template/ Border#Root">
+      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
+    </Style>
+    <!-- Today: accent ring + bold accent text (no fill). -->
+    <Style Selector="Calendar.datePopupCalendar CalendarDayButton:today /template/ Border#Root">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Calendar.datePopupCalendar CalendarDayButton:today /template/ Border#Border">
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
+    </Style>
+    <Style Selector="Calendar.datePopupCalendar CalendarDayButton:today /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <!-- Selected: filled accent tile + bold white text. -->
+    <Style Selector="Calendar.datePopupCalendar CalendarDayButton:selected /template/ Border#Root">
+      <Setter Property="Background" Value="{DynamicResource PassdownAccentBrush}" />
+    </Style>
+    <Style Selector="Calendar.datePopupCalendar CalendarDayButton:selected /template/ Border#Border">
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
+    </Style>
+    <Style Selector="Calendar.datePopupCalendar CalendarDayButton:selected /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownHeaderForegroundBrush}" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <!-- Selected and today: the fill plus a light inner ring. -->
+    <Style Selector="Calendar.datePopupCalendar CalendarDayButton:selected:today /template/ Border#Border">
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownChipAccentBrush}" />
+    </Style>
+    <Style Selector="Calendar.datePopupCalendar CalendarButton:selected /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+
+    <!-- One height for every action on the bar. -->
+    <Style Selector="StackPanel#PassdownActions > Button">
+      <Setter Property="Height" Value="34" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
     <!-- Hours headline: large when hours are known, quiet when not (Part D — "Not checked yet" must
          never be a giant headline). Phase 17C §4: reduced from 30px as part of the density pass —
          still the single largest text on Overview, just no longer disproportionate to the rest of
@@ -260,6 +428,8 @@
         <Grid ColumnDefinitions="Auto,*,Auto">
           <TextBlock Grid.Column="0" Text="Associate Passdown" Classes="pageTitle" VerticalAlignment="Center" />
 
+          <!-- The one place save state is shown in the header (the Overview status strip repeats it
+               only as part of its own one-line summary). Text-first, never color-only. -->
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
             <Border Classes="chip" AutomationProperties.Name="Save status"
                     Background="{Binding AutosaveState, Converter={x:Static converters:SaveStatusBrushConverter.Instance}}">
@@ -268,104 +438,165 @@
           </StackPanel>
         </Grid>
 
-        <!-- Phase 15E: WrapPanel, not a fixed Auto,Auto,Auto,Auto,Auto,* Grid — at the documented
-             960×640 minimum window size, the six items (date-nav + three actions) no longer all fit on
-             one row; the previous Grid layout let the trailing star column start past the window's
-             right edge, making Create PDF a zero-width, unreachable control and clipping Export
-             Diagnostics. Wrapping to a second line keeps every action reachable at any supported width. -->
-        <WrapPanel Orientation="Horizontal">
-          <Button Content="◀" Width="34" Margin="0,0,0,6"
-                  Command="{Binding PreviousDayCommand}"
-                  AutomationProperties.Name="Previous day"
-                  ToolTip.Tip="Previous day" />
+        <!-- Phase 21B: date navigation (left) and passdown actions (right). A WrapPanel, as in Phase
+             15E, so at the 960×640 minimum or at 125–150% scaling the action group drops to its own
+             line instead of clipping — no horizontal scrolling, no overlap, every action reachable. -->
+        <WrapPanel x:Name="AssociateActionBar" Orientation="Horizontal" ItemSpacing="24" LineSpacing="8">
 
-          <!-- Calendar-based date picker (Part 1 / spec §10.2): click to see a full calendar
-               flyout instead of a spinner-style control, with the selected date always shown in a
-               friendly long form ("Saturday, August 22, 2026"). Typing a date and arrow-key
-               navigation inside the flyout both work natively; selecting a date here never
-               triggers online retrieval (spec §6.3) — it goes through the same SelectedDate
-               setter as Previous/Next day. -->
-          <CalendarDatePicker SelectedDate="{Binding SelectedDateForPicker}"
-                               SelectedDateFormat="Custom"
-                               CustomDateFormatString="dddd, MMMM d, yyyy"
-                               MinWidth="230"
-                               Margin="8,0,0,6"
-                               AutomationProperties.Name="Operating date"
-                               ToolTip.Tip="Choose the operating date" />
+          <!-- Date navigation: ‹ [date ▾] › Today. Every change goes through AssociateViewModel's one
+               SelectedDate path (flush unsaved edits → local load; never online retrieval on its own). -->
+          <StackPanel x:Name="DateNavigator" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <Button Classes="dateNavIcon" Command="{Binding PreviousDayCommand}"
+                    AutomationProperties.Name="Previous day"
+                    ToolTip.Tip="Previous day">
+              <Path Classes="navGlyph" Data="M 10,2 L 4,8 L 10,14" />
+            </Button>
 
-          <Button Content="▶" Width="34"
-                  Margin="8,0,0,6"
-                  Command="{Binding NextDayCommand}"
-                  AutomationProperties.Name="Next day"
-                  ToolTip.Tip="Next day" />
+            <Button x:Name="DateButton" Classes="dateButton"
+                    AutomationProperties.Name="Operating date"
+                    AutomationProperties.HelpText="{Binding DateNavigation.AutomationText}"
+                    ToolTip.Tip="Choose date">
+              <Button.Flyout>
+                <Flyout Placement="BottomEdgeAlignedLeft"
+                        Opening="DateFlyout_OnOpening" FlyoutPresenterClasses="datePopup">
+                  <StackPanel Spacing="6">
+                    <!-- Built-in Calendar: arrow keys move the highlighted day, Page Up/Down change
+                         month, and the month heading opens month → year views for fast jumping.
+                         Not bound to SelectedDate directly: a day is committed only by a click or
+                         Enter/Space (code-behind), so browsing never loads a date and Escape/clicking
+                         outside closes without changing anything. -->
+                    <Calendar x:Name="DateCalendar" Classes="datePopupCalendar"
+                              SelectionMode="SingleDate"
+                              FirstDayOfWeek="Sunday"
+                              IsTodayHighlighted="{Binding IsCalendarTodayHighlighted}"
+                              AutomationProperties.Name="Choose operating date"
+                              AutomationProperties.HelpText="Arrow keys move between days, Enter selects. Select the month heading to jump to another month or year." />
+                    <Grid ColumnDefinitions="Auto,*" Margin="6,0,6,4">
+                      <Button Grid.Column="0" x:Name="CalendarTodayButton" Content="Today" Classes="linkAction"
+                              Command="{Binding GoToTodayCommand}" Click="CalendarTodayButton_OnClick"
+                              AutomationProperties.Name="Go to today"
+                              ToolTip.Tip="Jump to today (Eastern time)" />
+                      <TextBlock Grid.Column="1" Text="Select the month name to jump" Classes="fieldHint"
+                                 HorizontalAlignment="Right" VerticalAlignment="Center" Margin="12,0,0,0" />
+                    </Grid>
+                  </StackPanel>
+                </Flyout>
+              </Button.Flyout>
+              <!-- Fixed minimum width so stepping through dates doesn't shift the controls beside it. -->
+              <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="9">
+                <Path Grid.Column="0" Classes="calendarGlyph" Data="M 1.5,3.5 H 14.5 V 14.5 H 1.5 Z M 1.5,6.5 H 14.5 M 5,1.5 V 4.5 M 11,1.5 V 4.5" />
+                <TextBlock Grid.Column="1" x:Name="SelectedDateText" Classes="selectedDate" Text="{Binding DateNavigation.DateText}" />
+                <Border Grid.Column="2" Classes="relativeDayChip" Classes.today="{Binding DateNavigation.IsToday}"
+                        IsVisible="{Binding DateNavigation.RelativeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                  <TextBlock Text="{Binding DateNavigation.RelativeText}" />
+                </Border>
+                <Path Grid.Column="4" Classes="navGlyph small" Data="M 2,5 L 8,11 L 14,5" />
+              </Grid>
+            </Button>
 
-          <Button Content="Check Online"
-                  Margin="16,0,0,6"
-                  Command="{Binding CheckOnlineCommand}"
-                  Classes="primaryAction"
-                  AutomationProperties.Name="Check this date online"
-                  AutomationProperties.HelpText="Checks official Carowinds sources for this date. Does not run automatically." />
+            <Button Classes="dateNavIcon" Command="{Binding NextDayCommand}"
+                    AutomationProperties.Name="Next day"
+                    ToolTip.Tip="Next day">
+              <Path Classes="navGlyph" Data="M 6,2 L 12,8 L 6,14" />
+            </Button>
 
-          <Button Content="Export Diagnostics"
-                  Margin="16,0,0,6"
-                  Command="{Binding ExportDiagnosticsCommand}"
-                  Classes="secondaryAction"
-                  AutomationProperties.Name="Export Diagnostics"
-                  AutomationProperties.HelpText="Saves a support diagnostic ZIP with version, source status, and recent log information. Contains no drafts or personal data." />
-
-          <!-- Phase 17C §12/§37: PDF Style selector, placed right next to Create PDF since template
-               choice is scoped to PDF generation, not an app-wide setting — switching it affects the
-               very next Create PDF/finalization, with no separate Settings screen to navigate to. -->
-          <StackPanel Orientation="Horizontal" Spacing="6" Margin="16,0,0,6" VerticalAlignment="Center">
-            <TextBlock Text="PDF Style" Classes="muted" VerticalAlignment="Center" />
-            <ComboBox ItemsSource="{Binding TemplateOptions}"
-                      SelectedItem="{Binding SelectedTemplateOption}"
-                      MinWidth="110"
-                      AutomationProperties.Name="PDF Style"
-                      AutomationProperties.HelpText="Chooses the visual template used by Preview PDF and the next finalized PDF. Never changes passdown data.">
-              <ComboBox.ItemTemplate>
-                <DataTemplate x:DataType="presentation:AssociatePassdownTemplateOption">
-                  <TextBlock Text="{Binding Label}" />
-                </DataTemplate>
-              </ComboBox.ItemTemplate>
-            </ComboBox>
+            <Button Content="Today" Classes="toolbarButton" Margin="6,0,0,0"
+                    Command="{Binding GoToTodayCommand}"
+                    AutomationProperties.Name="Today"
+                    AutomationProperties.HelpText="Selects today's date in Eastern time."
+                    ToolTip.Tip="Jump to today" />
           </StackPanel>
 
-          <Button Content="Create PDF"
-                  Margin="8,0,0,6"
-                  Command="{Binding CreatePdfCommand}"
-                  Classes="secondaryAction"
-                  AutomationProperties.Name="Create PDF"
-                  AutomationProperties.HelpText="Builds today's Associate Passdown PDF and lets you choose where to save it." />
+          <!-- Passdown actions: everyday actions stay visible (Check Online, Create PDF, Copy);
+               occasional ones live in More. Administrative actions (Export Diagnostics) moved to
+               Settings → Diagnostics. -->
+          <StackPanel x:Name="PassdownActions" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Button Content="Check Online"
+                    Command="{Binding CheckOnlineCommand}"
+                    Classes="primaryAction"
+                    AutomationProperties.Name="Check this date online"
+                    AutomationProperties.HelpText="Checks official Carowinds sources for this date. Does not run automatically." />
 
-          <!-- Phase 18F: one compact Copy menu for pasting into Microsoft Teams. Enter/Space opens it,
-               arrow keys move between items; nothing is hover-only. Copies only what is already on
-               screen — never checks online, saves, or changes the date. -->
-          <Button Content="Copy ▾"
-                  Margin="8,0,0,6"
-                  Classes="secondaryAction"
-                  IsEnabled="{Binding HasWorkspace}"
-                  AutomationProperties.Name="Copy for Teams"
-                  AutomationProperties.HelpText="Opens a menu to copy the operations summary, today's selected pricing, or both as plain text for Microsoft Teams.">
-            <Button.Flyout>
-              <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                <MenuItem Header="Operations Summary"
-                          Command="{Binding CopyForTeamsCommand}"
-                          CommandParameter="{x:Static documents:AssociateTeamsCopyKind.OperationsSummary}"
-                          AutomationProperties.Name="Copy operations summary"
-                          AutomationProperties.HelpText="Copies park hours, gate times, attendance, pre-solds, and Early Ride Time." />
-                <MenuItem Header="Today's Pricing"
-                          Command="{Binding CopyForTeamsCommand}"
-                          CommandParameter="{x:Static documents:AssociateTeamsCopyKind.TodaysPricing}"
-                          AutomationProperties.Name="Copy today's pricing"
-                          AutomationProperties.HelpText="Copies only the products and sections selected for the PDF." />
-                <MenuItem Header="Operations + Pricing"
-                          Command="{Binding CopyForTeamsCommand}"
-                          CommandParameter="{x:Static documents:AssociateTeamsCopyKind.OperationsAndPricing}"
-                          AutomationProperties.Name="Copy operations summary and pricing" />
-              </MenuFlyout>
-            </Button.Flyout>
-          </Button>
+            <!-- The PDF style in use is always shown on the button itself; it is changed under
+                 More → PDF Style (same saved preference as before — never changed silently). -->
+            <Button Command="{Binding CreatePdfCommand}"
+                    Classes="secondaryAction"
+                    AutomationProperties.Name="Create PDF"
+                    AutomationProperties.HelpText="Builds this date's Associate Passdown PDF in the selected PDF style and lets you choose where to save it."
+                    ToolTip.Tip="{Binding SelectedTemplateOption.Label, StringFormat='Uses the {0} PDF style (change under More)'}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="Create PDF" />
+                <TextBlock Text="·" Classes="buttonDetail" />
+                <TextBlock Text="{Binding SelectedTemplateOption.Label}" Classes="buttonDetail" />
+              </StackPanel>
+            </Button>
+
+            <!-- Phase 18F: one compact Copy menu for pasting into Microsoft Teams. Enter/Space opens it,
+                 arrow keys move between items; nothing is hover-only. Copies only what is already on
+                 screen — never checks online, saves, or changes the date. -->
+            <Button Content="Copy ▾"
+                    Classes="secondaryAction"
+                    IsEnabled="{Binding HasWorkspace}"
+                    AutomationProperties.Name="Copy for Teams"
+                    AutomationProperties.HelpText="Opens a menu to copy the operations summary, today's selected pricing, or both as plain text for Microsoft Teams.">
+              <Button.Flyout>
+                <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                  <MenuItem Header="Operations Summary"
+                            Command="{Binding CopyForTeamsCommand}"
+                            CommandParameter="{x:Static documents:AssociateTeamsCopyKind.OperationsSummary}"
+                            AutomationProperties.Name="Copy operations summary"
+                            AutomationProperties.HelpText="Copies park hours, gate times, attendance, pre-solds, and Early Ride Time." />
+                  <MenuItem Header="Today's Pricing"
+                            Command="{Binding CopyForTeamsCommand}"
+                            CommandParameter="{x:Static documents:AssociateTeamsCopyKind.TodaysPricing}"
+                            AutomationProperties.Name="Copy today's pricing"
+                            AutomationProperties.HelpText="Copies only the products and sections selected for the PDF." />
+                  <MenuItem Header="Operations + Pricing"
+                            Command="{Binding CopyForTeamsCommand}"
+                            CommandParameter="{x:Static documents:AssociateTeamsCopyKind.OperationsAndPricing}"
+                            AutomationProperties.Name="Copy operations summary and pricing" />
+                </MenuFlyout>
+              </Button.Flyout>
+            </Button>
+
+            <!-- More: occasional passdown actions, each clearly labeled. Nothing destructive lives
+                 here (Associate has no delete/reset-all/finalize button — finalization stays
+                 automatic, Phase 9). -->
+            <Button Content="More ▾" Classes="toolbarButton"
+                    AutomationProperties.Name="More passdown actions"
+                    ToolTip.Tip="More passdown actions">
+              <Button.Flyout>
+                <MenuFlyout Placement="BottomEdgeAlignedRight">
+                  <!-- Flat items, not a nested submenu: a MenuItem with child MenuItems fills an
+                       ItemCollection during XAML load, which needs dispatcher access and breaks
+                       headless construction (the same reason this view avoids TabControl). -->
+                  <MenuItem Header="PDF Style: Classic" ToggleType="Radio" GroupName="PdfStyle"
+                            IsChecked="{Binding IsClassicTemplateSelected, Mode=OneWay}"
+                            Command="{Binding SelectTemplateCommand}"
+                            CommandParameter="{x:Static preferences:AssociatePassdownTemplate.Classic}"
+                            AutomationProperties.Name="Classic PDF style"
+                            AutomationProperties.HelpText="Uses the Classic template for Create PDF and the next finalized PDF. Never changes passdown data." />
+                  <MenuItem Header="PDF Style: Compact" ToggleType="Radio" GroupName="PdfStyle"
+                            IsChecked="{Binding IsCompactTemplateSelected, Mode=OneWay}"
+                            Command="{Binding SelectTemplateCommand}"
+                            CommandParameter="{x:Static preferences:AssociatePassdownTemplate.Compact}"
+                            AutomationProperties.Name="Compact PDF style"
+                            AutomationProperties.HelpText="Uses the Compact template for Create PDF and the next finalized PDF. Never changes passdown data." />
+                  <MenuItem Header="PDF Style: Modern" ToggleType="Radio" GroupName="PdfStyle"
+                            IsChecked="{Binding IsModernTemplateSelected, Mode=OneWay}"
+                            Command="{Binding SelectTemplateCommand}"
+                            CommandParameter="{x:Static preferences:AssociatePassdownTemplate.Modern}"
+                            AutomationProperties.Name="Modern PDF style"
+                            AutomationProperties.HelpText="Uses the Modern template for Create PDF and the next finalized PDF. Never changes passdown data." />
+                  <Separator />
+                  <MenuItem Header="Season Price History…"
+                            Command="{Binding OpenPriceHistoryCommand}"
+                            AutomationProperties.Name="Open Season Price History"
+                            AutomationProperties.HelpText="Opens the read-only Season Price History screen. Does not change this passdown." />
+                </MenuFlyout>
+              </Button.Flyout>
+            </Button>
+          </StackPanel>
         </WrapPanel>
 
         <ProgressBar IsIndeterminate="True" Height="3"
@@ -752,15 +983,13 @@
                            AutomationProperties.Name="{Binding OperationalNotesCount, StringFormat='Operational notes: {0}'}" />
               </StackPanel>
 
-              <!-- Expands only when attention is needed (spec §5) — a failed Check Online, or a PDF/
-                   diagnostics export message. -->
+              <!-- Expands only when attention is needed (spec §5) — a failed Check Online, or a PDF
+                   export message. -->
               <TextBlock Text="{Binding RefreshResultMessage}"
                          IsVisible="{Binding RefreshHadFailures}"
                          Classes="fieldWarning" TextWrapping="Wrap" />
               <TextBlock Text="{Binding PdfExportMessage}"
                          IsVisible="{Binding PdfExportMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-              <TextBlock Text="{Binding DiagnosticsExportMessage}"
-                         IsVisible="{Binding DiagnosticsExportMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             </StackPanel>
             </Border>
 

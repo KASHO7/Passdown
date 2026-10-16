@@ -87,8 +87,8 @@ Use it to look up or re-print an exact past passdown at any time.
 
 Something not working?
 ------------------------
-Click "Export Diagnostics" inside the app (next to "Create PDF") and save the
-resulting ZIP file. It contains version/health information and recent activity logs
+Open Settings inside the app, click "Export Diagnostics" (under Diagnostics) and save
+the resulting ZIP file. It contains version/health information and recent activity logs
 only — never your drafts, notes, or saved database — and is the fastest way to get
 help from whoever supports this app.
 

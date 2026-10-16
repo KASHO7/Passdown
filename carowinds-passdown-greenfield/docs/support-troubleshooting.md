@@ -5,7 +5,7 @@ whoever actually fields a tester's report. Not shipped inside the release ZIP �
 Keep the tester-facing copy simple (spec Part M); this one can use the real vocabulary.
 
 Ask for the diagnostic export ZIP (`Carowinds-Passdown-Diagnostics-YYYYMMDD-HHmm.zip`, produced by
-the app's "Export Diagnostics" button) before doing anything else — `summary.txt`, `system.txt`,
+Settings → Diagnostics → "Export Diagnostics"; before Phase 21B the button sat on the Associate toolbar) before doing anything else — `summary.txt`, `system.txt`,
 `source-status.txt`, and the log excerpt inside it answer most of the questions below without
 needing remote access to the tester's machine.
 

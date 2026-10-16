@@ -1618,3 +1618,20 @@ be **`0.1.0-rc.6`**; `Directory.Build.props` still says `0.1.0-rc.5` until that 
 | Deterministic tests | **3040/3040** (baseline 2952 at `6cd8d96`; +88 Phase 21A) |
 | Release build | 0 warnings, 0 errors |
 | Windows validation | NOT EXECUTED — checklist in the Phase 21A doc |
+
+# Unreleased development — Phase 21B (after RC.5, after Phase 21A)
+
+Not a release. Phase 21B (`docs/phase21b-associate-navigation-toolbar.md`) changes shipped UI code:
+Associate date header (‹ date › Today, Today/Yesterday/Tomorrow label), built-in `Calendar` popup with
+click/Enter commit and Escape/outside-click dismissal, toolbar regrouped (Check Online, Create PDF ·
+style, Copy ▾, More ▾ with PDF Style and Season Price History), Export Diagnostics moved to Settings →
+Diagnostics. RC.5 artifacts are unchanged. The next packaged candidate is still **`0.1.0-rc.6`**;
+`Directory.Build.props` still says `0.1.0-rc.5`. `TESTER-GUIDE.txt` and `README-portable-release.md`
+now point to Settings → Diagnostics.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| Deterministic tests | **3092/3092** (baseline 3040 at `50793de`; +52 Phase 21B) = 154 Domain + 908 Application + 804 Infrastructure + 311 Documents + 863 Ui together + 26 `OperationsCalendarViewTests` + 17 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`) |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 21B doc |

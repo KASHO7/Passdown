@@ -185,8 +185,8 @@ the NEW location afterward so the schedule points at the right place.
 
 18. Export diagnostics
 -------------------------
-If you want to help troubleshoot something, click "Export Diagnostics" (next to
-"Create PDF"). Choose where to save the file — it creates one ZIP file containing
+If you want to help troubleshoot something, open Settings and click "Export
+Diagnostics" (under Diagnostics). Choose where to save the file — it creates one ZIP file containing
 version info, app health information, and recent activity logs. It does NOT include
 anything you typed into the app (no drafts, no notes, no operational notes content)
 and does not include your saved database.

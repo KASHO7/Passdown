@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Changes;
-using Carowinds.Passdown.Application.Diagnostics;
 using Carowinds.Passdown.Application.Ert;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.PersonalSync;
@@ -70,8 +69,6 @@ public partial class AssociateViewModel : ViewModelBase
     private readonly IErtConfigurationService _ertConfigurationService;
     private readonly IAssociatePassdownPdfExportService _pdfExportService;
     private readonly IPdfSaveFilePicker _pdfSavePicker;
-    private readonly IDiagnosticExportService _diagnosticExportService;
-    private readonly IDiagnosticExportFilePicker _diagnosticExportPicker;
     private readonly IAssociatePassdownTemplatePreferenceStore _templatePreferenceStore;
     private readonly IClipboardService _clipboardService;
     private readonly IOfficialDataRefreshCoordinator? _refreshCoordinator;
@@ -181,6 +178,8 @@ public partial class AssociateViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedDateForPicker))]
+    [NotifyPropertyChangedFor(nameof(DateNavigation))]
+    [NotifyPropertyChangedFor(nameof(IsCalendarTodayHighlighted))]
     [NotifyPropertyChangedFor(nameof(AvailableOperationalNoteSuggestionsHeading))]
     [NotifyPropertyChangedFor(nameof(SelectedMonthLabel))]
     [NotifyPropertyChangedFor(nameof(UseOverrideForDateLabel))]
@@ -441,6 +440,9 @@ public partial class AssociateViewModel : ViewModelBase
     /// "changing draft data" and "changing the template" are deliberately independent).
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsClassicTemplateSelected))]
+    [NotifyPropertyChangedFor(nameof(IsCompactTemplateSelected))]
+    [NotifyPropertyChangedFor(nameof(IsModernTemplateSelected))]
     public partial AssociatePassdownTemplateOption SelectedTemplateOption { get; set; } = AssociatePassdownTemplateOption.For(AssociatePassdownTemplate.Classic);
 
     /// <summary>
@@ -497,14 +499,6 @@ public partial class AssociateViewModel : ViewModelBase
         ? $"WARNING — Passdown is {PdfPageCount} pages. Reduce content before printing if possible."
         : null;
 
-    /// <summary>True while <see cref="ExportDiagnosticsCommand"/> is building/saving the diagnostic ZIP (Phase 7F Part F) — mirrors <see cref="IsExportingPdf"/>; kept independent of <see cref="IsBusy"/> so a Check Online/date load doesn't block this local-only export.</summary>
-    [ObservableProperty]
-    public partial bool IsExportingDiagnostics { get; set; }
-
-    /// <summary>Concise post-export feedback for the diagnostics action (mirrors <see cref="PdfExportMessage"/>). A cancelled picker leaves this null.</summary>
-    [ObservableProperty]
-    public partial string? DiagnosticsExportMessage { get; set; }
-
     /// <summary>Phase 18F: subtle feedback for the last Copy action ("Today's pricing copied", "No pricing selected", or a short failure message). Null when there is nothing to say.</summary>
     [ObservableProperty]
     public partial string? CopyMessage { get; set; }
@@ -521,8 +515,6 @@ public partial class AssociateViewModel : ViewModelBase
         Func<TimeSpan, CancellationToken, Task>? autosaveDelay = null,
         IAssociatePassdownPdfExportService? pdfExportService = null,
         IPdfSaveFilePicker? pdfSavePicker = null,
-        IDiagnosticExportService? diagnosticExportService = null,
-        IDiagnosticExportFilePicker? diagnosticExportPicker = null,
         IErtConfigurationService? ertConfigurationService = null,
         IAssociatePassdownTemplatePreferenceStore? templatePreferenceStore = null,
         ISyncLocalChangeNotifier? syncLocalChangeNotifier = null,
@@ -543,8 +535,6 @@ public partial class AssociateViewModel : ViewModelBase
         _autosaveDelay = autosaveDelay ?? Task.Delay;
         _pdfExportService = pdfExportService ?? new AssociatePassdownPdfExportService(new AssociatePassdownPdfGenerator());
         _pdfSavePicker = pdfSavePicker ?? new UnavailablePdfSaveFilePicker();
-        _diagnosticExportService = diagnosticExportService ?? new UnavailableDiagnosticExportService();
-        _diagnosticExportPicker = diagnosticExportPicker ?? new UnavailableDiagnosticExportFilePicker();
         _templatePreferenceStore = templatePreferenceStore ?? new FileAssociatePassdownTemplatePreferenceStore(FileAssociatePassdownTemplatePreferenceStore.DefaultPath);
         _clipboardService = clipboardService ?? new UnavailableClipboardService();
         _refreshCoordinator = refreshCoordinator;
@@ -852,6 +842,29 @@ public partial class AssociateViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// Phase 21B: the date header's text ("Friday, October 16, 2026" plus a Today/Yesterday/Tomorrow
+    /// label), always relative to the Eastern operational date read at the moment it is shown.
+    /// </summary>
+    public AssociateDateNavigationPresentation DateNavigation => AssociateDateNavigationPresentation.Build(SelectedDate, EasternToday);
+
+    /// <summary>
+    /// Phase 21B: whether the calendar popup's built-in "today" marker (which follows the host's local
+    /// date) may be shown — only when the host date agrees with the Eastern operational date.
+    /// </summary>
+    public bool IsCalendarTodayHighlighted =>
+        AssociateDateNavigationPresentation.ShouldHighlightHostToday(_clock.UtcNow, TimeZoneInfo.Local, EasternToday);
+
+    /// <summary>
+    /// Phase 21B: re-reads "today" for the date header (e.g. when the calendar popup opens after the
+    /// Eastern date has rolled over). Changes nothing else — never loads or retrieves.
+    /// </summary>
+    public void RefreshTodayIndicators()
+    {
+        OnPropertyChanged(nameof(DateNavigation));
+        OnPropertyChanged(nameof(IsCalendarTodayHighlighted));
+    }
+
     public bool HasWorkspace => Workspace is not null;
 
     /// <summary>
@@ -1038,18 +1051,31 @@ public partial class AssociateViewModel : ViewModelBase
     /// today is already selected nothing reloads, so there is no redundant load or check. Returns
     /// true when the date changed. Calendar and History routes keep their explicit dates.
     /// </summary>
-    public bool SelectEasternToday()
+    public bool SelectEasternToday() => SelectEasternToday("Dashboard Open Passdown");
+
+    private bool SelectEasternToday(string trigger)
     {
         var today = EasternToday;
         if (SelectedDate == today)
         {
+            // Already today: nothing reloads, but the header's Today label may need to catch up with a
+            // rollover that happened while this date stayed selected.
+            RefreshTodayIndicators();
             return false;
         }
 
-        _logger?.LogInformation("Dashboard Open Passdown reset the Associate date from {PreviousDate} to today ({Today}).", SelectedDate, today);
+        _logger?.LogInformation("{Trigger} reset the Associate date from {PreviousDate} to today ({Today}).", trigger, SelectedDate, today);
         SelectedDate = today;
         return true;
     }
+
+    /// <summary>
+    /// Phase 21B: the date header's Today button — the same path as Dashboard → Open Passdown: today's
+    /// Eastern date read at click time, unsaved edits flushed by the ordinary date switch, and no
+    /// reload or retrieval when today is already selected.
+    /// </summary>
+    [RelayCommand]
+    private void GoToToday() => SelectEasternToday("Associate Today");
 
     partial void OnSelectedDateChanged(DateOnly value)
     {
@@ -1275,37 +1301,17 @@ public partial class AssociateViewModel : ViewModelBase
     private bool CanCopyForTeams(AssociateTeamsCopyKind kind) => HasWorkspace && !IsBusy;
 
     /// <summary>
-    /// Phase 7F Part F/G: builds the sanitized diagnostic export ZIP (local-only — never triggers a
-    /// network check) and hands it to the native save-file picker. Never flushes/reads draft edits;
-    /// diagnostics are independent of whatever is currently on screen.
+    /// Phase 21B: "More → PDF Style". Sets the same <see cref="SelectedTemplateOption"/> the PDF Style
+    /// picker always used, so the saved template preference behaves exactly as before.
     /// </summary>
     [RelayCommand]
-    private async Task ExportDiagnosticsAsync()
-    {
-        IsExportingDiagnostics = true;
-        DiagnosticsExportMessage = null;
-        try
-        {
-            var export = await _diagnosticExportService.BuildZipAsync().ConfigureAwait(true);
-            var saveResult = await _diagnosticExportPicker.SaveAsync(export.ZipBytes, export.SuggestedFileName).ConfigureAwait(true);
+    private void SelectTemplate(AssociatePassdownTemplate template) => SelectedTemplateOption = AssociatePassdownTemplateOption.For(template);
 
-            DiagnosticsExportMessage = saveResult.Outcome switch
-            {
-                DiagnosticExportOutcome.Saved => "Diagnostics saved.",
-                DiagnosticExportOutcome.Cancelled => null,
-                _ => saveResult.ErrorMessage ?? "Diagnostics could not be saved. Try again.",
-            };
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger?.LogError(ex, "Export Diagnostics failed unexpectedly.");
-            DiagnosticsExportMessage = "Diagnostics could not be created. Try again.";
-        }
-        finally
-        {
-            IsExportingDiagnostics = false;
-        }
-    }
+    public bool IsClassicTemplateSelected => SelectedTemplateOption.Value == AssociatePassdownTemplate.Classic;
+
+    public bool IsCompactTemplateSelected => SelectedTemplateOption.Value == AssociatePassdownTemplate.Compact;
+
+    public bool IsModernTemplateSelected => SelectedTemplateOption.Value == AssociatePassdownTemplate.Modern;
 
     [RelayCommand]
     private void PreviousDay() => SelectedDate = SelectedDate.AddDays(-1);
@@ -2244,19 +2250,5 @@ public partial class AssociateViewModel : ViewModelBase
     {
         public Task SetTextAsync(string text, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Clipboard is not available.");
-    }
-
-    /// <summary>Default <see cref="IDiagnosticExportService"/> when none is supplied — only reachable if the composition root failed to register the real one; every production path registers <see cref="Infrastructure.Diagnostics.DiagnosticExportService"/>.</summary>
-    private sealed class UnavailableDiagnosticExportService : IDiagnosticExportService
-    {
-        public Task<DiagnosticExportResult> BuildZipAsync(CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("Diagnostic export is not available.");
-    }
-
-    /// <summary>Default <see cref="IDiagnosticExportFilePicker"/> when none is supplied — only reachable if the composition root failed to register the real one; every production path registers <see cref="Services.AvaloniaDiagnosticExportFilePicker"/>.</summary>
-    private sealed class UnavailableDiagnosticExportFilePicker : IDiagnosticExportFilePicker
-    {
-        public Task<DiagnosticExportSaveResult> SaveAsync(byte[] zipBytes, string suggestedFileName, CancellationToken cancellationToken = default) =>
-            Task.FromResult(DiagnosticExportSaveResult.Failed("Diagnostic export is not available."));
     }
 }

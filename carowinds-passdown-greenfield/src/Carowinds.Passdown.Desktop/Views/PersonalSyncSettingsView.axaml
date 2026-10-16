@@ -272,6 +272,26 @@
           </Grid>
         </Border>
 
+        <!-- Phase 21B: Export Diagnostics lives here (moved from the Associate toolbar — an
+             administrative/support action, not part of preparing the passdown). Same export service,
+             privacy filtering, ZIP format and save picker as before. -->
+        <TextBlock Text="Diagnostics" Classes="sectionTitle" Margin="0" />
+        <Border Classes="panel">
+          <StackPanel Spacing="10">
+            <TextBlock Classes="muted" TextWrapping="Wrap"
+                       Text="Creates a support bundle with version, data-source status, and recent log information. It never includes notes, the Daily Feature, drafts, sync data, PDFs, or the database." />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <Button Content="Export Diagnostics…" Classes="secondaryAction"
+                      Command="{Binding Diagnostics.ExportDiagnosticsCommand}"
+                      AutomationProperties.Name="Export Diagnostics"
+                      AutomationProperties.HelpText="Saves a support diagnostic ZIP with version, source status, and recent log information. Contains no drafts or personal data." />
+              <TextBlock Text="{Binding Diagnostics.DiagnosticsExportMessage}" VerticalAlignment="Center" TextWrapping="Wrap"
+                         IsVisible="{Binding Diagnostics.DiagnosticsExportMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                         AutomationProperties.LiveSetting="Polite" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
       </StackPanel>
     </ScrollViewer>
 
