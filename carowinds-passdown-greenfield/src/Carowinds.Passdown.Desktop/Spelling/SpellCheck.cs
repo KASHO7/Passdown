@@ -55,13 +55,27 @@ public static class SpellCheck
     }
 }
 
-/// <summary>Per-TextBox spell-check wiring; see <see cref="SpellCheck"/>.</summary>
+/// <summary>
+/// Per-TextBox spell-check wiring; see <see cref="SpellCheck"/>.
+///
+/// Phase 20C lifecycle: the underline is drawn in the window's adorner layer, which is outside the
+/// TextBox's own visual subtree — so it does not disappear just because the editor does. The shell
+/// navigates by hiding whole sections (<c>IsVisible</c> on a wrapper; the views live for the app's
+/// lifetime and are never detached), and Avalonia only removes an adorner when its element leaves the
+/// visual tree, so before this phase the last underline kept rendering over whatever screen came next.
+/// The controller therefore owns the adorner's presence: it exists only while the editor is
+/// <em>live</em> (attached to a visual tree and effectively visible). Going not-live cancels the
+/// pending debounced check, removes the adorner from the layer and stops listening for dictionary
+/// changes; becoming live again re-attaches and re-checks the (unchanged) text.
+/// </summary>
 internal sealed class SpellCheckController : IDisposable
 {
     private readonly TextBox _textBox;
     private CancellationTokenSource? _pendingCheck;
     private TextPresenter? _presenter;
     private SpellCheckAdorner? _adorner;
+    private AdornerLayer? _adornerLayer;
+    private readonly List<Visual> _watchedAncestors = [];
     private ISpellCheckService? _subscribedService;
     private bool _disposed;
 
@@ -77,11 +91,17 @@ internal sealed class SpellCheckController : IDisposable
 
         if (_textBox.IsAttachedToVisualTree())
         {
-            AttachToTemplate();
-            Subscribe();
-            ScheduleCheck();
+            WatchAncestors();
+        }
+
+        if (IsLive)
+        {
+            GoLive();
         }
     }
+
+    /// <summary>True while the editor is on screen: attached to a visual tree and effectively visible.</summary>
+    internal bool IsLive => !_disposed && _textBox.IsAttachedToVisualTree() && _textBox.IsEffectivelyVisible;
 
     /// <summary>The issues from the most recent check (test seam).</summary>
     public IReadOnlyList<SpellingIssue> Issues { get; private set; } = [];
@@ -141,6 +161,7 @@ internal sealed class SpellCheckController : IDisposable
         _textBox.DetachedFromVisualTree -= OnDetachedFromVisualTree;
         _textBox.PropertyChanged -= OnTextBoxPropertyChanged;
         _textBox.RemoveHandler(Control.ContextRequestedEvent, OnContextRequested);
+        UnwatchAncestors();
         Unsubscribe();
         DetachAdorner();
     }
@@ -149,16 +170,16 @@ internal sealed class SpellCheckController : IDisposable
     {
         DetachAdorner();
         _presenter = e.NameScope.Find<TextPresenter>("PART_TextPresenter");
-        AttachAdorner();
+        if (IsLive)
+        {
+            AttachAdorner();
+        }
     }
 
     private void AttachToTemplate()
     {
-        if (_presenter is null)
-        {
-            _presenter = FindPresenter(_textBox);
-            AttachAdorner();
-        }
+        _presenter ??= FindPresenter(_textBox);
+        AttachAdorner();
     }
 
     private static TextPresenter? FindPresenter(Visual root)
@@ -188,10 +209,16 @@ internal sealed class SpellCheckController : IDisposable
 
         _adorner = new SpellCheckAdorner(_presenter);
         AdornerLayer.SetAdorner(_presenter, _adorner);
+        _adornerLayer = AdornerLayer.GetAdornerLayer(_presenter);
         _presenter.LayoutUpdated += OnPresenterLayoutUpdated;
         _adorner.Update(_textBox.Text, Issues);
     }
 
+    /// <summary>
+    /// Removes the underline visual. Clearing the attached property alone is not enough when the editor
+    /// has just left the visual tree: Avalonia then cannot walk up to the layer any more, so the adorner
+    /// is also removed from the layer captured when it was added (a no-op if Avalonia already did).
+    /// </summary>
     private void DetachAdorner()
     {
         if (_presenter is not null)
@@ -203,22 +230,94 @@ internal sealed class SpellCheckController : IDisposable
             }
         }
 
+        if (_adorner is not null)
+        {
+            _adornerLayer?.Children.Remove(_adorner);
+        }
+
         _adorner = null;
+        _adornerLayer = null;
     }
 
     private void OnPresenterLayoutUpdated(object? sender, EventArgs e) => _adorner?.InvalidateVisual();
 
     private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
     {
+        WatchAncestors();
+        UpdateLiveness();
+    }
+
+    private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        UnwatchAncestors();
+        GoDormant();
+    }
+
+    /// <summary>
+    /// Avalonia 12 has no public "effective visibility changed" event, so the editor and each visual
+    /// ancestor (up to the window) is watched for <see cref="Visual.IsVisibleProperty"/> — the shell's
+    /// section switch is exactly such an ancestor change. Watched only while attached; the ancestors are
+    /// re-collected on every attach, so a re-parented editor never keeps listening to its old parents.
+    /// </summary>
+    private void WatchAncestors()
+    {
+        UnwatchAncestors();
+        for (Visual? visual = _textBox; visual is not null; visual = visual.GetVisualParent())
+        {
+            visual.PropertyChanged += OnAncestorPropertyChanged;
+            _watchedAncestors.Add(visual);
+        }
+    }
+
+    private void UnwatchAncestors()
+    {
+        foreach (var visual in _watchedAncestors)
+        {
+            visual.PropertyChanged -= OnAncestorPropertyChanged;
+        }
+
+        _watchedAncestors.Clear();
+    }
+
+    private void OnAncestorPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property == Visual.IsVisibleProperty)
+        {
+            UpdateLiveness();
+        }
+    }
+
+    private void UpdateLiveness()
+    {
+        if (IsLive)
+        {
+            GoLive();
+        }
+        else
+        {
+            GoDormant();
+        }
+    }
+
+    /// <summary>Editor on screen (again): draw from a fresh check of the current, unchanged text.</summary>
+    private void GoLive()
+    {
         AttachToTemplate();
         Subscribe();
         ScheduleCheck();
     }
 
-    private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    /// <summary>
+    /// Editor gone (navigated away, hidden, detached, window closed): no pending check may complete, no
+    /// stale underline may stay on screen, and the shared service no longer references this editor. The
+    /// text itself is untouched; issues are recomputed when the editor is live again.
+    /// </summary>
+    private void GoDormant()
     {
         CancelPendingCheck();
         Unsubscribe();
+        DetachAdorner();
+        Issues = [];
     }
 
     private void OnTextBoxPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
@@ -235,7 +334,7 @@ internal sealed class SpellCheckController : IDisposable
     /// </summary>
     private void ScheduleCheck()
     {
-        if (_disposed || SpellCheck.Service is null)
+        if (!IsLive || SpellCheck.Service is null)
         {
             return;
         }
@@ -259,7 +358,8 @@ internal sealed class SpellCheckController : IDisposable
 
         Dispatcher.UIThread.Post(() =>
         {
-            if (!cancellationToken.IsCancellationRequested)
+            // A late result never renders: the check was superseded, or the editor left the screen.
+            if (!cancellationToken.IsCancellationRequested && IsLive)
             {
                 CheckNow();
             }
@@ -291,7 +391,13 @@ internal sealed class SpellCheckController : IDisposable
         }
     }
 
-    private void OnDictionaryChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(CheckNow);
+    private void OnDictionaryChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() =>
+    {
+        if (IsLive)
+        {
+            CheckNow();
+        }
+    });
 
     private void OnContextRequested(object? sender, ContextRequestedEventArgs e)
     {

@@ -114,4 +114,36 @@ public class DiagnosticReportFormatterTests
     [Fact]
     public void BuildSummaryText_WithoutSeasonPriceHistory_OmitsTheSection() =>
         Assert.DoesNotContain("Season price history:", DiagnosticReportFormatter.BuildSummaryText(BuildReport()));
+
+    [Fact]
+    public void BuildSummaryText_HistoricalBackfill_IsStateCountsAndDatesOnly()
+    {
+        var report = BuildReport() with
+        {
+            HistoricalBackfill = new global::Carowinds.Passdown.Application.HistoricalBackfill.HistoricalBackfillStatus(
+                2026, global::Carowinds.Passdown.Application.HistoricalBackfill.HistoricalBackfillState.PartiallyAvailable,
+                DatesInScope: 288, DatesComplete: 205, SessionQueued: 288, SessionChecked: 205, SessionFailed: 0,
+                OldestNotRetainedDate: new DateOnly(2026, 3, 24), LastActivityAtUtc: new DateTimeOffset(2026, 10, 16, 16, 5, 0, TimeSpan.Zero)),
+        };
+
+        var text = DiagnosticReportFormatter.BuildSummaryText(report);
+
+        Assert.Contains("Historical park-hours backfill (current year only, this app session):", text);
+        Assert.Contains("target year: 2026", text);
+        Assert.Contains("status: PartiallyAvailable", text);
+        Assert.Contains("dates holding official hours: 205", text);
+        Assert.Contains("dates remaining: 83", text);
+        Assert.Contains("this session: 205 of 288 checked, 0 failed", text);
+        Assert.Contains("official feed no longer publishes: 2026-03-24 and earlier", text);
+        Assert.Contains("last activity: 2026-10-16T16:05:00", text);
+    }
+
+    [Fact]
+    public void BuildSummaryText_HistoricalBackfillNotStarted_ShowsOnlyTheState()
+    {
+        var text = DiagnosticReportFormatter.BuildSummaryText(BuildReport() with { HistoricalBackfill = global::Carowinds.Passdown.Application.HistoricalBackfill.HistoricalBackfillStatus.NotStarted(2026) });
+
+        Assert.Contains("status: NotStarted", text);
+        Assert.DoesNotContain("dates remaining", text);
+    }
 }

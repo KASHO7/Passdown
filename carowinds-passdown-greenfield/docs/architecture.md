@@ -947,3 +947,32 @@ Full design: `docs/phase20a-spellcheck-price-history.md`. The two features share
   (`AssociateViewModel.PriceHistoryRequested` → `MainViewModel.PriceHistory`).
 
 Schemas: DB **16**; Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged. Nothing new is synced.
+
+---
+
+## Phase 20C additions — spell-check lifecycle and current-year historical backfill
+
+Full design and measurements: `docs/phase20c-historical-backfill.md`. The two workstreams share nothing.
+
+- **Desktop / spelling** — `SpellCheckController` owns the adorner's presence: it exists only while the
+  TextBox is attached *and* effectively visible (watched via `IsVisible` on the editor and its visual
+  ancestors). Hiding a section (the shell's navigation) removes the adorner, cancels the pending
+  debounce and drops the dictionary subscription; showing it again re-checks. Fixes underlines lingering
+  over other screens.
+- **Application** — `HistoricalBackfill.HistoricalBackfillService` (interactive-only, one session per
+  launch, after `IOfficialDataRefreshCoordinator.StartupCompletion`), `HistoricalBackfillPolicy`
+  (scope = Jan 1 of the current Eastern year → yesterday; completeness derived from `dated_results`),
+  `HistoricalBackfillStatus` (separate from `OfficialDataStatus`), `IParkHoursHistorySource`.
+  `OfficialRefreshGate` gains the low-priority `OfficialRefreshKind.HistoricalBackfill`
+  (`IsLowPriority`): never queues, never starts while operational work waits (`HasPriorityWorkWaiting`),
+  and is asked to cancel its in-flight request (`PriorityWorkWaiting`) when any other kind arrives.
+  The coordinator ignores low-priority gate activity. `DataChangeKind.HistoricalOfficialData`.
+  `DiagnosticReport.HistoricalBackfill`.
+- **Infrastructure** — `ParkHoursSource` implements `IParkHoursHistorySource` (same request/parsing;
+  structured "not retained" flag for the feed's JSON 404 on a past date). Storage reuses
+  `dated_results` via `RecordSuccessAsync` only — no migration, no raw responses.
+- **Desktop** — `OperationsCalendarViewModel` quietly reloads the displayed month on relevant local
+  changes (`IDataChangeNotifier`), promotes the viewed month for the backfill, and shows
+  `HistoricalBackfillStatusPresentation` as one muted header line.
+
+Schemas: DB **16**, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged. Nothing new is synced.

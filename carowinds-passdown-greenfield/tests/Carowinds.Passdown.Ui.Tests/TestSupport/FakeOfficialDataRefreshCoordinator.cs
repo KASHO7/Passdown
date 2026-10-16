@@ -32,6 +32,8 @@ internal sealed class FakeOfficialDataRefreshCoordinator : IOfficialDataRefreshC
         StatusChanged?.Invoke(this, status);
     }
 
+    public Task StartupCompletion => Task.CompletedTask;
+
     public void Start() => StartCount++;
 
     public Task StopAsync() => Task.CompletedTask;

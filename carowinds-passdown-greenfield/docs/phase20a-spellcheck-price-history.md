@@ -97,6 +97,11 @@ list, or pass extra terms to `SpellCheckService`'s constructor. Not Personal Syn
 - "Ignore" is per app session; there is no in-app user dictionary (Windows' own is used).
 - Underline position is computed from Avalonia's text layout; exotic fonts/scaling should be checked
   in the Windows run.
+- ~~Underlines stayed visible over other screens after navigating away until the word was corrected~~
+  (confirmed in RC.4 Windows testing) — fixed in Phase 20C: the underline lives in the window's adorner
+  layer while the shell navigates by hiding sections, so the controller now removes it whenever the
+  editor is hidden or detached, cancels the pending check, and re-checks when the editor is shown
+  again. See `docs/phase20c-historical-backfill.md` Part A.
 
 ---
 

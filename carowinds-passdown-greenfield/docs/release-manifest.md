@@ -1458,3 +1458,18 @@ To be run with `docs/phase20b-rc4-windows-checklist.md` against the hashes above
   15 → 16 migration, Windows spell checking and the Price History screen exercised there, and the
   19A/19B/PDF/Teams regressions re-run. None of that has run yet.
 - **Distribution: DISTRIBUTION LICENSE DECISION PENDING** (QuestPDF).
+
+---
+
+# Unreleased after 0.1.0-rc.4 — Phase 20C (next candidate: `0.1.0-rc.5`, not yet packaged)
+
+Phase 20C changed shipped code after RC.4 was built. RC.4 artifacts are unchanged and were not rebuilt;
+the next package must be versioned **`0.1.0-rc.5`**. Details: `docs/phase20c-historical-backfill.md`.
+
+| | |
+|---|---|
+| Changes | Spell-check underline no longer lingers over other screens after navigating away (RC.4 Windows finding); current-year historical park-hours backfill (background, lowest priority, resumable, ~0.1–0.2 MB/year); Operations Calendar live-updates from local changes; historical status line under the Calendar month |
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 — unchanged (no migration) |
+| Deterministic tests | **2952/2952** = 136 Domain + 873 Application + 309 Documents + 782 Infrastructure + 807 Ui together + 26 `OperationsCalendarViewTests` + 10 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` alone (`-c Release --filter "Category!=LiveSmoke"`). The new real-Window class joins the documented run-alone partition (same headless thread-affinity issue when mixed) |
+| Build | `dotnet build CarowindsPassdown.slnx -c Release` — 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in `docs/phase20c-historical-backfill.md` (S1–S6, H1–H11) plus the outstanding RC.4 list above |

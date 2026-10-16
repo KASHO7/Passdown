@@ -2,6 +2,8 @@ using Carowinds.Passdown.Application.Changes;
 using Carowinds.Passdown.Application.Concurrency;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Freshness;
+using Carowinds.Passdown.Application.HistoricalBackfill;
+using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Tests.TestSupport;
@@ -264,7 +266,85 @@ public sealed class OfficialDataRefreshCoordinatorTests
         Assert.Equal(1, h.Orchestrator.ComprehensiveRefreshCallCount);
     }
 
-    // ------------------------------------------------------------------ startup (spec §5/§6/§36/§47)
+    // ------------------------------------------------------------------ Phase 20C: historical backfill interplay
+
+    private sealed class OrderedHistorySource(List<string> log) : IParkHoursHistorySource
+    {
+        public string SourceId => "park-hours.official";
+
+        public Task<HistoricalParkHoursResult> RetrieveHistoricalAsync(DateOnly date, CancellationToken cancellationToken)
+        {
+            lock (log)
+            {
+                log.Add("history");
+            }
+
+            var evidence = new SourceEvidence("Carowinds Park Hours", new Uri("https://www.sixflags.com/carowinds/park-hours"), T0, RetrievalStatus.Closed, "Closed.", RetrievalStrategy.DirectApi, date, confirmedDate: date);
+            return Task.FromResult(new HistoricalParkHoursResult(SourceResult<ParkHoursPayload>.WithoutPayload(SourceId, evidence), false));
+        }
+    }
+
+    /// <summary>Spec §38: on a fresh install the operational startup work (maintenance, then today/upcoming) runs before any history request, and the app needs none of it to be usable.</summary>
+    [Fact]
+    public async Task FreshInstall_OperationalStartupWorkRunsBeforeAnyHistoricalRequest()
+    {
+        var h = CreateHarness();
+        var log = h.Finalizer.Log; // shared with the maintenance runner
+        h.Orchestrator.OnComprehensiveRefresh = async _ =>
+        {
+            lock (log)
+            {
+                log.Add("comprehensive");
+            }
+
+            await h.WriteSourceStateAsync(h.Clock.UtcNow);
+        };
+        var backfill = new HistoricalBackfillService(
+            new OrderedHistorySource(log), h.Dated, h.Gate, h.Clock,
+            () => h.Coordinator.StartupCompletion,
+            options: new HistoricalBackfillOptions { StartDelay = TimeSpan.Zero, RequestSpacing = TimeSpan.Zero, YieldQuietPeriod = TimeSpan.FromMilliseconds(5) });
+
+        h.Coordinator.Start();
+        backfill.Start();
+        await backfill.SessionTask!.WaitAsync(TimeSpan.FromSeconds(10));
+        await h.Coordinator.StopAsync();
+
+        List<string> order;
+        lock (log)
+        {
+            order = [.. log];
+        }
+
+        var firstHistory = order.IndexOf("history");
+        Assert.True(firstHistory > 0, string.Join(",", order));
+        Assert.True(order.IndexOf("maintenance") is >= 0 and var m && m < firstHistory, string.Join(",", order));
+        Assert.All(order.Take(firstHistory), step => Assert.NotEqual("history", step));
+        Assert.Equal(HistoricalBackfillState.UpToDate, backfill.CurrentStatus.State);
+    }
+
+    /// <summary>Spec §25: historical work is enrichment — it never publishes an OfficialData change (no Dashboard reload) and never shows "Checking official data…".</summary>
+    [Fact]
+    public async Task HistoricalBackfillThroughTheGate_NeverTouchesTheOperationalStatusOrDashboardInvalidation()
+    {
+        var h = CreateHarness();
+        await h.WriteSourceStateAsync(T0);
+        await h.Coordinator.RunDueCheckAsync();
+        var before = h.Coordinator.CurrentStatus;
+        var statusChanges = 0;
+        h.Coordinator.StatusChanged += (_, _) => statusChanges++;
+
+        using (var entry = await h.Gate.TryEnterAsync(new OfficialRefreshActivity(OfficialRefreshKind.HistoricalBackfill, Today.AddDays(-3)), waitForInProcessWork: false))
+        {
+            Assert.NotNull(entry);
+            Assert.False(h.Coordinator.CurrentStatus.IsChecking);
+        }
+
+        await Task.Delay(20);
+        Assert.Equal(0, statusChanges);
+        Assert.Same(before, h.Coordinator.CurrentStatus);
+        Assert.DoesNotContain(h.Changes, c => c.Kind == DataChangeKind.OfficialData);
+    }
+
 
     [Fact]
     public async Task Startup_MissingData_RunsComprehensiveCheck()

@@ -25,7 +25,8 @@ public sealed class DiagnosticReportBuilder(
     IInteractiveAppLogProvider? appLogProvider = null,
     BuildIdentity? buildIdentity = null,
     ICatalogProductRepository? catalogProductRepository = null,
-    ISeasonPriceHistoryRepository? seasonPriceHistoryRepository = null) : IDiagnosticReportBuilder
+    ISeasonPriceHistoryRepository? seasonPriceHistoryRepository = null,
+    HistoricalBackfill.IHistoricalBackfillService? historicalBackfill = null) : IDiagnosticReportBuilder
 {
     private const int MaxLogLines = 200;
 
@@ -57,6 +58,7 @@ public sealed class DiagnosticReportBuilder(
             OfficialData = OfficialDataStatus.Compute(states),
             CatalogLifecycle = await BuildCatalogLifecycleAsync(cancellationToken).ConfigureAwait(false),
             SeasonPriceHistory = await BuildSeasonPriceHistoryAsync(cancellationToken).ConfigureAwait(false),
+            HistoricalBackfill = historicalBackfill?.CurrentStatus,
         };
     }
 

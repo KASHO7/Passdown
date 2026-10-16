@@ -569,7 +569,7 @@ public partial class AssociateViewModel : ViewModelBase
         {
             dataChangeNotifier.Changed += (_, change) =>
             {
-                if (change.Kind == DataChangeKind.OfficialData)
+                if (change.Kind is DataChangeKind.OfficialData or DataChangeKind.HistoricalOfficialData)
                 {
                     _uiDispatcher.Post(() => _pendingOfficialDataReload = HandleOfficialDataChangedAsync(change));
                 }

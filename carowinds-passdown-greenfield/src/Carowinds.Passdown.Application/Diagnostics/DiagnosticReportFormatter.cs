@@ -49,6 +49,12 @@ public static class DiagnosticReportFormatter
             sb.AppendLine(CultureInfo.InvariantCulture, $"  most recent price change first seen: {FormatTimestamp(priceHistory.MostRecentChangeAt)}");
         }
 
+        if (report.HistoricalBackfill is { } history)
+        {
+            sb.AppendLine();
+            AppendHistoricalBackfillLines(sb, history);
+        }
+
         sb.AppendLine();
         sb.AppendLine(CultureInfo.InvariantCulture, $"See source-status.txt for per-source detail ({report.Sources.Count} sources) and logs/ for recent scheduled-refresh and app activity.");
         return sb.ToString();
@@ -107,6 +113,29 @@ public static class DiagnosticReportFormatter
         {
             sb.AppendLine(CultureInfo.InvariantCulture, $"  not updated on last attempt: {string.Join(", ", status.FailedSources.Select(s => s.SourceId))}");
         }
+    }
+
+    /// <summary>Phase 20C: current-year historical backfill — state, counts and dates only, never stored rows.</summary>
+    private static void AppendHistoricalBackfillLines(StringBuilder sb, HistoricalBackfill.HistoricalBackfillStatus history)
+    {
+        sb.AppendLine("Historical park-hours backfill (current year only, this app session):");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"  target year: {history.TargetYear}");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"  status: {history.State}");
+        if (history.State == HistoricalBackfill.HistoricalBackfillState.NotStarted)
+        {
+            return;
+        }
+
+        sb.AppendLine(CultureInfo.InvariantCulture, $"  past dates in scope: {history.DatesInScope}");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"  dates holding official hours: {history.DatesComplete}");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"  dates remaining: {history.DatesRemaining}");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"  this session: {history.SessionChecked} of {history.SessionQueued} checked, {history.SessionFailed} failed");
+        if (history.OldestNotRetainedDate is { } boundary)
+        {
+            sb.AppendLine(CultureInfo.InvariantCulture, $"  official feed no longer publishes: {boundary:yyyy-MM-dd} and earlier");
+        }
+
+        sb.AppendLine(CultureInfo.InvariantCulture, $"  last activity: {FormatTimestamp(history.LastActivityAtUtc)}");
     }
 
     /// <summary>Phase 19B: counts only — never product names, prices or payloads.</summary>

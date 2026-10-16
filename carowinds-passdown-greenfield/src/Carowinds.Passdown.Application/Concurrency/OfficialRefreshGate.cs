@@ -14,6 +14,13 @@ public enum OfficialRefreshKind
 
     /// <summary>The manual "Run Deep Refresh" action.</summary>
     DeepRefresh,
+
+    /// <summary>
+    /// Phase 20C: one date of the current-year historical park-hours backfill. The only low-priority
+    /// kind: it never waits for the gate, and any other kind arriving while it holds the gate asks it to
+    /// yield (<see cref="IOfficialRefreshGate.PriorityWorkWaiting"/>).
+    /// </summary>
+    HistoricalBackfill,
 }
 
 /// <summary>One unit of online work passing through the gate. <see cref="Date"/> is set for <see cref="OfficialRefreshKind.DateCheck"/> only.</summary>
@@ -21,6 +28,9 @@ public sealed record OfficialRefreshActivity(OfficialRefreshKind Kind, DateOnly?
 {
     /// <summary>True for the kinds that check every official source (and so may honestly be shown as "Checking official data…").</summary>
     public bool IsComprehensive => Kind is OfficialRefreshKind.Comprehensive or OfficialRefreshKind.StartupMaintenance or OfficialRefreshKind.DeepRefresh;
+
+    /// <summary>Phase 20C: true for opportunistic background enrichment that must always give way to operational work.</summary>
+    public bool IsLowPriority => Kind is OfficialRefreshKind.HistoricalBackfill;
 }
 
 /// <summary>
@@ -43,6 +53,16 @@ public interface IOfficialRefreshGate
     event EventHandler<OfficialRefreshActivity>? Completed;
 
     /// <summary>
+    /// Phase 20C: raised (on the entering thread) when operational work — any activity that is not
+    /// <see cref="OfficialRefreshActivity.IsLowPriority"/> — starts trying to enter while low-priority
+    /// work holds the gate, so the holder can cancel its in-flight request and release at once.
+    /// </summary>
+    event EventHandler? PriorityWorkWaiting;
+
+    /// <summary>Phase 20C: true while operational work is waiting for (or about to take) the gate. Low-priority work never starts then.</summary>
+    bool HasPriorityWorkWaiting { get; }
+
+    /// <summary>
     /// Tries to start <paramref name="activity"/>. With <paramref name="waitForInProcessWork"/>, an
     /// in-process activity already holding the gate is waited for (an explicit user action queues
     /// behind an automatic check rather than failing); without it, the attempt returns
@@ -57,26 +77,66 @@ public sealed class OfficialRefreshGate(Func<IScheduledRefreshLock>? crossProces
 {
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private OfficialRefreshActivity? _current;
+    private int _priorityWaiters;
 
     public OfficialRefreshActivity? Current => Volatile.Read(ref _current);
+
+    public bool HasPriorityWorkWaiting => Volatile.Read(ref _priorityWaiters) > 0;
 
     public event EventHandler<OfficialRefreshActivity>? Started;
 
     public event EventHandler<OfficialRefreshActivity>? Completed;
 
+    public event EventHandler? PriorityWorkWaiting;
+
     public async Task<IDisposable?> TryEnterAsync(OfficialRefreshActivity activity, bool waitForInProcessWork, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(activity);
 
-        if (waitForInProcessWork)
+        if (activity.IsLowPriority)
         {
-            await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-        else if (!await _semaphore.WaitAsync(TimeSpan.Zero, cancellationToken).ConfigureAwait(false))
-        {
-            return null;
+            // Low-priority work never queues: it starts only when nothing else holds or wants the gate.
+            if (HasPriorityWorkWaiting || !await _semaphore.WaitAsync(TimeSpan.Zero, cancellationToken).ConfigureAwait(false))
+            {
+                return null;
+            }
+
+            if (HasPriorityWorkWaiting)
+            {
+                _semaphore.Release();
+                return null;
+            }
+
+            return CompleteEntry(activity, cancellationToken);
         }
 
+        Interlocked.Increment(ref _priorityWaiters);
+        try
+        {
+            if (Current is { IsLowPriority: true })
+            {
+                RaisePriorityWorkWaiting();
+            }
+
+            if (waitForInProcessWork)
+            {
+                await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            else if (!await _semaphore.WaitAsync(TimeSpan.Zero, cancellationToken).ConfigureAwait(false))
+            {
+                return null;
+            }
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _priorityWaiters);
+        }
+
+        return CompleteEntry(activity, cancellationToken);
+    }
+
+    private IDisposable? CompleteEntry(OfficialRefreshActivity activity, CancellationToken cancellationToken)
+    {
         // SemaphoreSlim observes cancellation asynchronously: a waiter cancelled just before a Release
         // can still be handed the slot. A superseded request (e.g. the Associate date already changed)
         // must never start work, so give the slot straight back.
@@ -105,9 +165,24 @@ public sealed class OfficialRefreshGate(Func<IScheduledRefreshLock>? crossProces
             throw;
         }
 
-        Volatile.Write(ref _current, activity);
+        // Full fence: operational work announces itself (Interlocked increment) before reading Current,
+        // and low-priority work re-checks HasPriorityWorkWaiting after this write — so one of the two
+        // always sees the other and a background request never makes operational work wait it out.
+        Interlocked.Exchange(ref _current, activity);
         Raise(Started, activity);
         return new Entry(this, activity, crossProcessLock);
+    }
+
+    private void RaisePriorityWorkWaiting()
+    {
+        try
+        {
+            PriorityWorkWaiting?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception)
+        {
+            // A yielding background job must never break the operational work asking it to yield.
+        }
     }
 
     private void Exit(OfficialRefreshActivity activity, IScheduledRefreshLock? crossProcessLock)

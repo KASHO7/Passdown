@@ -69,6 +69,9 @@ public sealed record DiagnosticReport(
 
     /// <summary>Phase 20A: season price-history counts and the latest change time — never product names or prices.</summary>
     public Persistence.SeasonPriceHistorySummary? SeasonPriceHistory { get; init; }
+
+    /// <summary>Phase 20C: the current-year historical backfill's own status — counts, dates and state only, never rows.</summary>
+    public HistoricalBackfill.HistoricalBackfillStatus? HistoricalBackfill { get; init; }
 }
 
 /// <summary>

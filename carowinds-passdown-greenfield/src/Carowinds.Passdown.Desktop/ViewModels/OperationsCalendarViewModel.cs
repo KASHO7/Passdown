@@ -1,6 +1,9 @@
 using Carowinds.Passdown.Application.Calendar;
+using Carowinds.Passdown.Application.Changes;
+using Carowinds.Passdown.Application.HistoricalBackfill;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Presentation;
+using Carowinds.Passdown.Desktop.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -23,8 +26,11 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     private readonly IOperationsCalendarService _service;
     private readonly IClock _clock;
     private readonly ILogger<OperationsCalendarViewModel>? _logger;
+    private readonly IHistoricalBackfillService? _historicalBackfill;
 
     private int _loadVersion;
+    private bool _quietReloadInFlight;
+    private bool _quietReloadRequested;
     private Task _pendingLoad = Task.CompletedTask;
 
     /// <summary>
@@ -74,6 +80,13 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     [ObservableProperty]
     public partial string? ErrorMessage { get; set; }
 
+    /// <summary>Phase 20C: the subtle historical-data line under the month title (hidden when <see cref="HistoricalBackfillStatusPresentation.Text"/> is null).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasHistoryStatus))]
+    public partial HistoricalBackfillStatusPresentation HistoryStatus { get; set; } = HistoricalBackfillStatusPresentation.Hidden;
+
+    public bool HasHistoryStatus => HistoryStatus.Text is not null;
+
     /// <summary>Raised by "Open Passdown" (spec Part F/G) with the Calendar's currently selected date — <see cref="MainViewModel"/> is the one place that sets <see cref="AssociateViewModel.SelectedDate"/> from it.</summary>
     public event EventHandler<DateOnly>? OpenAssociateRequested;
 
@@ -100,7 +113,13 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     /// <summary>Raised by "Open Operational Notes" (spec Part F) — generic navigation only, mirroring Dashboard's own "Open Operational Notes" (Phase 11C).</summary>
     public event EventHandler? OpenOperationalNotesRequested;
 
-    public OperationsCalendarViewModel(IOperationsCalendarService service, IClock clock, ILogger<OperationsCalendarViewModel>? logger = null)
+    public OperationsCalendarViewModel(
+        IOperationsCalendarService service,
+        IClock clock,
+        ILogger<OperationsCalendarViewModel>? logger = null,
+        IDataChangeNotifier? dataChangeNotifier = null,
+        IHistoricalBackfillService? historicalBackfill = null,
+        IUiDispatcher? uiDispatcher = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -108,6 +127,7 @@ public partial class OperationsCalendarViewModel : ViewModelBase
         _service = service;
         _clock = clock;
         _logger = logger;
+        _historicalBackfill = historicalBackfill;
 
         var today = TodayEastern();
         DisplayedMonth = new DateOnly(today.Year, today.Month, 1);
@@ -115,6 +135,90 @@ public partial class OperationsCalendarViewModel : ViewModelBase
         _suppressAutoLoad = false;
 
         _pendingLoad = LoadAsync();
+
+        var dispatcher = uiDispatcher ?? new AvaloniaUiDispatcher();
+
+        // Phase 20C: the Calendar now follows committed local changes (official data from any refresh,
+        // historical backfill, drafts, notes, sync) the same way the Dashboard does — a local re-read of
+        // the displayed month, never a poll and never a network request.
+        if (dataChangeNotifier is not null)
+        {
+            dataChangeNotifier.Changed += (_, change) => dispatcher.Post(() => HandleDataChange(change));
+        }
+
+        if (historicalBackfill is not null)
+        {
+            HistoryStatus = HistoricalBackfillStatusPresentation.Build(historicalBackfill.CurrentStatus);
+            historicalBackfill.StatusChanged += (_, status) => dispatcher.Post(() => HistoryStatus = HistoricalBackfillStatusPresentation.Build(status));
+        }
+    }
+
+    /// <summary>
+    /// Phase 20C: reacts to one committed local change (on the UI thread). A change naming a date outside
+    /// the displayed grid is ignored; anything else quietly re-reads the displayed month (no loading bar,
+    /// the selection and month stay put). Internal so tests can drive it without a dispatcher.
+    /// </summary>
+    internal void HandleDataChange(DataChange change)
+    {
+        if (change.Kind != DataChangeKind.OperatingDay
+            && change.OperatingDate is { } date
+            && Snapshot is { Days.Count: > 0 } shown
+            && (date < shown.Days[0].Date || date > shown.Days[^1].Date))
+        {
+            return;
+        }
+
+        _logger?.LogDebug("Operations Calendar local data invalidated ({ChangeKind}); reloading the displayed month from local data.", change.Kind);
+        RequestQuietReload();
+    }
+
+    /// <summary>Coalesced quiet reload: changes arriving while one runs collapse into one follow-up.</summary>
+    internal void RequestQuietReload()
+    {
+        if (_quietReloadInFlight || IsLoading)
+        {
+            _quietReloadRequested = true;
+            return;
+        }
+
+        _pendingLoad = RunQuietReloadsAsync();
+    }
+
+    private async Task RunQuietReloadsAsync()
+    {
+        _quietReloadInFlight = true;
+        try
+        {
+            do
+            {
+                _quietReloadRequested = false;
+                await ReloadQuietlyAsync().ConfigureAwait(true);
+            }
+            while (_quietReloadRequested);
+        }
+        finally
+        {
+            _quietReloadInFlight = false;
+        }
+    }
+
+    private async Task ReloadQuietlyAsync()
+    {
+        var version = ++_loadVersion;
+        try
+        {
+            var snapshot = await _service.LoadAsync(DisplayedMonth, SelectedDate).ConfigureAwait(true);
+            if (version == _loadVersion)
+            {
+                Snapshot = snapshot;
+                ErrorMessage = null;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Keep showing the last good month; the next change or navigation reloads it.
+            _logger?.LogWarning(ex, "Failed to reload the Operations Calendar after a local change.");
+        }
     }
 
     public bool HasSnapshot => Snapshot is not null;
@@ -126,6 +230,10 @@ public partial class OperationsCalendarViewModel : ViewModelBase
 
     partial void OnDisplayedMonthChanged(DateOnly value)
     {
+        // Phase 20C: a viewed current-year month with missing history is checked next (still behind
+        // every operational refresh). Local only — this never starts a request by itself.
+        _historicalBackfill?.PrioritizeMonth(value);
+
         if (!_suppressAutoLoad)
         {
             _pendingLoad = LoadAsync();
@@ -272,6 +380,12 @@ public partial class OperationsCalendarViewModel : ViewModelBase
             if (version == _loadVersion)
             {
                 IsLoading = false;
+
+                // A local change that arrived while this load ran may have committed after it read.
+                if (_quietReloadRequested && !_quietReloadInFlight)
+                {
+                    _pendingLoad = RunQuietReloadsAsync();
+                }
             }
         }
     }

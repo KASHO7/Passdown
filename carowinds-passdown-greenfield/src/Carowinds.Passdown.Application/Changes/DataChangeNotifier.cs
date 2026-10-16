@@ -25,6 +25,13 @@ public enum DataChangeKind
 
     /// <summary>A passdown was finalized into History by the app's startup catch-up.</summary>
     FinalizedHistory,
+
+    /// <summary>
+    /// Phase 20C: the current-year historical backfill stored official park hours for past dates.
+    /// <see cref="DataChange.OperatingDate"/> is the newest date stored in that batch's month; only
+    /// views showing past dates (Operations Calendar, Associate on a past date) care.
+    /// </summary>
+    HistoricalOfficialData,
 }
 
 /// <summary>

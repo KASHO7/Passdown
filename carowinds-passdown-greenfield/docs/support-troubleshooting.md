@@ -339,6 +339,25 @@ catalog lifecycle" section (active / missing once / inactive / season-tag counts
   (Settings → Time & language → Language), or the spell checker failed — the app log then has one line
   "Spell checking was turned off for this session…". Typing still works normally.
 - Spell checking is local to Windows; nothing you type is sent anywhere or written to logs.
+- Phase 20C: an underline should disappear as soon as you switch to another screen and come back when
+  you return to the field. If a red squiggle stays visible on Dashboard / Calendar / Products, that is a
+  regression — note the steps and export diagnostics.
+
+## Historical park hours / "Historical data partially available" (Phase 20C)
+
+- After startup, the app quietly fills in this calendar year's past park hours (newest first) from the
+  official park-hours feed. The line under the Operations Calendar month shows "Loading this year's
+  history…", "Historical data: N of M dates checked", "Historical data up to date" or "Historical data
+  partially available". It is separate from "Official data checked …", which reflects today's and
+  upcoming data only.
+- **Partially available** is normal: the official feed keeps only a limited history (on 2026-10-16 it
+  started at March 25), and the tooltip names the date before which hours are no longer published.
+  Those dates are left empty — nothing is guessed. If the tooltip instead says some dates couldn't be
+  checked (offline/outage), they are retried automatically the next time the app starts.
+- It never delays Check Online, Deep Refresh or automatic checks (it steps aside immediately), never runs
+  in the 6 AM scheduled task, and is never synced. Expected disk use: about 0.1–0.2 MB per year.
+- App log lines start with "Historical backfill …" (start/resume/finished/yielded/paused). Diagnostics
+  `summary.txt` has a "Historical park-hours backfill" section (target year, status, counts, boundary).
 
 ## Season pass price history (Phase 20A)
 

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Carowinds.Passdown.Application.HistoricalBackfill;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain;
@@ -15,8 +16,13 @@ namespace Carowinds.Passdown.Infrastructure.Retrieval.Sources;
 /// confirmed by a real browser network trace, not guessed — so this uses
 /// <see cref="RetrievalStrategy.DirectApi"/> rather than Playwright (spec §6.4: prefer a
 /// dependable direct endpoint once one is actually observed).
+///
+/// Phase 20C: also the current-year historical backfill's source (<see cref="IParkHoursHistorySource"/>)
+/// — the same daily request and parsing, plus a structured "not retained" signal for past dates (see
+/// docs/phase20c-historical-backfill.md). The feed's monthly form is deliberately not used for history:
+/// observed live, it returns only today-forward dates (a past month returns just its last day).
 /// </summary>
-public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock clock) : IOfficialDataSource<ParkHoursPayload>
+public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock clock) : IOfficialDataSource<ParkHoursPayload>, IParkHoursHistorySource
 {
     private const int CarowindsParkId = 30;
     private const string ParkOperatingTypeName = "Park";
@@ -46,6 +52,19 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
             throw new ArgumentException("Park hours retrieval requires a requested date.", nameof(request));
         }
 
+        return (await RetrieveCoreAsync(requestedDate, cancellationToken).ConfigureAwait(false)).Result;
+    }
+
+    public async Task<HistoricalParkHoursResult> RetrieveHistoricalAsync(DateOnly date, CancellationToken cancellationToken)
+    {
+        var (result, notFound) = await RetrieveCoreAsync(date, cancellationToken).ConfigureAwait(false);
+        var today = DateOnly.FromDateTime(EasternTimeZone.ConvertFromUtc(clock.UtcNow).DateTime);
+        return new HistoricalParkHoursResult(result, NotRetainedBySource: notFound && date < today);
+    }
+
+    /// <summary>The single retrieval; <c>NotFound</c> is true only for the feed's own JSON "Not Found" answer (HTTP 404 with its error body), never for a network failure.</summary>
+    private async Task<(SourceResult<ParkHoursPayload> Result, bool NotFound)> RetrieveCoreAsync(DateOnly requestedDate, CancellationToken cancellationToken)
+    {
         var endpoint = new Uri(
             string.Create(CultureInfo.InvariantCulture, $"https://d3ln8b3jj5b2pq.cloudfront.net/operating-hours/park/{CarowindsParkId}?date={requestedDate:yyyyMMdd}"));
         var timeChecked = EasternTimeZone.ConvertFromUtc(clock.UtcNow);
@@ -57,16 +76,17 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return Error(timeChecked, requestedDate, ex);
+            return (Error(timeChecked, requestedDate, ex), false);
         }
 
         if (!response.IsSuccessStatusCode)
         {
-            return Error(
+            return (Error(
                 timeChecked,
                 requestedDate,
                 new InvalidOperationException(
-                    $"GET {endpoint} returned {(int)response.StatusCode} {response.StatusCode}. Body: {Truncate(response.Body)}"));
+                    $"GET {endpoint} returned {(int)response.StatusCode} {response.StatusCode}. Body: {Truncate(response.Body)}")),
+                IsFeedNotFound(response));
         }
 
         ParkHoursApiResponse? parsed;
@@ -76,7 +96,7 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
         }
         catch (JsonException ex)
         {
-            return Error(timeChecked, requestedDate, ex);
+            return (Error(timeChecked, requestedDate, ex), false);
         }
 
         if (parsed is null || parsed.Error is not null || parsed.Dates is not { Count: 1 })
@@ -84,27 +104,27 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
             var shapeDescription = parsed?.Error is { } apiError
                 ? $"error='{apiError}'"
                 : $"{parsed?.Dates?.Count ?? 0} date entries";
-            return Error(
+            return (Error(
                 timeChecked,
                 requestedDate,
                 new InvalidOperationException(
-                    $"Unexpected response shape from {endpoint}: {shapeDescription}. Body: {Truncate(response.Body)}"));
+                    $"Unexpected response shape from {endpoint}: {shapeDescription}. Body: {Truncate(response.Body)}")), false);
         }
 
         var day = parsed.Dates[0];
         if (!TryParseResponseDate(day.Date, out var confirmedDate) || confirmedDate != requestedDate)
         {
-            return Error(
+            return (Error(
                 timeChecked,
                 requestedDate,
                 new InvalidOperationException(
                     $"Requested {requestedDate:yyyy-MM-dd} but the response confirmed '{day.Date}'."),
-                "We couldn't confirm park hours for the requested date.");
+                "We couldn't confirm park hours for the requested date."), false);
         }
 
         if (day.IsParkClosed)
         {
-            return SourceResult<ParkHoursPayload>.WithoutPayload(
+            return (SourceResult<ParkHoursPayload>.WithoutPayload(
                 SourceId,
                 new SourceEvidence(
                     "Carowinds Park Hours",
@@ -114,7 +134,7 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
                     $"Carowinds is officially closed on {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}.",
                     RetrievalStrategy.DirectApi,
                     requestedDate: requestedDate,
-                    confirmedDate: confirmedDate));
+                    confirmedDate: confirmedDate)), false);
         }
 
         var parkItem = day.Operatings?
@@ -123,7 +143,7 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
 
         if (parkItem is null || string.IsNullOrWhiteSpace(parkItem.TimeFrom) || string.IsNullOrWhiteSpace(parkItem.TimeTo))
         {
-            return SourceResult<ParkHoursPayload>.WithoutPayload(
+            return (SourceResult<ParkHoursPayload>.WithoutPayload(
                 SourceId,
                 new SourceEvidence(
                     "Carowinds Park Hours",
@@ -133,21 +153,21 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
                     $"Hours for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)} have not been published yet.",
                     RetrievalStrategy.DirectApi,
                     requestedDate: requestedDate,
-                    confirmedDate: confirmedDate));
+                    confirmedDate: confirmedDate)), false);
         }
 
         if (!TryParseClockTime(parkItem.TimeFrom, out var openingTime) || !TryParseClockTime(parkItem.TimeTo, out var closingTime))
         {
-            return Error(
+            return (Error(
                 timeChecked,
                 requestedDate,
                 new InvalidOperationException(
-                    $"Unparseable Park operating times '{parkItem.TimeFrom}'-'{parkItem.TimeTo}' for {requestedDate:yyyy-MM-dd}."));
+                    $"Unparseable Park operating times '{parkItem.TimeFrom}'-'{parkItem.TimeTo}' for {requestedDate:yyyy-MM-dd}.")), false);
         }
 
         var (waterparkOpening, waterparkClosing) = ReadWaterparkHours(day);
 
-        return SourceResult<ParkHoursPayload>.Success(
+        return (SourceResult<ParkHoursPayload>.Success(
             SourceId,
             new SourceEvidence(
                 "Carowinds Park Hours",
@@ -158,7 +178,7 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
                 RetrievalStrategy.DirectApi,
                 requestedDate: requestedDate,
                 confirmedDate: confirmedDate),
-            new ParkHoursPayload(openingTime, closingTime, waterparkOpening, waterparkClosing));
+            new ParkHoursPayload(openingTime, closingTime, waterparkOpening, waterparkClosing)), false);
     }
 
     /// <summary>
@@ -209,6 +229,28 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
         TimeOnly.TryParseExact(value, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out time);
 
     private static string FormatTime(TimeOnly time) => time.ToString("h:mm tt", PresentationCulture.UnitedStates);
+
+    /// <summary>The feed's explicit "no such date" answer: HTTP 404 whose body is its JSON error document (observed: <c>{"error":"Not Found",…}</c>).</summary>
+    private static bool IsFeedNotFound(RetrievalHttpResponse response)
+    {
+        if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(response.Body);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("error", out var error)
+                && error.ValueKind == JsonValueKind.String
+                && string.Equals(error.GetString(), "Not Found", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
 
     private static string Truncate(string value) => value.Length <= 500 ? value : value[..500] + "…";
 }

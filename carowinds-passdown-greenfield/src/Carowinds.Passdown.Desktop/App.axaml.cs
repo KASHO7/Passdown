@@ -8,6 +8,7 @@ using Carowinds.Passdown.Application.Changes;
 using Carowinds.Passdown.Application.Concurrency;
 using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Diagnostics;
+using Carowinds.Passdown.Application.HistoricalBackfill;
 using Carowinds.Passdown.Application.Ert;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Freshness;
@@ -136,7 +137,8 @@ public partial class App : global::Avalonia.Application
 
             var syncCoordinator = services.GetRequiredService<IPersonalSyncCoordinator>();
             var refreshCoordinator = services.GetRequiredService<IOfficialDataRefreshCoordinator>();
-            AttachShutdownFlush(desktop, mainViewModel, syncCoordinator, refreshCoordinator, logger);
+            var historicalBackfill = services.GetRequiredService<IHistoricalBackfillService>();
+            AttachShutdownFlush(desktop, mainViewModel, syncCoordinator, refreshCoordinator, historicalBackfill, logger);
 
             // Phase 15D: the closest available cross-platform proxy for "the shell became visible" —
             // Window.Opened fires once the platform has actually shown the window, well after
@@ -171,6 +173,11 @@ public partial class App : global::Avalonia.Application
                 "Automatic official-data refresh started (interval {IntervalHours}h, startup grace {GraceMinutes}min).",
                 OfficialRefreshPolicy.AutomaticInterval.TotalHours, OfficialRefreshPolicy.StartupFreshnessGrace.TotalMinutes);
 
+            // Phase 20C: current-year historical park hours, lowest priority — it waits for the startup
+            // work above to finish (today, the next days, month-ahead coverage) and yields to every other
+            // refresh. Interactive only; the headless --scheduled-refresh host never starts it.
+            historicalBackfill.Start();
+
             StartTempPdfCleanup(logger);
         }
 
@@ -187,7 +194,7 @@ public partial class App : global::Avalonia.Application
     /// again to actually close; the <c>flushed</c> guard prevents that second request from looping
     /// back into this handler.
     /// </summary>
-    private static void AttachShutdownFlush(IClassicDesktopStyleApplicationLifetime desktop, MainViewModel mainViewModel, IPersonalSyncCoordinator syncCoordinator, IOfficialDataRefreshCoordinator refreshCoordinator, ILogger logger)
+    private static void AttachShutdownFlush(IClassicDesktopStyleApplicationLifetime desktop, MainViewModel mainViewModel, IPersonalSyncCoordinator syncCoordinator, IOfficialDataRefreshCoordinator refreshCoordinator, IHistoricalBackfillService historicalBackfill, ILogger logger)
     {
         var flushed = false;
 
@@ -224,9 +231,11 @@ public partial class App : global::Avalonia.Application
             // Phase 19A: cancels any automatic official-data check in flight (cancelled operations never
             // overwrite last-known-good data or source state) — bounded, so a slow network can never hold
             // the window open.
+            // Phase 20C: the historical backfill stops alongside it (an interrupted request writes nothing;
+            // the remaining dates resume next start), within the same bound.
             try
             {
-                var stop = refreshCoordinator.StopAsync();
+                var stop = Task.WhenAll(refreshCoordinator.StopAsync(), historicalBackfill.StopAsync());
                 await Task.WhenAny(stop, Task.Delay(RefreshStopTimeout)).ConfigureAwait(true);
             }
             catch (Exception ex)
@@ -557,6 +566,19 @@ public partial class App : global::Avalonia.Application
         // shared status view model is likewise a single instance, so Dashboard and Associate always show
         // the same freshness line.
         services.AddSingleton<IOfficialDataRefreshCoordinator, OfficialDataRefreshCoordinator>();
+
+        // Phase 20C: the current-year historical park-hours backfill — one instance for the interactive
+        // app's lifetime, started after the coordinator and stopped with it. Reuses the official
+        // park-hours adapter and dated_results storage; no schema of its own.
+        services.AddSingleton<IParkHoursHistorySource>(provider => provider.GetRequiredService<ParkHoursSource>());
+        services.AddSingleton<IHistoricalBackfillService>(provider => new HistoricalBackfillService(
+            provider.GetRequiredService<IParkHoursHistorySource>(),
+            provider.GetRequiredService<IDatedResultRepository>(),
+            provider.GetRequiredService<IOfficialRefreshGate>(),
+            provider.GetRequiredService<IClock>(),
+            () => provider.GetRequiredService<IOfficialDataRefreshCoordinator>().StartupCompletion,
+            provider.GetRequiredService<IDataChangeNotifier>(),
+            provider.GetRequiredService<ILogger<HistoricalBackfillService>>()));
         services.AddSingleton<IUiDispatcher, AvaloniaUiDispatcher>();
         services.AddSingleton<OfficialDataStatusViewModel>();
 

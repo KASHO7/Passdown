@@ -45,6 +45,13 @@ public interface IOfficialDataRefreshCoordinator
     /// <summary>Raised (on a background thread) whenever <see cref="CurrentStatus"/> changes.</summary>
     event EventHandler<OfficialDataStatus>? StatusChanged;
 
+    /// <summary>
+    /// Completes once the startup work after <see cref="Start"/> (finalization, missed maintenance, the
+    /// startup freshness check) has finished, whatever its outcome. Phase 20C: lower-priority background
+    /// work (the historical backfill) waits for it, so today's and upcoming data always come first.
+    /// </summary>
+    Task StartupCompletion { get; }
+
     /// <summary>Starts the startup freshness check and the four-hour background loop. Returns immediately; idempotent.</summary>
     void Start();
 
@@ -552,6 +559,13 @@ public sealed class OfficialDataRefreshCoordinator : IOfficialDataRefreshCoordin
 
     private void OnGateCompleted(object? sender, OfficialRefreshActivity activity)
     {
+        // Phase 20C: historical backfill is enrichment, not operational health — it publishes its own
+        // narrowly scoped change and never touches the shared freshness status.
+        if (activity.IsLowPriority)
+        {
+            return;
+        }
+
         // Official cached data may have changed: invalidate local projections (no network involved).
         _dataChangeNotifier?.Publish(new DataChange(DataChangeKind.OfficialData, activity.Kind == OfficialRefreshKind.DateCheck ? activity.Date : null));
         _ = RefreshStatusAfterCompletionAsync(activity);

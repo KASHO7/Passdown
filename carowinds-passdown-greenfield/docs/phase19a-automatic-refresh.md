@@ -189,6 +189,11 @@ holds the existing cross-process `FileScheduledRefreshLock`.
   (`SemaphoreSlim` observes cancellation asynchronously; the gate re-checks the token after acquiring).
 - If the scheduled task process holds the lock: automatic work skips (and is re-evaluated within
   5 minutes), manual actions report "already in progress" exactly as before.
+- Phase 20C: one low-priority kind, `HistoricalBackfill`, also passes through the gate. It never
+  queues and never starts while other work waits; when any operational kind starts trying to enter,
+  the gate raises `PriorityWorkWaiting` and the backfill cancels its in-flight request and releases, so
+  operational work never waits out a historical request. The coordinator ignores it entirely (no
+  "Checking official data…", no `OfficialData` change). See `docs/phase20c-historical-backfill.md`.
 
 ## Lifetime, sleep/resume, offline
 
@@ -296,7 +301,8 @@ existed; the file was left as is.
   alongside as before.
 - No network-change monitoring: after connectivity returns, the next automatic attempt is the normal
   four-hour one (or the next app start); Check Online/Deep Refresh retry immediately.
-- The Operations Calendar is not live-updated by local changes (it reloads when navigated to as before).
+- ~~The Operations Calendar is not live-updated by local changes~~ — resolved in Phase 20C: it quietly
+  re-reads the displayed month on any relevant local change (including historical backfill), no polling.
 - Product rows keep showing their earlier verification time when only verification times changed (the
   workspace — and therefore PDF/Copy — has the new one); the next date load refreshes them.
 - An automatic check runs while the app is open but minimized — intended (it is quiet and bounded).
