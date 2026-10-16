@@ -45,7 +45,8 @@ public sealed class AssociatePassdownService(
     IUnitOfWorkFactory? unitOfWorkFactory = null,
     OpenEditorConflictRecorder? openEditorConflictRecorder = null,
     IOfficialRefreshGate? refreshGate = null,
-    IDataChangeNotifier? dataChangeNotifier = null) : IAssociatePassdownService
+    IDataChangeNotifier? dataChangeNotifier = null,
+    ISeasonPriceHistoryRepository? seasonPriceHistoryRepository = null) : IAssociatePassdownService
 {
     private static readonly SourceCategory[] CatalogCategories =
     [
@@ -393,10 +394,11 @@ public sealed class AssociatePassdownService(
             (DatedBringAFriendDuoPayload payload) => payload.Products.Select(p =>
                 new DatedProductFields(p.PackageId, p.DisplayName, p.PerPersonPrice, p.ComparisonPrice, p.PriceQualifier, p.ApplicableDate)).ToList()));
 
+        var priceHistoryKeys = await LoadPriceHistoryKeysAsync(cancellationToken).ConfigureAwait(false);
         foreach (var category in CatalogCategories)
         {
             var records = await catalogProductRepository.GetByCategoryAsync(category, lifecycleState: null, cancellationToken).ConfigureAwait(false);
-            products.AddRange(ComposeCatalogProducts(category, records, draft));
+            products.AddRange(ComposeCatalogProducts(category, records, draft, priceHistoryKeys));
         }
 
         MergeExactDatedBringAFriend(products, datedByCategory.GetValueOrDefault(SourceCategory.DatedBringAFriend), operatingDate, asOf);
@@ -511,7 +513,32 @@ public sealed class AssociatePassdownService(
         }
     }
 
-    private static IEnumerable<AssociateProduct> ComposeCatalogProducts(SourceCategory category, IReadOnlyList<CatalogProductRecord> records, AssociateDraftPayload draft)
+    /// <summary>
+    /// Phase 20A: product keys with recorded season price history, used only to decide whether a row
+    /// offers "Price history". Price history is advisory — if it cannot be read, composition carries on
+    /// with the tracking policy alone instead of failing the Associate screen.
+    /// </summary>
+    private async Task<IReadOnlySet<string>> LoadPriceHistoryKeysAsync(CancellationToken cancellationToken)
+    {
+        if (seasonPriceHistoryRepository is null)
+        {
+            return EmptyKeySet;
+        }
+
+        try
+        {
+            return await seasonPriceHistoryRepository.GetTrackedProductKeysAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return EmptyKeySet;
+        }
+    }
+
+    private static readonly IReadOnlySet<string> EmptyKeySet = new HashSet<string>();
+
+    private static IEnumerable<AssociateProduct> ComposeCatalogProducts(
+        SourceCategory category, IReadOnlyList<CatalogProductRecord> records, AssociateDraftPayload draft, IReadOnlySet<string> priceHistoryKeys)
     {
         foreach (var record in records)
         {
@@ -545,7 +572,13 @@ public sealed class AssociatePassdownService(
                 priceKind,
                 BundleTotalPriceAmount: bundle is not null ? record.CurrentPriceAmount : null,
                 BundleQuantity: bundle?.Quantity,
-                PerPersonPriceAmount: bundle?.PerPersonPriceAmount);
+                PerPersonPriceAmount: bundle?.PerPersonPriceAmount)
+            {
+                PriceHistoryProductKey = PriceHistoryTrackingPolicy.ClassifyStoredProduct(
+                        category, record.LastEvidence.SourceName, record.DisplayName, record.DateSpecific, priceHistoryKeys.Contains(record.ProductKey)) is not null
+                    ? record.ProductKey
+                    : null,
+            };
         }
     }
 

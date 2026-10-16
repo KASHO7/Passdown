@@ -42,9 +42,10 @@ public class MigrationHardeningTests : IDisposable
         new Migration0013CreateSyncConflictsTable(),
         new Migration0014CreateMonthlyErtConfigurationsTable(),
         new Migration0015CreateErtDateOverridesTable(),
+        new Migration0016CreateSeasonPriceHistoryTable(),
     ];
 
-    private const int CurrentSchemaVersion = 15;
+    private const int CurrentSchemaVersion = 16;
 
     private int RunMigrations(IReadOnlyList<IMigration> migrations) =>
         new MigrationRunner(new SqliteConnectionFactory(DatabasePath), migrations, NullLogger<MigrationRunner>.Instance).Run();
@@ -72,6 +73,7 @@ public class MigrationHardeningTests : IDisposable
     [InlineData(11)]
     [InlineData(13)]
     [InlineData(14)]
+    [InlineData(15)]
     public async Task HistoricalSchema_UpgradesStraightToCurrent_PreservingDataAndFabricatingNothing(int startVersion)
     {
         var all = AllMigrations();
@@ -94,6 +96,7 @@ public class MigrationHardeningTests : IDisposable
         Assert.Equal(0, Scalar("SELECT COUNT(*) FROM ert_date_overrides;"));
         Assert.Equal(0, Scalar("SELECT COUNT(*) FROM sync_entity_state;"));
         Assert.Equal(0, Scalar("SELECT COUNT(*) FROM finalized_passdowns;"));
+        Assert.Equal(0, Scalar("SELECT COUNT(*) FROM season_price_history;")); // nothing to backfill from, nothing fabricated
 
         var draft = await new SqliteAssociateDraftRepository(new SqliteConnectionFactory(DatabasePath)).GetAsync(new DateOnly(2026, 7, 4));
         if (startVersion > 0)

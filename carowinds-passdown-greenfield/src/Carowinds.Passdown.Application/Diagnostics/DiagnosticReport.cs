@@ -66,6 +66,9 @@ public sealed record DiagnosticReport(
 
     /// <summary>Phase 19B: aggregate catalog lifecycle and season-tag counts — counts only, never product rows.</summary>
     public CatalogLifecycleDiagnostics? CatalogLifecycle { get; init; }
+
+    /// <summary>Phase 20A: season price-history counts and the latest change time — never product names or prices.</summary>
+    public Persistence.SeasonPriceHistorySummary? SeasonPriceHistory { get; init; }
 }
 
 /// <summary>

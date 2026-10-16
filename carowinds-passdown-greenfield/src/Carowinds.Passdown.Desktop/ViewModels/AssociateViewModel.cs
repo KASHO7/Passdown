@@ -971,6 +971,18 @@ public partial class AssociateViewModel : ViewModelBase
 
     public bool HasProductSections => ProductSections.Count > 0;
 
+    /// <summary>
+    /// Phase 20A: asks the app shell to open the read-only Season Price History screen — with a
+    /// product key from a tracked row's "Price history" action, or null from the Products section's
+    /// general entry point (which also reaches retired products). Navigation only; no retrieval.
+    /// </summary>
+    public event EventHandler<string?>? PriceHistoryRequested;
+
+    [RelayCommand]
+    private void OpenPriceHistory() => PriceHistoryRequested?.Invoke(this, null);
+
+    private void RequestPriceHistory(string productKey) => PriceHistoryRequested?.Invoke(this, productKey);
+
     public bool HasCustomProducts => CustomProducts.Count > 0;
 
     public SaveStatusPresentation? SaveStatus => Workspace is { } workspace ? SaveStatusPresentation.Build(workspace.SaveStatus) : null;
@@ -1882,7 +1894,7 @@ public partial class AssociateViewModel : ViewModelBase
                 continue;
             }
 
-            var rows = products.Select(product => new ProductRowViewModel(product, ScheduleAutosave)).ToList();
+            var rows = products.Select(product => new ProductRowViewModel(product, ScheduleAutosave, RequestPriceHistory)).ToList();
             result.Add(new ProductCategorySectionViewModel(ProductDisplaySectionDisplay.FriendlyName(section), status, rows));
         }
 

@@ -1,4 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:spell="using:Carowinds.Passdown.Desktop.Spelling"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
              xmlns:presentation="using:Carowinds.Passdown.Desktop.Presentation"
@@ -381,7 +382,8 @@
 
             <StackPanel Spacing="4">
               <TextBlock Text="TITLE" Classes="subsectionTitle" />
-              <TextBox Text="{Binding EditorTitle}" MaxLength="200"
+              <TextBox spell:SpellCheck.IsEnabled="True"
+                       Text="{Binding EditorTitle}" MaxLength="200"
                        PlaceholderText="e.g. South Gate scanner #3 out of service"
                        AutomationProperties.Name="Note title" />
             </StackPanel>
@@ -433,7 +435,8 @@
 
             <StackPanel Spacing="4">
               <TextBlock Text="NOTE (OPTIONAL)" Classes="subsectionTitle" />
-              <TextBox Text="{Binding EditorBody}" MaxLength="4000"
+              <TextBox spell:SpellCheck.IsEnabled="True"
+                       Text="{Binding EditorBody}" MaxLength="4000"
                        AcceptsReturn="True" TextWrapping="Wrap" MinHeight="160"
                        PlaceholderText="Additional operational detail"
                        AutomationProperties.Name="Note body" />

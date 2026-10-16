@@ -40,6 +40,15 @@ public static class DiagnosticReportFormatter
             AppendCatalogLifecycleLines(sb, catalog);
         }
 
+        if (report.SeasonPriceHistory is { } priceHistory)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Season price history:");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"  tracked products with history: {priceHistory.TrackedProductCount}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"  recorded price states: {priceHistory.PriceStateCount}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"  most recent price change first seen: {FormatTimestamp(priceHistory.MostRecentChangeAt)}");
+        }
+
         sb.AppendLine();
         sb.AppendLine(CultureInfo.InvariantCulture, $"See source-status.txt for per-source detail ({report.Sources.Count} sources) and logs/ for recent scheduled-refresh and app activity.");
         return sb.ToString();

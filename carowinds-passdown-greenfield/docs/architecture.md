@@ -925,3 +925,25 @@ Full design: `docs/phase19b-seasonal-catalog.md`. The existing catalog lifecycle
 
 No schema/payload change (DB 15, Draft 4, Snapshot 2, SyncSchemaVersion 1); no new event bus — the
 Phase 19A `OfficialData` change already invalidates screens after reconciliation.
+
+## Phase 20A additions — spell check and Season Pass price history
+
+Full design: `docs/phase20a-spellcheck-price-history.md`. The two features share nothing.
+
+- **Domain** — `Catalog.SeasonPriceState` (amount + `PriceKind`), `SeasonPriceTimeline` (baseline /
+  confirm / price / semantics change / reappearance), `SeasonPriceChange` (derived delta and percent).
+- **Application** — `Catalog.PriceHistoryTrackingPolicy` (the single "is this tracked" decision),
+  `SeasonPriceHistoryRecorder` (called only by `ProductReconciliationService`, in the catalog upsert's
+  unit of work), `SeasonPriceHistoryService` (read side); `Persistence.ISeasonPriceHistoryRepository`;
+  `AssociateProduct.PriceHistoryProductKey` (composition-time only); `DiagnosticReport.SeasonPriceHistory`
+  (counts). `SpellCheck.ISpellingBackend`, `SpellCheckTokenizer`, `DomainSpellingTerms`,
+  `ISpellCheckService`/`SpellCheckService`.
+- **Infrastructure** — `Migration0016CreateSeasonPriceHistoryTable` (new table + one-time backfill from
+  `product_history`), `SqliteSeasonPriceHistoryRepository`; `SpellCheck.WindowsSpellingBackend`
+  (Windows Spell Checking API via built-in COM interop, **Windows-only — needs Windows VM testing**),
+  `SpellingBackendFactory`.
+- **Desktop** — `Spelling.SpellCheck` attached behavior + adorner (no view-model involvement);
+  `PriceHistoryViewModel` / `PriceHistoryView` overlay opened from Associate → Products
+  (`AssociateViewModel.PriceHistoryRequested` → `MainViewModel.PriceHistory`).
+
+Schemas: DB **16**; Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged. Nothing new is synced.

@@ -1330,3 +1330,13 @@ To be run with `docs/phase19c-rc3-windows-checklist.md` against the exact hashes
   refresh, reactive Dashboard, auto-check, freshness indicator, lifecycle presentation, PDF/Teams
   copy and the scheduler to work there. None of that has run yet.
 - **Distribution: DISTRIBUTION LICENSE DECISION PENDING** (QuestPDF, above).
+
+## Unreleased development since RC.3 — Phase 20A
+
+Phase 20A (spell check and Season Pass price history, `docs/phase20a-spellcheck-price-history.md`)
+changes shipped code after RC.3. The RC.3 artifacts, hashes and Windows validation above are unchanged
+and still describe the pre-20A candidate; they were not rebuilt. RC.3 was already built from `1744320`,
+so a build containing Phase 20A must be packaged as **`0.1.0-rc.4`** and validated with the RC.3
+checklist plus the Phase 20A checklist. Schema change: **DB 16** (new `season_price_history` table,
+one-time backfill); Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged. Older builds refuse a DB-16
+profile. Deterministic tests at the Phase 20A commit: 2893/2893; Release build 0 warnings / 0 errors.

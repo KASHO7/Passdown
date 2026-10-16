@@ -40,6 +40,7 @@
         </Style>
     </Window.Styles>
 
+    <Grid>
     <DockPanel LastChildFill="True">
 
         <!-- Brand identity band (spec §10.2): a constant, theme-invariant deep-navy strip so the app
@@ -146,5 +147,13 @@
         </Grid>
 
     </DockPanel>
+
+    <!-- Phase 20A: the read-only Season Price History screen, opened from Associate → Products. An
+         overlay over the whole shell (not a section): closing it returns to exactly what was showing,
+         with no Associate state touched. -->
+    <Border IsVisible="{Binding IsPriceHistoryOpen}" Background="#99000000">
+        <views:PriceHistoryView DataContext="{Binding PriceHistory}" />
+    </Border>
+    </Grid>
 
 </Window>

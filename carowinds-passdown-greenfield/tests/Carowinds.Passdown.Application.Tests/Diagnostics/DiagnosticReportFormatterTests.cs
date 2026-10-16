@@ -93,4 +93,25 @@ public class DiagnosticReportFormatterTests
         Assert.Contains("NotAvailableOnThisPlatform", text);
         Assert.Contains("Task Scheduler is a Windows-only feature.", text);
     }
+
+    [Fact]
+    public void BuildSummaryText_SeasonPriceHistory_IsCountsAndATimestampOnly()
+    {
+        var report = BuildReport() with
+        {
+            SeasonPriceHistory = new Persistence.SeasonPriceHistorySummary(4, 9, new DateTimeOffset(2026, 9, 19, 16, 0, 0, TimeSpan.Zero)),
+        };
+
+        var text = DiagnosticReportFormatter.BuildSummaryText(report);
+
+        Assert.Contains("Season price history:", text);
+        Assert.Contains("tracked products with history: 4", text);
+        Assert.Contains("recorded price states: 9", text);
+        Assert.Contains("most recent price change first seen: 2026-09-19T16:00:00", text);
+        Assert.DoesNotContain("$", text);
+    }
+
+    [Fact]
+    public void BuildSummaryText_WithoutSeasonPriceHistory_OmitsTheSection() =>
+        Assert.DoesNotContain("Season price history:", DiagnosticReportFormatter.BuildSummaryText(BuildReport()));
 }

@@ -1,0 +1,147 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
+             xmlns:presentation="using:Carowinds.Passdown.Desktop.Presentation"
+             x:Class="Carowinds.Passdown.Desktop.Views.PriceHistoryView"
+             x:DataType="vm:PriceHistoryViewModel">
+
+  <!-- Same per-view typography/row styles the Associate screen uses (this app keeps styles per view). -->
+  <UserControl.Styles>
+      <Style Selector="TextBlock.sectionTitle">
+        <Setter Property="FontSize" Value="13.5" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="LetterSpacing" Value="0.4" />
+        <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
+        <Setter Property="Margin" Value="0,0,0,10" />
+      </Style>
+      <Style Selector="TextBlock.muted">
+        <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+        <Setter Property="FontSize" Value="12.5" />
+      </Style>
+      <Style Selector="TextBlock.fieldHint">
+        <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="Margin" Value="0,3,0,0" />
+      </Style>
+      <Style Selector="Button.secondaryAction">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
+        <Setter Property="BorderThickness" Value="1.5" />
+        <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="CornerRadius" Value="5" />
+        <Setter Property="Padding" Value="14,7" />
+      </Style>
+      <Style Selector="Button.secondaryAction:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
+      </Style>
+      <Style Selector="TextBlock.columnHeader">
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="LetterSpacing" Value="0.5" />
+        <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+        <Setter Property="Margin" Value="0" />
+      </Style>
+      <Style Selector="Border.productRow">
+        <Setter Property="BorderThickness" Value="0,0,0,1" />
+        <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+        <Setter Property="Padding" Value="0,7" />
+      </Style>
+  </UserControl.Styles>
+
+  <!-- Escape closes only while focus is inside this screen (not a window-wide hot key). -->
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="Escape" Command="{Binding CloseCommand}" />
+  </UserControl.KeyBindings>
+
+  <!-- Phase 20A: the focused, read-only Season Price History screen. A chronological table (oldest
+       first, so each row's "Change" reads against the row above it) — no chart, no editing. -->
+  <Border MaxWidth="980" MaxHeight="680" Margin="24" Padding="20" CornerRadius="8" BorderThickness="1"
+          BorderBrush="{DynamicResource PassdownDividerBrush}"
+          Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+          HorizontalAlignment="Center" VerticalAlignment="Center">
+    <Grid RowDefinitions="Auto,*">
+
+      <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+        <StackPanel Grid.Column="0" Spacing="2">
+          <TextBlock Text="Season Price History" Classes="sectionTitle" FontSize="18" Margin="0" />
+          <TextBlock Text="Advertised official prices for Season Passes and Season Pass Add-Ons, as recorded by this app."
+                     Classes="muted" TextWrapping="Wrap" />
+        </StackPanel>
+        <Button Grid.Column="1" Content="Close" Classes="secondaryAction" VerticalAlignment="Top"
+                Command="{Binding CloseCommand}"
+                AutomationProperties.Name="Close season price history" />
+      </Grid>
+
+      <TextBlock Grid.Row="1" Text="{Binding NoProductsText}" IsVisible="{Binding ShowNoProducts}"
+                 Classes="muted" TextWrapping="Wrap" />
+
+      <Grid Grid.Row="1" ColumnDefinitions="280,*" IsVisible="{Binding !ShowNoProducts}">
+
+        <!-- Product picker -->
+        <DockPanel Grid.Column="0" Margin="0,0,16,0">
+          <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
+            <TextBox x:Name="SearchBox" Text="{Binding SearchText}" PlaceholderText="Search products"
+                     AutomationProperties.Name="Search tracked products" />
+            <CheckBox Content="Include retired products" IsChecked="{Binding IncludeInactive}"
+                      AutomationProperties.Name="Include retired products in the list" />
+          </StackPanel>
+          <ListBox x:Name="ProductList" ItemsSource="{Binding Products}" SelectedItem="{Binding SelectedProduct}"
+                   AutomationProperties.Name="Tracked products">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:PriceHistoryProductOption">
+                <StackPanel Spacing="1" AutomationProperties.Name="{Binding AutomationName}">
+                  <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding DetailText}" Classes="muted" FontSize="12" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+
+        <!-- Selected product's history -->
+        <ScrollViewer Grid.Column="1">
+          <StackPanel Spacing="8">
+            <StackPanel Spacing="2" IsVisible="{Binding HasSelection}">
+              <TextBlock Text="{Binding SelectedProduct.DisplayName}" FontSize="16" FontWeight="Bold" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding SelectedProduct.DetailText}" Classes="muted" />
+              <TextBlock Text="{Binding AvailabilityText}" Classes="muted"
+                         IsVisible="{Binding AvailabilityText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
+
+            <Grid ColumnDefinitions="130,130,*,170" IsVisible="{Binding HasRows}" Margin="0,6,0,0">
+              <TextBlock Grid.Column="0" Text="FIRST SEEN" Classes="columnHeader" />
+              <TextBlock Grid.Column="1" Text="LAST CONFIRMED" Classes="columnHeader" />
+              <TextBlock Grid.Column="2" Text="PRICE" Classes="columnHeader" />
+              <TextBlock Grid.Column="3" Text="CHANGE" Classes="columnHeader" />
+            </Grid>
+
+            <ItemsControl ItemsSource="{Binding Rows}" IsVisible="{Binding HasRows}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="presentation:PriceHistoryRowPresentation">
+                  <Border Classes="productRow" Focusable="True" AutomationProperties.Name="{Binding AutomationName}">
+                    <StackPanel Spacing="2">
+                      <Grid ColumnDefinitions="130,130,*,170">
+                        <TextBlock Grid.Column="0" Text="{Binding FirstSeenText}" />
+                        <TextBlock Grid.Column="1" Text="{Binding LastConfirmedText}" Classes="muted" />
+                        <TextBlock Grid.Column="2" Text="{Binding PriceText}" FontWeight="SemiBold" />
+                        <TextBlock Grid.Column="3" Text="{Binding ChangeText}" />
+                      </Grid>
+                      <TextBlock Text="{Binding NoteText}" IsVisible="{Binding HasNote}"
+                                 Classes="muted" FontStyle="Italic" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Text="{Binding StatusText}" IsVisible="{Binding HasStatus}" TextWrapping="Wrap" />
+
+            <TextBlock Text="{Binding TimingNoteText}" IsVisible="{Binding HasRows}"
+                       Classes="fieldHint" TextWrapping="Wrap" Margin="0,8,0,0" />
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+    </Grid>
+  </Border>
+</UserControl>

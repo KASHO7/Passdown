@@ -45,4 +45,11 @@ public sealed record AssociateProduct(
     /// Custom products have no official evidence, so they are always <see cref="ProductSeasonTags.None"/>.
     /// </summary>
     public ProductSeasonTags SeasonTags => IsCustom ? ProductSeasonTags.None : ProductSeasonClassifier.Classify(Category, DisplayName);
+
+    /// <summary>
+    /// Phase 20A: the catalog product key whose season price history this row can show, or
+    /// <see langword="null"/> when the product is not a tracked Season Pass / Season Pass Add-On
+    /// (<see cref="PriceHistoryTrackingPolicy"/>). Composition-time only, never persisted.
+    /// </summary>
+    public string? PriceHistoryProductKey { get; init; }
 }

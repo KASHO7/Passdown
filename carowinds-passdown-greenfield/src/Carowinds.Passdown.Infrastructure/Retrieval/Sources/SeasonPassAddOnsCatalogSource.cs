@@ -25,7 +25,8 @@ namespace Carowinds.Passdown.Infrastructure.Retrieval.Sources;
 /// </summary>
 public sealed class SeasonPassAddOnsCatalogSource(IRetrievalHttpClient httpClient, IClock clock) : IOfficialDataSource<CatalogPayload>
 {
-    private const string SourceName = "Carowinds Season Pass Add-Ons";
+    // Phase 20A: shared with PriceHistoryTrackingPolicy, which tracks this page's add-ons only.
+    private const string SourceName = Carowinds.Passdown.Application.Catalog.PriceHistoryTrackingPolicy.SeasonPassAddOnsSourceName;
 
     private static readonly Uri PageUrl = new("https://www.sixflags.com/carowinds/season-pass-add-ons");
 

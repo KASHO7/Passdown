@@ -329,3 +329,26 @@ Log lines in `app-yyyyMMdd.log`: "Catalog product discovered", "missing from a s
 (candidate absence …)", "now inactive (retired from the current catalog)", "reactivated", "season tags
 changed", "checked successfully with zero products". The diagnostics `summary.txt` has an "Official
 catalog lifecycle" section (active / missing once / inactive / season-tag counts).
+
+## Spell check (Phase 20A)
+
+- Red wavy underlines in note/feature/reason fields are advice only — they never block saving, PDF,
+  finalization, Teams copy or closing the app. Right-click a flagged word for suggestions, **Ignore**
+  (this session) or **Add to dictionary** (your Windows custom dictionary).
+- No underlines at all: Windows has no US English (or current-language) spelling dictionary installed
+  (Settings → Time & language → Language), or the spell checker failed — the app log then has one line
+  "Spell checking was turned off for this session…". Typing still works normally.
+- Spell checking is local to Windows; nothing you type is sent anywhere or written to logs.
+
+## Season pass price history (Phase 20A)
+
+- Associate → Products → **Season pass price history** (or **Price history** on a Season Pass / Season
+  Pass Add-On row). Daily tickets and dated Fast Lane intentionally have no history.
+- "First seen" is the first successful official check that showed a price; the real change happened
+  between the previous row's "last confirmed" date and that date.
+- History starts from the first observation recorded by this install (an upgraded install includes
+  its earlier official checks). Retired products: tick **Include retired products**.
+- Each PC keeps its own history (not synced). The database is now schema 16 — older builds (RC.3 and
+  earlier) will refuse to open it.
+- Log lines: "Price history baseline created", "Price changed", "Price semantics changed". Diagnostics
+  `summary.txt` has a "Season price history" section (counts only).

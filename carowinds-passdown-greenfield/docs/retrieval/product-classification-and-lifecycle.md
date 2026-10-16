@@ -176,3 +176,17 @@ finalizations.
   gets no Associate section/banner; PDF and Teams copy already omitted empty sections.
 
 See `docs/phase19b-seasonal-catalog.md`.
+
+## 9. Phase 20A — price-history tracking and lifecycle
+
+- `PriceHistoryTrackingPolicy` decides tracking: `SeasonPasses`; `AddOns` observed by the Season Pass
+  Add-Ons page; `MilitaryFirstResponder` season-pass tier passes (same `IsSeasonPassName` rule as §1).
+  Not tracked: anything `DateSpecific`, general add-ons (mixed daily/season items), Promotions cards,
+  custom products.
+- Lifecycle is never a price event: a missing-once product keeps its interval; retirement (confirmed
+  absence, explicitly unavailable, expired) writes no price row and leaves history viewable (Price
+  History → "Include retired products"); reactivation reuses the same `CatalogProductKey` and opens a
+  new interval even at an unchanged price.
+- Identity is the existing `CatalogProductKey`; a display-name change never splits history.
+
+See `docs/phase20a-spellcheck-price-history.md`.

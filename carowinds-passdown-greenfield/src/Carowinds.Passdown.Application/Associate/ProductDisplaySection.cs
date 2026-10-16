@@ -162,6 +162,12 @@ public static class ProductDisplaySectionResolver
     private static bool IsNativeToSection(SourceCategory? category, ProductDisplaySection section) =>
         category is { } c && Resolve(c) == section;
 
+    /// <summary>
+    /// The season-pass tier-word rule (a tier word plus "Pass"). Public since Phase 20A so
+    /// <see cref="Catalog.PriceHistoryTrackingPolicy"/> reuses the exact same rule rather than a copy.
+    /// </summary>
+    public static bool IsSeasonPassName(string displayName) => IsSeasonPassProduct(displayName);
+
     private static bool IsSeasonPassProduct(string displayName)
     {
         if (!displayName.Contains("Pass", StringComparison.OrdinalIgnoreCase))

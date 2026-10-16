@@ -41,6 +41,9 @@ public sealed record ReconciledProduct(
     ProductSeasonTags? PreviousSeasonTags = null)
 {
     public bool SeasonTagsChanged => PreviousSeasonTags is { } previous && previous != SeasonTags;
+
+    /// <summary>Phase 20A: what this observation did to the product's price history; <see langword="null"/> when nothing was recorded (not tracked, not observed, or no numeric price).</summary>
+    public SeasonPriceObservationOutcome? PriceHistoryOutcome { get; init; }
 }
 
 public sealed record ReconciliationResult(SourceCategory Category, IReadOnlyList<ReconciledProduct> Products);

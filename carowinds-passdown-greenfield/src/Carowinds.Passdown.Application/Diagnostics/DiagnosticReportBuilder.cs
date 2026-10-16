@@ -24,7 +24,8 @@ public sealed class DiagnosticReportBuilder(
     IClock clock,
     IInteractiveAppLogProvider? appLogProvider = null,
     BuildIdentity? buildIdentity = null,
-    ICatalogProductRepository? catalogProductRepository = null) : IDiagnosticReportBuilder
+    ICatalogProductRepository? catalogProductRepository = null,
+    ISeasonPriceHistoryRepository? seasonPriceHistoryRepository = null) : IDiagnosticReportBuilder
 {
     private const int MaxLogLines = 200;
 
@@ -55,7 +56,26 @@ public sealed class DiagnosticReportBuilder(
             ExecutablePath = identity.ExecutablePath,
             OfficialData = OfficialDataStatus.Compute(states),
             CatalogLifecycle = await BuildCatalogLifecycleAsync(cancellationToken).ConfigureAwait(false),
+            SeasonPriceHistory = await BuildSeasonPriceHistoryAsync(cancellationToken).ConfigureAwait(false),
         };
+    }
+
+    /// <summary>Phase 20A: counts only; an unreadable history table never fails the export.</summary>
+    private async Task<SeasonPriceHistorySummary?> BuildSeasonPriceHistoryAsync(CancellationToken cancellationToken)
+    {
+        if (seasonPriceHistoryRepository is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return await seasonPriceHistoryRepository.GetSummaryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return null;
+        }
     }
 
     private async Task<CatalogLifecycleDiagnostics?> BuildCatalogLifecycleAsync(CancellationToken cancellationToken)

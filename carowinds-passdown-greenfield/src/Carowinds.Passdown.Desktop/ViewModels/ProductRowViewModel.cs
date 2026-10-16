@@ -20,6 +20,7 @@ namespace Carowinds.Passdown.Desktop.ViewModels;
 public partial class ProductRowViewModel : ObservableObject
 {
     private readonly Action _notifyChanged;
+    private readonly Action<string>? _openPriceHistory;
     private decimal? _displayPriceOverride;
 
     public string ProductIdentity { get; }
@@ -44,6 +45,12 @@ public partial class ProductRowViewModel : ObservableObject
 
     public string OverridePlaceholderText { get; }
 
+    /// <summary>Phase 20A: the catalog key whose season price history this row can show; null for non-tracked products.</summary>
+    public string? PriceHistoryProductKey { get; }
+
+    /// <summary>Only tracked Season Passes / Season Pass Add-Ons expose "Price history" (never an empty button on daily products).</summary>
+    public bool HasPriceHistory => PriceHistoryProductKey is not null && _openPriceHistory is not null;
+
     [ObservableProperty]
     public partial bool IncludeOnPdf { get; set; }
 
@@ -60,11 +67,13 @@ public partial class ProductRowViewModel : ObservableObject
 
     public string EffectivePriceText => PriceFormatting.FormatOrNull(_displayPriceOverride) ?? OfficialPriceText;
 
-    public ProductRowViewModel(AssociateProduct product, Action notifyChanged)
+    public ProductRowViewModel(AssociateProduct product, Action notifyChanged, Action<string>? openPriceHistory = null)
     {
         ArgumentNullException.ThrowIfNull(product);
         ArgumentNullException.ThrowIfNull(notifyChanged);
         _notifyChanged = notifyChanged;
+        _openPriceHistory = openPriceHistory;
+        PriceHistoryProductKey = product.PriceHistoryProductKey;
 
         ProductIdentity = product.ProductIdentity;
         DisplayName = product.DisplayName;
@@ -102,6 +111,16 @@ public partial class ProductRowViewModel : ObservableObject
     /// <summary>Clears the override back to "use official price" (spec Part C/E's obvious reset action).</summary>
     [RelayCommand]
     private void ResetToOfficial() => DisplayPriceOverrideText = null;
+
+    /// <summary>Phase 20A: opens the read-only Price History screen for this product. Never edits anything.</summary>
+    [RelayCommand]
+    private void ViewPriceHistory()
+    {
+        if (PriceHistoryProductKey is { } key)
+        {
+            _openPriceHistory?.Invoke(key);
+        }
+    }
 
     private static string? BuildVerificationNote(AssociateVerificationInfo verification) => verification.State switch
     {

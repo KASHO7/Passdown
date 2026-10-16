@@ -258,3 +258,15 @@ price label exists. A dated keyword with nothing published from today onward now
 "Starting From" precedence, Bring-A-Friend merging and bundle/per-person semantics are unchanged.
 Season tags (`ProductSeasonTags`) are classification only and never affect price kind or inclusion.
 See `docs/phase19b-seasonal-catalog.md`.
+
+## Phase 20A addendum — Season Pass price history
+
+Season Passes and Season Pass Add-Ons now keep a persistent history of advertised price **states**
+(`season_price_history`; `docs/phase20a-spellcheck-price-history.md`). A state is the amount **plus**
+its `PriceKind`, so `$99.00` (StandardCatalog), `From $99.00` (StartingFrom) and `$99.00` with a
+comparison price (Sale) are three different states — the first time `PriceKind` is persisted anywhere,
+and only as a recorded observation (composition still computes it from qualifier/comparison as before).
+Only successful official catalog retrievals write history; manual overrides, PDFs, Teams copy, cached
+rereads and failed checks never do. Dated/exact-dated pricing (daily admission, dated Fast Lane, dated
+haunted, dated Bring-A-Friend) is deliberately excluded and its storage is unchanged. Existing pricing
+semantics, precedence and display are unchanged.

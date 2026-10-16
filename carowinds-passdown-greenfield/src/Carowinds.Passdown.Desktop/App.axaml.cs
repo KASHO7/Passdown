@@ -19,6 +19,7 @@ using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Retrieval.Browser;
+using Carowinds.Passdown.Application.SpellCheck;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Services;
 using Carowinds.Passdown.Desktop.ViewModels;
@@ -36,6 +37,7 @@ using Carowinds.Passdown.Infrastructure.Preferences;
 using Carowinds.Passdown.Infrastructure.Retrieval.Browser;
 using Carowinds.Passdown.Infrastructure.Retrieval.Http;
 using Carowinds.Passdown.Infrastructure.Retrieval.Sources;
+using Carowinds.Passdown.Infrastructure.SpellCheck;
 using Carowinds.Passdown.Infrastructure.Storage;
 using Carowinds.Passdown.Infrastructure.Storage.Migrations;
 using Carowinds.Passdown.Infrastructure.Storage.Repositories;
@@ -115,6 +117,17 @@ public partial class App : global::Avalonia.Application
             }
 
             var migrationsRunMs = ElapsedSinceProcessStartMs();
+
+            // Phase 20A: advisory spell checking for free-text fields. Independent of storage and
+            // retrieval — if it cannot be set up the app simply runs without underlines.
+            try
+            {
+                Spelling.SpellCheck.Service = services.GetRequiredService<ISpellCheckService>();
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning("Spell checking is unavailable ({ExceptionType}).", ex.GetType().Name);
+            }
 
             var mainWindow = services.GetRequiredService<MainWindow>();
             var mainViewModel = services.GetRequiredService<MainViewModel>();
@@ -358,6 +371,7 @@ public partial class App : global::Avalonia.Application
             new Migration0013CreateSyncConflictsTable(),
             new Migration0014CreateMonthlyErtConfigurationsTable(),
             new Migration0015CreateErtDateOverridesTable(),
+            new Migration0016CreateSeasonPriceHistoryTable(),
         ]);
         services.AddSingleton<MigrationRunner>();
 
@@ -547,6 +561,15 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<OfficialDataStatusViewModel>();
 
         services.AddTransient<PersonalSyncSettingsViewModel>();
+        services.AddTransient<PriceHistoryViewModel>();
+
+        // Phase 20A: local/offline spell checking (Windows' own spell checker on Windows; none
+        // elsewhere). The backend creates its COM objects lazily, on first use, never at startup.
+        services.AddSingleton<ISpellingBackend>(_ => SpellingBackendFactory.Create());
+        services.AddSingleton<ISpellCheckService>(provider => new SpellCheckService(
+            provider.GetRequiredService<ISpellingBackend>(),
+            additionalTerms: null,
+            provider.GetRequiredService<ILogger<SpellCheckService>>()));
 
         services.AddTransient<MainWindow>();
         services.AddTransient<MainViewModel>();
@@ -573,6 +596,11 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<ICatalogProductRepository, SqliteCatalogProductRepository>();
         services.AddSingleton<IProductHistoryRepository, SqliteProductHistoryRepository>();
         services.AddSingleton<IUnitOfWorkFactory, SqliteUnitOfWorkFactory>();
+        // Phase 20A: season price history, written by reconciliation in the catalog upsert's own unit
+        // of work (no separate polling loop, no extra requests) and read by the Price History screen.
+        services.AddSingleton<ISeasonPriceHistoryRepository, SqliteSeasonPriceHistoryRepository>();
+        services.AddSingleton<SeasonPriceHistoryRecorder>();
+        services.AddSingleton<ISeasonPriceHistoryService, SeasonPriceHistoryService>();
         services.AddSingleton<IProductReconciliationService, ProductReconciliationService>();
 
         // Freshness/scheduling (Phase 2).

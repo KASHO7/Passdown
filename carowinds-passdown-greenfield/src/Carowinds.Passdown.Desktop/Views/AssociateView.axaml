@@ -1,4 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:spell="using:Carowinds.Passdown.Desktop.Spelling"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
              xmlns:presentation="using:Carowinds.Passdown.Desktop.Presentation"
@@ -570,7 +571,8 @@
                       </DataTemplate>
                     </ComboBox.ItemTemplate>
                   </ComboBox>
-                  <TextBox Text="{Binding DailyFeatureText}"
+                  <TextBox spell:SpellCheck.IsEnabled="True"
+                           Text="{Binding DailyFeatureText}"
                            AcceptsReturn="True" TextWrapping="Wrap" MinHeight="48"
                            PlaceholderText="Enter the question, fact, or quote"
                            AutomationProperties.Name="Daily Feature text" />
@@ -594,7 +596,8 @@
                              AutomationProperties.Name="Monthly Early Ride Time rides" />
                     <TextBlock Text="One ride per line." Classes="fieldHint" />
                   </StackPanel>
-                  <TextBox Text="{Binding MonthlyErtNoteText}"
+                  <TextBox spell:SpellCheck.IsEnabled="True"
+                           Text="{Binding MonthlyErtNoteText}"
                            PlaceholderText="Note (optional)"
                            AutomationProperties.Name="Monthly Early Ride Time note" />
                   <TextBlock Text="{Binding MonthlyErtSaveError}"
@@ -621,7 +624,8 @@
                                AutomationProperties.Name="Early Ride Time override rides" />
                       <TextBlock Text="One ride per line." Classes="fieldHint" />
                     </StackPanel>
-                    <TextBox Text="{Binding OverrideReasonText}"
+                    <TextBox spell:SpellCheck.IsEnabled="True"
+                             Text="{Binding OverrideReasonText}"
                              PlaceholderText="Reason (optional) — e.g. maintenance"
                              AutomationProperties.Name="Early Ride Time override reason" />
                     <TextBlock Text="{Binding OverrideSaveError}"
@@ -715,7 +719,8 @@
                                      AutomationProperties.Name="{Binding PrivateBuyoutClosingTimeError}" />
                         </StackPanel>
                       </Grid>
-                      <TextBox Text="{Binding PrivateBuyoutDetails}"
+                      <TextBox spell:SpellCheck.IsEnabled="True"
+                               Text="{Binding PrivateBuyoutDetails}"
                                IsVisible="{Binding PrivateBuyoutEnabled}"
                                PlaceholderText="Group name, contact, or other details"
                                AutomationProperties.Name="Private buyout details" />
@@ -794,6 +799,14 @@
                     IsVisible="{Binding IsProductsSectionSelected}">
           <StackPanel Spacing="16">
 
+            <!-- Phase 20A: entry point to the read-only Season Price History screen (also the way to reach
+                 retired products' history). Quiet secondary action; the screen itself is an overlay. -->
+            <Button Content="Season pass price history"
+                    Classes="secondaryAction"
+                    HorizontalAlignment="Right"
+                    Command="{Binding OpenPriceHistoryCommand}"
+                    AutomationProperties.Name="Open season pass and add-on price history" />
+
             <!-- Products (Part F): editable, data-driven per-category product sections. No product
                  names or category counts are hard-coded — sections and rows come straight from the
                  composed workspace. -->
@@ -855,6 +868,13 @@
                                   <TextBlock Text="{Binding VerificationNoteText}"
                                              IsVisible="{Binding VerificationNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                              Classes="fieldWarning" />
+                                  <!-- Phase 20A: only tracked Season Passes / Season Pass Add-Ons show this. -->
+                                  <Button Content="Price history"
+                                          Command="{Binding ViewPriceHistoryCommand}"
+                                          IsVisible="{Binding HasPriceHistory}"
+                                          Classes="secondaryAction"
+                                          Padding="8,2" FontSize="12" HorizontalAlignment="Left" Margin="0,2,0,0"
+                                          AutomationProperties.Name="{Binding DisplayName, StringFormat='View price history for {0}'}" />
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="2" Spacing="2">
@@ -941,7 +961,8 @@
                             </StackPanel>
                             <StackPanel Grid.Column="1" Spacing="0" Margin="16,0,0,0">
                               <TextBlock Text="Notes" Classes="fieldLabel" />
-                              <TextBox Text="{Binding NotesText}"
+                              <TextBox spell:SpellCheck.IsEnabled="True"
+                                       Text="{Binding NotesText}"
                                        PlaceholderText="Optional"
                                        AutomationProperties.Name="Custom item notes" />
                             </StackPanel>
@@ -968,7 +989,8 @@
           <Border Classes="panel">
             <StackPanel Spacing="8">
               <TextBlock Text="Daily Passdown Notes" Classes="sectionTitle" Margin="0" />
-              <TextBox Text="{Binding OperationalNotesText}"
+              <TextBox spell:SpellCheck.IsEnabled="True"
+                       Text="{Binding OperationalNotesText}"
                        AcceptsReturn="True"
                        TextWrapping="Wrap"
                        MinHeight="200"
