@@ -1340,3 +1340,121 @@ so a build containing Phase 20A must be packaged as **`0.1.0-rc.4`** and validat
 checklist plus the Phase 20A checklist. Schema change: **DB 16** (new `season_price_history` table,
 one-time backfill); Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged. Older builds refuse a DB-16
 profile. Deterministic tests at the Phase 20A commit: 2893/2893; Release build 0 warnings / 0 errors.
+
+# Release manifest — 0.1.0-rc.4 (Phase 20B: Phase 20A spell check + Season Pass price history)
+
+**Status: built and validated on the build host. Windows validation PENDING.** No Windows PC was
+reachable from the build session. Run `docs/phase20b-rc4-windows-checklist.md` on the affected x64
+PC — **backup first** (§0). Every Windows item stays **NOT EXECUTED** until results come back.
+
+| | |
+|---|---|
+| Product (visible) | Carowinds Operations |
+| Version | **`0.1.0-rc.4`**, file version `0.1.0.4`, informational `0.1.0-rc.4+67a5dd6417eeb887d769b6011c9971f1770142ba` (read from the packaged `.exe`/`Desktop.dll` version resources and the single-file EXE; none contains `0.1.0-rc.3` or `0.1.0.3`) |
+| Source commit (features) | `588cd93` (Phase 20A) |
+| Release/version commit | `67a5dd6`: `Directory.Build.props` only. Artifacts were built from this commit |
+| About this build | `0.1.0-rc.4 (67a5dd6)` |
+| Target | Windows 11 x64 (`win-x64`), self-contained, R2R |
+| Build host | macOS 27.0.1 (Darwin), Apple Silicon arm64; .NET SDK 10.0.400; PowerShell 7.6.7 (local `dotnet tool` in a scratch folder) |
+| DB / Draft / Snapshot / SyncSchemaVersion | **16** / 4 / 2 / 1. DB 15 → 16 adds `season_price_history` with a one-time backfill. RC.3 and older refuse a DB-16 profile |
+| Legacy identities | Unchanged: `Carowinds.Passdown.Desktop.exe`, `%LOCALAPPDATA%\Carowinds Passdown`, `Carowinds Passdown Daily Refresh`, database file name, sync product identity, AssemblyVersion `0.1.0.0` |
+| Deterministic tests | Baseline at `588cd93`: **2893/2893**. Final at `67a5dd6`: **2893/2893** = 136 Domain + 842 Application + 773 Infrastructure + 309 Documents + 795 Ui together + 26 + 10 + 2 window classes alone. No tests added this phase |
+| Build | `dotnet build CarowindsPassdown.slnx -c Release`: 0 warnings, 0 errors |
+| Superseded | RC.3/RC.2/RC.1/dev artifacts untouched in `artifacts/releases/` (RC.3 hashes re-verified unchanged after this build). None nested in RC.4. Do not distribute |
+
+## Primary release: multi-file portable ZIP (RECOMMENDED)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.4-win-x64.zip` |
+| Bytes | 73,696,526 |
+| SHA-256 | `55f0babb84b82bbc0e3498806b1140916384bd6bb42e8a22a693fd6ed469b3fb` |
+| Extracted folder | `Carowinds-Operations-0.1.0-rc.4-win-x64\` |
+| Content | 282 files / 282 entries, 154.6 MB uncompressed — the same file list as RC.3 |
+
+- **Packaging validator (`Test-ReleasePackage.ps1`): PASS** on staging and on the final ZIP (282 files
+  each), run by the real `Build-PortableRelease.ps1`. C# mirror (`CAROWINDS_RELEASE_ZIP=…
+  --filter RealReleaseZip`): PASS. Nothing bypassed. Not yet run on Windows.
+- **ZIP structure: PASS.** CRC clean; one top-level folder; no duplicates, backslash names or empty
+  files; no `.DS_Store`, `__MACOSX`, `.pdb`, `.db`, `-wal`, `-shm`, `.log`, `.zip`, `.pdf`, `.png`,
+  `.dylib`, `.so`, source, test assemblies, or dev/rc.1–rc.3 names. Extracted copy `diff -rq`-identical
+  to staging. Executable (`PE32+ (GUI) x86-64`), README, TESTER-GUIDE (now without the removed
+  Dashboard Refresh button), both `.cmd` helpers, `tools\` scheduler scripts, notices, `licenses\`
+  present.
+- **Developer-path scan: PASS.** Checkout path, repository folder name and build user name appear in
+  no file (UTF-8/UTF-16), including the EXE. `/Users/` only in the documented SQLitePCLRaw vendor
+  DLLs, `/home/` only in `MicroCom.Runtime.dll`; `C:\Users\` nowhere.
+- **Third-party notices: PASS (preserved).** `THIRD-PARTY-NOTICES.txt` and `licenses\` byte-identical
+  to the repository (unchanged since `5c0ddf2`). The shipped `deps.json` package set is **identical to
+  RC.3** (44 packages, none added or removed): Phase 20A added **no** spell-check package or
+  dictionary file — spell checking uses the Windows Spell Checking API through built-in COM interop.
+
+## Single-file release (EXPERIMENTAL)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.4-win-x64.exe` |
+| Bytes | 187,097,932 |
+| SHA-256 | `2f3b1b922fbe222c5216a83e5c3f450ca6a3a4a1dccef93d5679ef69113cf070` |
+| Checks | Phase 15F single-file command. Carries `0.1.0-rc.4+67a5dd6…` and `0.1.0.4`. Only the vendor `/Users/eric`, `/home/kekekeks` paths |
+| Status | EXPERIMENTAL. No notices when distributed alone — do **not** hand it out independently |
+
+## QuestPDF licence
+
+QuestPDF 2026.7.3 shipped with its licence texts; `LicenseType.Community` selected in code. No legal
+conclusion drawn. **DISTRIBUTION LICENSE DECISION: PENDING USER/ORGANIZATION CONFIRMATION**
+
+## Build-host evidence for Phase 20A behaviour (not Windows)
+
+| Area | Evidence |
+|---|---|
+| DB 15 → 16 on real data | A **copy** of the macOS dev profile DB (schema 15; live file never opened, its timestamp unchanged) migrated to 16. `season_price_history` created; 11 tracked products, 17 backfilled states from `product_history` (first observations 2026-08-22, changes seen 2026-10-15, e.g. All Season Fast Lane $499 → $599, 2027 Gold Pass $89 sale → $99). Finalized History snapshot + frozen PDF, drafts, catalog and product_history byte/row-identical before and after |
+| Price history pipeline | Isolated scratch profile, real migrations + real `SeasonPassCatalogSource` on fixture HTML: baseline; 2 repeats → no new row, last confirmed advanced; network error → nothing written; $89 → $95 (+$6.00, +6.7%); repeat; $95 → $85 (-$10.00, -10.5%); Prestige missing twice → retired, its history intact and listed with "Include retired" |
+| Spell check UI | Headless Skia render: underlines exactly under "opne"/"runing"; ERT, 9:00, Carowinds, WinterFest, Copperhead not flagged; suggestions returned. Uses a word-list backend — the Windows COM backend cannot run on macOS |
+| Matrix (increase/decrease/sale/Exact↔From/error/NotPublished/reactivation/rename/concurrency/rollback) | PASS BY TEST — `SeasonPriceHistoryReconciliationTests`, `SeasonPriceHistorySqliteTests`, `Migration0016BackfillTests`, `PriceHistoryTests`, `SpellCheck*Tests` (part of 2893) |
+
+## Windows validation
+
+To be run with `docs/phase20b-rc4-windows-checklist.md` against the hashes above.
+
+| Item | Result |
+|---|---|
+| Live-profile backup (`%LOCALAPPDATA%\Carowinds Passdown`) | NOT EXECUTED (required first) |
+| Hash check, launch, second launch, About `0.1.0-rc.4 (67a5dd6)` | NOT EXECUTED |
+| DB 15 → 16 migration on the real profile, data survives | NOT EXECUTED (PASS on build-host copy) |
+| Spell check: underline, correct words, domain words, covered/excluded fields | NOT EXECUTED |
+| Suggestions, Ignore, Add to dictionary, keyboard menu | NOT EXECUTED |
+| Non-blocking (autosave/PDF/finalize/Teams/shutdown), privacy, performance | NOT EXECUTED (PASS BY TEST for non-blocking) |
+| Spell-check failure behavior | NOT EXECUTED (PASS BY TEST) |
+| Price History UI, row buttons, scope, backfill, baseline, search, retired | NOT EXECUTED (PASS on build host) |
+| Repeat-price dedup via Check Online / Deep Refresh / automatic refresh | NOT EXECUTED (PASS on build host + tests) |
+| Increase/decrease/sale/Exact↔From/error/NotPublished/reactivation/rename | PASS BY TEST (runtime NOT EXECUTED) |
+| Phase 19A regressions (Dashboard propagation, auto-check, freshness) | NOT EXECUTED (tests pass) |
+| Phase 19B regressions (Duo, SCarowinds, Conjuring) | NOT EXECUTED (tests pass) |
+| PDF Classic/Compact/Modern, Teams copy | NOT EXECUTED (tests pass) |
+| History immutability | NOT EXECUTED (PASS on build-host DB copy) |
+| Personal Sync one-PC / two-PC | NOT EXECUTED / NOT EXECUTED |
+| App log, diagnostics | NOT EXECUTED |
+| Scaling 100/125/150%, keyboard/accessibility, non-US region | NOT EXECUTED |
+| Single-file EXE launch | NOT EXECUTED |
+
+## Known limitations
+
+- All Windows validation is outstanding — most importantly the Windows spell-check COM path (never
+  executed anywhere yet) and the real-profile 15 → 16 migration.
+- Upgrading is one-way for older builds: keep the pre-RC.4 backup to return to RC.3.
+- Price history is local per PC (not synced); a PC that is off during a short sale never records it.
+- Backfilled intervals' "last confirmed" can be earlier than the true last check (the old table only
+  recorded changes).
+- Spell check: Windows only; `en-US` then the Windows UI language; Ignore is per session.
+- Single-file EXE experimental; QuestPDF distribution decision pending; two-PC sync pending.
+- Blocker policy: any shipped-code fix found during Windows validation becomes `0.1.0-rc.5`.
+
+## Release status
+
+- **Technical: RELEASE BLOCKED, pending Windows validation.** No defect is open and every build-host
+  gate passes (tests, clean Release build, packaging validator, ZIP structure, path scan, notices,
+  migration on a real-data copy). The acceptance gate needs the ZIP launched on Windows, the real
+  15 → 16 migration, Windows spell checking and the Price History screen exercised there, and the
+  19A/19B/PDF/Teams regressions re-run. None of that has run yet.
+- **Distribution: DISTRIBUTION LICENSE DECISION PENDING** (QuestPDF).
