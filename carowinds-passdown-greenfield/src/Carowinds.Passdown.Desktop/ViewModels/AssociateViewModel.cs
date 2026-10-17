@@ -85,6 +85,7 @@ public partial class AssociateViewModel : ViewModelBase
     private Task _pendingTemplatePreferenceLoad = Task.CompletedTask;
     private Task _pendingTemplatePreferenceSave = Task.CompletedTask;
     private bool _isLoadingTemplatePreference;
+    private bool _isRegroupingCountText;
     private CancellationTokenSource? _debounceCts;
 
     // Phase 19A: the quiet automatic check of the selected date (cancelled/superseded whenever the date
@@ -389,6 +390,7 @@ public partial class AssociateViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OperationalNotesCount))]
+    [NotifyPropertyChangedFor(nameof(HasOperationalNotesCount))]
     public partial string? OperationalNotesText { get; set; }
 
     /// <summary>
@@ -401,6 +403,7 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedOperationalNotes))]
     [NotifyPropertyChangedFor(nameof(OperationalNotesCount))]
+    [NotifyPropertyChangedFor(nameof(HasOperationalNotesCount))]
     public partial IReadOnlyList<AssociateSelectedOperationalNoteRowViewModel> SelectedOperationalNotes { get; set; } = [];
 
     /// <summary>
@@ -415,11 +418,14 @@ public partial class AssociateViewModel : ViewModelBase
     public bool HasSelectedOperationalNotes => SelectedOperationalNotes.Count > 0;
 
     /// <summary>
-    /// The compact "Notes: N" count on the status strip (Phase 17D §5) — the selected persistent
-    /// notes plus one for the manual notes entry when it carries any text, giving the associate a
-    /// single at-a-glance total without a dedicated card.
+    /// The compact notes count (Phase 17D §5; Phase 22D: shown beside "Notes" on the section rail) —
+    /// the selected persistent notes plus one for the manual notes entry when it carries any text,
+    /// giving the associate a single at-a-glance total without a dedicated card.
     /// </summary>
     public int OperationalNotesCount => SelectedOperationalNotes.Count + (string.IsNullOrWhiteSpace(OperationalNotesText) ? 0 : 1);
+
+    /// <summary>Phase 22D: the rail shows the count only when there is something to count (never a bare "0").</summary>
+    public bool HasOperationalNotesCount => OperationalNotesCount > 0;
 
     public bool HasAvailableOperationalNoteSuggestions => AvailableOperationalNoteSuggestions.Count > 0;
 
@@ -1815,7 +1821,10 @@ public partial class AssociateViewModel : ViewModelBase
         {
             ProjectedAttendanceError = null;
             _projectedAttendance = parsed;
-            ScheduleAutosave();
+            if (!_isRegroupingCountText)
+            {
+                ScheduleAutosave();
+            }
         }
         else
         {
@@ -1829,7 +1838,10 @@ public partial class AssociateViewModel : ViewModelBase
         {
             PreSoldsError = null;
             _preSolds = parsed;
-            ScheduleAutosave();
+            if (!_isRegroupingCountText)
+            {
+                ScheduleAutosave();
+            }
         }
         else
         {
@@ -1893,11 +1905,11 @@ public partial class AssociateViewModel : ViewModelBase
             NotifyGateOverrideDependents();
 
             _projectedAttendance = draft.ProjectedAttendance;
-            ProjectedAttendanceText = draft.ProjectedAttendance?.ToString(CultureInfo.InvariantCulture);
+            ProjectedAttendanceText = CountEditorTextFor(ProjectedAttendanceText, draft.ProjectedAttendance);
             ProjectedAttendanceError = null;
 
             _preSolds = draft.PreSolds;
-            PreSoldsText = draft.PreSolds?.ToString(CultureInfo.InvariantCulture);
+            PreSoldsText = CountEditorTextFor(PreSoldsText, draft.PreSolds);
             PreSoldsError = null;
 
             // Phase 17B: Early Ride Time is no longer part of the draft — nothing to populate here.
@@ -2231,6 +2243,46 @@ public partial class AssociateViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// Phase 22D: when a count field loses focus, shows its valid value with thousands separators
+    /// ("38500" → "38,500"). Never runs while typing (no caret jumps), leaves invalid text untouched
+    /// so its error stays visible, and is display-only: the parsed value is unchanged, so no autosave
+    /// is scheduled and nothing stored differs.
+    /// </summary>
+    public void RegroupCountFields()
+    {
+        _isRegroupingCountText = true;
+        try
+        {
+            if (ProjectedAttendanceError is null && FormatCountForEditor(_projectedAttendance) is var attendance && ProjectedAttendanceText != attendance)
+            {
+                ProjectedAttendanceText = attendance;
+            }
+
+            if (PreSoldsError is null && FormatCountForEditor(_preSolds) is var preSolds && PreSoldsText != preSolds)
+            {
+                PreSoldsText = preSolds;
+            }
+        }
+        finally
+        {
+            _isRegroupingCountText = false;
+        }
+    }
+
+    /// <summary>
+    /// The text a count field shows after a (re)load: the grouped value — except when the field already
+    /// holds that same number (e.g. an official-data reload right after the associate's own autosave),
+    /// where the text is left exactly as typed so a focused editor's caret never jumps.
+    /// </summary>
+    private static string? CountEditorTextFor(string? currentText, int? value) =>
+        currentText is not null && TryParseNonNegativeInt(currentText, out var current, out _) && current == value
+            ? currentText
+            : FormatCountForEditor(value);
+
+    /// <summary>A count field's display text: grouped, or empty when nothing was entered (never "0").</summary>
+    private static string? FormatCountForEditor(int? count) => count is { } value ? OperationalCount.Format(value) : null;
+
     private static bool TryParseNonNegativeInt(string? text, out int? value, out string? error)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -2240,7 +2292,7 @@ public partial class AssociateViewModel : ViewModelBase
             return true;
         }
 
-        if (!int.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+        if (!OperationalCount.TryParseEntry(text, out var parsed))
         {
             value = null;
             error = "Enter a whole number.";

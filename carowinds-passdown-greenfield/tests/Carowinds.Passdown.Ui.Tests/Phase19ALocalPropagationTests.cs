@@ -112,7 +112,7 @@ public sealed class Phase19ALocalPropagationTests : IDisposable
         await AutosaveAsync(stack);
 
         Assert.Equal(14250, stack.Dashboard.Snapshot!.ProjectedAttendance);
-        Assert.Contains("14250", stack.Dashboard.Presentation!.AttendanceText);
+        Assert.Contains("14,250", stack.Dashboard.Presentation!.AttendanceText); // Phase 22D grouping
         AssertNoOnlineWork();
     }
 

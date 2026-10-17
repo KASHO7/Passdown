@@ -1872,3 +1872,26 @@ still says `0.1.0-rc.6`. The next packaged candidate is **`0.1.0-rc.7`**.
 | Windows validation | NOT EXECUTED — checklist in the Phase 22C doc §21 |
 | Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
 
+
+# Unreleased development — Phase 22D (after RC.6)
+
+Associate workspace refinement and operational-count formatting: the Associate screen separates
+official from entered values in words ("Official", "Entered here", "Your setting"), keeps one
+accent action (Create PDF) with Check Online as a quiet outlined control, shows official-data
+freshness and the Draft save state as two distinct indicators, and collects every transient message
+in one feedback stack visible on all sections. Projected attendance and pre-solds display with en-US
+thousands separators (38,500 / 21,240) on the Dashboard, the Associate editors (on blur), History
+detail and sync-conflict comparisons; PDFs and Teams Copy already grouped counts and are unchanged.
+Season Price History's product list now paints the theme's popup surface. See
+`docs/phase22d-associate-workspace-number-formatting.md`. RC.6 artifacts are unchanged;
+`Directory.Build.props` still says `0.1.0-rc.6`. The next packaged candidate is **`0.1.0-rc.7`**.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| Upgrade implications | None. Stored counts stay plain integers in SQLite, draft JSON, sync payloads and finalized snapshots; frozen History PDFs are served byte-for-byte as before. |
+| Deterministic tests | **3718/3718** (baseline 3601 at `d768056`; +43 `OperationalCountTests`, +26 `Phase22DCountFormattingTests`, +37 `Phase22DAssociateWorkspaceTests`, +11 `Phase15ERealWindowLayoutTests`; 7 existing assertions updated from ungrouped to grouped counts and one markup regex widened for an extra class) = 206 Domain + 1059 Application + 833 Infrastructure + 451 Documents + 1083 Ui together + 26 `OperationsCalendarViewTests` + 47 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). Run-alone set unchanged (five classes) |
+| Live smoke (opt-in) | not applicable (no retrieval change) |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 22D doc §22 |
+| Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |

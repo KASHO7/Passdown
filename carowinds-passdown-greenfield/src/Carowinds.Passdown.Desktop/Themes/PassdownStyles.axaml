@@ -498,6 +498,28 @@
     <Setter Property="Background" Value="{DynamicResource PassdownSelectedBackgroundBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
   </Style>
+  <!-- Phase 22D: Fluent's selected+hover and selected+pressed fills are its accent-tinted list brushes,
+       which do not follow the Passdown palette; keep the selected fill, deepened only by hover. -->
+  <Style Selector="ListBox.selectableRows ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter, ListBox.selectableRows ListBoxItem:selected:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownSelectedBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+  </Style>
+  <Style Selector="ListBox.selectableRows ListBoxItem:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownPressedBackgroundBrush}" />
+  </Style>
+  <!-- A list inside a popup/overlay (Season Price History): the popup surface, not Fluent's
+       ListBox fill, inside one hairline frame. -->
+  <Style Selector="ListBox.popupList">
+    <Setter Property="Background" Value="{DynamicResource PassdownPopupSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+    <Setter Property="Padding" Value="2" />
+  </Style>
+  <Style Selector="ListBox.popupList ListBoxItem">
+    <Setter Property="Padding" Value="10,6" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+  </Style>
 
   <!-- Flyouts, menus, ComboBox drop-downs and tooltips share one popup surface. Their colors come
        from the Fluent resource overrides in PassdownTokens.axaml; radius stays Fluent's

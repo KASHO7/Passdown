@@ -297,7 +297,7 @@ public sealed partial class Phase22ADesignFoundationTests
         foreach (var view in new[] { "HistoryView", "OperationalNotesView", "PriceHistoryView" })
         {
             var markup = File.ReadAllText(MarkupFiles.Find($"src/Carowinds.Passdown.Desktop/Views/{view}.axaml"));
-            Assert.Matches(new Regex("<ListBox [^>]*Classes=\"selectableRows\""), markup);
+            Assert.Matches(new Regex("<ListBox [^>]*Classes=\"selectableRows[ \"]"), markup);
         }
     }
 

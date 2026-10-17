@@ -44,7 +44,7 @@ public class SyncConflictDetailCultureTests
 
         Assert.Equal("10:30 AM – 6:00 PM", rows["Manual Hours"]);
         Assert.Equal("7:00 PM – 11:00 PM", rows["Private Buyout"]);
-        Assert.Equal("32500", rows["Projected Attendance"]);
+        Assert.Equal("32,500", rows["Projected Attendance"]); // Phase 22D: en-US grouping
         Assert.Equal("Souvenir Cup ($54.99)", rows["Custom Products"]);
     }
 

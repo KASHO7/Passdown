@@ -8,12 +8,14 @@ using Avalonia.Styling;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using Carowinds.Passdown.Application.Calendar;
+using Carowinds.Passdown.Application.Catalog;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Catalog;
 using Carowinds.Passdown.Infrastructure.Time;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
 
@@ -370,6 +372,7 @@ public class Phase15ERealWindowLayoutTests
     [InlineData(1280d, 860d)]
     [InlineData(960d, 640d)]
     [InlineData(1280d, 690d)] // ≈ a maximized window on a 1920×1080 display at 150% scaling.
+    [InlineData(1920d, 1000d)] // Phase 22D
     public async Task AssociateView_ActionBar_EveryActionReachableWithinWindowBounds(double width, double height)
     {
         var service = new FakeAssociatePassdownService();
@@ -768,6 +771,128 @@ public class Phase15ERealWindowLayoutTests
         var view = new AssociateView { DataContext = viewModel };
         var window = RealizeInWindow(view, width, height);
 
+        AssertNoControlClipsHorizontally(window);
+
+        window.Close();
+    }
+
+    // ==================================================================================
+    // Phase 22D: Associate workspace refinement
+    // ==================================================================================
+
+    private static async Task<(Window Window, AssociateViewModel ViewModel, FakeAssociatePassdownService Service)> RealizeBusyAssociateAsync(double width, double height, ThemeVariant theme)
+    {
+        var service = new FakeAssociatePassdownService
+        {
+            WorkspaceFactory = date =>
+            {
+                var workspace = FakeAssociatePassdownService.DefaultWorkspace(date);
+                return workspace with
+                {
+                    Draft = workspace.Draft with
+                    {
+                        ProjectedAttendance = 38500,
+                        PreSolds = 21240,
+                        DailyFeatureText = @"Synthetic: what is \(\frac{1}{2} + x^2\)?",
+                        OperationalNotes = ["Synthetic note line one.", "Synthetic note line two."],
+                    },
+                };
+            },
+        };
+        var viewModel = new AssociateViewModel(service, CreateClock());
+        await viewModel.PendingLoad;
+        viewModel.ManualHoursOverrideEnabled = true;
+        viewModel.PrivateBuyoutEnabled = true;
+
+        var window = RealizeInWindow(new AssociateView { DataContext = viewModel }, width, height);
+        window.RequestedThemeVariant = theme;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        return (window, viewModel, service);
+    }
+
+    [Theory]
+    [InlineData(1280d, 860d, "Light")]
+    [InlineData(960d, 640d, "Light")]
+    [InlineData(1280d, 690d, "Dark")]
+    [InlineData(1920d, 1000d, "Dark")]
+    [InlineData(960d, 640d, "Dark")]
+    public async Task AssociateView_EverySection_NoControlClipsHorizontally(double width, double height, string theme)
+    {
+        var (window, viewModel, _) = await RealizeBusyAssociateAsync(width, height, theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light);
+
+        AssertNoControlClipsHorizontally(window); // Overview
+        viewModel.ShowProductsSectionCommand.Execute(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        AssertNoControlClipsHorizontally(window);
+        viewModel.ShowNotesSectionCommand.Execute(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        AssertNoControlClipsHorizontally(window);
+
+        window.Close();
+    }
+
+    [Theory]
+    [InlineData(1280d, 860d)]
+    [InlineData(960d, 640d)]
+    public async Task AssociateView_Overview_ParkHoursAndAttendanceShareTheFirstRow(double width, double height)
+    {
+        var (window, _, _) = await RealizeBusyAssociateAsync(width, height, ThemeVariant.Light);
+        var hours = window.GetVisualDescendants().OfType<StackPanel>().Single(p => AutomationProperties.GetName(p) == "Park hours");
+        var attendance = window.GetVisualDescendants().OfType<StackPanel>().Single(p => AutomationProperties.GetName(p) == "Attendance");
+
+        var hoursBounds = AbsoluteBounds(hours, window);
+        var attendanceBounds = AbsoluteBounds(attendance, window);
+        Assert.True(Math.Abs(hoursBounds.Top - attendanceBounds.Top) < 1, "the two official/manual regions should start on one row.");
+        Assert.True(hoursBounds.Right <= attendanceBounds.Left, "park hours and attendance overlap.");
+        Assert.True(attendanceBounds.Bottom < height, "attendance is not above the fold.");
+
+        window.Close();
+    }
+
+    [Fact]
+    public async Task AssociateView_CountBox_RegroupsWhenFocusLeaves_WithoutAnExtraSave()
+    {
+        var (window, viewModel, service) = await RealizeBusyAssociateAsync(1280, 860, ThemeVariant.Light);
+        var box = window.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "ProjectedAttendanceTextBox");
+        var other = window.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "PreSoldsTextBox");
+        Assert.Equal("38,500", box.Text);
+
+        box.Focus();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        box.Text = "40000";
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal("40000", box.Text); // nothing rewritten while focused.
+
+        other.Focus();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal("40,000", box.Text);
+        Assert.Equal("40,000", viewModel.ProjectedAttendanceText);
+        Assert.Equal(AssociateAutosaveState.Unsaved, viewModel.AutosaveState); // the typed edit, not a new one.
+
+        window.Close();
+    }
+
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public async Task PriceHistory_ProductList_PaintsThePopupSurface_InBothThemes(string theme)
+    {
+        var history = new PriceHistoryViewModel(new FakeSeasonPriceHistoryService()
+            .With("gold", "2027 Synthetic Gold Pass", active: true, PriceHistoryFamily.SeasonPass,
+                (99m, PriceKind.StandardCatalog, new DateTimeOffset(2026, 8, 12, 16, 0, 0, TimeSpan.Zero)))
+            .With("silver", "2027 Synthetic Silver Pass", active: true, PriceHistoryFamily.SeasonPass,
+                (79m, PriceKind.StandardCatalog, new DateTimeOffset(2026, 8, 12, 16, 0, 0, TimeSpan.Zero))));
+        await history.OpenAsync("gold");
+        var variant = theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
+
+        var window = RealizeInWindow(new PriceHistoryView { DataContext = history }, 1280, 860);
+        window.RequestedThemeVariant = variant;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var list = window.GetVisualDescendants().OfType<ListBox>().Single(l => l.Name == "ProductList");
+        Assert.True(window.TryFindResource("PassdownPopupSurfaceBrush", variant, out var surface));
+        Assert.Same(surface, list.Background);
+        Assert.Equal(2, list.GetVisualDescendants().OfType<ListBoxItem>().Count());
         AssertNoControlClipsHorizontally(window);
 
         window.Close();

@@ -1107,3 +1107,28 @@ See `docs/phase22c-dashboard-navigation-pdf-order.md`.
   in the templates changed; stored History PDFs are never regenerated.
 
 Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged.
+
+## Phase 22D — Associate workspace refinement, operational-count formatting
+
+See `docs/phase22d-associate-workspace-number-formatting.md`.
+
+- **Domain** — `OperationalCount` (next to `PresentationCulture`): the one display rule for whole-number
+  operational counts (projected attendance, pre-solds) — en-US thousands grouping via
+  `PresentationCulture.UnitedStates`, missing text supplied by the caller (never a fabricated 0), and
+  `TryParseEntry` (the pre-22D whole-number inputs plus ignored US group separators). Display/parse only;
+  never used for persistence, sync, hashing or source parsing.
+- **Application** — `SyncConflictDetail` count rows use `OperationalCount`.
+- **Documents** — `PdfFormatting.FormatCount` and `AssociateTeamsTextFormatter` delegate to
+  `OperationalCount` (identical output to their previous `"N0"` formatting, so PDF/Teams text is unchanged).
+- **Desktop** — `AssociateView.axaml` reorganized (title row with separate official-data and Draft
+  save indicators; one accent toolbar action, Create PDF; one feedback stack visible on every section;
+  Overview grouped into Park Hours (Official) | Attendance (Entered here), Early Ride (Your setting),
+  Daily Feature (Entered here, preview attached to the editor), Hours Overrides; compact two-line Shows
+  rows; Products official-price column; hairline note rows; rail notes count). `AssociateViewModel`:
+  grouped count text on load (`CountEditorTextFor` leaves an identical value's typed text alone),
+  `RegroupCountFields` on blur (display only, no autosave), `HasOperationalNotesCount`.
+  `OperationalCountTextConverter` renders History-detail counts. `OperationsDashboardPresentation`
+  counts use `OperationalCount`. Shared styles: `ListBox.popupList` and selected-hover/pressed row
+  states (Season Price History list on the popup surface in both themes).
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.

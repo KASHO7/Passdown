@@ -267,12 +267,14 @@
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="3,0,0,0" />
       <Setter Property="BorderBrush" Value="Transparent" />
-      <Setter Property="CornerRadius" Value="0" />
-      <Setter Property="Padding" Value="18,13" />
+      <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+      <Setter Property="Padding" Value="16,9" />
+      <Setter Property="Margin" Value="6,0" />
       <Setter Property="HorizontalAlignment" Value="Stretch" />
-      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
       <Setter Property="FontSize" Value="13.5" />
       <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="MinHeight" Value="36" />
       <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
@@ -290,24 +292,132 @@
       <Setter Property="Foreground" Value="{DynamicResource PassdownSelectedForegroundBrush}" />
     </Style>
 
-  
+    <!-- Phase 22D: rail count (Notes) — secondary to the label, never the only cue. -->
+    <Style Selector="Button.railItem TextBlock.railCount">
+      <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeCaption}" />
+      <Setter Property="FontWeight" Value="Normal" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- Phase 22D: where a value comes from, in words. "Official" (from Carowinds sources) uses the
+         accent chip; "Entered here" (typed in this passdown) and "Your setting" use the neutral chip.
+         The word carries the meaning; the tint only reinforces it. -->
+    <Style Selector="Border.sourceTag">
+      <Setter Property="Background" Value="{DynamicResource PassdownChipBrush}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusSmall}" />
+      <Setter Property="Padding" Value="6,1" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.sourceTag TextBlock">
+      <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeTableHeader}" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+    </Style>
+    <Style Selector="Border.sourceTag.official">
+      <Setter Property="Background" Value="{DynamicResource PassdownChipAccentBrush}" />
+    </Style>
+    <Style Selector="Border.sourceTag.official TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownChipAccentForegroundBrush}" />
+    </Style>
+
+    <!-- Group heading inside the Overview panel: small uppercase label + source tag on one line. -->
+    <Style Selector="StackPanel.groupHeader">
+      <Setter Property="Orientation" Value="Horizontal" />
+      <Setter Property="Spacing" Value="8" />
+      <Setter Property="Margin" Value="0,0,0,2" />
+    </Style>
+    <Style Selector="StackPanel.groupHeader > TextBlock">
+      <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeTableHeader}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="LetterSpacing" Value="0.4" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- Hairline between Overview groups (whitespace + one line, not nested boxes). -->
+    <Style Selector="Rectangle.groupDivider">
+      <Setter Property="Height" Value="1" />
+      <Setter Property="Fill" Value="{DynamicResource PassdownDividerBrush}" />
+    </Style>
+    <!-- Separates Check Online from the passdown output actions on the toolbar. -->
+    <Style Selector="Rectangle.toolbarDivider">
+      <Setter Property="Width" Value="1" />
+      <Setter Property="Height" Value="22" />
+      <Setter Property="Margin" Value="4,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Fill" Value="{DynamicResource PassdownBorderBrush}" />
+    </Style>
+
+    <!-- Count entry (attendance, pre-solds): right-aligned digits so the two values line up. -->
+    <Style Selector="TextBox.countInput">
+      <Setter Property="TextAlignment" Value="Right" />
+      <Setter Property="MinWidth" Value="120" />
+      <Setter Property="MaxWidth" Value="180" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+    </Style>
+
+    <!-- Official price column on Products: right-aligned so amounts line up down a category. -->
+    <Style Selector="TextBlock.officialPrice">
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="TextAlignment" Value="Right" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <!-- The math preview hangs off the bottom of the Daily Feature editor as one unit. -->
+    <Style Selector="controls|DailyFeatureMathPreview.attachedPreview">
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1,0,1,1" />
+      <Setter Property="CornerRadius" Value="0,0,4,4" />
+      <Setter Property="Margin" Value="6,0,6,0" />
+    </Style>
+
+    <!-- One list row (persistent notes, shows): hairline-separated instead of a boxed card per row. -->
+    <Style Selector="Border.listRow">
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="Padding" Value="0,8" />
+    </Style>
+
   </UserControl.Styles>
 
   <Grid RowDefinitions="Auto,*">
 
     <!-- Action bar (spec §10.2/Part B/C): identity, date navigation, primary actions, and save/refresh
          status all live together as one coherent toolbar instead of a separate floating date bar or a
-         developer-style footer. -->
-    <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceBrush}"
+         developer-style footer. Phase 22D: the two status indicators sit on the title row, side by side
+         but never merged — official-data freshness (from Carowinds sources) and the local draft's save
+         state — and every transient message is collected in one feedback stack under the toolbar. -->
+    <Border Grid.Row="0" Padding="24,12,24,12" Background="{DynamicResource PassdownSurfaceBrush}"
             BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
-      <StackPanel Spacing="12">
+      <StackPanel Spacing="10">
 
-        <Grid ColumnDefinitions="Auto,*,Auto">
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
           <TextBlock Grid.Column="0" Text="Associate Passdown" Classes="pageTitle" VerticalAlignment="Center" />
 
-          <!-- The one place save state is shown in the header (the Overview status strip repeats it
-               only as part of its own one-line summary). Text-first, never color-only. -->
-          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <!-- Phase 19A: quiet status only — the shared app-wide official-data freshness line, plus a note
+               while this date's missing/stale data is being checked automatically. Neither blocks the
+               screen or disables any action; Check Online stays the explicit way to check right now. -->
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right" VerticalAlignment="Center">
+            <TextBlock x:Name="AutoCheckStatusText" Text="Checking online for this date…" Classes="muted"
+                       VerticalAlignment="Center"
+                       IsVisible="{Binding IsAutoCheckingDate}"
+                       AutomationProperties.LiveSetting="Polite" />
+            <TextBlock x:Name="AssociateOfficialDataStatusText" Text="{Binding OfficialDataStatus.Presentation.Text}" Classes="muted"
+                       TextWrapping="Wrap" TextAlignment="Right" VerticalAlignment="Center"
+                       IsVisible="{Binding OfficialDataStatus, Converter={x:Static ObjectConverters.IsNotNull}}"
+                       AutomationProperties.Name="{Binding OfficialDataStatus.Presentation.AutomationText}"
+                       ToolTip.Tip="{Binding OfficialDataStatus.Presentation.DetailText}" />
+          </StackPanel>
+
+          <!-- The one primary save-state indicator (Unsaved / Saving / Saved / Save failed / Conflict),
+               labeled "Draft" so a locally saved draft is never read as verified official data.
+               Text-first, never color-only. -->
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Rectangle Classes="toolbarDivider" Height="18" Margin="0,0,4,0" />
+            <TextBlock Text="Draft" Classes="muted" VerticalAlignment="Center" />
             <Border x:Name="SaveStatusChip" Classes="chip" AutomationProperties.Name="Save status">
               <Border.Background>
                 <MultiBinding Converter="{x:Static converters:SaveStatusBrushConverter.Instance}">
@@ -323,7 +433,7 @@
         <!-- Phase 21B: date navigation (left) and passdown actions (right). A WrapPanel, as in Phase
              15E, so at the 960×640 minimum or at 125–150% scaling the action group drops to its own
              line instead of clipping — no horizontal scrolling, no overlap, every action reachable. -->
-        <WrapPanel x:Name="AssociateActionBar" Orientation="Horizontal" ItemSpacing="24" LineSpacing="8">
+        <WrapPanel x:Name="AssociateActionBar" Orientation="Horizontal" ItemSpacing="20" LineSpacing="8">
 
           <!-- Date navigation: ‹ [date ▾] › Today. Every change goes through AssociateViewModel's one
                SelectedDate path (flush unsaved edits → local load; never online retrieval on its own). -->
@@ -389,20 +499,23 @@
                     ToolTip.Tip="Jump to today" />
           </StackPanel>
 
-          <!-- Passdown actions: everyday actions stay visible (Check Online, Create PDF, Copy);
-               occasional ones live in More. Administrative actions (Export Diagnostics) moved to
-               Settings → Diagnostics. -->
+          <!-- Passdown actions. Phase 22D hierarchy: Check Online is a quiet outlined control (always
+               visible, never automatic), a divider, then the passdown outputs — Create PDF is the one
+               accent button, Copy sits beside it, occasional actions live in More. Administrative
+               actions (Export Diagnostics) stay in Settings → Diagnostics. -->
           <StackPanel x:Name="PassdownActions" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
             <Button Content="Check Online"
                     Command="{Binding CheckOnlineCommand}"
-                    Classes="primaryAction"
+                    Classes="toolbarButton"
                     AutomationProperties.Name="Check this date online"
                     AutomationProperties.HelpText="Checks official Carowinds sources for this date. Does not run automatically." />
+
+            <Rectangle Classes="toolbarDivider" />
 
             <!-- The PDF style in use is always shown on the button itself; it is changed under
                  More → PDF Style (same saved preference as before — never changed silently). -->
             <Button Command="{Binding CreatePdfCommand}"
-                    Classes="secondaryAction"
+                    Classes="primaryAction"
                     AutomationProperties.Name="Create PDF"
                     AutomationProperties.HelpText="Builds this date's Associate Passdown PDF in the selected PDF style and lets you choose where to save it."
                     ToolTip.Tip="{Binding SelectedTemplateOption.Label, StringFormat='Uses the {0} PDF style (change under More)'}">
@@ -484,232 +597,240 @@
         <ProgressBar IsIndeterminate="True" Height="3"
                      IsVisible="{Binding IsBusy}" />
 
-        <!-- Phase 13D Part Z/AA/AT: persistent regardless of which section (Overview/Products/Notes)
-             is active, and regardless of how many times Create PDF is pressed while content stays
-             over one page — it only reflects the real, most recently generated page count, never a
-             transient/reset-on-click state. -->
-        <Border Classes="multiPageWarning" IsVisible="{Binding HasMultiPagePdfWarning}"
-                AutomationProperties.Name="{Binding MultiPageWarningText}">
-          <TextBlock Text="{Binding MultiPageWarningText}" TextWrapping="Wrap" />
-        </Border>
+        <!-- Phase 22D: one feedback stack, visible on every section. Each line is present only while it
+             has something to say (hidden lines take no space). Errors and conflicts stay full text in
+             the error color; nothing critical is collapsed or hidden. -->
+        <StackPanel x:Name="AssociateFeedback" Spacing="6">
+          <!-- Phase 13D Part Z/AA/AT: persistent regardless of which section (Overview/Products/Notes)
+               is active, and regardless of how many times Create PDF is pressed while content stays
+               over one page — it only reflects the real, most recently generated page count, never a
+               transient/reset-on-click state. -->
+          <Border Classes="multiPageWarning" IsVisible="{Binding HasMultiPagePdfWarning}"
+                  AutomationProperties.Name="{Binding MultiPageWarningText}">
+            <TextBlock Text="{Binding MultiPageWarningText}" TextWrapping="Wrap" />
+          </Border>
 
-        <TextBlock Text="{Binding RefreshStatusMessage}"
-                   IsVisible="{Binding RefreshStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                   Classes="muted" />
+          <TextBlock Text="{Binding RefreshStatusMessage}"
+                     IsVisible="{Binding RefreshStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                     Classes="muted" TextWrapping="Wrap" />
 
-        <!-- Phase 19A: quiet status only — the shared app-wide official-data freshness line, plus a note
-             while this date's missing/stale data is being checked automatically. Neither blocks the
-             screen or disables any action; Check Online stays the explicit way to check right now. -->
-        <StackPanel Orientation="Horizontal" Spacing="12">
-          <TextBlock x:Name="AssociateOfficialDataStatusText" Text="{Binding OfficialDataStatus.Presentation.Text}" Classes="muted"
-                     TextWrapping="Wrap"
-                     IsVisible="{Binding OfficialDataStatus, Converter={x:Static ObjectConverters.IsNotNull}}"
-                     AutomationProperties.Name="{Binding OfficialDataStatus.Presentation.AutomationText}"
-                     ToolTip.Tip="{Binding OfficialDataStatus.Presentation.DetailText}" />
-          <TextBlock x:Name="AutoCheckStatusText" Text="Checking online for this date…" Classes="muted"
-                     IsVisible="{Binding IsAutoCheckingDate}"
+          <!-- A Check Online that could not reach every source (moved here from the Overview strip so it
+               is visible on Products and Notes too). -->
+          <TextBlock Text="{Binding RefreshResultMessage}"
+                     IsVisible="{Binding RefreshHadFailures}"
+                     Classes="fieldWarning" Margin="0" TextWrapping="Wrap" />
+
+          <TextBlock Text="{Binding PdfExportMessage}"
+                     IsVisible="{Binding PdfExportMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                     TextWrapping="Wrap" />
+
+          <!-- Phase 18F: subtle Copy feedback — muted on success, error color on a clipboard failure. -->
+          <TextBlock Text="{Binding CopyMessage}"
+                     IsVisible="{Binding CopyMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                     Classes.muted="{Binding !CopyMessageIsError}"
+                     Classes.copyError="{Binding CopyMessageIsError}"
                      AutomationProperties.LiveSetting="Polite" />
+
+          <TextBlock Text="{Binding LoadErrorMessage}"
+                     IsVisible="{Binding LoadErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                     TextWrapping="Wrap"
+                     Foreground="{DynamicResource PassdownErrorBrush}" />
+
+          <!-- Phase 18B REL-004: an edit made here collided with a change from another device. Nothing
+               was lost; the associate chooses which version to keep under Personal Sync conflicts. -->
+          <TextBlock Text="{Binding SyncConflictMessage}"
+                     IsVisible="{Binding SyncConflictMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                     TextWrapping="Wrap"
+                     Foreground="{DynamicResource PassdownErrorBrush}" />
         </StackPanel>
-
-        <!-- Phase 18F: subtle Copy feedback — muted on success, error color on a clipboard failure. -->
-        <TextBlock Text="{Binding CopyMessage}"
-                   IsVisible="{Binding CopyMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                   Classes.muted="{Binding !CopyMessageIsError}"
-                   Classes.copyError="{Binding CopyMessageIsError}"
-                   AutomationProperties.LiveSetting="Polite" />
-
-        <TextBlock Text="{Binding LoadErrorMessage}"
-                   IsVisible="{Binding LoadErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                   Foreground="{DynamicResource PassdownErrorBrush}" />
-
-        <!-- Phase 18B REL-004: an edit made here collided with a change from another device. Nothing
-             was lost; the associate chooses which version to keep under Personal Sync conflicts. -->
-        <TextBlock Text="{Binding SyncConflictMessage}"
-                   IsVisible="{Binding SyncConflictMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                   TextWrapping="Wrap"
-                   Foreground="{DynamicResource PassdownErrorBrush}" />
       </StackPanel>
     </Border>
 
-    <!-- Main content: a section rail + dashboard body (Parts 2/3) so the most important information
-         (Park Hours, Today at a Glance, Status, Notes summary) sits above the fold on "Overview",
-         while Products and full Notes editing live in their own sections instead of forcing one long
-         page scroll. -->
-    <Grid Grid.Row="1" ColumnDefinitions="152,*">
+    <!-- Main content: a section rail + section body (Parts 2/3) so the most important information
+         (Park Hours, attendance, Early Ride, Daily Feature) sits above the fold on "Overview", while
+         Products and full Notes editing live in their own sections instead of one long page scroll. -->
+    <Grid Grid.Row="1" ColumnDefinitions="140,*">
 
       <Border Grid.Column="0" Background="{DynamicResource PassdownSurfaceBrush}"
               BorderThickness="0,0,1,0" BorderBrush="{DynamicResource PassdownDividerBrush}">
-        <StackPanel>
+        <StackPanel Margin="0,8,0,0" Spacing="2">
           <Button Classes="railItem" Classes.active="{Binding IsOverviewSectionSelected}"
                   Content="Overview" Command="{Binding ShowOverviewSectionCommand}"
                   AutomationProperties.Name="Overview section" />
           <Button Classes="railItem" Classes.active="{Binding IsProductsSectionSelected}"
                   Content="Products" Command="{Binding ShowProductsSectionCommand}"
                   AutomationProperties.Name="Products section" />
+          <!-- Phase 22D: the notes count (moved from the old Overview status strip) rides on the rail. -->
           <Button Classes="railItem" Classes.active="{Binding IsNotesSectionSelected}"
-                  Content="Notes" Command="{Binding ShowNotesSectionCommand}"
-                  AutomationProperties.Name="Notes section" />
+                  Command="{Binding ShowNotesSectionCommand}"
+                  AutomationProperties.Name="Notes section"
+                  AutomationProperties.HelpText="{Binding OperationalNotesCount, StringFormat='Operational notes: {0}'}">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+              <TextBlock Grid.Column="0" Text="Notes" VerticalAlignment="Center" />
+              <TextBlock Grid.Column="1" Classes="railCount" Text="{Binding OperationalNotesCount}"
+                         IsVisible="{Binding HasOperationalNotesCount}" />
+            </Grid>
+          </Button>
         </StackPanel>
       </Border>
 
       <ScrollViewer Grid.Column="1" Padding="20,16,20,20"
                     IsVisible="{Binding IsOverviewSectionSelected}">
-          <StackPanel Spacing="10">
+          <StackPanel Spacing="12">
 
-            <!-- Phase 17D §4: single compact "Day & Operations" panel — replaces the Phase 17C
-                 two-column "Day & Operating Hours" / "Today at a Glance" split with one Grid of
-                 aligned label/value rows (spec's approved layout direction). No narrow independent
-                 vertical columns for Attendance/Early Ride/Daily Feature — every operational field
-                 reads as one row within one shared panel. -->
+            <!-- Phase 22D Overview: one panel, grouped regions separated by whitespace and hairlines.
+                 Each region says where its values come from: "Official" (Carowinds sources — park
+                 hours) versus "Entered here" (typed into this passdown) or "Your setting" (Early Ride
+                 configuration). Official values are read-only text; manual values are input boxes. -->
             <Border Classes="panel heroPanel">
             <StackPanel Spacing="10">
-              <TextBlock Text="Day &amp; Operations" Classes="sectionTitle" />
 
-              <Grid ColumnDefinitions="110,*,90,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="8">
+              <!-- Capped so on a wide window attendance stays next to the hours instead of drifting to the far edge. -->
+              <Grid ColumnDefinitions="3*,28,2*" MaxWidth="1040" HorizontalAlignment="Left">
 
-                <!-- Park Hours row. -->
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="Park Hours" Classes="fieldLabel" VerticalAlignment="Center" />
-                <StackPanel Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="3" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                  <Ellipse x:Name="ParkHoursStatusDot" Width="8" Height="8" VerticalAlignment="Center">
-                    <Ellipse.Fill>
-                      <MultiBinding Converter="{StaticResource BadgeBrushConverter}">
-                        <Binding Path="ParkHours.BadgeKind" />
-                        <Binding Path="ActualThemeVariant" ElementName="ParkHoursStatusDot" />
-                      </MultiBinding>
-                    </Ellipse.Fill>
-                  </Ellipse>
-                  <TextBlock Text="{Binding ParkHours.HeadlineText, FallbackValue='Hours not checked yet'}"
-                             Classes="hoursHeadline" TextWrapping="Wrap"
-                             Classes.subtle="{Binding ParkHours.IsHoursUnknown}" />
-                  <Border Classes="chip" IsVisible="{Binding ParkHours.BadgeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                    <TextBlock Text="{Binding ParkHours.BadgeText}" />
-                  </Border>
-                </StackPanel>
-
-                <!-- Gates row: North Gate | Avenue. Phase 18D: each shows its effective time, a subtle
-                     "Override" chip while a per-date override is active, a compact override box
-                     (blank = calculated default; the default is never copied in) and Reset. -->
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="North Gate" Classes="fieldLabel" VerticalAlignment="Center" />
-                <StackPanel Grid.Row="1" Grid.Column="1" Spacing="0" Margin="0,0,10,0" VerticalAlignment="Center">
-                  <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="4">
-                    <TextBlock Text="{Binding ParkHours.NorthGateText, FallbackValue='—'}" FontWeight="Medium" VerticalAlignment="Center" MinWidth="64"
-                               AutomationProperties.Name="{Binding ParkHours.NorthGateText, StringFormat='North Gate opens {0}'}" />
-                    <Border Classes="chip" IsVisible="{Binding NorthGateIsOverridden}" VerticalAlignment="Center">
-                      <TextBlock Text="Override" />
-                    </Border>
-                    <TextBox Text="{Binding NorthGateOverrideText, UpdateSourceTrigger=LostFocus}"
-                             PlaceholderText="Override" MinWidth="96" VerticalAlignment="Center"
-                             KeyDown="TimeTextBox_OnKeyDown"
-                             AutomationProperties.Name="North Gate override time" />
-                    <Button Content="Reset" Classes="secondaryAction" VerticalAlignment="Center"
-                            IsVisible="{Binding CanResetNorthGateOverride}"
-                            Command="{Binding ResetNorthGateOverrideCommand}"
-                            AutomationProperties.Name="Reset North Gate to default time" />
-                  </WrapPanel>
-                  <TextBlock Text="{Binding NorthGateOverrideError}"
-                             IsVisible="{Binding NorthGateOverrideError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                             Classes="fieldError" TextWrapping="Wrap"
-                             AutomationProperties.Name="{Binding NorthGateOverrideError}" />
-                </StackPanel>
-                <TextBlock Grid.Row="1" Grid.Column="2" Text="Avenue" Classes="fieldLabel" VerticalAlignment="Center" />
-                <StackPanel Grid.Row="1" Grid.Column="3" Spacing="0" VerticalAlignment="Center">
-                  <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="4">
-                    <TextBlock Text="{Binding ParkHours.AvenueText, FallbackValue='—'}" FontWeight="Medium" VerticalAlignment="Center" MinWidth="64"
-                               AutomationProperties.Name="{Binding ParkHours.AvenueText, StringFormat='Avenue opens {0}'}" />
-                    <Border Classes="chip" IsVisible="{Binding AvenueIsOverridden}" VerticalAlignment="Center">
-                      <TextBlock Text="Override" />
-                    </Border>
-                    <TextBox Text="{Binding AvenueOverrideText, UpdateSourceTrigger=LostFocus}"
-                             PlaceholderText="Override" MinWidth="96" VerticalAlignment="Center"
-                             KeyDown="TimeTextBox_OnKeyDown"
-                             AutomationProperties.Name="Avenue override time" />
-                    <Button Content="Reset" Classes="secondaryAction" VerticalAlignment="Center"
-                            IsVisible="{Binding CanResetAvenueOverride}"
-                            Command="{Binding ResetAvenueOverrideCommand}"
-                            AutomationProperties.Name="Reset Avenue to default time" />
-                  </WrapPanel>
-                  <TextBlock Text="{Binding AvenueOverrideError}"
-                             IsVisible="{Binding AvenueOverrideError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                             Classes="fieldError" TextWrapping="Wrap"
-                             AutomationProperties.Name="{Binding AvenueOverrideError}" />
-                </StackPanel>
-
-                <!-- Waterpark hours / verification / stale note — full width, collapses to zero space when absent. -->
-                <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="4" Spacing="2">
-                  <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ParkHours.HasWaterparkHours}">
-                    <TextBlock Text="Carolina Harbor" Classes="muted" />
-                    <TextBlock Text="{Binding ParkHours.WaterparkHeadlineText}" FontWeight="Medium"
-                               AutomationProperties.Name="{Binding ParkHours.WaterparkHeadlineText, StringFormat='Carolina Harbor hours: {0}'}" />
+                <!-- Park hours and gates (official; gate overrides are manual and flagged). -->
+                <StackPanel Grid.Column="0" Spacing="6" AutomationProperties.Name="Park hours">
+                  <StackPanel Classes="groupHeader">
+                    <TextBlock Text="PARK HOURS" />
+                    <Border Classes="sourceTag official"><TextBlock Text="Official" /></Border>
                   </StackPanel>
-                  <TextBlock Text="{Binding ParkHours.VerificationText}"
-                             IsVisible="{Binding ParkHours.VerificationText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                             Classes="muted" />
-                  <TextBlock Text="{Binding ParkHours.StaleNoteText}"
-                             IsVisible="{Binding ParkHours.StaleNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                             Classes="fieldWarning" TextWrapping="Wrap" />
+                  <WrapPanel Orientation="Horizontal" ItemSpacing="10" LineSpacing="4">
+                    <Ellipse x:Name="ParkHoursStatusDot" Width="8" Height="8" VerticalAlignment="Center">
+                      <Ellipse.Fill>
+                        <MultiBinding Converter="{StaticResource BadgeBrushConverter}">
+                          <Binding Path="ParkHours.BadgeKind" />
+                          <Binding Path="ActualThemeVariant" ElementName="ParkHoursStatusDot" />
+                        </MultiBinding>
+                      </Ellipse.Fill>
+                    </Ellipse>
+                    <TextBlock Text="{Binding ParkHours.HeadlineText, FallbackValue='Hours not checked yet'}"
+                               Classes="hoursHeadline" Margin="0" TextWrapping="Wrap" VerticalAlignment="Center"
+                               Classes.subtle="{Binding ParkHours.IsHoursUnknown}" />
+                    <Border Classes="chip" VerticalAlignment="Center"
+                            IsVisible="{Binding ParkHours.BadgeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                      <TextBlock Text="{Binding ParkHours.BadgeText}" />
+                    </Border>
+                  </WrapPanel>
+
+                  <!-- Waterpark hours / verification / stale note — collapse to zero space when absent. -->
+                  <StackPanel Spacing="2">
+                    <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ParkHours.HasWaterparkHours}">
+                      <TextBlock Text="Carolina Harbor" Classes="muted" />
+                      <TextBlock Text="{Binding ParkHours.WaterparkHeadlineText}" FontWeight="Medium"
+                                 AutomationProperties.Name="{Binding ParkHours.WaterparkHeadlineText, StringFormat='Carolina Harbor hours: {0}'}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding ParkHours.VerificationText}"
+                               IsVisible="{Binding ParkHours.VerificationText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               Classes="muted" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding ParkHours.StaleNoteText}"
+                               IsVisible="{Binding ParkHours.StaleNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               Classes="fieldWarning" TextWrapping="Wrap" />
+                  </StackPanel>
+
+                  <!-- Gates: North Gate | Avenue. Phase 18D: each shows its effective time, a subtle
+                       "Override" chip while a per-date override is active, a compact override box
+                       (blank = calculated default; the default is never copied in) and Reset. -->
+                  <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="6" Margin="0,4,0,0">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="North Gate" Classes="fieldLabel" Margin="0" VerticalAlignment="Center" />
+                    <StackPanel Grid.Row="0" Grid.Column="1" Spacing="0" VerticalAlignment="Center">
+                      <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="4">
+                        <TextBlock Text="{Binding ParkHours.NorthGateText, FallbackValue='—'}" FontWeight="Medium" VerticalAlignment="Center" MinWidth="64"
+                                   AutomationProperties.Name="{Binding ParkHours.NorthGateText, StringFormat='North Gate opens {0}'}" />
+                        <Border Classes="chip" IsVisible="{Binding NorthGateIsOverridden}" VerticalAlignment="Center">
+                          <TextBlock Text="Override" />
+                        </Border>
+                        <TextBox Text="{Binding NorthGateOverrideText, UpdateSourceTrigger=LostFocus}"
+                                 PlaceholderText="Override" MinWidth="96" VerticalAlignment="Center"
+                                 KeyDown="TimeTextBox_OnKeyDown"
+                                 AutomationProperties.Name="North Gate override time" />
+                        <Button Content="Reset" Classes="secondaryAction" VerticalAlignment="Center"
+                                IsVisible="{Binding CanResetNorthGateOverride}"
+                                Command="{Binding ResetNorthGateOverrideCommand}"
+                                AutomationProperties.Name="Reset North Gate to default time" />
+                      </WrapPanel>
+                      <TextBlock Text="{Binding NorthGateOverrideError}"
+                                 IsVisible="{Binding NorthGateOverrideError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                 Classes="fieldError" TextWrapping="Wrap"
+                                 AutomationProperties.Name="{Binding NorthGateOverrideError}" />
+                    </StackPanel>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Avenue" Classes="fieldLabel" Margin="0" VerticalAlignment="Center" />
+                    <StackPanel Grid.Row="1" Grid.Column="1" Spacing="0" VerticalAlignment="Center">
+                      <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="4">
+                        <TextBlock Text="{Binding ParkHours.AvenueText, FallbackValue='—'}" FontWeight="Medium" VerticalAlignment="Center" MinWidth="64"
+                                   AutomationProperties.Name="{Binding ParkHours.AvenueText, StringFormat='Avenue opens {0}'}" />
+                        <Border Classes="chip" IsVisible="{Binding AvenueIsOverridden}" VerticalAlignment="Center">
+                          <TextBlock Text="Override" />
+                        </Border>
+                        <TextBox Text="{Binding AvenueOverrideText, UpdateSourceTrigger=LostFocus}"
+                                 PlaceholderText="Override" MinWidth="96" VerticalAlignment="Center"
+                                 KeyDown="TimeTextBox_OnKeyDown"
+                                 AutomationProperties.Name="Avenue override time" />
+                        <Button Content="Reset" Classes="secondaryAction" VerticalAlignment="Center"
+                                IsVisible="{Binding CanResetAvenueOverride}"
+                                Command="{Binding ResetAvenueOverrideCommand}"
+                                AutomationProperties.Name="Reset Avenue to default time" />
+                      </WrapPanel>
+                      <TextBlock Text="{Binding AvenueOverrideError}"
+                                 IsVisible="{Binding AvenueOverrideError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                 Classes="fieldError" TextWrapping="Wrap"
+                                 AutomationProperties.Name="{Binding AvenueOverrideError}" />
+                    </StackPanel>
+                  </Grid>
                 </StackPanel>
 
-                <!-- Attendance | Pre-solds row. -->
-                <TextBlock Grid.Row="3" Grid.Column="0" Text="Attendance" Classes="fieldLabel" VerticalAlignment="Center" />
-                <StackPanel Grid.Row="3" Grid.Column="1" Spacing="0" Margin="0,0,10,0">
-                  <TextBox Text="{Binding ProjectedAttendanceText}" PlaceholderText="Not entered"
-                           AutomationProperties.Name="Projected attendance" />
-                  <TextBlock Text="{Binding ProjectedAttendanceError}"
-                             IsVisible="{Binding ProjectedAttendanceError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                             Classes="fieldError" />
+                <!-- Attendance and pre-solds (entered here). Phase 22D: shown with thousands separators
+                     once the field loses focus ("38,500"); typing is never rewritten mid-entry. -->
+                <StackPanel Grid.Column="2" Spacing="6" AutomationProperties.Name="Attendance">
+                  <StackPanel Classes="groupHeader">
+                    <TextBlock Text="ATTENDANCE" />
+                    <Border Classes="sourceTag"><TextBlock Text="Entered here" /></Border>
+                  </StackPanel>
+                  <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="8">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Projected" Classes="fieldLabel" Margin="0,7,0,0" VerticalAlignment="Top" />
+                    <StackPanel Grid.Row="0" Grid.Column="1" Spacing="0">
+                      <TextBox x:Name="ProjectedAttendanceTextBox" Classes="countInput"
+                               Text="{Binding ProjectedAttendanceText}" PlaceholderText="Not entered"
+                               LostFocus="CountTextBox_OnLostFocus"
+                               AutomationProperties.Name="Projected attendance" />
+                      <TextBlock Text="{Binding ProjectedAttendanceError}"
+                                 IsVisible="{Binding ProjectedAttendanceError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                 Classes="fieldError" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Pre-solds" Classes="fieldLabel" Margin="0,7,0,0" VerticalAlignment="Top" />
+                    <StackPanel Grid.Row="1" Grid.Column="1" Spacing="0">
+                      <TextBox x:Name="PreSoldsTextBox" Classes="countInput"
+                               Text="{Binding PreSoldsText}" PlaceholderText="Not entered"
+                               LostFocus="CountTextBox_OnLostFocus"
+                               AutomationProperties.Name="Pre-solds" />
+                      <TextBlock Text="{Binding PreSoldsError}"
+                                 IsVisible="{Binding PreSoldsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                 Classes="fieldError" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Grid>
                 </StackPanel>
-                <TextBlock Grid.Row="3" Grid.Column="2" Text="Pre-solds" Classes="fieldLabel" VerticalAlignment="Center" />
-                <StackPanel Grid.Row="3" Grid.Column="3" Spacing="0">
-                  <TextBox Text="{Binding PreSoldsText}" PlaceholderText="Not entered"
-                           AutomationProperties.Name="Pre-solds" />
-                  <TextBlock Text="{Binding PreSoldsError}"
-                             IsVisible="{Binding PreSoldsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                             Classes="fieldError" />
-                </StackPanel>
+              </Grid>
 
-                <!-- Early Ride row (Phase 17D §2: rides only, one compact Edit action — never a
-                     routine start-time field, never a permanent pair of large buttons). -->
-                <TextBlock Grid.Row="4" Grid.Column="0" Text="Early Ride" Classes="fieldLabel" VerticalAlignment="Center" />
-                <TextBlock Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding EarlyRideTimeStatusText}"
+              <Rectangle Classes="groupDivider" />
+
+              <!-- Early Ride (Phase 17D §2: rides only, one compact Edit action — never a routine
+                   start-time field, never a permanent pair of large buttons). -->
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16" AutomationProperties.Name="Early Ride">
+                <StackPanel Grid.Column="0" Classes="groupHeader" Margin="0" VerticalAlignment="Center">
+                  <TextBlock Text="EARLY RIDE" />
+                  <Border Classes="sourceTag"><TextBlock Text="Your setting" /></Border>
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="{Binding EarlyRideTimeStatusText}"
                            FontWeight="Medium" TextWrapping="Wrap" VerticalAlignment="Center"
                            AutomationProperties.Name="{Binding EarlyRideTimeStatusText, StringFormat='Early Ride: {0}'}" />
-                <Button Grid.Row="4" Grid.Column="3" Content="Edit" Classes="secondaryAction" HorizontalAlignment="Right"
+                <Button Grid.Column="2" Content="Edit" Classes="secondaryAction" VerticalAlignment="Center"
                         Command="{Binding OpenErtEditorCommand}"
                         AutomationProperties.Name="Edit Early Ride Time" />
-
-                <!-- Daily Feature row. -->
-                <TextBlock Grid.Row="5" Grid.Column="0" Text="Daily Feature" Classes="fieldLabel" VerticalAlignment="Top" Margin="0,4,0,0" />
-                <StackPanel Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3" Spacing="6">
-                  <ComboBox ItemsSource="{Binding DailyFeatureTypeOptions}"
-                            SelectedItem="{Binding SelectedDailyFeatureTypeOption}"
-                            HorizontalAlignment="Left" MinWidth="220"
-                            AutomationProperties.Name="Daily Feature type">
-                    <ComboBox.ItemTemplate>
-                      <DataTemplate x:DataType="presentation:DailyFeatureTypeOption">
-                        <TextBlock Text="{Binding Label}" />
-                      </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                  </ComboBox>
-                  <!-- Phase 21D: the editor stays plain source text. "∑ Math" inserts symbols/templates at
-                       the caret; the preview appears only when the text contains \( or \[ math. -->
-                  <TextBox x:Name="DailyFeatureTextBox"
-                           spell:SpellCheck.ExcludeMath="True"
-                           spell:SpellCheck.IsEnabled="True"
-                           Text="{Binding DailyFeatureText}"
-                           AcceptsReturn="True" TextWrapping="Wrap" MinHeight="48"
-                           PlaceholderText="Enter the question, fact, or quote"
-                           AutomationProperties.Name="Daily Feature text" />
-                  <controls:MathSymbolPicker Classes="mathPicker" HorizontalAlignment="Left"
-                                             Target="{Binding #DailyFeatureTextBox}" />
-                  <controls:DailyFeatureMathPreview Source="{Binding #DailyFeatureTextBox.Text}"
-                                                    Background="{DynamicResource PassdownSurfaceSecondaryBrush}" />
-                </StackPanel>
               </Grid>
 
               <!-- Compact Early Ride Time editor (Phase 17D §3) — one panel with the Monthly Default
                    and Date Override sections together, opened by the single [Edit] action above. No
                    time controls anywhere in this editor. -->
-              <Border Classes="inset" IsVisible="{Binding IsErtEditorOpen}">
+              <Border Classes="inset" Margin="0" IsVisible="{Binding IsErtEditorOpen}">
                 <StackPanel Spacing="8">
                   <TextBlock Text="MONTHLY DEFAULT" Classes="subsectionTitle" Margin="0" />
                   <TextBlock Text="{Binding SelectedMonthLabel}" Classes="fieldLabel" />
@@ -775,134 +896,152 @@
                 </StackPanel>
               </Border>
 
+              <Rectangle Classes="groupDivider" />
+
+              <!-- Daily Feature (entered here). Phase 21D: the editor stays plain source text; "∑ Math"
+                   inserts symbols/templates at the caret; the preview appears only when the text contains
+                   \( or \[ math. Phase 22D: the picker shares the type row (declared after the editor so
+                   Tab order stays type → text → Math) and the preview hangs directly off the editor. -->
+              <StackPanel Spacing="6" AutomationProperties.Name="Daily Feature">
+                <StackPanel Classes="groupHeader">
+                  <TextBlock Text="DAILY FEATURE" />
+                  <Border Classes="sourceTag"><TextBlock Text="Entered here" /></Border>
+                </StackPanel>
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" RowSpacing="6">
+                  <ComboBox Grid.Row="0" Grid.Column="0"
+                            ItemsSource="{Binding DailyFeatureTypeOptions}"
+                            SelectedItem="{Binding SelectedDailyFeatureTypeOption}"
+                            HorizontalAlignment="Left" MinWidth="220"
+                            AutomationProperties.Name="Daily Feature type">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="presentation:DailyFeatureTypeOption">
+                        <TextBlock Text="{Binding Label}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Spacing="0">
+                    <TextBox x:Name="DailyFeatureTextBox"
+                             spell:SpellCheck.ExcludeMath="True"
+                             spell:SpellCheck.IsEnabled="True"
+                             Text="{Binding DailyFeatureText}"
+                             AcceptsReturn="True" TextWrapping="Wrap" MinHeight="48"
+                             PlaceholderText="Enter the question, fact, or quote"
+                             AutomationProperties.Name="Daily Feature text" />
+                    <controls:DailyFeatureMathPreview Classes="attachedPreview"
+                                                      Source="{Binding #DailyFeatureTextBox.Text}" />
+                  </StackPanel>
+                  <controls:MathSymbolPicker Grid.Row="0" Grid.Column="1" Classes="mathPicker" Margin="10,0,0,0"
+                                             HorizontalAlignment="Left" VerticalAlignment="Center"
+                                             Target="{Binding #DailyFeatureTextBox}" />
+                </Grid>
+              </StackPanel>
+
+              <Rectangle Classes="groupDivider" />
+
               <!-- Manual hours override + private buyout (Part D/I/J, Phase 13E): one shared,
                    compact override area. Time entry is a typable TextBox (Phase 13E — replaces the
                    stock click-and-spin TimePicker) bound with UpdateSourceTrigger=LostFocus so
                    parsing/normalization commits once per Tab/click-away/Enter, not per keystroke
-                   (Part O/P). -->
-              <Border Classes="inset">
-                <StackPanel Spacing="10">
-                  <Grid ColumnDefinitions="*,*">
-                    <StackPanel Grid.Column="0" Spacing="6">
-                      <CheckBox Content="Manual hours override"
-                                IsChecked="{Binding ManualHoursOverrideEnabled}"
-                                AutomationProperties.Name="Use a manual hours override" />
-                      <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="2"
-                            IsVisible="{Binding ManualHoursOverrideEnabled}">
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Open" Classes="fieldLabel" VerticalAlignment="Center" />
-                        <StackPanel Grid.Row="0" Grid.Column="1" Spacing="0">
-                          <TextBox Text="{Binding ManualOpeningTimeText, UpdateSourceTrigger=LostFocus}"
-                                   PlaceholderText="9:00 AM" MinWidth="110" HorizontalAlignment="Left"
-                                   KeyDown="TimeTextBox_OnKeyDown"
-                                   AutomationProperties.Name="Manual Hours Open" />
-                          <TextBlock Text="{Binding ManualOpeningTimeError}"
-                                     IsVisible="{Binding ManualOpeningTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                     Classes="fieldError" TextWrapping="Wrap"
-                                     AutomationProperties.Name="{Binding ManualOpeningTimeError}" />
-                        </StackPanel>
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Close" Classes="fieldLabel" VerticalAlignment="Center" />
-                        <StackPanel Grid.Row="1" Grid.Column="1" Spacing="0">
-                          <TextBox Text="{Binding ManualClosingTimeText, UpdateSourceTrigger=LostFocus}"
-                                   PlaceholderText="10:00 PM" MinWidth="110" HorizontalAlignment="Left"
-                                   KeyDown="TimeTextBox_OnKeyDown"
-                                   AutomationProperties.Name="Manual Hours Close" />
-                          <TextBlock Text="{Binding ManualClosingTimeError}"
-                                     IsVisible="{Binding ManualClosingTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                     Classes="fieldError" TextWrapping="Wrap"
-                                     AutomationProperties.Name="{Binding ManualClosingTimeError}" />
-                        </StackPanel>
-                      </Grid>
-                      <TextBlock Text="{Binding ManualHoursWarningText}"
-                                 IsVisible="{Binding ManualHoursWarningText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                 Classes="fieldWarning" TextWrapping="Wrap" />
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="1" Spacing="6" Margin="16,0,0,0">
-                      <CheckBox Content="Private buyout / custom hours"
-                                IsChecked="{Binding PrivateBuyoutEnabled}"
-                                AutomationProperties.Name="Private buyout or custom hours" />
-                      <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="2"
-                            IsVisible="{Binding PrivateBuyoutEnabled}">
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Open" Classes="fieldLabel" VerticalAlignment="Center" />
-                        <StackPanel Grid.Row="0" Grid.Column="1" Spacing="0">
-                          <TextBox Text="{Binding PrivateBuyoutOpeningTimeText, UpdateSourceTrigger=LostFocus}"
-                                   PlaceholderText="6:00 PM" MinWidth="110" HorizontalAlignment="Left"
-                                   KeyDown="TimeTextBox_OnKeyDown"
-                                   AutomationProperties.Name="Private Buyout Open" />
-                          <TextBlock Text="{Binding PrivateBuyoutOpeningTimeError}"
-                                     IsVisible="{Binding PrivateBuyoutOpeningTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                     Classes="fieldError" TextWrapping="Wrap"
-                                     AutomationProperties.Name="{Binding PrivateBuyoutOpeningTimeError}" />
-                        </StackPanel>
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Close" Classes="fieldLabel" VerticalAlignment="Center" />
-                        <StackPanel Grid.Row="1" Grid.Column="1" Spacing="0">
-                          <TextBox Text="{Binding PrivateBuyoutClosingTimeText, UpdateSourceTrigger=LostFocus}"
-                                   PlaceholderText="11:00 PM" MinWidth="110" HorizontalAlignment="Left"
-                                   KeyDown="TimeTextBox_OnKeyDown"
-                                   AutomationProperties.Name="Private Buyout Close" />
-                          <TextBlock Text="{Binding PrivateBuyoutClosingTimeError}"
-                                     IsVisible="{Binding PrivateBuyoutClosingTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                     Classes="fieldError" TextWrapping="Wrap"
-                                     AutomationProperties.Name="{Binding PrivateBuyoutClosingTimeError}" />
-                        </StackPanel>
-                      </Grid>
-                      <TextBox spell:SpellCheck.IsEnabled="True"
-                               Text="{Binding PrivateBuyoutDetails}"
-                               IsVisible="{Binding PrivateBuyoutEnabled}"
-                               PlaceholderText="Group name, contact, or other details"
-                               AutomationProperties.Name="Private buyout details" />
-                      <TextBlock Text="{Binding PrivateBuyoutHoursWarningText}"
-                                 IsVisible="{Binding PrivateBuyoutHoursWarningText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                 Classes="fieldWarning" TextWrapping="Wrap" />
-                    </StackPanel>
-                  </Grid>
+                   (Part O/P). Phase 22D: a plain group (no nested box), labeled as entered here. -->
+              <StackPanel Spacing="6" AutomationProperties.Name="Hours overrides">
+                <StackPanel Classes="groupHeader">
+                  <TextBlock Text="HOURS OVERRIDES" />
+                  <Border Classes="sourceTag"><TextBlock Text="Entered here" /></Border>
                 </StackPanel>
-              </Border>
-            </StackPanel>
-            </Border>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                  <StackPanel Grid.Column="0" Spacing="6">
+                    <CheckBox Content="Manual hours override"
+                              IsChecked="{Binding ManualHoursOverrideEnabled}"
+                              AutomationProperties.Name="Use a manual hours override" />
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="2"
+                          IsVisible="{Binding ManualHoursOverrideEnabled}">
+                      <TextBlock Grid.Row="0" Grid.Column="0" Text="Open" Classes="fieldLabel" VerticalAlignment="Center" />
+                      <StackPanel Grid.Row="0" Grid.Column="1" Spacing="0">
+                        <TextBox Text="{Binding ManualOpeningTimeText, UpdateSourceTrigger=LostFocus}"
+                                 PlaceholderText="9:00 AM" MinWidth="110" HorizontalAlignment="Left"
+                                 KeyDown="TimeTextBox_OnKeyDown"
+                                 AutomationProperties.Name="Manual Hours Open" />
+                        <TextBlock Text="{Binding ManualOpeningTimeError}"
+                                   IsVisible="{Binding ManualOpeningTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Classes="fieldError" TextWrapping="Wrap"
+                                   AutomationProperties.Name="{Binding ManualOpeningTimeError}" />
+                      </StackPanel>
+                      <TextBlock Grid.Row="1" Grid.Column="0" Text="Close" Classes="fieldLabel" VerticalAlignment="Center" />
+                      <StackPanel Grid.Row="1" Grid.Column="1" Spacing="0">
+                        <TextBox Text="{Binding ManualClosingTimeText, UpdateSourceTrigger=LostFocus}"
+                                 PlaceholderText="10:00 PM" MinWidth="110" HorizontalAlignment="Left"
+                                 KeyDown="TimeTextBox_OnKeyDown"
+                                 AutomationProperties.Name="Manual Hours Close" />
+                        <TextBlock Text="{Binding ManualClosingTimeError}"
+                                   IsVisible="{Binding ManualClosingTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Classes="fieldError" TextWrapping="Wrap"
+                                   AutomationProperties.Name="{Binding ManualClosingTimeError}" />
+                      </StackPanel>
+                    </Grid>
+                    <TextBlock Text="{Binding ManualHoursWarningText}"
+                               IsVisible="{Binding ManualHoursWarningText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               Classes="fieldWarning" TextWrapping="Wrap" />
+                  </StackPanel>
 
-            <!-- Phase 17D §5: a single lightweight status strip — "Draft: Saved | Last checked: ... |
-                 Notes: N" — replacing the Phase 17C two-column status card. Warnings/errors are the
-                 only thing allowed to expand this into more than one line; normal healthy status stays
-                 a single compact line, never a large card. -->
-            <Border Classes="panel">
-            <StackPanel Spacing="4">
-              <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Draft: " Classes="muted" />
-                <TextBlock Text="{Binding SaveStatusText, FallbackValue='Not saved yet'}" FontWeight="Medium"
-                           AutomationProperties.Name="{Binding SaveStatusText, StringFormat='Draft status: {0}'}" />
-                <TextBlock Text="   |   " Classes="muted" />
-                <TextBlock Text="{Binding ParkHours.VerificationText, FallbackValue='Not checked yet'}" Classes="muted" />
-                <TextBlock Text="   |   " Classes="muted" />
-                <TextBlock Text="Notes: " Classes="muted" />
-                <TextBlock Text="{Binding OperationalNotesCount}" FontWeight="Medium"
-                           AutomationProperties.Name="{Binding OperationalNotesCount, StringFormat='Operational notes: {0}'}" />
+                  <StackPanel Grid.Column="1" Spacing="6">
+                    <CheckBox Content="Private buyout / custom hours"
+                              IsChecked="{Binding PrivateBuyoutEnabled}"
+                              AutomationProperties.Name="Private buyout or custom hours" />
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="2"
+                          IsVisible="{Binding PrivateBuyoutEnabled}">
+                      <TextBlock Grid.Row="0" Grid.Column="0" Text="Open" Classes="fieldLabel" VerticalAlignment="Center" />
+                      <StackPanel Grid.Row="0" Grid.Column="1" Spacing="0">
+                        <TextBox Text="{Binding PrivateBuyoutOpeningTimeText, UpdateSourceTrigger=LostFocus}"
+                                 PlaceholderText="6:00 PM" MinWidth="110" HorizontalAlignment="Left"
+                                 KeyDown="TimeTextBox_OnKeyDown"
+                                 AutomationProperties.Name="Private Buyout Open" />
+                        <TextBlock Text="{Binding PrivateBuyoutOpeningTimeError}"
+                                   IsVisible="{Binding PrivateBuyoutOpeningTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Classes="fieldError" TextWrapping="Wrap"
+                                   AutomationProperties.Name="{Binding PrivateBuyoutOpeningTimeError}" />
+                      </StackPanel>
+                      <TextBlock Grid.Row="1" Grid.Column="0" Text="Close" Classes="fieldLabel" VerticalAlignment="Center" />
+                      <StackPanel Grid.Row="1" Grid.Column="1" Spacing="0">
+                        <TextBox Text="{Binding PrivateBuyoutClosingTimeText, UpdateSourceTrigger=LostFocus}"
+                                 PlaceholderText="11:00 PM" MinWidth="110" HorizontalAlignment="Left"
+                                 KeyDown="TimeTextBox_OnKeyDown"
+                                 AutomationProperties.Name="Private Buyout Close" />
+                        <TextBlock Text="{Binding PrivateBuyoutClosingTimeError}"
+                                   IsVisible="{Binding PrivateBuyoutClosingTimeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Classes="fieldError" TextWrapping="Wrap"
+                                   AutomationProperties.Name="{Binding PrivateBuyoutClosingTimeError}" />
+                      </StackPanel>
+                    </Grid>
+                    <TextBox spell:SpellCheck.IsEnabled="True"
+                             Text="{Binding PrivateBuyoutDetails}"
+                             IsVisible="{Binding PrivateBuyoutEnabled}"
+                             PlaceholderText="Group name, contact, or other details"
+                             AutomationProperties.Name="Private buyout details" />
+                    <TextBlock Text="{Binding PrivateBuyoutHoursWarningText}"
+                               IsVisible="{Binding PrivateBuyoutHoursWarningText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               Classes="fieldWarning" TextWrapping="Wrap" />
+                  </StackPanel>
+                </Grid>
               </StackPanel>
-
-              <!-- Expands only when attention is needed (spec §5) — a failed Check Online, or a PDF
-                   export message. -->
-              <TextBlock Text="{Binding RefreshResultMessage}"
-                         IsVisible="{Binding RefreshHadFailures}"
-                         Classes="fieldWarning" TextWrapping="Wrap" />
-              <TextBlock Text="{Binding PdfExportMessage}"
-                         IsVisible="{Binding PdfExportMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             </StackPanel>
             </Border>
 
             <!-- Phase 21C: optional Shows section — the selected date's verified official shows, one
                  checkbox per show (all of a selected show's times print). New shows are never
-                 pre-selected; selected shows the schedule no longer carries stay listed with a reason. -->
+                 pre-selected; selected shows the schedule no longer carries stay listed with a reason.
+                 Phase 22D: compact two-line rows (name; times · venue) separated by hairlines. -->
             <Border Classes="panel" AutomationProperties.Name="Shows">
               <StackPanel Spacing="6">
-                <Grid ColumnDefinitions="*,Auto,Auto">
+                <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="8">
                   <CheckBox Grid.Column="0" IsChecked="{Binding IncludeShows}" VerticalAlignment="Center"
                             AutomationProperties.Name="Include the Shows section in the Passdown">
                     <TextBlock Text="Shows" Classes="sectionTitle" Margin="0" />
                   </CheckBox>
-                  <Button Grid.Column="1" Content="Select all" Classes="secondaryAction" Margin="0,0,8,0"
+                  <Border Grid.Column="1" Classes="sourceTag official"><TextBlock Text="Official schedule" /></Border>
+                  <Button Grid.Column="3" Content="Select all" Classes="linkAction" VerticalAlignment="Center"
                           Command="{Binding SelectAllShowsCommand}"
                           AutomationProperties.Name="Select every show on the official schedule" />
-                  <Button Grid.Column="2" Content="Clear" Classes="secondaryAction"
+                  <Button Grid.Column="4" Content="Clear" Classes="linkAction" VerticalAlignment="Center"
                           Command="{Binding ClearShowsCommand}"
                           AutomationProperties.Name="Clear the show selection" />
                 </Grid>
@@ -913,19 +1052,23 @@
                 <ItemsControl ItemsSource="{Binding ShowRows}" IsVisible="{Binding HasShowRows}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:AssociateShowRowViewModel">
-                      <StackPanel Spacing="0" Margin="0,1">
-                        <CheckBox IsChecked="{Binding IsSelected}"
-                                  AutomationProperties.Name="{Binding AccessibleName}">
-                          <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
-                            <TextBlock Text="—" Classes="muted" />
-                            <TextBlock Text="{Binding TimesText}" TextWrapping="Wrap" />
-                            <TextBlock Text="{Binding Venue}" Classes="muted" IsVisible="{Binding HasVenue}" />
-                          </StackPanel>
-                        </CheckBox>
-                        <TextBlock Text="{Binding StateNote}" Classes="fieldWarning" TextWrapping="Wrap" Margin="28,0,0,0"
-                                   IsVisible="{Binding HasStateNote}" />
-                      </StackPanel>
+                      <Border Classes="listRow" Padding="0,6">
+                        <StackPanel Spacing="0">
+                          <CheckBox IsChecked="{Binding IsSelected}" VerticalAlignment="Top"
+                                    AutomationProperties.Name="{Binding AccessibleName}">
+                            <StackPanel Spacing="2">
+                              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                              <WrapPanel Orientation="Horizontal" ItemSpacing="6">
+                                <TextBlock Text="{Binding TimesText}" TextWrapping="Wrap" />
+                                <TextBlock Text="·" Classes="muted" IsVisible="{Binding HasVenue}" />
+                                <TextBlock Text="{Binding Venue}" Classes="muted" IsVisible="{Binding HasVenue}" />
+                              </WrapPanel>
+                            </StackPanel>
+                          </CheckBox>
+                          <TextBlock Text="{Binding StateNote}" Classes="fieldWarning" TextWrapping="Wrap" Margin="32,0,0,0"
+                                     IsVisible="{Binding HasStateNote}" />
+                        </StackPanel>
+                      </Border>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
@@ -937,25 +1080,25 @@
                  Daily Feature prints whenever text is entered (Phase 18F); none has a checkbox
                  here — only these seven sections can be independently shown/hidden. -->
             <Border Classes="panel">
-              <StackPanel Spacing="8">
-                <TextBlock Text="Include in Passdown" Classes="sectionTitle" Margin="0,0,0,4" />
+              <StackPanel Spacing="6">
+                <TextBlock Text="Include in Passdown" Classes="sectionTitle" Margin="0" />
                 <TextBlock Text="Day, date, park hours, attendance, Early Ride Time, and the Daily Feature always print. Choose which additional sections appear on the PDF."
                            Classes="muted" TextWrapping="Wrap" />
-                <WrapPanel>
+                <WrapPanel ItemSpacing="20" LineSpacing="0">
                   <CheckBox Content="Daily Admission" IsChecked="{Binding IncludeDailyAdmission}"
-                            Margin="0,0,24,4" AutomationProperties.Name="Include Daily Admission in the Passdown" />
+                            AutomationProperties.Name="Include Daily Admission in the Passdown" />
                   <CheckBox Content="Fast Lane" IsChecked="{Binding IncludeFastLane}"
-                            Margin="0,0,24,4" AutomationProperties.Name="Include Fast Lane in the Passdown" />
+                            AutomationProperties.Name="Include Fast Lane in the Passdown" />
                   <CheckBox Content="Promotions" IsChecked="{Binding IncludePromotions}"
-                            Margin="0,0,24,4" AutomationProperties.Name="Include Promotions in the Passdown" />
+                            AutomationProperties.Name="Include Promotions in the Passdown" />
                   <CheckBox Content="Season Passes" IsChecked="{Binding IncludeSeasonPasses}"
-                            Margin="0,0,24,4" AutomationProperties.Name="Include Season Passes in the Passdown" />
+                            AutomationProperties.Name="Include Season Passes in the Passdown" />
                   <CheckBox Content="Add-Ons" IsChecked="{Binding IncludeAddOns}"
-                            Margin="0,0,24,4" AutomationProperties.Name="Include Add-Ons in the Passdown" />
+                            AutomationProperties.Name="Include Add-Ons in the Passdown" />
                   <CheckBox Content="SCarowinds / Haunt" IsChecked="{Binding IncludeHauntedAttractions}"
-                            Margin="0,0,24,4" AutomationProperties.Name="Include SCarowinds / Haunt in the Passdown" />
+                            AutomationProperties.Name="Include SCarowinds / Haunt in the Passdown" />
                   <CheckBox Content="Operational Notes" IsChecked="{Binding IncludeOperationalNotes}"
-                            Margin="0,0,24,4" AutomationProperties.Name="Include Operational Notes in the Passdown" />
+                            AutomationProperties.Name="Include Operational Notes in the Passdown" />
                 </WrapPanel>
               </StackPanel>
             </Border>
@@ -963,17 +1106,23 @@
           </StackPanel>
       </ScrollViewer>
 
-      <ScrollViewer Grid.Column="1" Padding="24,20,24,24"
+      <ScrollViewer Grid.Column="1" Padding="20,16,20,20"
                     IsVisible="{Binding IsProductsSectionSelected}">
-          <StackPanel Spacing="16">
+          <StackPanel Spacing="12">
 
-            <!-- Phase 20A: entry point to the read-only Season Price History screen (also the way to reach
-                 retired products' history). Quiet secondary action; the screen itself is an overlay. -->
-            <Button Content="Season pass price history"
-                    Classes="secondaryAction"
-                    HorizontalAlignment="Right"
-                    Command="{Binding OpenPriceHistoryCommand}"
-                    AutomationProperties.Name="Open season pass and add-on price history" />
+            <!-- Phase 22D: one heading row — whose prices these are, and the entry point to the read-only
+                 Season Price History screen (Phase 20A; also the way to reach retired products'
+                 history; the same screen is under More). -->
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+              <StackPanel Grid.Column="0" Classes="groupHeader" VerticalAlignment="Center">
+                <TextBlock Text="{Binding DateNavigation.DateText, StringFormat='Prices for {0}'}" />
+                <Border Classes="sourceTag official"><TextBlock Text="Official" /></Border>
+              </StackPanel>
+              <Button Grid.Column="1" Content="Season pass price history"
+                      Classes="secondaryAction"
+                      Command="{Binding OpenPriceHistoryCommand}"
+                      AutomationProperties.Name="Open season pass and add-on price history" />
+            </Grid>
 
             <!-- Phase 21A: a past date shows only prices recorded for that exact date, never today's
                  catalog; this says so, and says plainly when nothing was recorded. -->
@@ -984,12 +1133,13 @@
 
             <!-- Products (Part F): editable, data-driven per-category product sections. No product
                  names or category counts are hard-coded — sections and rows come straight from the
-                 composed workspace. -->
+                 composed workspace. Phase 22D: the official price has its own right-aligned column so
+                 amounts line up; the display-price box (a manual override) stays in the last column. -->
             <ItemsControl ItemsSource="{Binding ProductSections}"
                           IsVisible="{Binding HasProductSections}">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
-                  <StackPanel Spacing="16" />
+                  <StackPanel Spacing="12" />
                 </ItemsPanelTemplate>
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
@@ -1000,26 +1150,27 @@
                         <TextBlock Text="{Binding CategoryDisplayName}" />
                       </Border>
 
-                      <Border Classes="inset" IsVisible="{Binding HasStatus}" Margin="0,0,0,6">
-                        <StackPanel Spacing="2">
-                          <TextBlock Text="{Binding Status.StatusText}" FontWeight="SemiBold" />
-                          <TextBlock Text="{Binding Status.DetailText}"
-                                     IsVisible="{Binding Status.DetailText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                     Classes="muted" />
-                        </StackPanel>
-                      </Border>
+                      <!-- Category source status (freshness / not published / could not check): one
+                           compact block, still never hidden. -->
+                      <StackPanel Spacing="1" IsVisible="{Binding HasStatus}" Margin="2,0,0,6">
+                        <TextBlock Text="{Binding Status.StatusText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Status.DetailText}"
+                                   IsVisible="{Binding Status.DetailText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Classes="muted" TextWrapping="Wrap" />
+                      </StackPanel>
 
                       <!-- Column headers (Part 4: denser, table-like product presentation). -->
-                      <Grid ColumnDefinitions="Auto,*,200" IsVisible="{Binding HasProducts}" Margin="0,2,0,2">
-                        <TextBlock Grid.Column="1" Text="ITEM" Classes="columnHeader" Margin="0,0,16,0" />
-                        <TextBlock Grid.Column="2" Text="DISPLAY PRICE" Classes="columnHeader" />
+                      <Grid ColumnDefinitions="Auto,*,120,180" IsVisible="{Binding HasProducts}" Margin="0,2,0,2">
+                        <TextBlock Grid.Column="1" Text="ITEM" Classes="columnHeader" Margin="28,0,16,0" />
+                        <TextBlock Grid.Column="2" Text="OFFICIAL" Classes="columnHeader" HorizontalAlignment="Right" Margin="0,0,16,0" />
+                        <TextBlock Grid.Column="3" Text="DISPLAY PRICE" Classes="columnHeader" />
                       </Grid>
 
                       <ItemsControl ItemsSource="{Binding Products}">
                         <ItemsControl.ItemTemplate>
                           <DataTemplate x:DataType="vm:ProductRowViewModel">
                             <Border Classes="productRow">
-                              <Grid ColumnDefinitions="Auto,*,200">
+                              <Grid ColumnDefinitions="Auto,*,120,180">
                                 <CheckBox Grid.Column="0"
                                           IsChecked="{Binding IncludeOnPdf}"
                                           VerticalAlignment="Top"
@@ -1028,41 +1179,42 @@
 
                                 <StackPanel Grid.Column="1" Spacing="2" Margin="0,0,16,0">
                                   <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                  <StackPanel Orientation="Horizontal" Spacing="12">
-                                    <TextBlock Text="{Binding OfficialPriceText, StringFormat='Official {0}'}" Classes="muted" />
-                                    <TextBlock Text="{Binding ComparisonPriceText, StringFormat='Compare at {0}'}"
-                                               IsVisible="{Binding ComparisonPriceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                               Foreground="{DynamicResource PassdownTextMutedBrush}" FontSize="12.5" />
-                                  </StackPanel>
+                                  <TextBlock Text="{Binding ComparisonPriceText, StringFormat='Compare at {0}'}"
+                                             IsVisible="{Binding ComparisonPriceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                             Classes="muted" />
                                   <TextBlock Text="{Binding PriceQualifier}"
                                              IsVisible="{Binding HasPriceQualifier}"
-                                             Classes="muted" FontStyle="Italic" />
+                                             Classes="muted" FontStyle="Italic" TextWrapping="Wrap" />
                                   <TextBlock Text="{Binding BundleNoteText}"
                                              IsVisible="{Binding HasBundleNote}"
-                                             Classes="muted" FontStyle="Italic" />
+                                             Classes="muted" FontStyle="Italic" TextWrapping="Wrap" />
                                   <TextBlock Text="{Binding VerificationNoteText}"
                                              IsVisible="{Binding VerificationNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                             Classes="fieldWarning" />
+                                             Classes="fieldWarning" TextWrapping="Wrap" />
                                   <!-- Phase 20A: only tracked Season Passes / Season Pass Add-Ons show this. -->
                                   <Button Content="Price history"
                                           Command="{Binding ViewPriceHistoryCommand}"
                                           IsVisible="{Binding HasPriceHistory}"
-                                          Classes="secondaryAction"
-                                          Padding="8,2" FontSize="12" HorizontalAlignment="Left" Margin="0,2,0,0"
+                                          Classes="linkAction"
+                                          FontSize="12" HorizontalAlignment="Left"
                                           AutomationProperties.Name="{Binding DisplayName, StringFormat='View price history for {0}'}" />
                                 </StackPanel>
 
-                                <StackPanel Grid.Column="2" Spacing="2">
+                                <TextBlock Grid.Column="2" Text="{Binding OfficialPriceText}" Classes="officialPrice"
+                                           Margin="0,1,16,0" VerticalAlignment="Top"
+                                           AutomationProperties.Name="{Binding OfficialPriceText, StringFormat='Official {0}'}" />
+
+                                <StackPanel Grid.Column="3" Spacing="2">
                                   <TextBox Text="{Binding DisplayPriceOverrideText}"
                                            PlaceholderText="{Binding OverridePlaceholderText}"
                                            AutomationProperties.Name="{Binding DisplayName, StringFormat='Display price override for {0}'}" />
                                   <TextBlock Text="{Binding DisplayPriceOverrideError}"
                                              IsVisible="{Binding DisplayPriceOverrideError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                             Classes="fieldError" />
+                                             Classes="fieldError" TextWrapping="Wrap" />
                                   <Button Content="Use official price"
                                           Command="{Binding ResetToOfficialCommand}"
                                           IsVisible="{Binding HasOverride}"
-                                          Margin="0,2,0,0"
+                                          Classes="linkAction"
                                           AutomationProperties.Name="{Binding DisplayName, StringFormat='Use official price for {0}'}" />
                                 </StackPanel>
                               </Grid>
@@ -1082,9 +1234,10 @@
                  catalog items. -->
             <Border Classes="panel">
               <StackPanel Spacing="8">
-                <Grid ColumnDefinitions="*,Auto">
-                  <TextBlock Grid.Column="0" Text="Custom &amp; Internal Items" Classes="sectionTitle" Margin="0" />
-                  <Button Grid.Column="1"
+                <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
+                  <TextBlock Grid.Column="0" Text="Custom &amp; Internal Items" Classes="sectionTitle" Margin="0" VerticalAlignment="Center" />
+                  <Border Grid.Column="1" Classes="sourceTag"><TextBlock Text="Entered here" /></Border>
+                  <Button Grid.Column="3"
                           Content="Add custom item"
                           Classes="secondaryAction"
                           Command="{Binding AddCustomProductCommand}"
@@ -1153,33 +1306,37 @@
           </StackPanel>
       </ScrollViewer>
 
-      <ScrollViewer Grid.Column="1" Padding="24,20,24,24"
+      <ScrollViewer Grid.Column="1" Padding="20,16,20,20"
                     IsVisible="{Binding IsNotesSectionSelected}">
-        <StackPanel Spacing="16">
+        <StackPanel Spacing="12">
 
-          <!-- Daily Passdown Notes (Part E): full width, comfortable multiline entry — the actual
-               editing surface for the Overview section's read-only summary card. Deliberately
+          <!-- Daily Passdown Notes (Part E): full width, comfortable multiline entry. Deliberately
                independent of the persistent-note sections below (Part AA) — selecting/deselecting a
                persistent note never reads or writes this text. -->
           <Border Classes="panel">
-            <StackPanel Spacing="8">
-              <TextBlock Text="Daily Passdown Notes" Classes="sectionTitle" Margin="0" />
+            <StackPanel Spacing="6">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="Daily Passdown Notes" Classes="sectionTitle" Margin="0" VerticalAlignment="Center" />
+                <Border Classes="sourceTag"><TextBlock Text="Entered here" /></Border>
+              </StackPanel>
               <TextBox spell:SpellCheck.IsEnabled="True"
                        Text="{Binding OperationalNotesText}"
                        AcceptsReturn="True"
                        TextWrapping="Wrap"
-                       MinHeight="200"
+                       MinHeight="180"
                        Background="{DynamicResource PassdownSurfaceSecondaryBrush}"
                        PlaceholderText="Important operational notes, one line per note"
                        AutomationProperties.Name="Operational notes" />
+              <TextBlock Text="Each line prints as its own note. Saved automatically."
+                         Classes="fieldHint" Margin="0" />
             </StackPanel>
           </Border>
 
           <!-- Included Persistent Notes (Phase 11D Part T/V): frozen copies the supervisor has
                explicitly selected for this date — structurally distinct from the manual notes above,
-               never merged into that text box. -->
+               never merged into that text box. Phase 22D: hairline-separated rows, not a box per note. -->
           <Border Classes="panel">
-            <StackPanel Spacing="8">
+            <StackPanel Spacing="4">
               <TextBlock Text="Included Persistent Notes" Classes="sectionTitle" Margin="0"
                          AutomationProperties.Name="Included persistent operational notes" />
 
@@ -1195,15 +1352,10 @@
 
               <ItemsControl ItemsSource="{Binding SelectedOperationalNotes}"
                             IsVisible="{Binding HasSelectedOperationalNotes}">
-                <ItemsControl.ItemsPanel>
-                  <ItemsPanelTemplate>
-                    <StackPanel Spacing="8" />
-                  </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:AssociateSelectedOperationalNoteRowViewModel">
-                    <Border Classes="inset" Margin="0" AutomationProperties.Name="{Binding AccessibleSummary}">
-                      <StackPanel Spacing="8">
+                    <Border Classes="listRow" AutomationProperties.Name="{Binding AccessibleSummary}">
+                      <StackPanel Spacing="6">
                         <Grid ColumnDefinitions="Auto,*,Auto">
                           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top" Margin="0,0,10,0">
                             <Border Classes="chip" IsVisible="{Binding IsImportant}">
@@ -1225,6 +1377,7 @@
                           <!-- Remove means "remove from this passdown", never "delete/resolve the source note" (spec Part S) — the automation name spells this out explicitly. -->
                           <Button Grid.Column="2"
                                   Content="Remove"
+                                  Classes="secondaryAction"
                                   Command="{Binding RemoveCommand}"
                                   VerticalAlignment="Top"
                                   AutomationProperties.Name="{Binding Title, StringFormat='Remove {0} from this passdown'}" />
@@ -1255,7 +1408,7 @@
                Associate-selected date, minus whatever is already included above. Selecting is
                explicit (Add) — nothing here is ever auto-included. -->
           <Border Classes="panel">
-            <StackPanel Spacing="8">
+            <StackPanel Spacing="4">
               <TextBlock Text="{Binding AvailableOperationalNoteSuggestionsHeading}" Classes="sectionTitle" Margin="0"
                          AutomationProperties.Name="Available persistent operational notes" />
 
@@ -1265,14 +1418,9 @@
 
               <ItemsControl ItemsSource="{Binding AvailableOperationalNoteSuggestions}"
                             IsVisible="{Binding HasAvailableOperationalNoteSuggestions}">
-                <ItemsControl.ItemsPanel>
-                  <ItemsPanelTemplate>
-                    <StackPanel Spacing="8" />
-                  </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:AssociateOperationalNoteSuggestionRowViewModel">
-                    <Border Classes="inset" Margin="0" AutomationProperties.Name="{Binding AccessibleSummary}">
+                    <Border Classes="listRow" AutomationProperties.Name="{Binding AccessibleSummary}">
                       <Grid ColumnDefinitions="Auto,*,Auto">
                         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top" Margin="0,0,10,0">
                           <Border Classes="chip" IsVisible="{Binding IsImportant}">

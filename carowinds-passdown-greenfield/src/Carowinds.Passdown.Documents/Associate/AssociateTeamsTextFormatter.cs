@@ -131,7 +131,7 @@ public static class AssociateTeamsTextFormatter
         }
     }
 
-    private static string FormatCount(int value) => value.ToString("N0", PresentationCulture.UnitedStates);
+    private static string FormatCount(int value) => OperationalCount.Format(value);
 
     /// <summary>
     /// The same three states every PDF template prints (<c>PdfFormatting.ErtLineText</c>), worded for a

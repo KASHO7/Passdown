@@ -42,7 +42,9 @@
             <CheckBox Content="Include retired products" IsChecked="{Binding IncludeInactive}"
                       AutomationProperties.Name="Include retired products in the list" />
           </StackPanel>
-          <ListBox x:Name="ProductList" Classes="selectableRows" ItemsSource="{Binding Products}" SelectedItem="{Binding SelectedProduct}"
+          <!-- Phase 22D: the list paints the popup surface (Fluent's default ListBox fill stayed light
+               gray in dark mode — the Phase 22A known limitation) inside one hairline frame. -->
+          <ListBox x:Name="ProductList" Classes="selectableRows popupList" ItemsSource="{Binding Products}" SelectedItem="{Binding SelectedProduct}"
                    AutomationProperties.Name="Tracked products">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:PriceHistoryProductOption">

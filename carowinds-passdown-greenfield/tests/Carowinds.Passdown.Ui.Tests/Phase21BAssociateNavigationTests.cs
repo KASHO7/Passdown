@@ -304,7 +304,7 @@ public class Phase21BAssociateNavigationTests
         Assert.Contains(service.SaveCalls, call => call.OperatingDate == Today.AddDays(1) && call.Draft.PreSolds == 250);
         Assert.Equal("Ask about the Fury 325 drop", viewModel.DailyFeatureText);
         Assert.Equal("Gate 3 scanner slow", viewModel.OperationalNotesText);
-        Assert.Equal("18000", viewModel.ProjectedAttendanceText);
+        Assert.Equal("18,000", viewModel.ProjectedAttendanceText); // Phase 22D: a reloaded count shows grouped
     }
 
     // ---------------------------------------------------------------- app routes

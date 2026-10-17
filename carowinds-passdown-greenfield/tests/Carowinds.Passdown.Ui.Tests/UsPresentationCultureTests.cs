@@ -104,8 +104,8 @@ public class UsPresentationCultureTests
 
         Assert.Equal(expectedDay, presentation.OperatingDayLabel);
         Assert.Matches(@"^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), (January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, 20\d\d$", presentation.OperatingDayLabel);
-        Assert.Equal("32500", presentation.AttendanceText);
-        Assert.Equal("4210", presentation.PreSoldsText);
+        Assert.Equal("32,500", presentation.AttendanceText); // Phase 22D: en-US grouping on every host culture
+        Assert.Equal("4,210", presentation.PreSoldsText);
         Assert.Equal("September 19, 2026", presentation.LatestFinalized!.PassdownDateText);
         Assert.Equal("Finalized Sep 20, 2026 at 3:25 PM", presentation.LatestFinalized.FinalizedText);
     }

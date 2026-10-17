@@ -60,8 +60,8 @@ public class OperationsDashboardPresentationTests
 
         var presentation = OperationsDashboardPresentation.Build(snapshot);
 
-        Assert.Equal("32500", presentation.AttendanceText);
-        Assert.Equal("4210", presentation.PreSoldsText);
+        Assert.Equal("32,500", presentation.AttendanceText); // Phase 22D: en-US thousands grouping
+        Assert.Equal("4,210", presentation.PreSoldsText);
     }
 
     [Fact]
