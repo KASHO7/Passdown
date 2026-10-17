@@ -77,6 +77,18 @@ Logs live at:
 New to testing this app? See TESTER-GUIDE.txt in this same folder for a short
 step-by-step walkthrough.
 
+Before upgrading from an older version
+---------------------------------------
+- Close the app and copy the whole %LOCALAPPDATA%\Carowinds Passdown folder somewhere
+  else first (TESTER-GUIDE.txt explains how). Newer versions add data that older
+  versions do not understand, so going back to an older version is not guaranteed
+  to be safe.
+- Personal Sync users: upgrade EVERY computer that shares the sync folder before
+  selecting any Shows. An older version that edits and saves a passdown drops its
+  show selections.
+- Settings → About this build shows the version and the folder the app is running
+  from, so you can confirm you opened the copy you meant to.
+
 Passdown History
 -----------------
 Next to "Associate Passdown" at the top of the window is a "History" section. Each

@@ -5,6 +5,50 @@ Thanks for testing this app. You do not need any technical background to do this
 just follow the steps below in order. If anything looks wrong or doesn't match what
 this guide describes, see "If something goes wrong" at the end.
 
+*** BACK UP YOUR LOCAL DATA BEFORE FIRST LAUNCH. ***
+----------------------------------------------------
+Your saved passdowns, History, settings and price history live in this folder,
+NOT in the folder you extract the ZIP into:
+
+    %LOCALAPPDATA%\Carowinds Passdown
+
+Before you open this version for the first time:
+  1. Close Carowinds Operations completely (check the taskbar).
+  2. Make sure the automatic daily refresh is not running right now (it runs
+     briefly around 6:00 AM; if in doubt, wait a few minutes or restart the PC).
+  3. Press Windows+R, type  %LOCALAPPDATA%  and press Enter.
+  4. Right-click the "Carowinds Passdown" folder, choose Copy, and paste it
+     somewhere OUTSIDE that folder (for example your Documents folder).
+  5. Rename the copy to include today's date, e.g.
+     "Carowinds Passdown backup 2026-10-17", and write down where you put it.
+  6. Never copy a backup back while the app is open.
+
+*** UPGRADE ALL DEVICES SHARING A SYNC FOLDER BEFORE USING SHOWS. ***
+--------------------------------------------------------------------
+If more than one computer uses Personal Sync with the same shared folder:
+  - Install this version on EVERY one of those computers before you tick any
+    show in the new "Shows" section.
+  - An older version does not understand show selections. If an older version
+    edits and saves a passdown that has shows selected, the show selections
+    are lost.
+  - Back up the shared sync folder (copy it somewhere else) before testing on
+    two computers for the first time.
+
+Which version am I running?
+---------------------------
+Open Settings and look at "About this build". It should say 0.1.0-rc.6 and show
+the folder the app is running from. If it shows an older number, or a different
+folder, you have opened an older copy (for example through Windows Search) —
+close it and launch Carowinds.Passdown.Desktop.exe from the folder you just
+extracted.
+
+About the single .exe file
+--------------------------
+You may also see a single file named Carowinds-Operations-0.1.0-rc.6-win-x64.exe.
+It is EXPERIMENTAL. Please test with the ZIP. The single .exe does not carry the
+license notices or the automatic-refresh helpers, so it must not be handed out on
+its own.
+
 1. Extract the ZIP
 -------------------
 Right-click the ZIP file and choose "Extract All...". Pick a normal folder you can
@@ -46,11 +90,15 @@ is open. "Check Online" (in the Data Status card) checks right away — see step
 4. Open Passdown / Open Notes / Open History
 ------------------------------------------------
 From the Dashboard, click "Open Passdown" — it should take you to the Associate
-Passdown screen's Overview. Go back to Dashboard, click "Open Notes" — it should
-take you to Associate Passdown's Notes area instead. Go back to Dashboard again and
-click "Open History" — it should take you to the History section. None of these
-should lose anything you've typed on the Associate side, and none of them should
-change which date Associate Passdown has selected.
+Passdown screen's Overview for TODAY, even if you had another date selected there
+before. Go back to Dashboard, click "Open Notes" — it should take you to Associate
+Passdown's Notes area instead. Go back to Dashboard again and click "Open History"
+— it should take you to the History section. None of these should lose anything
+you've typed on the Associate side.
+
+The Dashboard also has a "Today's Shows" card listing today's official show times
+(when Carowinds publishes them). Earlier performances are shown separately from
+upcoming ones.
 
 5. Operations Calendar
 ------------------------
@@ -100,9 +148,16 @@ passdown's own notes).
 
 7. Pick a date
 ---------------
-On the Associate Passdown screen, use the date picker (and the ◀ / ▶ arrows) near
-the top of the window to select a date. Changing the date should feel instant — it
-does not need the internet.
+On the Associate Passdown screen, use the date bar near the top of the window:
+"‹" goes back one day, "›" goes forward one day, "Today" jumps back to today, and
+clicking the date itself opens a calendar (you can change month and year there;
+Escape or clicking outside closes it). Next to the date you should see "Today",
+"Yesterday" or "Tomorrow" when that applies. Changing the date should feel instant
+— it does not need the internet.
+
+The buttons next to it are: "Check Online", "Create PDF" (the current PDF style is
+shown on it), "Copy ▾" (Teams text) and "More ▾" (PDF style Classic / Compact /
+Modern, and Season Price History).
 
 8. Enter some sample information
 ----------------------------------
@@ -152,12 +207,45 @@ only when a supervisor explicitly chooses to include one.
   and reappear as an available suggestion. Confirm in Operational Notes that the
   original note itself still exists and is unaffected.
 
+12a. Shows (new in this version)
+---------------------------------
+(Read the sync warning at the top of this guide first if you use Personal Sync.)
+On Associate Passdown, turn on the "Shows" section. It is off by default. Each
+official show performance for the selected date has its own checkbox; "Select all"
+and "Clear" do what they say. Nothing is ticked automatically. Tick two or three,
+switch to another date and back — your ticks should still be there, and also after
+closing and reopening the app. Only ticked shows appear in the PDF. Shows never
+appear in the Teams "Copy" text.
+
+12b. Math in the Daily Feature (new in this version)
+------------------------------------------------------
+Click in the Daily Feature box, then click the "∑ Math" button. Try inserting a few
+symbols (∫ ∂ ∇ ∑ √ π ∞ ≤ ≥) and an equation template. You can also copy and paste
+these examples into the Daily Feature box, one at a time:
+
+    The derivative of \(x^2\) is \(2x\).
+    \(\frac{1}{2}\)
+    \(\frac{d}{dx}x^2=2x\)
+    \[\int_0^1 x^2\,dx=\frac13\]
+    \(\sum_{i=1}^{n}i\)
+    \(\frac{\partial f}{\partial x}\)
+
+The preview under the box should show proper formulas (fractions stacked, the
+integral with its limits) and should NOT show the \( \) or \[ \] markers. If you
+type something broken (for example \(\frac{1}{ ), the app should not crash — your
+text stays as you typed it and the preview shows it plainly.
+
+Note: in the PDF, a Daily Feature that contains a formula is drawn as a picture,
+so you cannot select or search that paragraph's text in a PDF viewer. That is
+expected. A Daily Feature with no formula stays searchable.
+
 13. Create a PDF
 -----------------
 Click "Create PDF". A save dialog will appear — choose anywhere you like (e.g. your
 Desktop) and save it. Open the saved PDF afterward and confirm it looks readable,
 matches what you entered, and (if you added one in step 12) shows the included
-operational note's text.
+operational note's text. Try all three styles (More ▾ → PDF Style) with the
+shows from step 12a ticked and a formula from step 12b in the Daily Feature.
 
 14. Turn on automatic daily refresh (optional)
 -----------------------------------------------
