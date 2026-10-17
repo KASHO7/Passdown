@@ -131,6 +131,10 @@ public partial class App : global::Avalonia.Application
                 logger.LogWarning("Spell checking is unavailable ({ExceptionType}).", ex.GetType().Name);
             }
 
+            // Phase 21D: Daily Feature math logs renderer status values only (never the text or formula).
+            Carowinds.Passdown.Documents.DailyFeatureMath.MathRenderDiagnostics.Logger =
+                services.GetRequiredService<ILoggerFactory>().CreateLogger("DailyFeatureMath");
+
             var mainWindow = services.GetRequiredService<MainWindow>();
             var mainViewModel = services.GetRequiredService<MainViewModel>();
             mainWindow.DataContext = mainViewModel;

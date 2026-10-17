@@ -1032,3 +1032,23 @@ See `docs/phase21c-official-show-schedules.md`.
   `AssociateShowRowViewModel` + Associate Shows panel, History frozen shows.
 
 Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged (additive optional properties).
+
+## Phase 21D — Daily Feature math
+
+See `docs/phase21d-daily-feature-math.md`.
+
+- **Application** — `DailyFeatureMath/DailyFeatureMathText` (finds `\( \)` / `\[ \]` regions, limits,
+  spell-check mask), `MathParser` + `MathSymbols` + `MathNode` (the closed LaTeX-style subset → node
+  tree or `MathIssue`; never throws). Pure; no rendering.
+- **Documents** — `DailyFeatureMath/TrueTypeFont` (read-only TrueType reader for the embedded fonts),
+  `MathLayoutEngine`/`MathBox` (TeX-style layout), `MathParagraphRenderer` (prose + math lines as
+  vector paths, bounded LRU cache, `ToSvg`), `DailyFeaturePdfText` (the Daily Feature body composer for
+  all three templates; plain text unchanged), `MathFontSet` (embedded STIX Two Math + Lato),
+  `MathRenderDiagnostics` (status-only logging). STIX is also registered with QuestPDF as a glyph fallback.
+- **Desktop** — `Controls/MathSymbolPicker` + `TextBoxInsertion` (typing-path insertion),
+  `Controls/DailyFeatureMathPreview` + `MathParagraphView` (coalesced preview drawing the shared paths),
+  `Presentation/MathSymbolCatalog`, `Spelling.SpellCheck.ExcludeMath` (Daily Feature only).
+  View models are unchanged — the preview binds to the editor's own text.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged.
+

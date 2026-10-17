@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:spell="using:Carowinds.Passdown.Desktop.Spelling"
+             xmlns:controls="using:Carowinds.Passdown.Desktop.Controls"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
              xmlns:presentation="using:Carowinds.Passdown.Desktop.Presentation"
@@ -169,6 +170,22 @@
       <Setter Property="CornerRadius" Value="5" />
       <Setter Property="MinHeight" Value="34" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <!-- Phase 21D: the Daily Feature "∑ Math" picker — a small quiet outlined control, same family as the toolbar. -->
+    <Style Selector="Button.mathPicker">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="Padding" Value="10,3" />
+      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="FontSize" Value="12.5" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
+    </Style>
+    <Style Selector="Button.mathPicker:pointerover /template/ ContentPresenter, Button.mathPicker:flyout-open /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
     </Style>
     <Style Selector="Button.dateNavIcon">
       <Setter Property="Width" Value="34" />
@@ -802,11 +819,19 @@
                       </DataTemplate>
                     </ComboBox.ItemTemplate>
                   </ComboBox>
-                  <TextBox spell:SpellCheck.IsEnabled="True"
+                  <!-- Phase 21D: the editor stays plain source text. "∑ Math" inserts symbols/templates at
+                       the caret; the preview appears only when the text contains \( or \[ math. -->
+                  <TextBox x:Name="DailyFeatureTextBox"
+                           spell:SpellCheck.ExcludeMath="True"
+                           spell:SpellCheck.IsEnabled="True"
                            Text="{Binding DailyFeatureText}"
                            AcceptsReturn="True" TextWrapping="Wrap" MinHeight="48"
                            PlaceholderText="Enter the question, fact, or quote"
                            AutomationProperties.Name="Daily Feature text" />
+                  <controls:MathSymbolPicker Classes="mathPicker" HorizontalAlignment="Left"
+                                             Target="{Binding #DailyFeatureTextBox}" />
+                  <controls:DailyFeatureMathPreview Source="{Binding #DailyFeatureTextBox.Text}"
+                                                    Background="{DynamicResource PassdownSubtleSurfaceBrush}" />
                 </StackPanel>
               </Grid>
 

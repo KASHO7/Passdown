@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Preferences;
+using Carowinds.Passdown.Documents.DailyFeatureMath;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -161,7 +162,7 @@ public sealed class CompactAssociatePassdownTemplateRenderer : IAssociatePassdow
         {
             section.Spacing(1f);
             section.Item().Text((model.DailyFeature.TypeLabel ?? "Daily Feature").ToUpperInvariant()).FontSize(7.5f).Bold().LetterSpacing(0.03f);
-            section.Item().Text(model.DailyFeature.Text!).FontSize(BodySize).Italic();
+            section.Item().Element(body => DailyFeaturePdfText.Compose(body, model.DailyFeature.Text!, new DailyFeaturePdfTextStyle(BodySize, null, InkColor)));
         });
     }
 

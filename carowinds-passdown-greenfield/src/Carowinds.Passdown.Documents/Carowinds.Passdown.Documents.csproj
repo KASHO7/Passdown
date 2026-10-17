@@ -33,6 +33,17 @@
   </ItemGroup>
 
   <!--
+    Phase 21D: STIX Two Math (SIL Open Font License 1.1, https://github.com/stipub/stixfonts tag
+    v2.13b171, fonts/static_ttf/STIXTwoMath-Regular.ttf) for Daily Feature math — embedded, never
+    loose and never a system/installed font, so the Associate preview and every PDF render formulas
+    identically and offline. Its license travels in the release as licenses\STIXTwoMath-OFL.txt
+    (packaging/windows/licenses) and next to the font here.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="DailyFeatureMath\Fonts\STIXTwoMath-Regular.ttf" LogicalName="DailyFeatureMath.STIXTwoMath-Regular.ttf" />
+  </ItemGroup>
+
+  <!--
     The redundant loose *.ttf copy QuestPDF's own buildTransitive/QuestPDF.targets still adds is
     removed at publish time in Carowinds.Passdown.Desktop.csproj (the project that actually
     publishes), not here — a same-project <None Remove>/target hook can't reliably reach items a
@@ -42,6 +53,11 @@
     content items through a different, later cross-project target sequence). See
     Carowinds.Passdown.Desktop.csproj's ResolvedFileToPublish filter for the actual removal.
   -->
+
+  <ItemGroup>
+    <!-- Phase 21D: structural layout assertions (box geometry) for the math engine. -->
+    <InternalsVisibleTo Include="Carowinds.Passdown.Documents.Tests" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Carowinds.Passdown.Application\Carowinds.Passdown.Application.csproj" />

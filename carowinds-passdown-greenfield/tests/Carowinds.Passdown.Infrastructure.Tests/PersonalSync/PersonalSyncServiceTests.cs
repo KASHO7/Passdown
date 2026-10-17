@@ -214,6 +214,24 @@ public class PersonalSyncServiceTests : IDisposable
         Assert.Equal(12000, AssociateDraftPayloadSerializer.Deserialize(imported!.PayloadJson).ProjectedAttendance);
     }
 
+    // Phase 21D: Daily Feature math is ordinary draft text — it travels as the editable source, unchanged.
+    [Fact]
+    public async Task DailyFeatureMath_SyncsAsItsExactSource()
+    {
+        const string source = "Fact: \\(\\frac{d}{dx}x^2=2x\\)\n\\[\\int_0^1 x^2\\,dx=\\frac13\\]\n∫₀¹ x² dx = ⅓";
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(1)));
+
+        await SaveDraftAsync(a, OperatingDate, AssociateDraftPayload.CreateDefault() with { DailyFeatureType = DailyFeatureType.UselessFactOfTheDay, DailyFeatureText = source });
+        Assert.Equal(1, (await a.Sync.RunAsync()).ExportedCount);
+        var importResult = await b.Sync.RunAsync();
+
+        Assert.Equal(1, importResult.ImportedCount);
+        Assert.Equal(0, importResult.ConflictCount);
+        var imported = await b.Drafts.GetAsync(OperatingDate);
+        Assert.Equal(source, AssociateDraftPayloadSerializer.Deserialize(imported!.PayloadJson).DailyFeatureText);
+    }
+
     // ------------------------------------------------------------------
     // §31.B: A creates a note -> B imports it, preserving the exact Guid.
     // ------------------------------------------------------------------

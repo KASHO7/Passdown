@@ -1653,3 +1653,25 @@ show information). RC.5 artifacts are unchanged. The next packaged candidate is 
 | Live smoke (opt-in) | `ShowScheduleSourceLiveSmokeTests` + `ParkHoursSourceLiveSmokeTests` passed 2026-10-16 from the dev host |
 | Release build | 0 warnings, 0 errors |
 | Windows validation | NOT EXECUTED — checklist in the Phase 21C doc |
+
+# Unreleased development — Phase 21D (after RC.5, after Phase 21C)
+
+Not a release. Phase 21D (`docs/phase21d-daily-feature-math.md`) changes shipped code: Daily Feature
+math — a "∑ Math" symbol/template picker, `\( … \)` / `\[ … \]` LaTeX-style syntax (documented subset),
+a live Associate preview, math-aware spell checking for that field, and vector formula rendering in
+the Classic/Compact/Modern PDFs through one shared parser/layout pipeline. Ordinary Daily Feature text
+is unchanged. Teams Copy is unchanged (no Daily Feature, no LaTeX, no shows). Adds the bundled
+**STIX Two Math** font (SIL OFL 1.1, embedded in `Carowinds.Passdown.Documents.dll`, +1.5 MB) and its
+notice (`THIRD-PARTY-NOTICES.txt` §8, `licenses\STIXTwoMath-OFL.txt`). No new NuGet packages. The
+QuestPDF distribution-license decision remains unresolved (unchanged). RC.5 artifacts are unchanged.
+The next packaged candidate is still **`0.1.0-rc.6`**; `Directory.Build.props` still says `0.1.0-rc.5`.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; math is stored as the ordinary Daily Feature text) |
+| Upgrade implications | None beyond Phase 21A/21C. Older builds show/print the raw source (e.g. `\(\frac{1}{2}\)`) but never lose it; upgrade every PC sharing a sync folder to see formulas everywhere. |
+| Deterministic tests | **3410/3410** (baseline 3227 at `2ca472a`; +183 Phase 21D) = 163 Domain + 1035 Application + 833 Infrastructure + 406 Documents + 917 Ui together + 26 `OperationsCalendarViewTests` + 17 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`) — `Phase21DMathEditorWindowTests` is a new real-Window class and runs alone like the others |
+| Live smoke (opt-in) | not applicable (no retrieval change) |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 21D doc |
+

@@ -385,3 +385,18 @@ catalog lifecycle" section (active / missing once / inactive / season-tag counts
   2026.
 - Diagnostics `summary.txt` has a "Historical pricing sources" section; logs mention "Dashboard Open
   Passdown reset the Associate date" and "Pass validity year differs".
+
+## Daily Feature math (Phase 21D)
+
+- Math is only recognized between `\(` … `\)` (in a sentence) or `\[` … `\]` (own line). Everything
+  else — `$`, `\`, `_`, `^`, Unicode symbols — prints exactly as typed. "∑ Math" under the Daily
+  Feature inserts symbols and templates at the cursor.
+- "Shown as typed: …" under the preview means that formula uses something outside the supported
+  subset (see `docs/phase21d-daily-feature-math.md` §3) or is incomplete; it prints as its source text.
+  The Daily Feature is still saved exactly as typed.
+- "Math preview isn't available on this computer" means the embedded math font could not be loaded;
+  PDFs then print the Daily Feature as plain text. Export diagnostics — the log has one
+  "Daily Feature math: RendererUnavailable" line (status only; formulas are never logged).
+- A PC running an older version shows the raw source (e.g. `\(\frac{1}{2}\)`) instead of the formula.
+- Formulas in PDFs are drawn, not text: they can't be selected or searched in a PDF viewer.
+

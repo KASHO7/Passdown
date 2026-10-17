@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Reflection;
 using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Documents.Associate.Templates;
+using Carowinds.Passdown.Documents.DailyFeatureMath;
 using QuestPDF.Drawing;
 using QuestPDF.Fluent;
 using QuestPDF.Infrastructure;
@@ -32,6 +33,25 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
         // requirement, not application state we vary) — see spec Part L's licensing note.
         QuestPDF.Settings.License = LicenseType.Community;
         RegisterEmbeddedLatoFont();
+        RegisterEmbeddedMathFont();
+    }
+
+    /// <summary>
+    /// Phase 21D: registers the bundled STIX Two Math font so a plain-text Daily Feature containing
+    /// Unicode math symbols (∫, ∑, ≤, ∇ …) has a glyph fallback that never depends on the fonts installed
+    /// on the computer. Best effort: if it cannot be registered, PDFs still generate exactly as before.
+    /// </summary>
+    private static void RegisterEmbeddedMathFont()
+    {
+        try
+        {
+            using var stream = new MemoryStream(MathFontSet.ReadEmbeddedFont(MathFontSet.MathFontResource));
+            FontManager.RegisterFont(stream);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or ArgumentException)
+        {
+            MathRenderDiagnostics.Report(MathRenderStatus.RendererUnavailable);
+        }
     }
 
     /// <summary>

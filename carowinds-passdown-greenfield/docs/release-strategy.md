@@ -3154,3 +3154,16 @@ its bytes.
 `%LOCALAPPDATA%\Carowinds Passdown`, the `Carowinds Passdown Daily Refresh` task, the sync manifest
 product, and `AssemblyVersion` `0.1.0.0`. The RC number exists to identify stale builds, not to move
 data.
+
+## Phase 21D — bundled math font (no release built)
+
+- New redistributed component: **STIX Two Math 2.13 b171** (SIL OFL 1.1), embedded as a resource in
+  `Carowinds.Passdown.Documents.dll` (not a loose file; +1.5 MB). Notice added as
+  `THIRD-PARTY-NOTICES.txt` §8 and `licenses\STIXTwoMath-OFL.txt`, listed in
+  `release-content-rules.json` `requiredFiles` (validated by
+  `RepositoryNoticeSources_MatchTheRequiredSet_AndAreComplete`). Later sections renumbered 9–13.
+- No new NuGet packages, native libraries or runtime downloads; math rendering is fully offline.
+- The QuestPDF distribution-license question is unchanged and still open.
+- RC.6 was not packaged in Phase 21D; the next real build must confirm the new notice file reaches the
+  release folder (`Test-ReleasePackage.ps1` on Windows).
+

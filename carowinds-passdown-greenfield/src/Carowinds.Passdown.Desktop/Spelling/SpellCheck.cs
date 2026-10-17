@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Carowinds.Passdown.Application.DailyFeatureMath;
 using Carowinds.Passdown.Application.SpellCheck;
 
 namespace Carowinds.Passdown.Desktop.Spelling;
@@ -30,6 +31,14 @@ public static class SpellCheck
     public static readonly AttachedProperty<bool> IsEnabledProperty =
         AvaloniaProperty.RegisterAttached<TextBox, bool>("IsEnabled", typeof(SpellCheck));
 
+    /// <summary>
+    /// Phase 21D: when true (the Daily Feature editor), delimited math — <c>\( … \)</c> and
+    /// <c>\[ … \]</c> — is left out of checking so LaTeX commands such as <c>\frac</c> or <c>\partial</c>
+    /// are never underlined, while the prose around them is still checked at the same offsets.
+    /// </summary>
+    public static readonly AttachedProperty<bool> ExcludeMathProperty =
+        AvaloniaProperty.RegisterAttached<TextBox, bool>("ExcludeMath", typeof(SpellCheck));
+
     private static readonly AttachedProperty<SpellCheckController?> ControllerProperty =
         AvaloniaProperty.RegisterAttached<TextBox, SpellCheckController?>("Controller", typeof(SpellCheck));
 
@@ -44,6 +53,14 @@ public static class SpellCheck
     public static bool GetIsEnabled(TextBox textBox) => textBox.GetValue(IsEnabledProperty);
 
     public static void SetIsEnabled(TextBox textBox, bool value) => textBox.SetValue(IsEnabledProperty, value);
+
+    public static bool GetExcludeMath(TextBox textBox) => textBox.GetValue(ExcludeMathProperty);
+
+    public static void SetExcludeMath(TextBox textBox, bool value) => textBox.SetValue(ExcludeMathProperty, value);
+
+    /// <summary>The text actually handed to the spell checker for <paramref name="textBox"/>: math masked out when <see cref="ExcludeMathProperty"/> is set.</summary>
+    internal static string? TextToCheck(TextBox textBox, string? text) =>
+        GetExcludeMath(textBox) ? DailyFeatureMathText.MaskMathForSpellCheck(text) : text;
 
     /// <summary>Test seam: the controller attached to <paramref name="textBox"/>, if any.</summary>
     internal static SpellCheckController? GetController(TextBox textBox) => textBox.GetValue(ControllerProperty);
@@ -120,7 +137,7 @@ internal sealed class SpellCheckController : IDisposable
         var text = _textBox.Text;
         try
         {
-            Issues = SpellCheck.Service?.Check(text) ?? [];
+            Issues = SpellCheck.Service?.Check(SpellCheck.TextToCheck(_textBox, text)) ?? [];
         }
         catch (Exception)
         {
