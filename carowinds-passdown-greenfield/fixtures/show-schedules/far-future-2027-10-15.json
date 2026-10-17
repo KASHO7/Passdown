@@ -1,0 +1,146 @@
+{
+  "parkId": 30,
+  "parkAbbreviation": "CA",
+  "parkName": "Carowinds",
+  "dates": [
+    {
+      "date": "10/15/2027",
+      "isParkClosed": false,
+      "shows": [
+        {
+          "showId": 58,
+          "extLocationID": "SHOW-030-00058",
+          "showName": "Costume Contest",
+          "items": [
+            {
+              "assignmentLocation": "",
+              "assignmentDescription": "",
+              "times": ""
+            }
+          ]
+        },
+        {
+          "showId": 77,
+          "extLocationID": "SHOW-030-00077",
+          "showName": "Spectral Sisters",
+          "items": [
+            {
+              "assignmentLocation": "",
+              "assignmentDescription": "",
+              "times": ""
+            }
+          ]
+        },
+        {
+          "showId": 101,
+          "extLocationID": "SHOW-030-00101",
+          "showName": "Camp Snoopy Meet and Greet",
+          "items": [
+            {
+              "assignmentLocation": "",
+              "assignmentDescription": "",
+              "times": ""
+            }
+          ]
+        },
+        {
+          "showId": 2259,
+          "extLocationID": "SHOW-030-00120",
+          "showName": "Skelebration Dance Party",
+          "items": [
+            {
+              "assignmentLocation": "",
+              "assignmentDescription": "",
+              "times": ""
+            }
+          ]
+        },
+        {
+          "showId": 2261,
+          "extLocationID": "SHOW-030-00122",
+          "showName": "Wake the Dead",
+          "items": [
+            {
+              "assignmentLocation": "",
+              "assignmentDescription": "",
+              "times": ""
+            }
+          ]
+        },
+        {
+          "showId": 4031,
+          "extLocationID": "SHOW-030-00184",
+          "showName": "The Resurgence",
+          "items": [
+            {
+              "assignmentLocation": "",
+              "assignmentDescription": "",
+              "times": ""
+            }
+          ]
+        },
+        {
+          "showId": 4032,
+          "extLocationID": "SHOW-030-00185",
+          "showName": "Blade Drummers - The Sacrifice",
+          "items": [
+            {
+              "assignmentLocation": "",
+              "assignmentDescription": "",
+              "times": ""
+            }
+          ]
+        },
+        {
+          "showId": 4033,
+          "extLocationID": "SHOW-030-00186",
+          "showName": "Incantations with the Enchantress",
+          "items": [
+            {
+              "assignmentLocation": "",
+              "assignmentDescription": "",
+              "times": ""
+            }
+          ]
+        },
+        {
+          "showId": 4034,
+          "extLocationID": "SHOW-030-00187",
+          "showName": "Sinister Slide Squad",
+          "items": [
+            {
+              "assignmentLocation": "",
+              "assignmentDescription": "",
+              "times": ""
+            }
+          ]
+        },
+        {
+          "showId": 4035,
+          "extLocationID": "SHOW-030-00188",
+          "showName": "Clean up Crew",
+          "items": [
+            {
+              "assignmentLocation": "",
+              "assignmentDescription": "",
+              "times": ""
+            }
+          ]
+        },
+        {
+          "showId": 4036,
+          "extLocationID": "SHOW-030-00189",
+          "showName": "Spectral Sisters After Dark",
+          "items": [
+            {
+              "assignmentLocation": "",
+              "assignmentDescription": "",
+              "times": ""
+            }
+          ]
+        }
+      ],
+      "operatings": []
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Carowinds.Passdown.Domain.Ert;
 
 namespace Carowinds.Passdown.Application.Finalization;
@@ -93,6 +94,12 @@ public sealed record FinalizedProductCategorySnapshot(
     IReadOnlyList<FinalizedProductRowSnapshot> Products);
 
 /// <summary>
+/// Phase 21C: one frozen printed show — the display strings exactly as the PDF printed them at
+/// finalization (name, venue when printed, Eastern start times), never a show id resolved later.
+/// </summary>
+public sealed record FinalizedShowSnapshot(string Name, string? Venue, string TimesText);
+
+/// <summary>
 /// The complete, versioned, immutable content of one finalized Associate Passdown (spec Phase 9
 /// Parts C/D/E) — everything needed to reconstruct exactly what associates received for
 /// <see cref="PassdownDate"/>, with every display value already frozen to text. Built once by
@@ -122,4 +129,14 @@ public sealed record FinalizedPassdownSnapshot(
     /// the bump exists because the shape genuinely changed, not because old rows stop reading.
     /// </summary>
     public const int CurrentSchemaVersion = 2;
+
+    /// <summary>
+    /// Phase 21C: the shows printed in this passdown's Shows section, frozen at finalization — later
+    /// official schedule changes never alter it. Additive and optional, so the snapshot schema stays at
+    /// 2: null (and omitted from the JSON) whenever no Shows section printed, so every pre-21C row and
+    /// every passdown without shows serializes and hashes exactly as before; an older reader simply
+    /// ignores the property.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<FinalizedShowSnapshot>? Shows { get; init; }
 }

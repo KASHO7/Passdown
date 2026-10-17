@@ -9,6 +9,7 @@ using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
+using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Catalog;
@@ -450,6 +451,8 @@ public sealed class AssociatePassdownService(
 
         var workspace = new AssociateWorkspace(operatingDate, draft, parkHours, products, categoryStatuses, saveStatus, selectedNoteSourceStates, earlyRideTime)
         {
+            // Phase 21C: the date's recorded official show schedule (never another date's, never online).
+            ShowSchedule = ShowScheduleView.Compose(operatingDate, datedByCategory.GetValueOrDefault(SourceCategory.ShowSchedule), asOf),
             DraftContentHash = draftRecord is null ? null : SyncContentHash.ComputeDraftHash(draft),
             PricingTimeframe = timeframe,
             WithheldCurrentCatalogProductCount = withheld,

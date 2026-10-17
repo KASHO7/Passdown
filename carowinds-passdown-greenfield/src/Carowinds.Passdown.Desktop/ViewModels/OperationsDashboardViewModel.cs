@@ -46,6 +46,10 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     [ObservableProperty]
     public partial OperationsDashboardPresentation? Presentation { get; set; }
 
+    /// <summary>Phase 21C: "Today's Shows" — rebuilt with every snapshot and, for the upcoming/started split, on the view's minute tick (<see cref="RefreshShowsForTime"/>).</summary>
+    [ObservableProperty]
+    public partial ShowSchedulePresentation? ShowsPresentation { get; set; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmptyOrErrorState))]
     [NotifyCanExecuteChangedFor(nameof(CheckOnlineCommand))]
@@ -222,6 +226,22 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     }
 
     public bool HasSnapshot => Snapshot is not null;
+
+    partial void OnSnapshotChanged(OperationsDashboardSnapshot? value) =>
+        ShowsPresentation = value is null ? null : ShowSchedulePresentation.Build(value.TodayShows, value.GeneratedAt, isDashboard: true);
+
+    /// <summary>
+    /// Phase 21C: re-evaluates which of today's performances are still upcoming at <paramref name="nowUtc"/>
+    /// from the snapshot already shown — local text only, never a data read or network call. Called by
+    /// the view once a minute while it is displayed.
+    /// </summary>
+    public void RefreshShowsForTime(DateTimeOffset nowUtc)
+    {
+        if (Snapshot is { } snapshot)
+        {
+            ShowsPresentation = ShowSchedulePresentation.Build(snapshot.TodayShows, nowUtc, isDashboard: true);
+        }
+    }
 
     /// <summary>Shown only once loading has finished and produced neither a snapshot nor an error is impossible in practice (every load path sets one or the other) — kept for a graceful first-frame render before the initial load completes.</summary>
     public bool ShowEmptyOrErrorState => !IsLoading && Snapshot is null;

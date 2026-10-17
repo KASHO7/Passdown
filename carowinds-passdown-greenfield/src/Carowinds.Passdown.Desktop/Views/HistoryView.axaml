@@ -329,6 +329,27 @@
                 </ItemsControl>
               </StackPanel>
 
+              <!-- Phase 21C: the shows this passdown printed, frozen at finalization (absent for passdowns
+                   without a Shows section and for every pre-21C row). -->
+              <Border Classes="panel" IsVisible="{Binding SelectedDetail.Snapshot.Shows, Converter={x:Static ObjectConverters.IsNotNull}, FallbackValue=False}"
+                      AutomationProperties.Name="Shows (as finalized)">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="Shows" Classes="sectionTitle" Margin="0" />
+                  <ItemsControl ItemsSource="{Binding SelectedDetail.Snapshot.Shows}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="finalization:FinalizedShowSnapshot">
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,4">
+                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                          <TextBlock Text="{Binding TimesText}" TextWrapping="Wrap" />
+                          <TextBlock Text="{Binding Venue}" Classes="muted"
+                                     IsVisible="{Binding Venue, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                        </StackPanel>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+
               <Border Classes="panel">
                 <StackPanel Spacing="6">
                   <TextBlock Text="Operational Notes" Classes="sectionTitle" Margin="0" />

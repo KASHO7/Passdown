@@ -62,6 +62,7 @@ public static class ProductDisplaySectionResolver
         SourceCategory.BringAFriendDuo => null,
         SourceCategory.DatedBringAFriend => null,
         SourceCategory.DatedMilitaryFirstResponder => null,
+        SourceCategory.ShowSchedule => null, // Phase 21C: operational information, never a product row.
         _ => ProductDisplaySection.Promotions,
     };
 

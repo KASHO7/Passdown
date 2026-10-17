@@ -439,7 +439,8 @@ public class Phase21APricingIntegrityTests
     [Fact]
     public void SourceCapabilities_CoverEveryPricingCategory_AndNoneClaimsPastDateRetrieval()
     {
-        var pricingCategories = Enum.GetValues<SourceCategory>().Where(c => c != SourceCategory.ParkHours);
+        // Phase 21C: ShowSchedule is operational information, not a pricing source.
+        var pricingCategories = Enum.GetValues<SourceCategory>().Where(c => c is not SourceCategory.ParkHours and not SourceCategory.ShowSchedule);
 
         Assert.Equal(pricingCategories.Order(), HistoricalPricingSourceCapabilities.All.Select(c => c.Category).Order());
         Assert.DoesNotContain(HistoricalPricingSourceCapabilities.All, c => c.Capability == HistoricalPricingCapability.RetrievesPastDates);

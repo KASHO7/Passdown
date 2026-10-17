@@ -1,0 +1,27 @@
+{
+  "parkId": 30,
+  "parkAbbreviation": "CA",
+  "parkName": "Carowinds",
+  "dates": [
+    {
+      "date": "10/24/2026",
+      "isParkClosed": false,
+      "shows": [],
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Park",
+          "items": [
+            {
+              "assignmentDisplayName": "Park",
+              "assignmentDescription": "",
+              "timeFrom": "11:00",
+              "timeTo": "00:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

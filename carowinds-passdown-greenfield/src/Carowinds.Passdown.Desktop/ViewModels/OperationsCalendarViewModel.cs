@@ -240,6 +240,10 @@ public partial class OperationsCalendarViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Phase 21C: the selected date's official shows (built from the same snapshot as everything else in the detail panel, so a date change never shows another date's shows).</summary>
+    [ObservableProperty]
+    public partial ShowSchedulePresentation? ShowsPresentation { get; set; }
+
     partial void OnSelectedDateChanged(DateOnly value)
     {
         if (!_suppressAutoLoad)
@@ -251,6 +255,7 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     partial void OnSnapshotChanged(OperationsCalendarSnapshot? value)
     {
         Presentation = value is null ? null : OperationsCalendarPresentation.Build(value);
+        ShowsPresentation = value is null ? null : ShowSchedulePresentation.Build(value.Selected.Shows, value.GeneratedAt);
         Days = value?.Days.Select(day => new OperationsCalendarDayViewModel(day, day.Date == value.SelectedDate, SelectDate)).ToList() ?? [];
         Weeks = Days.Chunk(7).Select(week => new OperationsCalendarWeekViewModel(week)).ToList();
     }

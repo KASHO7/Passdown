@@ -82,6 +82,7 @@ internal static class DraftConflictComparer
             new ConflictFieldComparison("Product Overrides", L(p => p.ProductOverrides.Count.ToString(PresentationCulture.UnitedStates)), R(p => p.ProductOverrides.Count.ToString(PresentationCulture.UnitedStates))),
             new ConflictFieldComparison("Custom Products", L(FormatCustomProducts), R(FormatCustomProducts)),
             new ConflictFieldComparison("Selected Operational Notes", L(FormatSelectedNotes), R(FormatSelectedNotes)),
+            new ConflictFieldComparison("Shows", L(FormatShows), R(FormatShows)),
         ];
     }
 
@@ -105,6 +106,14 @@ internal static class DraftConflictComparer
 
     private static string FormatSelectedNotes(AssociateDraftPayload p) =>
         p.SelectedOperationalNotes.Count == 0 ? "None" : string.Join("; ", p.SelectedOperationalNotes.Select(n => n.Title));
+
+    /// <summary>Phase 21C: section on/off plus the chosen show names.</summary>
+    private static string FormatShows(AssociateDraftPayload p) => p.Shows switch
+    {
+        null => "Off",
+        { SelectedShows.Count: 0 } shows => shows.IncludeInPassdown ? "On — none selected" : "Off",
+        var shows => $"{(shows.IncludeInPassdown ? "On" : "Off")} — {string.Join("; ", shows.SelectedShows.Select(s => s.Name))}",
+    };
 }
 
 /// <summary>Builds the side-by-side field comparison for a note conflict (Phase 16D §6/§25).</summary>

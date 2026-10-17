@@ -113,7 +113,10 @@ public sealed class OperationsCalendarService(
             ClassifyOperatingState(workspace.ParkHours),
             workspace.ParkHours,
             ImportantOperationalNoteCount: CountImportant(allNotes, selectedDate),
-            DailyAdmission: BuildDailyAdmissionPrice(workspace));
+            DailyAdmission: BuildDailyAdmissionPrice(workspace))
+        {
+            Shows = workspace.ShowSchedule,
+        };
     }
 
     /// <summary>

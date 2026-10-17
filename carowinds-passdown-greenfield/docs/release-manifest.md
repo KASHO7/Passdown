@@ -1635,3 +1635,21 @@ now point to Settings → Diagnostics.
 | Deterministic tests | **3092/3092** (baseline 3040 at `50793de`; +52 Phase 21B) = 154 Domain + 908 Application + 804 Infrastructure + 311 Documents + 863 Ui together + 26 `OperationsCalendarViewTests` + 17 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`) |
 | Release build | 0 warnings, 0 errors |
 | Windows validation | NOT EXECUTED — checklist in the Phase 21B doc |
+
+# Unreleased development — Phase 21C (after RC.5, after Phase 21B)
+
+Not a release. Phase 21C (`docs/phase21c-official-show-schedules.md`) changes shipped code: official
+date-specific show schedules (FIMS operating-hours feed `shows[]`) on the Dashboard ("Today's Shows"),
+Operations Calendar (selected date), Associate (optional Shows section with per-show selection), and
+Classic/Compact/Modern PDFs; finalized snapshots freeze printed shows. Teams Copy is unchanged (no
+show information). RC.5 artifacts are unchanged. The next packaged candidate is still
+**`0.1.0-rc.6`**; `Directory.Build.props` still says `0.1.0-rc.5`.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration — additive optional `Shows` properties omitted when unused) |
+| Upgrade implications | New `dated_results` category `ShowSchedule` (like 21A's `DatedMilitaryFirstResponder`): do not run RC.5 against a profile used by RC.6 — **back up `%LOCALAPPDATA%\Carowinds Passdown` before upgrading**. Personal Sync: upgrade every PC sharing a sync folder before using Shows (an older build drops a draft's `Shows` if it re-saves that date). |
+| Deterministic tests | **3227/3227** (baseline 3092 at `2452935`; +135 Phase 21C) = 163 Domain + 949 Application + 832 Infrastructure + 346 Documents + 885 Ui together + 26 `OperationsCalendarViewTests` + 17 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`) |
+| Live smoke (opt-in) | `ShowScheduleSourceLiveSmokeTests` + `ParkHoursSourceLiveSmokeTests` passed 2026-10-16 from the dev host |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 21C doc |

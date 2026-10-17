@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Ert;
 
@@ -67,6 +68,22 @@ public sealed record AssociateWorkspace(
     /// (<see cref="HistoricalPricingPolicy"/>). Presentation only — never persisted in a draft or snapshot.
     /// </summary>
     public AssociatePricingTimeframe PricingTimeframe { get; init; } = AssociatePricingTimeframe.Current;
+
+    /// <summary>
+    /// Phase 21C: the official show schedule recorded for <see cref="OperatingDate"/> (local data only,
+    /// composed with the workspace). Defaults to "not checked" so every pre-21C construction site keeps
+    /// compiling and never fabricates a schedule.
+    /// </summary>
+    public ShowScheduleView ShowSchedule
+    {
+        get => _showSchedule ?? ShowScheduleView.NotCheckedFor(OperatingDate);
+        init => _showSchedule = value;
+    }
+
+    private readonly ShowScheduleView? _showSchedule;
+
+    /// <summary>Phase 21C: the Shows section reconciled from <see cref="ShowSchedule"/> and the draft's selection — what the Associate screen lists and the PDF prints.</summary>
+    public AssociateShowsSection Shows => AssociateShowsSection.Compose(ShowSchedule, Draft.Shows);
 
     /// <summary>Phase 21A: how many current-catalog rows were withheld from a historical date (diagnostics only).</summary>
     public int WithheldCurrentCatalogProductCount { get; init; }

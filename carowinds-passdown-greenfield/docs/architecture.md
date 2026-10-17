@@ -1010,3 +1010,25 @@ change.
   Diagnostics); diagnostics generation stays in Infrastructure's `DiagnosticExportService`.
 
 Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged.
+
+## Phase 21C — official show schedules
+
+See `docs/phase21c-official-show-schedules.md`.
+
+- **Domain** — `Shows/ShowTimes` (operating-day ordering incl. after-midnight times, U.S. formatting,
+  compact list) and `Shows/ShowIdentity` (official id → numeric id → normalized name+venue);
+  `SourceCategory.ShowSchedule`.
+- **Application** — `Retrieval/ShowSchedulePayload`; `Refresh/CurrentAndFutureDatedSourceRegistration`
+  (past dates skipped before any request or write); `Shows/ShowScheduleView` (one status
+  classification from the last-known-good record), `Shows/ShowScheduleService` (local read),
+  `Shows/AssociateShows` (draft selection, reconciliation, printable rows). `AssociateWorkspace.ShowSchedule`/
+  `.Shows`, `OperationsDashboardSnapshot.TodayShows`, `OperationsCalendarSelectedDateSummary.Shows`,
+  optional `AssociateDraftPayload.Shows` and `FinalizedPassdownSnapshot.Shows`.
+- **Infrastructure** — `ShowScheduleSource` (FIMS operating-hours feed `shows[]`, DirectApi) and
+  `CoalescingRetrievalHttpClient` shared by `ParkHoursSource`/`ShowScheduleSource` (one request per date).
+- **Documents** — `AssociatePassdownDocumentModel.Shows` (`PdfShow`); Classic/Compact/Modern Shows
+  sections; snapshot builder freezes printed shows. Teams Copy never reads them.
+- **Desktop** — `ShowSchedulePresentation` (Dashboard "Today's Shows", Calendar detail),
+  `AssociateShowRowViewModel` + Associate Shows panel, History frozen shows.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged (additive optional properties).

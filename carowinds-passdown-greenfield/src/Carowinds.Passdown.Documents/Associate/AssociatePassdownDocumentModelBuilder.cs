@@ -5,6 +5,7 @@ using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Catalog;
 using Carowinds.Passdown.Domain.Ert;
 using Carowinds.Passdown.Domain.Hours;
+using Carowinds.Passdown.Domain.Shows;
 
 namespace Carowinds.Passdown.Documents.Associate;
 
@@ -36,8 +37,21 @@ public static class AssociatePassdownDocumentModelBuilder
             BuildOperationalNotes(workspace.Draft),
             productCategories,
             HasUnverifiedProductPricing(workspace),
-            FormatTimestamp(generatedAt));
+            FormatTimestamp(generatedAt))
+        {
+            Shows = BuildShows(workspace),
+        };
     }
+
+    /// <summary>
+    /// Phase 21C: the selected, printable shows (<see cref="AssociateShowsSection.PrintableRows"/>) —
+    /// gated by the Shows section switch, never every listed show, never a placeholder. The workspace
+    /// already reconciled selection against the recorded official schedule; this only formats.
+    /// </summary>
+    private static IReadOnlyList<PdfShow> BuildShows(AssociateWorkspace workspace) =>
+        workspace.Shows.PrintableRows
+            .Select(row => new PdfShow(row.Name, row.Venue, ShowTimes.FormatList(row.Times), ShowTimes.FormatCompactList(row.Times)))
+            .ToList();
 
     private static string FormatOperatingDate(DateOnly date) =>
         date.ToDateTime(TimeOnly.MinValue).ToString("dddd, MMMM d, yyyy", PresentationCulture.UnitedStates);

@@ -509,3 +509,10 @@ valid page = `Verified` with zero products; parse/transport failure = `Error`). 
 - Pass-year identity: identity precedence unchanged; a reused official id whose stored product states
   a different pass year is tracked as `{key}|pass-year:{year}` (pass-family categories only, no
   migration). See `docs/phase21a-pricing-historical-integrity.md`.
+
+## Phase 21C addendum
+
+- New dated, non-pricing source: the official show schedule (`ShowScheduleSource`,
+  `SourceCategory.ShowSchedule`, daily freshness) — the `shows[]` array of the same FIMS
+  operating-hours feed park hours uses. Current and future dates only; never a product row and never
+  in Teams Copy. See `docs/phase21c-official-show-schedules.md`.

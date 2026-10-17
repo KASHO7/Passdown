@@ -993,6 +993,49 @@
             </StackPanel>
             </Border>
 
+            <!-- Phase 21C: optional Shows section — the selected date's verified official shows, one
+                 checkbox per show (all of a selected show's times print). New shows are never
+                 pre-selected; selected shows the schedule no longer carries stay listed with a reason. -->
+            <Border Classes="panel" AutomationProperties.Name="Shows">
+              <StackPanel Spacing="6">
+                <Grid ColumnDefinitions="*,Auto,Auto">
+                  <CheckBox Grid.Column="0" IsChecked="{Binding IncludeShows}" VerticalAlignment="Center"
+                            AutomationProperties.Name="Include the Shows section in the Passdown">
+                    <TextBlock Text="Shows" Classes="sectionTitle" Margin="0" />
+                  </CheckBox>
+                  <Button Grid.Column="1" Content="Select all" Classes="secondaryAction" Margin="0,0,8,0"
+                          Command="{Binding SelectAllShowsCommand}"
+                          AutomationProperties.Name="Select every show on the official schedule" />
+                  <Button Grid.Column="2" Content="Clear" Classes="secondaryAction"
+                          Command="{Binding ClearShowsCommand}"
+                          AutomationProperties.Name="Clear the show selection" />
+                </Grid>
+                <TextBlock Text="{Binding ShowsFreshnessText}" Classes="muted" TextWrapping="Wrap"
+                           IsVisible="{Binding HasShowsFreshnessText}" />
+                <TextBlock Text="{Binding ShowsStatusText}" Classes="muted" TextWrapping="Wrap"
+                           IsVisible="{Binding HasShowsStatusText}" />
+                <ItemsControl ItemsSource="{Binding ShowRows}" IsVisible="{Binding HasShowRows}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:AssociateShowRowViewModel">
+                      <StackPanel Spacing="0" Margin="0,1">
+                        <CheckBox IsChecked="{Binding IsSelected}"
+                                  AutomationProperties.Name="{Binding AccessibleName}">
+                          <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                            <TextBlock Text="—" Classes="muted" />
+                            <TextBlock Text="{Binding TimesText}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Venue}" Classes="muted" IsVisible="{Binding HasVenue}" />
+                          </StackPanel>
+                        </CheckBox>
+                        <TextBlock Text="{Binding StateNote}" Classes="fieldWarning" TextWrapping="Wrap" Margin="28,0,0,0"
+                                   IsVisible="{Binding HasStateNote}" />
+                      </StackPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+
             <!-- Passdown Builder section selection (Phase 8A; SCarowinds/Haunt added Phase 8B): Day
                  of week, Date, Park Hours, Attendance, and Early Ride Time above always print, and
                  Daily Feature prints whenever text is entered (Phase 18F); none has a checkbox

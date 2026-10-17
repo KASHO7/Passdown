@@ -52,6 +52,7 @@ public sealed class ClassicAssociatePassdownTemplateRenderer : IAssociatePassdow
             // Operations information (hours, gates, attendance, Early Ride, Daily Feature)...
             ComposeSummaryList(column, model, m);
             ComposeDailyFeature(column, model, m);
+            ComposeShows(column, model.Shows, m, density);
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -141,6 +142,41 @@ public sealed class ClassicAssociatePassdownTemplateRenderer : IAssociatePassdow
         {
             SectionHeading(section, model.DailyFeature.TypeLabel ?? "Daily Feature", m);
             section.Item().Text(model.DailyFeature.Text!).FontSize(10).Italic().LineHeight(1.2f);
+        });
+    }
+
+    /// <summary>
+    /// Phase 21C: the selected shows under a plain "SHOWS" heading — one aligned row per show, name
+    /// (with its venue, muted, when published) on the left and the start times on the right, wrapping
+    /// within their own column. Omitted entirely when nothing is selected or the section is off.
+    /// </summary>
+    private static void ComposeShows(ColumnDescriptor column, IReadOnlyList<PdfShow> shows, Metrics m, PdfDensity density)
+    {
+        if (shows.Count == 0)
+        {
+            return;
+        }
+
+        column.Item().KeepSection(shows.Count, headingWithFirstRowsHeight: 70f).Column(section =>
+        {
+            SectionHeading(section, "Shows", m);
+
+            foreach (var show in shows)
+            {
+                section.Item().PaddingVertical(m.RowPadding).Row(row =>
+                {
+                    row.RelativeItem(5).PaddingRight(8).Text(text =>
+                    {
+                        text.Span(show.Name).FontSize(BodySize).SemiBold();
+                        if (show.Venue is { } venue)
+                        {
+                            text.Span($"  {venue}").FontSize(8.25f).FontColor(MutedTextColor);
+                        }
+                    });
+                    // Tight density (a just-overflowing day) writes AM/PM once per run to recover space.
+                    row.RelativeItem(6).AlignRight().Text(density == PdfDensity.Tight ? show.CompactTimesText : show.TimesText).FontSize(BodySize);
+                });
+            }
         });
     }
 

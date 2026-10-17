@@ -91,7 +91,7 @@ Confirmed via direct `curl` (no Playwright) — this is a case where §6.4's
       "date": "08/20/2026",           // MM/dd/yyyy — matches the requested date
       "isParkClosed": false,
       "venues": [ /* per-ride/restaurant/retail detail — NOT used; see below */ ],
-      "shows": [ /* not used */ ],
+      "shows": [ /* not used here — read by ShowScheduleSource (Phase 21C) */ ],
       "events": [ /* not used */ ],
       "operatings": [
         {
@@ -225,3 +225,11 @@ The official WinterFest/park-hours pages now describe only the 2026–27 season.
 longer exposed by the official source; the Phase 20C backfill includes them in scope (calendar year
 2026 even though they belong to the previous WinterFest season), probes the boundary from the 404,
 and stores nothing. No hours are inferred from neighboring dates; no cutoff date is hard-coded.
+
+## Phase 21C update — shared request with the show schedule
+
+The `shows[]` array of this same response is now read by `ShowScheduleSource`
+(`docs/phase21c-official-show-schedules.md`); this adapter still reads only `operatings`. In the app
+both adapters share a `CoalescingRetrievalHttpClient`, so checking a date's hours and shows together
+issues one GET (identical in-flight requests joined; a successful response reused for 2 minutes;
+failures never cached). `ParkHoursSource`'s own behavior and contract are unchanged.

@@ -41,6 +41,9 @@ public static class FreshnessPolicyCatalog
             [SourceCategory.MilitaryFirstResponder] = new(SourceCategory.MilitaryFirstResponder, daily),
             [SourceCategory.DatedBringAFriend] = new(SourceCategory.DatedBringAFriend, daily),
             [SourceCategory.DatedMilitaryFirstResponder] = new(SourceCategory.DatedMilitaryFirstResponder, daily),
+            // Phase 21C: the official show schedule rides the same daily cadence (and the same four-hour
+            // comprehensive check) as every other dated source — no second polling engine.
+            [SourceCategory.ShowSchedule] = new(SourceCategory.ShowSchedule, daily),
         };
     }
 }

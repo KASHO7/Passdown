@@ -7,6 +7,7 @@ using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Application.Refresh;
+using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Desktop.Services;
@@ -471,6 +472,52 @@ public partial class AssociateViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial bool IncludeOperationalNotes { get; set; } = true;
+
+    /// <summary>Phase 21C: the optional Shows section switch (off by default; old drafts load off).</summary>
+    [ObservableProperty]
+    public partial bool IncludeShows { get; set; }
+
+    /// <summary>Phase 21C: the selected date's official shows (plus any selected show no longer on the schedule, explained).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasShowRows))]
+    [NotifyCanExecuteChangedFor(nameof(SelectAllShowsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ClearShowsCommand))]
+    public partial IReadOnlyList<AssociateShowRowViewModel> ShowRows { get; set; } = [];
+
+    public bool HasShowRows => ShowRows.Count > 0;
+
+    /// <summary>Phase 21C: why there are no rows ("not published", "couldn't check", …) — null when rows are listed.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasShowsStatusText))]
+    public partial string? ShowsStatusText { get; set; }
+
+    public bool HasShowsStatusText => ShowsStatusText is not null;
+
+    /// <summary>Phase 21C: "Official schedule checked 10:32 AM" (plus "latest check failed" when older data is kept).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasShowsFreshnessText))]
+    public partial string? ShowsFreshnessText { get; set; }
+
+    public bool HasShowsFreshnessText => ShowsFreshnessText is not null;
+
+    /// <summary>Phase 21C: selects every show currently on the official schedule (never a show that no longer is).</summary>
+    [RelayCommand(CanExecute = nameof(HasShowRows))]
+    private void SelectAllShows()
+    {
+        foreach (var row in ShowRows.Where(row => row.Row.State is AssociateShowRowState.Current or AssociateShowRowState.TimesChanged))
+        {
+            row.SetSelected(true);
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(HasShowRows))]
+    private void ClearShows()
+    {
+        foreach (var row in ShowRows)
+        {
+            row.SetSelected(false);
+        }
+    }
 
     /// <summary>True while <see cref="CreatePdfCommand"/> is building/saving the PDF (spec Part I) — kept separate from <see cref="IsBusy"/> so a load/Check Online in progress is the only thing that disables the export action itself.</summary>
     [ObservableProperty]
@@ -1810,6 +1857,8 @@ public partial class AssociateViewModel : ViewModelBase
 
     partial void OnIncludeOperationalNotesChanged(bool value) => ScheduleAutosave();
 
+    partial void OnIncludeShowsChanged(bool value) => ScheduleAutosave();
+
     /// <summary>Pushes a freshly loaded/refreshed workspace's draft into the editable fields without treating that as a user edit (see <see cref="_isApplyingWorkspace"/>), then publishes the workspace itself.</summary>
     private void ApplyWorkspaceToFields(AssociateWorkspace workspace)
     {
@@ -1880,8 +1929,10 @@ public partial class AssociateViewModel : ViewModelBase
             IncludeAddOns = draft.SectionSelection.IncludeAddOns;
             IncludeHauntedAttractions = draft.SectionSelection.IncludeHauntedAttractions;
             IncludeOperationalNotes = draft.SectionSelection.IncludeOperationalNotes;
+            IncludeShows = draft.Shows?.IncludeInPassdown ?? false;
 
             BuildProductSections(workspace);
+            BuildShowRows(workspace);
 
             _draftDateInEdit = workspace.OperatingDate;
             _draftBaseHash = workspace.DraftContentHash;
@@ -1948,6 +1999,17 @@ public partial class AssociateViewModel : ViewModelBase
             workspace.Draft.CustomProducts.Select(custom => new CustomProductRowViewModel(custom, ScheduleAutosave, RemoveCustomProduct)));
     }
 
+    /// <summary>Phase 21C: rows from the workspace's reconciled Shows section — this date's only.</summary>
+    private void BuildShowRows(AssociateWorkspace workspace)
+    {
+        var section = workspace.Shows;
+        ShowRows = section.Rows.Select(row => new AssociateShowRowViewModel(row, ScheduleAutosave)).ToList();
+
+        var presentation = ShowSchedulePresentation.Build(section.Schedule, _clock.UtcNow);
+        ShowsStatusText = ShowRows.Count == 0 ? presentation.StatusText : null;
+        ShowsFreshnessText = presentation.FreshnessText;
+    }
+
     internal static string? BuildHistoricalPricingNotice(AssociateWorkspace workspace) =>
         workspace.PricingTimeframe != AssociatePricingTimeframe.Historical
             ? null
@@ -1985,6 +2047,11 @@ public partial class AssociateViewModel : ViewModelBase
                 IncludeAddOns,
                 IncludeOperationalNotes,
                 IncludeHauntedAttractions),
+            Shows = AssociateShowsSection.BuildSelection(
+                IncludeShows,
+                ShowRows.Where(row => row.IsSelected).Select(row => row.Row),
+                existing.Shows,
+                _clock.UtcNow),
         };
     }
 

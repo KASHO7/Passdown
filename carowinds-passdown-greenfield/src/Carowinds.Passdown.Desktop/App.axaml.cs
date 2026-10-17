@@ -20,6 +20,7 @@ using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Retrieval.Browser;
+using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Application.SpellCheck;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Services;
@@ -470,6 +471,10 @@ public partial class App : global::Avalonia.Application
         // (IAssociatePassdownService/IAssociateDraftRepository/IFinalizedPassdownRepository/
         // IOperationalNotesService/IClock); no HTTP/Playwright/Task Scheduler dependency exists.
         services.AddSingleton<IOperationsCalendarService, OperationsCalendarService>();
+
+        // Phase 21C: reads one date's recorded official show schedule (local only; retrieval is the
+        // refresh coordinator's job). Used by the Dashboard and Operations Calendar.
+        services.AddSingleton<IShowScheduleService, ShowScheduleService>();
         services.AddTransient<OperationsCalendarViewModel>();
 
         // Phase 11A: the persistent Operational Notes domain/persistence/service foundation.
@@ -649,7 +654,14 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IJobBrowserSessionFactory, UnavailableJobBrowserSessionFactory>();
 
         // Completed Phase 3 source adapters (Part A "completed sources currently include").
-        services.AddSingleton<ParkHoursSource>();
+        // Phase 21C: park hours and the show schedule read the same official FIMS operating-hours GET;
+        // giving both one coalescing client means a date's hours and shows cost one request.
+        services.AddSingleton<CoalescingRetrievalHttpClient>(provider => new CoalescingRetrievalHttpClient(
+            provider.GetRequiredService<IRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
+        services.AddSingleton<ParkHoursSource>(provider => new ParkHoursSource(
+            provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
+        services.AddSingleton<ShowScheduleSource>(provider => new ShowScheduleSource(
+            provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
         services.AddSingleton<DatedAdmissionSource>();
         services.AddSingleton<DatedFastLaneSource>();
         services.AddSingleton<DatedHauntedSource>();
@@ -691,6 +703,9 @@ public partial class App : global::Avalonia.Application
                 new CatalogSourceRegistration(provider.GetRequiredService<MilitaryFirstResponderCatalogSource>(), reconciliationService),
                 new DatedSourceRegistration<DatedBringAFriendPayload>(provider.GetRequiredService<DatedBringAFriendSource>(), datedResultRepository),
                 new DatedSourceRegistration<DatedMilitaryFirstResponderPayload>(provider.GetRequiredService<DatedMilitaryFirstResponderSource>(), datedResultRepository),
+                // Phase 21C: official show schedule — today and future dates only, so a past date's
+                // recorded schedule is never replaced.
+                new CurrentAndFutureDatedSourceRegistration<ShowSchedulePayload>(provider.GetRequiredService<ShowScheduleSource>(), datedResultRepository, provider.GetRequiredService<IClock>()),
             };
         });
 

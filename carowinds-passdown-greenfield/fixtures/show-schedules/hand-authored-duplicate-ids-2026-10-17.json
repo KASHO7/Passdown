@@ -1,0 +1,64 @@
+{
+  "parkId": 30,
+  "parkAbbreviation": "CA",
+  "parkName": "Carowinds",
+  "dates": [
+    {
+      "date": "10/17/2026",
+      "isParkClosed": false,
+      "shows": [
+        {
+          "showId": 2261,
+          "extLocationID": "SHOW-030-00122",
+          "showName": "Wake the Dead",
+          "items": [
+            {
+              "assignmentLocation": "Carowinds Theatre",
+              "assignmentDescription": "",
+              "times": "07:00 PM, 08:00 PM"
+            }
+          ]
+        },
+        {
+          "showId": 2261,
+          "extLocationID": "SHOW-030-00122",
+          "showName": "Wake the Dead",
+          "items": [
+            {
+              "assignmentLocation": "Carowinds Theatre ",
+              "assignmentDescription": "",
+              "times": "08:00 PM, 09:30 PM"
+            }
+          ]
+        },
+        {
+          "showId": 9001,
+          "extLocationID": "SHOW-030-00900",
+          "showName": "Wake the Dead",
+          "items": [
+            {
+              "assignmentLocation": "Plaza Stage",
+              "assignmentDescription": "",
+              "times": "06:00 PM"
+            }
+          ]
+        }
+      ],
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Park",
+          "items": [
+            {
+              "assignmentDisplayName": "Park",
+              "assignmentDescription": "",
+              "timeFrom": "11:00",
+              "timeTo": "00:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

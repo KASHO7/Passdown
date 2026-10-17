@@ -117,7 +117,20 @@ public sealed record OperationsCalendarSelectedDateSummary(
     OperationsCalendarOperatingState OperatingState,
     AssociateParkHoursView ParkHours,
     int ImportantOperationalNoteCount = 0,
-    OperationsCalendarDailyAdmissionPrice? DailyAdmission = null);
+    OperationsCalendarDailyAdmissionPrice? DailyAdmission = null)
+{
+    /// <summary>
+    /// Phase 21C: the selected date's recorded official show schedule — always this exact date's
+    /// (never carried over from a previously selected date, never today's lineup on a past date).
+    /// </summary>
+    public Shows.ShowScheduleView Shows
+    {
+        get => _shows ?? Carowinds.Passdown.Application.Shows.ShowScheduleView.NotCheckedFor(Date);
+        init => _shows = value;
+    }
+
+    private readonly Shows.ShowScheduleView? _shows;
+}
 
 /// <summary>
 /// The Application-layer read model an Operations Calendar screen is built from (Phase 12A Part D) —

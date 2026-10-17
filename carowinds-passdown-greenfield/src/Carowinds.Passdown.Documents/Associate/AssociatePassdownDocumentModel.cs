@@ -103,6 +103,13 @@ public enum PdfProductSectionTier
 public sealed record PdfProductCategory(string CategoryName, ProductDisplaySection? Section, PdfProductSectionTier Tier, IReadOnlyList<PdfProductRow> Products);
 
 /// <summary>
+/// Phase 21C: one printed show — only a show the supervisor selected, with its verified times for this
+/// date. <see cref="TimesText"/> is the standard list ("1:00 PM, 3:00 PM"); <see cref="CompactTimesText"/>
+/// is the same times with the AM/PM marker written once per run ("1:00, 3:00 PM") for dense layouts.
+/// </summary>
+public sealed record PdfShow(string Name, string? Venue, string TimesText, string CompactTimesText);
+
+/// <summary>
 /// The complete, print-ready content for one Associate Passdown PDF (spec §11.2) — everything
 /// <see cref="AssociatePassdownPdfGenerator"/> needs and nothing it must compute. Built once per
 /// generation by <see cref="AssociatePassdownDocumentModelBuilder"/> from an
@@ -122,4 +129,11 @@ public sealed record AssociatePassdownDocumentModel(
     string GeneratedAtText)
 {
     public int TotalProductCount => ProductCategories.Sum(category => category.Products.Count);
+
+    /// <summary>
+    /// Phase 21C: the selected shows to print, in schedule order. Empty when the Shows section is off
+    /// or nothing printable was selected — every template then omits the section entirely (no
+    /// heading, no reserved space). Never consulted by Teams Copy.
+    /// </summary>
+    public IReadOnlyList<PdfShow> Shows { get; init; } = [];
 }

@@ -51,4 +51,12 @@ public enum SourceCategory
     /// composition time when both eligibilities agree on one amount.
     /// </summary>
     DatedMilitaryFirstResponder,
+
+    /// <summary>
+    /// Official date-specific entertainment schedule — show names, venues, and start times from the
+    /// <c>shows</c> array of the same official FIMS operating-hours feed <see cref="ParkHours"/> reads
+    /// (Phase 21C; docs/phase21c-official-show-schedules.md). Dated scope; operational information,
+    /// never a priced product — it never composes into any product section or Teams Copy output.
+    /// </summary>
+    ShowSchedule,
 }

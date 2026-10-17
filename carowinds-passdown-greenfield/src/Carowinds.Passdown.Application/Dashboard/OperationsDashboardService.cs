@@ -145,7 +145,10 @@ public sealed class OperationsDashboardService(
             activeOperationalNotes,
             dataHealth,
             latestFinalized,
-            clock.UtcNow);
+            clock.UtcNow)
+        {
+            TodayShows = workspace.ShowSchedule,
+        };
     }
 
     /// <summary>

@@ -1,0 +1,52 @@
+{
+  "parkId": 30,
+  "parkAbbreviation": "CA",
+  "parkName": "Carowinds",
+  "dates": [
+    {
+      "date": "10/17/2026",
+      "isParkClosed": false,
+      "shows": [
+        {
+          "showId": 4034,
+          "extLocationID": "SHOW-030-00187",
+          "showName": "Sinister Slide Squad",
+          "items": [
+            {
+              "assignmentLocation": "",
+              "assignmentDescription": "",
+              "times": "11:30 PM, 12:15 AM, 07:30 PM"
+            }
+          ]
+        },
+        {
+          "showId": 0,
+          "extLocationID": "",
+          "showName": "  Pop-Up   Parade ",
+          "items": [
+            {
+              "assignmentLocation": "Main Street",
+              "assignmentDescription": "",
+              "times": "02:00 PM"
+            }
+          ]
+        }
+      ],
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Park",
+          "items": [
+            {
+              "assignmentDisplayName": "Park",
+              "assignmentDescription": "",
+              "timeFrom": "11:00",
+              "timeTo": "00:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
+             xmlns:presentation="using:Carowinds.Passdown.Desktop.Presentation"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="860"
@@ -396,6 +397,29 @@
               <TextBlock Text="Daily Ticket" Classes="sectionTitle detail" />
               <TextBlock Text="{Binding Presentation.DailyAdmissionPriceText}" FontWeight="SemiBold"
                          AutomationProperties.Name="{Binding Presentation.DailyAdmissionPriceText, StringFormat='Daily ticket price: {0}'}" />
+
+              <!-- Phase 21C: the selected date's official shows — compact name/times/venue lines in the
+                   detail panel only (never inside day cells). Same wording as Dashboard's empty states. -->
+              <TextBlock Text="{Binding ShowsPresentation.Heading}" Classes="sectionTitle detail"
+                         IsVisible="{Binding ShowsPresentation, Converter={x:Static ObjectConverters.IsNotNull}}" />
+              <TextBlock Text="{Binding ShowsPresentation.StatusText}" Classes="muted" TextWrapping="Wrap"
+                         IsVisible="{Binding ShowsPresentation.HasStatusText}" />
+              <ItemsControl ItemsSource="{Binding ShowsPresentation.Rows}" IsVisible="{Binding ShowsPresentation.HasRows}"
+                            AutomationProperties.Name="Shows for the selected date">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="presentation:ShowRowPresentation">
+                    <StackPanel Spacing="0" Margin="0,2">
+                      <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                      <TextBlock Text="{Binding TimesText}" TextWrapping="Wrap" />
+                      <TextBlock Text="{Binding Venue}" Classes="muted" TextWrapping="Wrap" IsVisible="{Binding HasVenue}" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Text="{Binding ShowsPresentation.StartedEarlierText}" Classes="muted" TextWrapping="Wrap"
+                         IsVisible="{Binding ShowsPresentation.HasStartedEarlierText}" />
+              <TextBlock Text="{Binding ShowsPresentation.FreshnessText}" Classes="muted" TextWrapping="Wrap"
+                         IsVisible="{Binding ShowsPresentation.HasFreshnessText}" />
 
               <!-- Passdown Status (spec Phase 12C Part J/Y): No Draft/Draft In Progress/Finalized,
                    reusing OperationsCalendarPassdownPresentation for both the label and its detail
