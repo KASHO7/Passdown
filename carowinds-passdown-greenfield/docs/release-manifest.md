@@ -1675,3 +1675,136 @@ The next packaged candidate is still **`0.1.0-rc.6`**; `Directory.Build.props` s
 | Release build | 0 warnings, 0 errors |
 | Windows validation | NOT EXECUTED — checklist in the Phase 21D doc |
 
+
+**Phases 21A–21D packaged as `0.1.0-rc.6` in Phase 21E (below).**
+
+# Release manifest — 0.1.0-rc.6 (Phase 21E: Phases 21A–21D combined)
+
+**Mac-side automated verification complete. Windows validation PENDING.** No Windows PC was
+reachable from the build session. Run `docs/phase21e-rc6-windows-checklist.md` — **backup first**
+(§1) and read the cross-device Shows warning. Every Windows item stays **NOT EXECUTED** until
+results come back.
+
+| | |
+|---|---|
+| Product (visible) | Carowinds Operations |
+| Version | **`0.1.0-rc.6`**, file version `0.1.0.6`, informational `0.1.0-rc.6+ef13a6d03aacc316b876ed2029b0fb0da09b6a16` (read from the packaged `.exe`, `Desktop.dll`, `Documents.dll` and the single-file EXE; none contains `0.1.0-rc.5` or `0.1.0.5`) |
+| Starting HEAD / source commit (features) | `91a4a65` (Phase 21D) |
+| Release/version commit | `ef13a6d`: `Directory.Build.props` + shipped `TESTER-GUIDE.txt` / `README-portable-release.md`. Artifacts were built from this commit (clean tree apart from the unrelated pre-staged `.DS_Store`/`.claude` files, which are not build inputs) |
+| About this build | `0.1.0-rc.6 (ef13a6d)` + running executable path |
+| Target | Windows 11 x64 (`win-x64`), self-contained, R2R |
+| Build host | macOS 27.0.1 (Darwin 27.0.0), Apple Silicon arm64; .NET SDK 10.0.400; PowerShell 7.6.7 (local `dotnet tool` reused from an earlier scratch folder, nothing installed system-wide) |
+| DB / Draft / Snapshot / SyncSchemaVersion | **16** / 4 / 2 / 1 — unchanged from RC.5, no migration |
+| Legacy identities | Unchanged: `Carowinds.Passdown.Desktop.exe`, `%LOCALAPPDATA%\Carowinds Passdown`, `carowinds-passdown.db`, `Carowinds Passdown Daily Refresh`, `Carowinds Passdown Personal Sync`, AssemblyVersion `0.1.0.0` |
+| Deterministic tests | Baseline at `91a4a65`: **3410/3410**. Final at `ef13a6d`: **3410/3410** = 163 Domain + 1035 Application + 833 Infrastructure + 406 Documents + 917 Ui together + 26 `OperationsCalendarViewTests` + 17 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release --filter "Category!=LiveSmoke"`). No tests added; live tests not counted |
+| Build | `dotnet build CarowindsPassdown.slnx -c Release`: 0 warnings, 0 errors (before and after the version commit) |
+| Superseded | RC.5/RC.4/RC.3/RC.2/RC.1/dev artifacts untouched in `artifacts/releases/` (RC.5 hashes re-verified unchanged after this build). None nested in RC.6. Do not distribute |
+
+## Primary release: multi-file portable ZIP (RECOMMENDED)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.6-win-x64.zip` |
+| Bytes | 74,889,881 (RC.5: 73,739,645; +1,150,236) |
+| SHA-256 | `04feee4b7b928f26dac982c7e0fa1700a058b454679b95db85bc3ed90bf1e381` |
+| Extracted folder | `Carowinds-Operations-0.1.0-rc.6-win-x64\` |
+| Content | 283 files / 283 entries, 164,549,199 bytes uncompressed (RC.5: 282 files, 162,179,275 bytes; +2,369,924). Only new file: `licenses\STIXTwoMath-OFL.txt` |
+
+Size drivers (all of Phases 21A–21D, not only the font): `Carowinds.Passdown.Documents.dll`
+12,070,912 → 13,787,136 (+1.64 MiB; embedded STIX Two Math is 1,518,116 bytes of that),
+`Carowinds.Passdown.Desktop.dll` +282,624, `Carowinds.Passdown.Application.dll` +286,720.
+
+- **Packaging validator (`Test-ReleasePackage.ps1`): PASS** on staging and on the final ZIP (283 files
+  each), run by the real `Build-PortableRelease.ps1`. C# mirror (`CAROWINDS_RELEASE_ZIP=…
+  --filter RealReleaseZip`): PASS. Nothing bypassed. Not yet run on Windows.
+- **ZIP structure: PASS.** `unzip -t` CRC clean; one top-level folder; 283 unique entries; no
+  backslash names; no zero-length files. Fresh extraction `diff -rq`-identical to staging; the
+  extracted `.exe` SHA-256 equals the staged copy. Executable `PE32+ (GUI) x86-64`.
+- **Forbidden content: PASS.** No `.DS_Store`, `__MACOSX`, `.pdb`, `.db`, `-wal`, `-shm`, `.log`,
+  `.zip`, `.pdf`, `.png`, `.dylib`, `.so`, source, test assemblies, macOS/Linux runtime folders,
+  `CLAUDE.md`/`AGENT_BUILD_SPEC.md`, or dev/rc.1–rc.5 names. No user data, drafts, notes, sync
+  payloads, config, diagnostics or preview PDFs.
+- **Developer-path scan: PASS.** Checkout path, repository folder name and build user name appear in
+  no file (UTF-8/UTF-16), including the single-file EXE. `/Users/` only in the documented
+  SQLitePCLRaw vendor DLLs, `/home/` only in `MicroCom.Runtime.dll`; `C:\Users\` nowhere.
+- **Math renderer packaging: PASS (build host).** The published (win-x64 R2R) `Documents.dll` carries
+  manifest resource `DailyFeatureMath.STIXTwoMath-Regular.ttf` (the exact name the code loads),
+  byte-identical to the source font; the font bytes occur exactly once in the release folder and
+  once in the single-file EXE (no duplication, no loose `.ttf`). No TeX, network or machine-specific
+  dependency. The same-commit portable `Documents.dll` rendered all tester-guide expressions plus the
+  nine required symbols with no issues, and the malformed sample fell back to readable text
+  ("shown as typed"); the composed PDF was visually checked. The win-x64 R2R image itself cannot load
+  on macOS, so rendering *from the published binary* on Windows remains a Windows check (§7/§8).
+- **Third-party notices: PASS.** `THIRD-PARTY-NOTICES.txt` and `licenses\` byte-identical to the
+  repository; §8 covers STIX Two Math 2.13 b171 under SIL OFL 1.1 with
+  `licenses\STIXTwoMath-OFL.txt` (identical to the font's source OFL). Shipped `deps.json` package
+  set **identical to RC.5** (44 packages; none added or removed), so no other notice changes were
+  needed. No existing notice removed.
+
+## Single-file release (EXPERIMENTAL)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.6-win-x64.exe` |
+| Bytes | 190,509,900 (RC.5: 187,364,172) |
+| SHA-256 | `9987edcad06c7dfb5bdc51ccb996ef0852e62e3d7fee1c4245c9edeb8ab45aaa` |
+| Checks | Phase 15F single-file command; publish output = exe + `LatoFont/OFL.txt` only. Carries `0.1.0-rc.6+ef13a6d…` and `0.1.0.6`; STIX font embedded once. Only the vendor `/Users/`, `/home/` paths |
+| Status | EXPERIMENTAL. No notices when distributed alone — do **not** hand it out independently. Launch NOT EXECUTED |
+
+## QuestPDF licence
+
+QuestPDF 2026.7.3 shipped with its licence texts; `LicenseType.Community` selected in code. No legal
+conclusion drawn; a technical PASS is not a licensing approval.
+**DISTRIBUTION LICENSE DECISION: PENDING USER/ORGANIZATION CONFIRMATION**
+
+## Compatibility and known risks
+
+- **Schema numbers unchanged ≠ rollback safe.** RC.6 writes new cached categories
+  (`DatedMilitaryFirstResponder`, `ShowSchedule`) and drafts may carry `Shows` and LaTeX source.
+  Back up `%LOCALAPPDATA%\Carowinds Passdown` before first launch; do not run RC.5 against a profile
+  RC.6 has used.
+- **Cross-device Shows (SyncSchemaVersion still 1):** an older build that edits and saves a draft drops
+  its show selections, and the loss syncs. Upgrade every PC sharing a sync folder before using Shows;
+  back up the shared folder first. Older builds display/print LaTeX as raw source but do not lose it.
+- Math Daily Feature paragraphs are drawn as shapes in PDFs (not selectable/searchable); plain text
+  remains searchable.
+- Historical pricing/show data before local recording cannot be reconstructed; it is shown as
+  unavailable, never fabricated.
+
+## Windows validation
+
+To be run with `docs/phase21e-rc6-windows-checklist.md` against the hashes above.
+
+| Item | Result |
+|---|---|
+| Profile and sync-folder backup | NOT EXECUTED (required first) |
+| Hash check, extraction, launch, second launch, About `0.1.0-rc.6 (ef13a6d)`, running path, Windows Search stale copy | NOT EXECUTED |
+| 21A Military/First Responder dated prices vs official store | NOT EXECUTED (PASS BY TEST) |
+| 21A historical pricing, pass-year identity, Open Passdown → today | NOT EXECUTED (PASS BY TEST) |
+| 21B date bar, calendar popup, toolbar, Settings → Diagnostics | NOT EXECUTED (PASS BY TEST) |
+| 21C Dashboard / Calendar / Associate Shows | NOT EXECUTED (PASS BY TEST; live source smoke passed 2026-10-16 in Phase 21C) |
+| 21C Classic / Compact / Modern PDF Shows | NOT EXECUTED (PASS BY TEST) |
+| 21C Teams Copy exclusion | NOT EXECUTED (PASS BY TEST) |
+| 21C frozen History shows | NOT EXECUTED (PASS BY TEST) |
+| 21D math picker, preview, spell check, invalid input | NOT EXECUTED (PASS BY TEST) |
+| 21D math font/glyphs, math PDFs | NOT EXECUTED on Windows (PASS on build host, see above) |
+| Shows + math combined PDFs | NOT EXECUTED (PASS BY TEST) |
+| Historical backfill, spell-check navigation, Season Price History regressions | NOT EXECUTED (PASS BY TEST) |
+| Personal Sync one-PC | NOT EXECUTED (PASS BY TEST) |
+| Personal Sync two-PC | **NOT EXECUTED — TWO-PC VALIDATION PENDING** |
+| Scheduled refresh | NOT EXECUTED (PASS BY TEST) |
+| Diagnostics/privacy | NOT EXECUTED (PASS BY TEST) |
+| Scaling 100/125/150%, narrow, dark, keyboard | NOT EXECUTED |
+| Experimental EXE | NOT EXECUTED |
+
+## Release status
+
+- **BUILD VERIFIED.** 3410/3410 deterministic tests, Release build 0/0, packaging validator (PS and
+  C#), ZIP integrity, forbidden-content and developer-path scans, notices, version resources and
+  hashes all pass on the build host. No open defect.
+- **WINDOWS VALIDATION PENDING.** No Windows environment was available.
+- **TWO-PC SYNC VALIDATION PENDING.**
+- **DISTRIBUTION LICENSE DECISION PENDING** (QuestPDF).
+- Next release decision: if Windows validation finds a shipped-code defect, fix it in source and ship
+  **`0.1.0-rc.7`**; RC.6 artifacts are immutable. If Windows validation passes, RC.6 is the candidate
+  for the installer/update work, subject to the QuestPDF decision.
