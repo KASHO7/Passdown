@@ -1067,3 +1067,18 @@ See `docs/phase22a-design-foundation.md`. Desktop presentation only.
 - No Domain/Application/Infrastructure/Documents change; no view-model change; PDF output unchanged.
 
 Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged.
+
+## Phase 22B — Fury banner and application navigation
+
+See `docs/phase22b-fury-banner-navigation.md`. Desktop presentation only.
+
+- **Desktop** — `Views/MainWindow.axaml`: the navy brand band is replaced by a 72 px theme-invariant
+  banner (`Assets/Branding/fury325-banner.jpg`, an embedded `AvaloniaResource`, `UniformToFill`, under
+  the absolute-pixel `PassdownBannerOverlayBrush` scrim) with one "CAROWINDS OPERATIONS" wordmark. The
+  six-item section strip, its bindings and `MainViewModel` routing are unchanged; its styles moved from
+  `<Window.Styles>` into the "App shell" section of `Themes/PassdownStyles.axaml`. New theme-invariant
+  tokens: `PassdownBannerHeight`, `PassdownFontSizeWordmark`, `PassdownBannerOverlayBrush`,
+  `PassdownNavigationStripPadding`, `PassdownNavigationItemPadding`.
+- No Domain/Application/Infrastructure/Documents change; no view-model change; PDF output unchanged.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged.

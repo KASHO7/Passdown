@@ -1827,3 +1827,25 @@ unchanged; `Directory.Build.props` still says `0.1.0-rc.6`. The next packaged ca
 | Live smoke (opt-in) | not applicable (no retrieval change) |
 | Release build | 0 warnings, 0 errors |
 | Windows validation | NOT EXECUTED — checklist in the Phase 22A doc §19 |
+
+# Unreleased development — Phase 22B (after RC.6)
+
+Fury banner and application navigation ("Option A — Minimal Fury Banner"): a compact 72 px Fury 325
+photographic banner with a charcoal-navy scrim and a single "CAROWINDS OPERATIONS" wordmark replaces
+the navy brand band; the six-destination section strip is restyled through shared tokens (underline +
+SemiBold + "Current page" status for the active item, neutral hover, width-stable labels, aligned to
+the wordmark). Shell height 87 → 105 px (−18 px content height at every tested size). No page
+redesigned, no routing/view-model/operational change, PDF output unchanged. See
+`docs/phase22b-fury-banner-navigation.md`. RC.6 artifacts are unchanged; `Directory.Build.props` still
+says `0.1.0-rc.6`. The next packaged candidate is **`0.1.0-rc.7`**.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration — presentation only) |
+| Upgrade implications | None. Stored data is unaffected. |
+| New shipped asset | `Assets/Branding/fury325-banner.jpg` (1920×320, 135,816 bytes), embedded in `Carowinds.Passdown.Desktop.dll` |
+| Deterministic tests | **3515/3515** (baseline 3479 at `d12ec88`; +25 `Phase22BShellNavigationTests`, +11 `Phase15ERealWindowLayoutTests`) = 163 Domain + 1035 Application + 833 Infrastructure + 406 Documents + 1011 Ui together + 26 `OperationsCalendarViewTests` + 28 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). The new class uses no real Window and runs in the mixed Ui partition; the run-alone set is unchanged (still five classes) |
+| Live smoke (opt-in) | not applicable (no retrieval change) |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 22B doc §15 |
+| Banner image rights | **BANNER IMAGE DISTRIBUTION RIGHTS PENDING** (photographer/license unknown; see the Phase 22B doc §16). Separate from the pending QuestPDF distribution-license decision |

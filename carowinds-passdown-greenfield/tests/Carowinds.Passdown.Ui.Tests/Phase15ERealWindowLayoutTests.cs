@@ -4,6 +4,8 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Styling;
+using Avalonia.Media;
 using Avalonia.VisualTree;
 using Carowinds.Passdown.Application.Calendar;
 using Carowinds.Passdown.Application.Finalization;
@@ -97,6 +99,7 @@ public class Phase15ERealWindowLayoutTests
     [Theory]
     [InlineData(1280d, 860d)]
     [InlineData(960d, 640d)]
+    [InlineData(1280d, 690d)]
     public void MainWindow_SectionStrip_EveryButtonReachableWithinWindowBounds(double width, double height)
     {
         // MainWindow is itself a Window (unlike every other view under test here, which is a
@@ -117,6 +120,202 @@ public class Phase15ERealWindowLayoutTests
             Assert.True(bounds.Width > 0, $"section button '{button.Content}' realized with zero width.");
             Assert.True(bounds.Right <= clientWidth + 1.0,
                 $"section button '{button.Content}' right edge {bounds.Right} exceeds window client width {clientWidth}.");
+        }
+
+        window.Close();
+    }
+
+    // ==================================================================================
+    // Phase 22B — Fury banner and section navigation (real-window geometry, keyboard, theme)
+    // ==================================================================================
+
+    private static MainWindow ShowMainWindow(MainViewModel viewModel, double width, double height)
+    {
+        var window = new MainWindow { DataContext = viewModel, Width = width, Height = height };
+        window.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        return window;
+    }
+
+    private static List<Button> SectionButtons(Window window) =>
+        window.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("appSectionItem")).ToList();
+
+    private static Control Named(Window window, string name) =>
+        window.GetVisualDescendants().OfType<Control>().Single(c => c.Name == name);
+
+    [Theory]
+    [InlineData(1280d, 860d)]
+    [InlineData(960d, 640d)]
+    [InlineData(1280d, 690d)]
+    [InlineData(1920d, 1040d)]
+    public void MainWindow_Shell_IsCompactAndGeometryStaysFixedAcrossEverySection(double width, double height)
+    {
+        var viewModel = CreateMainViewModel();
+        var window = ShowMainWindow(viewModel, width, height);
+
+        var banner = Named(window, "BrandBanner");
+        var navigation = Named(window, "AppNavigation");
+        Assert.Equal(72, banner.Bounds.Height, 1);
+        Assert.Equal(window.ClientSize.Width, banner.Bounds.Width, 1);
+        // This assembly's headless platform measures text with fake metrics (wider than real fonts),
+        // so the strip may wrap here where Skia/Windows fonts fit one row (see
+        // docs/phase22b-fury-banner-navigation.md §13). Assert the per-row budget, not a row count.
+        var rows = SectionButtons(window).Select(b => Math.Round(AbsoluteBounds(b, window).Top)).Distinct().Count();
+        Assert.InRange(rows, 1, 2);
+        Assert.InRange(navigation.Bounds.Height / rows, 28, 40);
+        var shellHeight = banner.Bounds.Height + navigation.Bounds.Height;
+        Assert.True(shellHeight <= 72 + 40 * rows, $"shell is {shellHeight}px tall for {rows} navigation row(s)");
+
+        var wordmark = Named(window, "BrandWordmark");
+        var wordmarkBounds = AbsoluteBounds(wordmark, window);
+        Assert.True(wordmarkBounds.Top >= 0 && wordmarkBounds.Bottom <= banner.Bounds.Height, "wordmark clipped vertically");
+        Assert.True(wordmarkBounds.Right < window.ClientSize.Width, "wordmark clipped horizontally");
+
+        var firstLeft = new List<double>();
+        foreach (var section in Enum.GetValues<AppSection>())
+        {
+            viewModel.SelectedSection = section;
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            var buttons = SectionButtons(window);
+            Assert.Equal(6, buttons.Count);
+            Assert.Single(buttons, b => b.Classes.Contains("active"));
+            var positions = buttons.Select(b => AbsoluteBounds(b, window)).ToList();
+            Assert.Equal(rows, positions.Select(p => Math.Round(p.Top)).Distinct().Count());
+            for (var i = 1; i < positions.Count; i++)
+            {
+                Assert.False(positions[i].Intersects(positions[i - 1]), $"navigation items {i - 1} and {i} overlap");
+            }
+            Assert.Equal(72, banner.Bounds.Height, 1);
+            Assert.Equal(shellHeight, banner.Bounds.Height + navigation.Bounds.Height, 1);
+
+            // Selecting a section (SemiBold) never moves any item.
+            var lefts = positions.Select(p => p.Left).ToList();
+            if (firstLeft.Count == 0) firstLeft = lefts;
+            Assert.Equal(firstLeft, lefts);
+        }
+
+        window.Close();
+    }
+
+    [Fact]
+    public void MainWindow_ActiveDestination_FollowsTheSelectedSection_AndOnlyOneIsActive()
+    {
+        var viewModel = CreateMainViewModel();
+        var window = ShowMainWindow(viewModel, 1280, 860);
+        var expected = new Dictionary<AppSection, string>
+        {
+            [AppSection.Dashboard] = "Dashboard", [AppSection.OperationsCalendar] = "Operations Calendar",
+            [AppSection.AssociatePassdown] = "Associate Passdown", [AppSection.OperationalNotes] = "Operational Notes",
+            [AppSection.History] = "History", [AppSection.Settings] = "Settings",
+        };
+
+        foreach (var button in SectionButtons(window).AsEnumerable().Reverse())
+        {
+            button.Command!.Execute(null);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            var active = Assert.Single(SectionButtons(window), b => b.Classes.Contains("active"));
+            Assert.Same(button, active);
+            Assert.Equal(expected[viewModel.SelectedSection], active.Content);
+            Assert.Equal("Current page", AutomationProperties.GetItemStatus(active));
+            Assert.All(SectionButtons(window).Where(b => b != active), b => Assert.Null(AutomationProperties.GetItemStatus(b)));
+            Assert.Equal(FontWeight.SemiBold, active.FontWeight);
+        }
+
+        window.Close();
+    }
+
+    [Fact]
+    public void MainWindow_Navigation_IsKeyboardReachableInOrder_AndEnterActivatesTheFocusedItem()
+    {
+        var viewModel = CreateMainViewModel();
+        var window = ShowMainWindow(viewModel, 1280, 860);
+        var buttons = SectionButtons(window);
+        Assert.All(buttons, b => Assert.True(b.Focusable && b.IsTabStop && b.IsEffectivelyEnabled, $"{b.Content} not keyboard reachable"));
+
+        Assert.True(buttons[0].Focus(NavigationMethod.Tab));
+        for (var i = 1; i < buttons.Count; i++)
+        {
+            window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None);
+            window.KeyReleaseQwerty(PhysicalKey.Tab, RawInputModifiers.None);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.Same(buttons[i], window.FocusManager!.GetFocusedElement());
+        }
+
+        Assert.True(buttons[4].Focus(NavigationMethod.Tab)); // History
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        window.KeyReleaseQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(AppSection.History, viewModel.SelectedSection);
+        Assert.True(buttons[4].IsFocused, "activating a section must not drop keyboard focus");
+
+        window.Close();
+    }
+
+    [Fact]
+    public void MainWindow_ThemeSwitch_RestylesNavigation_WhileTheBannerStaysDark()
+    {
+        var viewModel = CreateMainViewModel();
+        var window = ShowMainWindow(viewModel, 1280, 860);
+        var navigation = (Border)Named(window, "AppNavigation");
+        var banner = (Border)Named(window, "BrandBanner");
+
+        foreach (var variant in new[] { ThemeVariant.Light, ThemeVariant.Dark, ThemeVariant.Light })
+        {
+            window.RequestedThemeVariant = variant;
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            IBrush Token(string key) => window.TryFindResource(key, variant, out var value) ? (IBrush)value! : throw new Xunit.Sdk.XunitException(key);
+            var buttons = SectionButtons(window);
+            var active = Assert.Single(buttons, b => b.Classes.Contains("active"));
+            Assert.Same(Token("PassdownSurfaceBrush"), navigation.Background);
+            Assert.Same(Token("PassdownDividerBrush"), navigation.BorderBrush);
+            Assert.Same(Token("PassdownTextPrimaryBrush"), active.Foreground);
+            Assert.Same(Token("PassdownAccentForegroundBrush"), active.BorderBrush);
+            Assert.All(buttons.Where(b => b != active), b => Assert.Same(Token("PassdownTextSecondaryBrush"), b.Foreground));
+            Assert.Same(Token("PassdownBrandDarkBrush"), banner.Background);
+        }
+
+        window.Close();
+    }
+
+    [Fact]
+    public void MainWindow_BannerPhotograph_LoadsFromTheBundledResource_AndFillsTheBanner()
+    {
+        var window = ShowMainWindow(CreateMainViewModel(), 960, 640);
+        var image = (Image)Named(window, "BrandBannerImage");
+        // A decoded Bitmap from the avares resource (pixel size is not asserted: this assembly's
+        // headless drawing platform uses stub bitmaps; the asset's 1920×320 header is checked by
+        // Phase22BShellNavigationTests).
+        Assert.IsAssignableFrom<Avalonia.Media.Imaging.Bitmap>(image.Source);
+        Assert.Equal(Stretch.UniformToFill, image.Stretch);
+        Assert.Equal(window.ClientSize.Width, image.Bounds.Width, 1);
+        Assert.Equal(72, image.Bounds.Height, 1);
+        Assert.False(image.IsHitTestVisible);
+        window.Close();
+    }
+
+    [Theory]
+    [InlineData(960d, 640d)]
+    [InlineData(1280d, 690d)]
+    public void MainWindow_SectionContent_StartsDirectlyBelowTheShell_AndKeepsUsableHeight(double width, double height)
+    {
+        var viewModel = CreateMainViewModel();
+        var window = ShowMainWindow(viewModel, width, height);
+        var navigation = Named(window, "AppNavigation");
+        var shellBottom = AbsoluteBounds(navigation, window).Bottom;
+
+        foreach (var section in Enum.GetValues<AppSection>())
+        {
+            viewModel.SelectedSection = section;
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            var host = window.GetVisualDescendants().OfType<Border>()
+                .Single(b => b.IsVisible && b.Child is UserControl && b.GetVisualParent() is Grid g && g.GetVisualParent() is DockPanel);
+            var bounds = AbsoluteBounds(host, window);
+            Assert.Equal(shellBottom, bounds.Top, 1);
+            Assert.Equal(window.ClientSize.Width, bounds.Width, 1);
+            Assert.Equal(window.ClientSize.Height - shellBottom, bounds.Height, 1);
+            Assert.True(bounds.Height >= height * 0.75, $"{section}: only {bounds.Height}px of content height");
         }
 
         window.Close();

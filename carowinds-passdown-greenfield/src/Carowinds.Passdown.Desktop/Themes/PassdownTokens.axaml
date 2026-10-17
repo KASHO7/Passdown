@@ -16,11 +16,28 @@
        =================================================================================== -->
 
   <!-- The brand band (deep navy + white text) is identity, not a surface: it does not invert with
-       the OS light/dark theme. Restyling it belongs to the app-shell phase (22B). -->
+       the OS light/dark theme. PassdownBrandDarkBrush is also the banner's fallback fill underneath
+       the photograph. -->
   <Color x:Key="PassdownBrandDarkColor">#0B2A4A</Color>
   <SolidColorBrush x:Key="PassdownBrandDarkBrush" Color="{StaticResource PassdownBrandDarkColor}" />
   <SolidColorBrush x:Key="PassdownHeaderForegroundBrush" Color="#FFFFFF" />
   <SolidColorBrush x:Key="PassdownHeaderMutedForegroundBrush" Color="#B9CBDE" />
+
+  <!-- Phase 22B app shell (docs/phase22b-fury-banner-navigation.md). The Fury 325 banner stays dark
+       in both themes. The overlay is a charcoal-navy left-to-right scrim measured in absolute pixels
+       (not % of width), so it is the same behind the wordmark at every window width: ≥ 0.78 opacity
+       across the first ~306px (the wordmark ends at x≈299), which keeps white text ≥ 4.5:1 even over
+       a pure-white cloud pixel, then easing to 0.32 by x=900 so the ride stays visible. -->
+  <sys:Double x:Key="PassdownBannerHeight">72</sys:Double>
+  <sys:Double x:Key="PassdownFontSizeWordmark">16</sys:Double>
+  <LinearGradientBrush x:Key="PassdownBannerOverlayBrush" StartPoint="0,0" EndPoint="900,0">
+    <GradientStop Offset="0" Color="#E60C1724" />
+    <GradientStop Offset="0.34" Color="#C70C1724" />
+    <GradientStop Offset="0.55" Color="#800C1724" />
+    <GradientStop Offset="1" Color="#520C1724" />
+  </LinearGradientBrush>
+  <Thickness x:Key="PassdownNavigationStripPadding">10,0</Thickness>
+  <Thickness x:Key="PassdownNavigationItemPadding">14,8</Thickness>
 
   <!-- Fluent's own accent-driven controls (checked CheckBox/RadioButton, ToggleSwitch, text
        selection, the Fluent Calendar) follow the brand royal blue. -->
