@@ -20,11 +20,25 @@ public sealed record PassdownHistorySummaryPresentation(
     bool HasFrozenPdf,
     string PdfAvailabilityText)
 {
+    /// <summary>Phase 22E: the list row's title with its weekday — "Friday, October 16, 2026" — so a date is easy to find by day.</summary>
+    public string ListTitleText { get; init; } = PassdownDateText;
+
+    /// <summary>Phase 22E: the list row's metadata line — "Finalized Oct 17, 6:02 AM · Scheduled" (the finalized year only when it differs from the passdown's).</summary>
+    public string ListDetailText { get; init; } = FinalizedText;
+
+    /// <summary>Phase 22E: the compact PDF tag at the row's right edge — "PDF" when the exact frozen PDF is stored, "No PDF" otherwise (with <see cref="PdfAvailabilityText"/> as its full wording).</summary>
+    public string PdfTagText => HasFrozenPdf ? "PDF" : "No PDF";
+
+    /// <summary>"Friday, October 16, 2026, finalized Oct 17, 6:02 AM, Scheduled, PDF available" for screen readers.</summary>
+    public string AccessibleSummary => $"{ListTitleText}, {char.ToLowerInvariant(ListDetailText[0])}{ListDetailText[1..].Replace(" · ", ", ", StringComparison.Ordinal)}, {PdfAvailabilityText}";
+
     public static PassdownHistorySummaryPresentation Build(FinalizedPassdownSummary summary)
     {
         ArgumentNullException.ThrowIfNull(summary);
 
         var finalizedEastern = EasternTimeZone.ConvertFromUtc(summary.FinalizedAtUtc);
+
+        var finalizedShortFormat = finalizedEastern.Year == summary.PassdownDate.Year ? "MMM d, h:mm tt" : "MMM d, yyyy, h:mm tt";
 
         return new PassdownHistorySummaryPresentation(
             summary.PassdownDate,
@@ -32,6 +46,10 @@ public sealed record PassdownHistorySummaryPresentation(
             string.Create(PresentationCulture.UnitedStates, $"Finalized {finalizedEastern:MMM d, yyyy 'at' h:mm tt}"),
             summary.Origin.ToString(),
             summary.HasFrozenPdf,
-            summary.HasFrozenPdf ? "PDF available" : "Exact historical PDF unavailable");
+            summary.HasFrozenPdf ? "PDF available" : "Exact historical PDF unavailable")
+        {
+            ListTitleText = summary.PassdownDate.ToString("dddd, MMMM d, yyyy", PresentationCulture.UnitedStates),
+            ListDetailText = $"Finalized {finalizedEastern.ToString(finalizedShortFormat, PresentationCulture.UnitedStates)} · {summary.Origin}",
+        };
     }
 }

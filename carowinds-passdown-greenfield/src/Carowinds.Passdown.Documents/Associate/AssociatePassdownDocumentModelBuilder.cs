@@ -264,11 +264,8 @@ public static class AssociatePassdownDocumentModelBuilder
         Qualifier: null,
         Notes: BundleNote(product));
 
-    private static string? FormatPrice(PriceKind kind, decimal? amount)
-    {
-        var formatted = FormatMoney(amount);
-        return formatted is null ? null : kind == PriceKind.StartingFrom ? $"From {formatted}" : formatted;
-    }
+    /// <summary>Phase 22E: the shared <see cref="AdvertisedPriceText"/> rule (also used by Associate → Products); output unchanged.</summary>
+    private static string? FormatPrice(PriceKind kind, decimal? amount) => AdvertisedPriceText.FormatOrNull(amount, kind);
 
     /// <summary>
     /// Phase 13C Part I/W: a source-described bundle (e.g. "Two Friends Just $50") carries its

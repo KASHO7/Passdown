@@ -16,9 +16,25 @@
     <!-- History rows (spec Part W: keyboard selectable, visible focus states) — ListBox already
          provides arrow-key navigation and a focus ring via FluentTheme; hover/selected backgrounds
          come from the shared ListBox.selectableRows style. -->
-    <Style Selector="ListBoxItem">
-      <Setter Property="Padding" Value="14,10" />
+    <!-- Phase 22E: two-line divided rows (date; finalized · origin) with a compact PDF tag — no chips. -->
+    <Style Selector="ListBox.historyList ListBoxItem">
+      <Setter Property="Padding" Value="14,8" />
       <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+    </Style>
+    <Style Selector="TextBlock.pdfTag">
+      <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeCaption}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+    </Style>
+    <Style Selector="TextBlock.pdfTag.missing">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownStaleBrush}" />
+    </Style>
+    <!-- Phase 22E: one summary panel holds the four small snapshot groups (Park Hours, Attendance,
+         Daily Feature, Early Ride) instead of four separate cards. -->
+    <Style Selector="StackPanel.historyGroup">
+      <Setter Property="Spacing" Value="2" />
     </Style>
   </UserControl.Styles>
 
@@ -46,30 +62,24 @@
                      Margin="16" TextWrapping="Wrap"
                      IsVisible="{Binding ListErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
-          <StackPanel Grid.Row="1" Margin="18" Spacing="6" IsVisible="{Binding ShowEmptyState}">
+          <StackPanel Grid.Row="1" Margin="16" Spacing="4" IsVisible="{Binding ShowEmptyState}">
             <TextBlock Text="No finalized passdowns yet." FontWeight="SemiBold" TextWrapping="Wrap" />
             <TextBlock Classes="muted" TextWrapping="Wrap"
                        Text="Passdowns are automatically finalized after their operating date once the 6:00 AM finalization cutoff has passed." />
           </StackPanel>
 
-          <ListBox Grid.Row="1" Classes="selectableRows" ItemsSource="{Binding HistoryItems}" SelectedItem="{Binding SelectedItem}"
+          <ListBox Grid.Row="1" Classes="selectableRows historyList" ItemsSource="{Binding HistoryItems}" SelectedItem="{Binding SelectedItem}"
                    Background="Transparent" BorderThickness="0"
                    IsVisible="{Binding HasHistory}"
                    AutomationProperties.Name="Finalized passdown history">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="presentation:PassdownHistorySummaryPresentation">
-                <StackPanel Spacing="3" AutomationProperties.Name="{Binding PassdownDateText}">
-                  <TextBlock Text="{Binding PassdownDateText}" FontWeight="Bold" FontSize="13.5" TextWrapping="Wrap" />
-                  <TextBlock Text="{Binding FinalizedText}" Classes="muted" />
-                  <StackPanel Orientation="Horizontal" Spacing="6">
-                    <Border Classes="chip">
-                      <TextBlock Text="{Binding OriginText}" />
-                    </Border>
-                    <Border Classes="chip">
-                      <TextBlock Text="{Binding PdfAvailabilityText}" />
-                    </Border>
-                  </StackPanel>
-                </StackPanel>
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" AutomationProperties.Name="{Binding AccessibleSummary}">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding ListTitleText}" FontWeight="SemiBold" FontSize="13.5" TextWrapping="Wrap" />
+                  <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding PdfTagText}" Classes="pdfTag" Classes.missing="{Binding !HasFrozenPdf}"
+                             Margin="8,1,0,0" VerticalAlignment="Top" ToolTip.Tip="{Binding PdfAvailabilityText}" />
+                  <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding ListDetailText}" Classes="muted" TextWrapping="Wrap" Margin="0,2,0,0" />
+                </Grid>
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
@@ -78,72 +88,102 @@
       </Border>
 
       <!-- Detail column (spec Part C/D/F): resolved entirely from the frozen snapshot, never from
-           any current Associate draft or catalog table. -->
+           any current Associate draft or catalog table. Phase 22E: presentation only — the header now
+           carries the PDF actions, and the small snapshot groups share one panel. Every pre-22E field
+           and binding is still shown; nothing is regenerated, re-resolved or written. -->
       <ScrollViewer Grid.Column="1" Padding="24,20,24,24">
 
         <StackPanel Spacing="16">
 
-          <TextBlock Text="Select a finalized passdown from the list to view its details."
-                     Classes="muted" IsVisible="{Binding !HasSelection}" />
+          <!-- Phase 22E: only when there is something to select — the list's own empty state covers "no records". -->
+          <TextBlock Text="Select a finalized passdown from the list to view its details." Classes="muted">
+            <TextBlock.IsVisible>
+              <MultiBinding Converter="{x:Static BoolConverters.And}">
+                <Binding Path="!HasSelection" />
+                <Binding Path="HasHistory" />
+              </MultiBinding>
+            </TextBlock.IsVisible>
+          </TextBlock>
 
           <StackPanel Spacing="16" IsVisible="{Binding HasSelection}">
 
             <ProgressBar IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoadingDetail}" />
 
-            <Grid ColumnDefinitions="*,Auto">
-              <StackPanel Grid.Column="0" Spacing="4">
-                <TextBlock Text="{Binding SelectedItem.PassdownDateText}" Classes="pageTitle" />
-                <TextBlock Text="{Binding SelectedItem.FinalizedText}" Classes="muted" />
-                <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
-                  <Border Classes="chip">
-                    <TextBlock Text="{Binding SelectedItem.OriginText}" />
-                  </Border>
-                  <Border Classes="chip">
-                    <TextBlock Text="{Binding SelectedItem.PdfAvailabilityText}" />
-                  </Border>
+            <StackPanel Spacing="10">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Spacing="4">
+                  <TextBlock Text="{Binding SelectedItem.PassdownDateText}" Classes="pageTitle" />
+                  <TextBlock Text="{Binding SelectedItem.FinalizedText}" Classes="muted" />
+                  <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
+                    <Border Classes="chip">
+                      <TextBlock Text="{Binding SelectedItem.OriginText}" />
+                    </Border>
+                    <Border Classes="chip">
+                      <TextBlock Text="{Binding SelectedItem.PdfAvailabilityText}" />
+                    </Border>
+                  </StackPanel>
                 </StackPanel>
-              </StackPanel>
-              <Border Grid.Column="1" Classes="readOnlyBadge" VerticalAlignment="Top">
-                <TextBlock Text="Finalized — Read Only" />
-              </Border>
-            </Grid>
+                <Border Grid.Column="1" Classes="readOnlyBadge" VerticalAlignment="Top">
+                  <TextBlock Text="Finalized — Read Only" />
+                </Border>
+              </Grid>
+
+              <!-- PDF actions (spec Part I/J/H): visible whenever a record is selected, regardless of
+                   whether its structured snapshot could be read — a pre-9C/unsupported-schema row can
+                   still offer its frozen PDF. Phase 22E: moved up beside the record identity (the screen's
+                   one primary action is opening the exact frozen PDF); the stored bytes are served as-is. -->
+              <WrapPanel Orientation="Horizontal">
+                <Button Content="Open Final PDF" Classes="primaryAction" Margin="0,0,10,0"
+                        Command="{Binding OpenFinalPdfCommand}"
+                        IsVisible="{Binding SelectedDetail.Summary.HasFrozenPdf, FallbackValue=False}"
+                        AutomationProperties.Name="Open Final PDF"
+                        AutomationProperties.HelpText="Opens the exact frozen PDF stored for this finalized passdown in your default PDF viewer." />
+                <Button Content="Save PDF Copy" Classes="secondaryAction" Margin="0,0,10,0"
+                        Command="{Binding SavePdfCopyCommand}"
+                        IsVisible="{Binding SelectedDetail.Summary.HasFrozenPdf, FallbackValue=False}"
+                        AutomationProperties.Name="Save PDF Copy"
+                        AutomationProperties.HelpText="Saves a copy of the exact frozen PDF stored for this finalized passdown." />
+                <TextBlock Text="Exact historical PDF unavailable" Classes="muted" VerticalAlignment="Center"
+                           IsVisible="{Binding !SelectedDetail.Summary.HasFrozenPdf, FallbackValue=False}" />
+              </WrapPanel>
+              <TextBlock Text="{Binding PdfActionMessage}" Classes="muted" TextWrapping="Wrap"
+                         IsVisible="{Binding PdfActionMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
 
             <TextBlock Text="{Binding DetailErrorMessage}" Classes="fieldError" TextWrapping="Wrap"
                        IsVisible="{Binding DetailErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
             <StackPanel Spacing="16" IsVisible="{Binding HasSnapshot}">
 
-              <Border Classes="panel">
-                <StackPanel Spacing="4">
-                  <TextBlock Text="Park Hours" Classes="sectionTitle" />
-                  <TextBlock Text="{Binding SelectedDetail.Snapshot.ParkHours.HeadlineText}" FontSize="18" FontWeight="Bold" />
-                  <Border Classes="chip" HorizontalAlignment="Left"
-                          IsVisible="{Binding SelectedDetail.Snapshot.ParkHours.BadgeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                    <TextBlock Text="{Binding SelectedDetail.Snapshot.ParkHours.BadgeText}" />
-                  </Border>
-                  <TextBlock Text="{Binding SelectedDetail.Snapshot.ParkHours.NorthGateText}" Classes="muted"
-                             IsVisible="{Binding SelectedDetail.Snapshot.ParkHours.NorthGateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                  <TextBlock Text="{Binding SelectedDetail.Snapshot.ParkHours.AvenueText}" Classes="muted"
-                             IsVisible="{Binding SelectedDetail.Snapshot.ParkHours.AvenueText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                  <TextBlock Text="{Binding SelectedDetail.Snapshot.ParkHours.VerificationText}" Classes="muted"
-                             IsVisible="{Binding SelectedDetail.Snapshot.ParkHours.VerificationText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                  <TextBlock Text="{Binding SelectedDetail.Snapshot.ParkHours.PrivateBuyoutDetails}" Classes="fieldWarning"
-                             IsVisible="{Binding SelectedDetail.Snapshot.ParkHours.PrivateBuyoutDetails, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                </StackPanel>
-              </Border>
+              <Border Classes="panel" AutomationProperties.Name="Finalized summary">
+                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="24" RowSpacing="16">
 
-              <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
-                <Border Grid.Column="0" Classes="panel">
-                  <StackPanel Spacing="4">
-                    <TextBlock Text="Attendance" Classes="sectionTitle" />
+                  <StackPanel Grid.Row="0" Grid.Column="0" Classes="historyGroup">
+                    <TextBlock Text="PARK HOURS" Classes="subsectionTitle" Margin="0,0,0,2" />
+                    <TextBlock Text="{Binding SelectedDetail.Snapshot.ParkHours.HeadlineText}" FontSize="18" FontWeight="Bold" TextWrapping="Wrap" />
+                    <Border Classes="chip" HorizontalAlignment="Left" Margin="0,2"
+                            IsVisible="{Binding SelectedDetail.Snapshot.ParkHours.BadgeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                      <TextBlock Text="{Binding SelectedDetail.Snapshot.ParkHours.BadgeText}" />
+                    </Border>
+                    <TextBlock Text="{Binding SelectedDetail.Snapshot.ParkHours.NorthGateText}" Classes="muted" TextWrapping="Wrap"
+                               IsVisible="{Binding SelectedDetail.Snapshot.ParkHours.NorthGateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <TextBlock Text="{Binding SelectedDetail.Snapshot.ParkHours.AvenueText}" Classes="muted" TextWrapping="Wrap"
+                               IsVisible="{Binding SelectedDetail.Snapshot.ParkHours.AvenueText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <TextBlock Text="{Binding SelectedDetail.Snapshot.ParkHours.VerificationText}" Classes="muted" TextWrapping="Wrap"
+                               IsVisible="{Binding SelectedDetail.Snapshot.ParkHours.VerificationText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <TextBlock Text="{Binding SelectedDetail.Snapshot.ParkHours.PrivateBuyoutDetails}" Classes="fieldWarning" TextWrapping="Wrap"
+                               IsVisible="{Binding SelectedDetail.Snapshot.ParkHours.PrivateBuyoutDetails, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  </StackPanel>
+
+                  <StackPanel Grid.Row="0" Grid.Column="1" Classes="historyGroup">
+                    <TextBlock Text="ATTENDANCE" Classes="subsectionTitle" Margin="0,0,0,2" />
                     <!-- Phase 22D: grouped counts ("38,500") rendered from the stored integer; the snapshot is unchanged. -->
                     <TextBlock Text="{Binding SelectedDetail.Snapshot.Attendance.ProjectedAttendance, Converter={x:Static converters:OperationalCountTextConverter.Instance}, ConverterParameter='Projected attendance'}" />
                     <TextBlock Text="{Binding SelectedDetail.Snapshot.Attendance.PreSolds, Converter={x:Static converters:OperationalCountTextConverter.Instance}, ConverterParameter='Pre-solds'}" />
                   </StackPanel>
-                </Border>
-                <Border Grid.Column="1" Classes="panel">
-                  <StackPanel Spacing="4">
-                    <TextBlock Text="Daily Feature" Classes="sectionTitle" />
+
+                  <StackPanel Grid.Row="1" Grid.Column="0" Classes="historyGroup">
+                    <TextBlock Text="DAILY FEATURE" Classes="subsectionTitle" Margin="0,0,0,2" />
                     <TextBlock Text="{Binding SelectedDetail.Snapshot.DailyFeature.TypeLabel}"
                                IsVisible="{Binding SelectedDetail.Snapshot.DailyFeature.TypeLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                FontWeight="SemiBold" />
@@ -152,51 +192,50 @@
                     <TextBlock Text="Not set for this date." Classes="muted"
                                IsVisible="{Binding SelectedDetail.Snapshot.DailyFeature.Text, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
                   </StackPanel>
-                </Border>
-              </Grid>
 
-              <Border Classes="panel">
-                <StackPanel Spacing="4">
-                  <TextBlock Text="Early Ride Time" Classes="sectionTitle" />
-                  <TextBlock Text="Not applicable for this date." Classes="muted"
-                             IsVisible="{Binding !SelectedDetail.Snapshot.EarlyRideTime.Enabled}" />
-                  <StackPanel Spacing="4" IsVisible="{Binding SelectedDetail.Snapshot.EarlyRideTime.Enabled}">
-                    <!-- Phase 17B: StartTimeText only exists on a snapshot finalized under the new
-                         resolver-driven model (null for a pre-17B row) — additive only, so an older
-                         finalized snapshot keeps displaying exactly as it always has via Details/
-                         ParticipatingAttractions below. -->
-                    <TextBlock Text="{Binding SelectedDetail.Snapshot.EarlyRideTime.StartTimeText, StringFormat='Start: {0}'}"
-                               FontWeight="Medium"
-                               IsVisible="{Binding SelectedDetail.Snapshot.EarlyRideTime.StartTimeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                    <TextBlock Text="{Binding SelectedDetail.Snapshot.EarlyRideTime.Details}" TextWrapping="Wrap"
-                               IsVisible="{Binding SelectedDetail.Snapshot.EarlyRideTime.Details, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                    <ItemsControl ItemsSource="{Binding SelectedDetail.Snapshot.EarlyRideTime.ParticipatingAttractions}">
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="x:String">
-                          <TextBlock Text="{Binding}" Classes="muted" />
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                  <StackPanel Grid.Row="1" Grid.Column="1" Classes="historyGroup">
+                    <TextBlock Text="EARLY RIDE TIME" Classes="subsectionTitle" Margin="0,0,0,2" />
+                    <TextBlock Text="Not applicable for this date." Classes="muted"
+                               IsVisible="{Binding !SelectedDetail.Snapshot.EarlyRideTime.Enabled}" />
+                    <StackPanel Spacing="2" IsVisible="{Binding SelectedDetail.Snapshot.EarlyRideTime.Enabled}">
+                      <!-- Phase 17B: StartTimeText only exists on a snapshot finalized under the new
+                           resolver-driven model (null for a pre-17B row) — additive only, so an older
+                           finalized snapshot keeps displaying exactly as it always has via Details/
+                           ParticipatingAttractions below. -->
+                      <TextBlock Text="{Binding SelectedDetail.Snapshot.EarlyRideTime.StartTimeText, StringFormat='Start: {0}'}"
+                                 FontWeight="Medium"
+                                 IsVisible="{Binding SelectedDetail.Snapshot.EarlyRideTime.StartTimeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                      <TextBlock Text="{Binding SelectedDetail.Snapshot.EarlyRideTime.Details}" TextWrapping="Wrap"
+                                 IsVisible="{Binding SelectedDetail.Snapshot.EarlyRideTime.Details, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                      <ItemsControl ItemsSource="{Binding SelectedDetail.Snapshot.EarlyRideTime.ParticipatingAttractions}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="x:String">
+                            <TextBlock Text="{Binding}" Classes="muted" />
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
                   </StackPanel>
-                </StackPanel>
+
+                </Grid>
               </Border>
 
-              <Border Classes="panel" IsVisible="{Binding SelectedDetail.Snapshot.HasUnverifiedProductPricing}">
-                <TextBlock Classes="fieldWarning"
-                           Text="Pricing shown below was not recently verified as of finalization time." />
-              </Border>
+              <TextBlock Classes="fieldWarning" TextWrapping="Wrap" IsVisible="{Binding SelectedDetail.Snapshot.HasUnverifiedProductPricing}"
+                         Text="Pricing shown below was not recently verified as of finalization time." />
 
-              <StackPanel Spacing="16">
-                <TextBlock Text="Products" Classes="sectionTitle" Margin="0" />
-                <ItemsControl ItemsSource="{Binding SelectedDetail.Snapshot.ProductCategories}">
-                  <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                      <StackPanel Spacing="12" />
-                    </ItemsPanelTemplate>
-                  </ItemsControl.ItemsPanel>
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="finalization:FinalizedProductCategorySnapshot">
-                      <Border Classes="panel">
+              <!-- Products: the frozen price text exactly as finalized ("$49.99", "From $40.00") — one panel,
+                   one category band per section, never re-priced. -->
+              <Border Classes="panel" AutomationProperties.Name="Products (as finalized)">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="Products" Classes="sectionTitle" Margin="0" />
+                  <ItemsControl ItemsSource="{Binding SelectedDetail.Snapshot.ProductCategories}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Spacing="10" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="finalization:FinalizedProductCategorySnapshot">
                         <StackPanel Spacing="2">
                           <Border Classes="categoryBand">
                             <TextBlock Text="{Binding CategoryName}" />
@@ -227,11 +266,11 @@
                             </ItemsControl.ItemTemplate>
                           </ItemsControl>
                         </StackPanel>
-                      </Border>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </StackPanel>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
 
               <!-- Phase 21C: the shows this passdown printed, frozen at finalization (absent for passdowns
                    without a Shows section and for every pre-21C row). -->
@@ -242,10 +281,10 @@
                   <ItemsControl ItemsSource="{Binding SelectedDetail.Snapshot.Shows}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="finalization:FinalizedShowSnapshot">
-                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,4">
-                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                        <StackPanel Spacing="0" Margin="0,0,0,6">
+                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
                           <TextBlock Text="{Binding TimesText}" TextWrapping="Wrap" />
-                          <TextBlock Text="{Binding Venue}" Classes="muted"
+                          <TextBlock Text="{Binding Venue}" Classes="muted" TextWrapping="Wrap"
                                      IsVisible="{Binding Venue, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                         </StackPanel>
                       </DataTemplate>
@@ -264,31 +303,12 @@
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
+                  <!-- Phase 22E: an empty frozen list says so instead of leaving a bare heading. -->
+                  <TextBlock Text="No operational notes were recorded." Classes="muted"
+                             IsVisible="{Binding !SelectedDetail.Snapshot.OperationalNotes.Count, FallbackValue=False}" />
                 </StackPanel>
               </Border>
 
-            </StackPanel>
-
-            <!-- PDF actions (spec Part I/J/H): visible whenever a record is selected, regardless of
-                 whether its structured snapshot could be read — a pre-9C/unsupported-schema row can
-                 still offer its frozen PDF. -->
-            <StackPanel Spacing="8">
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <Button Content="Open Final PDF" Classes="secondaryAction"
-                        Command="{Binding OpenFinalPdfCommand}"
-                        IsVisible="{Binding SelectedDetail.Summary.HasFrozenPdf}"
-                        AutomationProperties.Name="Open Final PDF"
-                        AutomationProperties.HelpText="Opens the exact frozen PDF stored for this finalized passdown in your default PDF viewer." />
-                <Button Content="Save PDF Copy" Classes="secondaryAction"
-                        Command="{Binding SavePdfCopyCommand}"
-                        IsVisible="{Binding SelectedDetail.Summary.HasFrozenPdf}"
-                        AutomationProperties.Name="Save PDF Copy"
-                        AutomationProperties.HelpText="Saves a copy of the exact frozen PDF stored for this finalized passdown." />
-                <TextBlock Text="Exact historical PDF unavailable" Classes="muted" VerticalAlignment="Center"
-                           IsVisible="{Binding !SelectedDetail.Summary.HasFrozenPdf}" />
-              </StackPanel>
-              <TextBlock Text="{Binding PdfActionMessage}" Classes="muted"
-                         IsVisible="{Binding PdfActionMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             </StackPanel>
 
           </StackPanel>

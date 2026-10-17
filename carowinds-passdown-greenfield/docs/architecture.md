@@ -1132,3 +1132,24 @@ See `docs/phase22d-associate-workspace-number-formatting.md`.
   states (Season Price History list on the popup surface in both themes).
 
 Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.
+
+## Phase 22E — Calendar, Operational Notes & History refinement
+
+See `docs/phase22e-calendar-notes-history.md`.
+
+- **Domain** — `Catalog.AdvertisedPriceText`: the one "From $x" rule (`PriceKind.StartingFrom` → "From " +
+  `PresentationCulture.FormatUsd`, every other kind the plain amount). Display only.
+- **Documents** — `AssociatePassdownDocumentModelBuilder.FormatPrice` delegates to `AdvertisedPriceText`
+  (identical PDF/Teams text; no template change).
+- **Desktop** — `CalendarShowsPresentation` (selected date's Shows: merged-by-id show count, distinct
+  performance count, compact time lists, per-state wording, shared freshness text) replaces the Calendar's
+  use of `ShowSchedulePresentation` (the Dashboard keeps it). `OperationsCalendarViewModel.CalendarShows`
+  is null while the snapshot is for another date; `IsShowScheduleExpanded` is session-only view state
+  (never persisted, never loads). `OperationsCalendarView` groups the selected-date sections and uses the
+  shared `Expander.disclosure`. Notes rows/detail (`ScheduleText`, `AccessibleSummary`,
+  `CreatedText`/`UpdatedText`), History rows (`ListTitleText`, `ListDetailText`, `PdfTagText`) and History
+  detail layout are presentation only. `ProductRowViewModel` labels prices through `AdvertisedPriceText`
+  from the row's `PriceKind`. `MainViewModel`: Dashboard "Open Notes" selects today's Eastern date (like
+  Open Passdown / View Pricing); "View Notes" is unchanged.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.

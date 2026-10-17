@@ -70,8 +70,10 @@ public partial class MainViewModel : ViewModelBase
         // "Open Passdown"/"Open Notes" (spec Phase 10C Parts F/G/H): switch the top-level section and
         // set Associate's own internal section explicitly. Phase 21A: Dashboard is today's screen, so
         // "Open Passdown" always opens today's Eastern date (AssociateViewModel.SelectEasternToday,
-        // which flushes any unsaved edit on the previous date first). "Open Notes" still keeps the
-        // current Associate date, and Calendar/History routes keep their explicit dates.
+        // which flushes any unsaved edit on the previous date first). Phase 22E: "Open Notes" sits on the
+        // same today's-passdown tile (it reports today's draft note lines), so it opens today's Eastern
+        // date too instead of whichever date Associate last showed. Calendar/History routes keep their
+        // explicit dates; "View Notes →" (the Operational Notes manager) is not date-scoped and is unchanged.
         Dashboard.OpenAssociateOverviewRequested += (_, _) =>
         {
             Associate.SelectEasternToday();
@@ -80,6 +82,7 @@ public partial class MainViewModel : ViewModelBase
         };
         Dashboard.OpenAssociateNotesRequested += (_, _) =>
         {
+            Associate.SelectEasternToday();
             Associate.SelectedSection = AssociateSection.Notes;
             ShowAssociateSection();
         };

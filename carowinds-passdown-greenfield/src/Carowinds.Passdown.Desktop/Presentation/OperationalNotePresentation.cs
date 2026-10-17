@@ -24,6 +24,24 @@ public sealed record OperationalNoteRowPresentation(
     OperationalNoteLifecycleState LifecycleState,
     string LifecycleLabel)
 {
+    /// <summary>
+    /// Phase 22E: the row's one schedule line — "Active · Oct 17 – Oct 24 · Expires today". The lifecycle
+    /// word and the date range always show; <see cref="CarryForwardText"/> is appended only when it adds a
+    /// relative fact the range does not already say ("Expires today/tomorrow", "(tomorrow)"), so the
+    /// row no longer repeats "Through Oct 24" under "Oct 17 – Oct 24".
+    /// </summary>
+    public string ScheduleText => CarryForwardText switch
+    {
+        "Starts tomorrow" => $"{LifecycleLabel} · {DateRangeText} (tomorrow)",
+        { } relative when OperationalNoteCarryForwardFormatter.IsRelativePhrase(relative) => $"{LifecycleLabel} · {DateRangeText} · {relative}",
+        _ => $"{LifecycleLabel} · {DateRangeText}",
+    };
+
+    /// <summary>"South Gate scanner, Important, General, Active · Oct 17 – Oct 24" — what a screen reader announces for the row.</summary>
+    public string AccessibleSummary => IsImportant
+        ? $"{Title}, Important, {CategoryLabel}, {ScheduleText}"
+        : $"{Title}, {CategoryLabel}, {PriorityLabel}, {ScheduleText}";
+
     public static OperationalNoteRowPresentation Build(OperationalNote note, DateOnly referenceDate)
     {
         ArgumentNullException.ThrowIfNull(note);
@@ -74,6 +92,21 @@ public sealed record OperationalNoteDetailPresentation(
     bool IsResolved,
     string? ResolvedAtText)
 {
+    /// <summary>Phase 22E: "Created Oct 12 at 9:00 AM" — the stored creation time, same formatting as <see cref="ResolvedAtText"/>.</summary>
+    public string? CreatedText { get; init; }
+
+    /// <summary>Phase 22E: "Updated Oct 17 at 8:00 AM" — only when the note was edited after it was created (same minute counts as unedited).</summary>
+    public string? UpdatedText { get; init; }
+
+    /// <summary>"Created … · Updated …" for the detail's metadata line.</summary>
+    public string? RecordTimesText => (CreatedText, UpdatedText) switch
+    {
+        (null, null) => null,
+        ({ } created, null) => created,
+        (null, { } updated) => updated,
+        ({ } created, { } updated) => $"{created} · {updated}",
+    };
+
     public static OperationalNoteDetailPresentation Build(OperationalNote note, DateOnly referenceDate)
     {
         ArgumentNullException.ThrowIfNull(note);
@@ -95,7 +128,11 @@ public sealed record OperationalNoteDetailPresentation(
             lifecycle,
             OperationalNoteRowPresentation.LifecycleLabelFor(lifecycle),
             isResolved,
-            isResolved && note.ResolvedAtUtc is { } resolvedAt ? FormatTimestamp(resolvedAt) : null);
+            isResolved && note.ResolvedAtUtc is { } resolvedAt ? FormatTimestamp(resolvedAt) : null)
+        {
+            CreatedText = note.CreatedAtUtc == default ? null : $"Created {FormatTimestamp(note.CreatedAtUtc)}",
+            UpdatedText = note.UpdatedAtUtc - note.CreatedAtUtc >= TimeSpan.FromMinutes(1) ? $"Updated {FormatTimestamp(note.UpdatedAtUtc)}" : null,
+        };
     }
 
     private static string FormatDate(DateOnly date, DateOnly referenceDate) => OperationalNoteDateRangeFormatter.FormatDate(date, referenceDate);
@@ -153,6 +190,9 @@ internal static class OperationalNoteDateRangeFormatter
 /// </summary>
 internal static class OperationalNoteCarryForwardFormatter
 {
+    /// <summary>Phase 22E: the phrases that are relative to today ("Expires today/tomorrow", "Starts tomorrow") rather than a restatement of the absolute range.</summary>
+    public static bool IsRelativePhrase(string text) => text is "Expires today" or "Expires tomorrow" or "Starts tomorrow";
+
     public static string? Format(OperationalNoteLifecycleState lifecycle, DateOnly effectiveFrom, DateOnly? effectiveThrough, DateOnly referenceDate)
     {
         switch (lifecycle)

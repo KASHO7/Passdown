@@ -1895,3 +1895,25 @@ Season Price History's product list now paints the theme's popup surface. See
 | Release build | 0 warnings, 0 errors |
 | Windows validation | NOT EXECUTED — checklist in the Phase 22D doc §22 |
 | Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
+
+# Unreleased development — Phase 22E (after RC.6)
+
+Calendar, Operational Notes and History refinement: the Operations Calendar's selected-date panel groups
+its sections and shows a compact Shows summary ("6 scheduled shows · 22 performances") with a
+"View schedule" disclosure (collapsed by default, kept across date changes for the session, never a
+network call, never another date's lineup); Operational Notes rows are three lines with a restrained
+Important rule and created/updated times in the detail; History rows are two lines with a PDF tag and the
+Open Final PDF action sits with the record identity. Associate → Products now labels advertised starting
+prices "From $x" (same shared rule as the PDFs and Teams Copy). Dashboard "Open Notes" opens today's
+passdown notes. See `docs/phase22e-calendar-notes-history.md`. RC.6 artifacts are unchanged;
+`Directory.Build.props` still says `0.1.0-rc.6`. The next packaged candidate is **`0.1.0-rc.7`**.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| Upgrade implications | None. No stored value, snapshot or PDF changes; frozen History PDFs are served byte-for-byte as before; PDF/Teams price text is identical. |
+| Deterministic tests | **3836/3836** (baseline 3718 at `7e7ca9b`; +15 `AdvertisedPriceTextTests`, +40 `Phase22ECalendarShowsTests`, +26 `Phase22ENotesHistoryTests`, +27 `Phase22EProductPriceLabelTests`, +10 `Phase15ERealWindowLayoutTests`; 3 existing tests intentionally updated — Calendar Shows markup and Dashboard Open Notes → today) = 221 Domain + 1059 Application + 833 Infrastructure + 451 Documents + 1176 Ui together + 26 `OperationsCalendarViewTests` + 57 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). Run-alone set unchanged (five classes). Known intermittent: `DailyFeatureMathPdfTests.FinalizedSnapshot_KeepsTheSourceText_AndItsPdfMatchesTheLiveRender` failed once in the baseline run at `7e7ca9b` and passed on every rerun |
+| Live smoke (opt-in) | not applicable (no retrieval change) |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 22E doc §21 |
+| Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |

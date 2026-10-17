@@ -240,22 +240,45 @@ public partial class OperationsCalendarViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Phase 21C: the selected date's official shows (built from the same snapshot as everything else in the detail panel, so a date change never shows another date's shows).</summary>
+    /// <summary>
+    /// Phase 22E (replacing the Phase 21C always-expanded list): the selected date's compact Shows section —
+    /// summary, status wording, and the full schedule rows. Built from the same snapshot as the rest of the
+    /// detail panel, and only while that snapshot is for <see cref="SelectedDate"/>: between a date change
+    /// and its load completing this is null, so the previous date's lineup is never shown under the new date.
+    /// </summary>
     [ObservableProperty]
-    public partial ShowSchedulePresentation? ShowsPresentation { get; set; }
+    public partial CalendarShowsPresentation? CalendarShows { get; set; }
+
+    /// <summary>
+    /// Phase 22E: whether the Shows schedule is expanded. Collapsed when the Calendar is created; kept across
+    /// date changes, month navigation and refreshes for the rest of the app session; never persisted.
+    /// Purely presentational — toggling it never loads data, calls a service or touches a draft.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowScheduleToggleText))]
+    public partial bool IsShowScheduleExpanded { get; set; }
+
+    /// <summary>Phase 22E: the disclosure label states what activating it will do (same convention as the Dashboard's source details).</summary>
+    public string ShowScheduleToggleText => IsShowScheduleExpanded ? "Hide schedule" : "View schedule";
 
     partial void OnSelectedDateChanged(DateOnly value)
     {
+        RebuildCalendarShows();
         if (!_suppressAutoLoad)
         {
             _pendingLoad = LoadAsync();
         }
     }
 
+    private void RebuildCalendarShows() =>
+        CalendarShows = Snapshot is { } snapshot && snapshot.Selected.Date == SelectedDate
+            ? CalendarShowsPresentation.Build(snapshot.Selected.Shows, snapshot.GeneratedAt)
+            : null;
+
     partial void OnSnapshotChanged(OperationsCalendarSnapshot? value)
     {
         Presentation = value is null ? null : OperationsCalendarPresentation.Build(value);
-        ShowsPresentation = value is null ? null : ShowSchedulePresentation.Build(value.Selected.Shows, value.GeneratedAt);
+        RebuildCalendarShows();
         Days = value?.Days.Select(day => new OperationsCalendarDayViewModel(day, day.Date == value.SelectedDate, SelectDate)).ToList() ?? [];
         Weeks = Days.Chunk(7).Select(week => new OperationsCalendarWeekViewModel(week)).ToList();
     }

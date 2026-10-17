@@ -224,11 +224,11 @@ public class MainViewModelNavigationTests
         Assert.Equal(AssociateSection.Notes, associate.SelectedSection);
     }
 
-    // Phase 10C Part H: Dashboard's "Open Notes" never changes AssociateViewModel.SelectedDate.
-    // Phase 21A revised "Open Passdown": it always opens today's Eastern date (see
-    // Phase21ADashboardOpenPassdownTests), so it is no longer covered by this date-preservation rule.
+    // Phase 10C Part H originally kept Associate's date for Dashboard "Open Notes". Phase 21A made "Open
+    // Passdown" open today's Eastern date; Phase 22E does the same for "Open Notes", which sits on the same
+    // today's-passdown tile (it reports today's draft note lines) — intentional update.
     [Fact]
-    public async Task DashboardOpenNotes_NeverChangesAssociateSelectedDate()
+    public async Task DashboardOpenNotes_OpensTodaysEasternDate_LikeOpenPassdown()
     {
         var main = CreateMainViewModel(out var dashboard, out var associate, out _);
         await dashboard.PendingLoad;
@@ -238,8 +238,10 @@ public class MainViewModelNavigationTests
         await associate.PendingLoad;
 
         dashboard.OpenNotesCommand.Execute(null);
-        Assert.Equal(otherDate, associate.SelectedDate);
+        Assert.Equal(AssociateDate, associate.SelectedDate); // today, per Phase 22E
 
+        associate.SelectedDate = otherDate;
+        await associate.PendingLoad;
         dashboard.OpenPassdownCommand.Execute(null);
         Assert.Equal(AssociateDate, associate.SelectedDate); // today, per Phase 21A
     }

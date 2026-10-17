@@ -108,18 +108,20 @@ public sealed record ShowSchedulePresentation(
             rows,
             statusText,
             startedEarlier,
-            BuildFreshnessText(view, nowEastern),
+            BuildFreshnessText(view, nowUtc),
             view.State == ShowScheduleState.CouldNotCheck || view.LastCheckFailed);
     }
 
     /// <summary>"Official schedule checked 10:32 AM" — plus "latest check failed" when older verified data is being kept.</summary>
-    private static string? BuildFreshnessText(ShowScheduleView view, DateTimeOffset nowEastern)
+    /// <remarks>Phase 22E: shared with <see cref="CalendarShowsPresentation"/> so both surfaces word freshness identically.</remarks>
+    internal static string? BuildFreshnessText(ShowScheduleView view, DateTimeOffset nowUtc)
     {
         if (view.LastVerifiedAt is not { } verifiedAt)
         {
             return null;
         }
 
+        var nowEastern = EasternTimeZone.ConvertFromUtc(nowUtc);
         var verifiedEastern = EasternTimeZone.ConvertFromUtc(verifiedAt);
         var when = verifiedEastern.Date == nowEastern.Date
             ? verifiedEastern.ToString("h:mm tt", PresentationCulture.UnitedStates)

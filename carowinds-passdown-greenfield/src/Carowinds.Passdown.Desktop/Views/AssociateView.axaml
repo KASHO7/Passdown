@@ -1211,6 +1211,9 @@
                                   <TextBlock Text="{Binding DisplayPriceOverrideError}"
                                              IsVisible="{Binding DisplayPriceOverrideError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                              Classes="fieldError" TextWrapping="Wrap" />
+                                  <!-- Phase 22E: an override on a starting-price row still prints "From $x" (PDF semantics). -->
+                                  <TextBlock Text="{Binding OverridePrintNoteText}" IsVisible="{Binding HasOverridePrintNote}"
+                                             Classes="muted" TextWrapping="Wrap" />
                                   <Button Content="Use official price"
                                           Command="{Binding ResetToOfficialCommand}"
                                           IsVisible="{Binding HasOverride}"

@@ -897,4 +897,232 @@ public class Phase15ERealWindowLayoutTests
 
         window.Close();
     }
+
+    // ==================================================================================
+    // Phase 22E: compact Calendar Shows, Notes rows and History rows in a real window.
+    // ==================================================================================
+
+    private static readonly DateOnly Phase22EBusyDate = new(2026, 8, 22);
+
+    private static (Window Window, OperationsCalendarViewModel ViewModel, FakeOperationsCalendarService Service) RealizeBusyCalendar(double width, double height, ThemeVariant theme)
+    {
+        static TimeOnly T(int h, int m = 0) => new(h, m);
+        Carowinds.Passdown.Application.Retrieval.ScheduledShow[] shows =
+        [
+            new("r1", "Synthetic Resurgence", "Plaza Stage", [T(18, 30)]),
+            new("r2", "Synthetic Wake the Night", "Carowinds Theatre", [T(19), T(20), T(21, 30), T(22, 30)]),
+            new("r3", "Synthetic Monster Stomp Revue Featuring the Entire Midway Ensemble", "Midway Stage", [T(12), T(14), T(16), T(18), T(20)]),
+            new("r4", "Synthetic Drumline", null, [T(13, 15), T(15, 15), T(17, 15)]),
+            new("r5", "Synthetic Street Creatures", "Harmony Hall", [T(19, 30), T(20, 30), T(21, 30), T(22, 30), T(23, 30)]),
+            new("r6", "Synthetic Late Night Howl", "County Fair Stage", [T(21), T(22, 15), T(23, 30), T(0, 30)]),
+        ];
+        var service = new FakeOperationsCalendarService
+        {
+            SnapshotFactory = (month, selected) =>
+            {
+                var snapshot = FakeOperationsCalendarService.DefaultSnapshot(month, selected);
+                var view = selected == Phase22EBusyDate
+                    ? new Carowinds.Passdown.Application.Shows.ShowScheduleView(selected, Carowinds.Passdown.Application.Shows.ShowScheduleState.Scheduled, shows, false, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)
+                    : Carowinds.Passdown.Application.Shows.ShowScheduleView.NotCheckedFor(selected);
+                return snapshot with { Selected = snapshot.Selected with { Shows = view } };
+            },
+        };
+        var viewModel = new OperationsCalendarViewModel(service, CreateClock());
+        viewModel.PendingLoad.GetAwaiter().GetResult();
+        viewModel.SelectDateCommand.Execute(Phase22EBusyDate);
+        viewModel.PendingLoad.GetAwaiter().GetResult();
+
+        var window = RealizeInWindow(new OperationsCalendarView { DataContext = viewModel }, width, height);
+        window.RequestedThemeVariant = theme;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        return (window, viewModel, service);
+    }
+
+    /// <summary>
+    /// The number of distinct text lines-of-blocks in a list row (visible TextBlocks grouped by their top
+    /// edge) and the height those blocks need — headless fonts use fake metrics, so row density is asserted
+    /// structurally (how many blocks, and no padding beyond the style's) rather than in absolute pixels.
+    /// </summary>
+    private static (int Blocks, double ContentHeight) Phase22ERowContent(ListBoxItem item, Window window)
+    {
+        var lines = new List<(double Top, double Height)>();
+        foreach (var text in item.GetVisualDescendants().OfType<TextBlock>()
+                     .Where(t => t.IsEffectivelyVisible && t.Bounds.Height > 0)
+                     .OrderBy(t => AbsoluteBounds(t, window).Top))
+        {
+            var top = AbsoluteBounds(text, window).Top;
+            if (lines.Count > 0 && top - lines[^1].Top <= 4)
+            {
+                lines[^1] = (lines[^1].Top, Math.Max(lines[^1].Height, text.Bounds.Height)); // same line (e.g. a tag beside the title)
+            }
+            else
+            {
+                lines.Add((top, text.Bounds.Height));
+            }
+        }
+
+        return (lines.Count, lines.Sum(l => l.Height));
+    }
+
+    private static (double Top, double Bottom) Phase22EShowsSection(Window window)
+    {
+        var section = window.GetVisualDescendants().OfType<StackPanel>().Single(p => AutomationProperties.GetName(p) == "Shows");
+        var bounds = AbsoluteBounds(section, window);
+        return (bounds.Top, bounds.Bottom);
+    }
+
+    [Fact]
+    public void CalendarView_ShowSchedule_TogglesWithTheKeyboard_ReportsExpandCollapse_AndNeverLoads()
+    {
+        var (window, viewModel, service) = RealizeBusyCalendar(1280, 860, ThemeVariant.Light);
+        var loads = service.LoadCalls.Count;
+        var expander = window.GetVisualDescendants().OfType<Expander>().Single(e => e.Name == "ShowScheduleExpander");
+        var header = expander.GetVisualDescendants().OfType<ToggleButton>().Single(t => t.Name == "DisclosureHeader");
+        var peer = Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(expander);
+        var expandCollapse = Assert.IsAssignableFrom<Avalonia.Automation.Provider.IExpandCollapseProvider>(peer);
+        ItemsControl? Rows() => window.GetVisualDescendants().OfType<ItemsControl>().SingleOrDefault(i => AutomationProperties.GetName(i) == "Shows for the selected date");
+
+        Assert.False(viewModel.IsShowScheduleExpanded);
+        Assert.Equal(ExpandCollapseState.Collapsed, expandCollapse.ExpandCollapseState);
+        Assert.True(Rows() is null || !Rows()!.IsEffectivelyVisible, "collapsed: no schedule rows are presented");
+        Assert.DoesNotContain(window.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Synthetic Wake the Night" && t.IsEffectivelyVisible);
+        Assert.Equal("Show schedule", AutomationProperties.GetName(header));
+        Assert.True(header.Focusable && header.IsTabStop);
+        Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "6 scheduled shows · 22 performances" && t.IsEffectivelyVisible);
+
+        Assert.True(header.Focus(NavigationMethod.Tab));
+        window.KeyPressQwerty(PhysicalKey.Space, RawInputModifiers.None);
+        window.KeyReleaseQwerty(PhysicalKey.Space, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(viewModel.IsShowScheduleExpanded);
+        Assert.Equal(ExpandCollapseState.Expanded, expandCollapse.ExpandCollapseState);
+        var rows = Assert.IsAssignableFrom<ItemsControl>(Rows());
+        Assert.True(rows.IsEffectivelyVisible);
+        Assert.Equal(6, rows.GetRealizedContainers().Count());
+        Assert.Contains(rows.GetVisualDescendants().OfType<Border>(),
+            b => AutomationProperties.GetName(b) == "Synthetic Wake the Night, 4 performances: 7:00, 8:00, 9:30, 10:30 PM, Carowinds Theatre");
+
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        window.KeyReleaseQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.False(viewModel.IsShowScheduleExpanded);
+        Assert.True(header.IsFocused, "toggling must keep keyboard focus on the disclosure");
+
+        Assert.Equal(loads, service.LoadCalls.Count);
+        window.Close();
+    }
+
+    [Theory]
+    [InlineData(960d, 640d, "Light")]
+    [InlineData(960d, 640d, "Dark")]
+    [InlineData(1280d, 690d, "Light")]
+    [InlineData(1280d, 860d, "Dark")]
+    [InlineData(1920d, 1000d, "Light")]
+    public void CalendarView_Shows_CollapsedIsCompact_ExpandedWrapsInsideThePanel(double width, double height, string theme)
+    {
+        var (window, viewModel, _) = RealizeBusyCalendar(width, height, theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light);
+        var panel = window.GetVisualDescendants().OfType<Border>().Single(b => AutomationProperties.GetName(b) == "Selected date summary");
+        var panelBounds = AbsoluteBounds(panel, window);
+
+        var collapsed = Phase22EShowsSection(window);
+        AssertNoControlClipsHorizontally(window);
+
+        viewModel.IsShowScheduleExpanded = true;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var expanded = Phase22EShowsSection(window);
+        AssertNoControlClipsHorizontally(window);
+
+        // Collapsed: heading + summary + toggle + freshness — a few compact rows, far smaller than the full list.
+        Assert.True(collapsed.Bottom - collapsed.Top < 110, $"collapsed Shows is {collapsed.Bottom - collapsed.Top:F0}px");
+        Assert.True(expanded.Bottom - expanded.Top > 3 * (collapsed.Bottom - collapsed.Top), "expanding reveals the full schedule");
+
+        // Every show line (long names, many times) wraps inside the panel — nothing pushed past its edge.
+        var section = window.GetVisualDescendants().OfType<StackPanel>().Single(p => AutomationProperties.GetName(p) == "Shows");
+        foreach (var text in section.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible && t.Bounds.Width > 0))
+        {
+            var bounds = AbsoluteBounds(text, window);
+            Assert.True(bounds.Right <= panelBounds.Right + 1.0, $"'{text.Text}' right edge {bounds.Right} exceeds the panel's {panelBounds.Right}");
+        }
+
+        window.Close();
+    }
+
+    [Theory]
+    [InlineData(960d, 640d, "Light")]
+    [InlineData(1280d, 860d, "Dark")]
+    public async Task OperationalNotesView_Rows_AreCompact_AndStayWithinTheList(double width, double height, string theme)
+    {
+        var service = new FakeOperationalNotesService();
+        var today = FixedDate;
+        for (var i = 0; i < 8; i++)
+        {
+            service.Seed(new Carowinds.Passdown.Application.OperationalNotes.OperationalNote(
+                Guid.NewGuid(), i == 3 ? "Synthetic: a long operational note title that has to wrap onto a second line in the list" : $"Synthetic note {i}", null,
+                Carowinds.Passdown.Application.OperationalNotes.OperationalNoteCategory.General,
+                i % 3 == 0 ? Carowinds.Passdown.Application.OperationalNotes.OperationalNotePriority.Important : Carowinds.Passdown.Application.OperationalNotes.OperationalNotePriority.Normal,
+                today.AddDays(-1), today.AddDays(i), Carowinds.Passdown.Application.OperationalNotes.OperationalNoteStatus.Active,
+                DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null));
+        }
+
+        var viewModel = new OperationalNotesViewModel(service, CreateClock());
+        await viewModel.PendingLoad;
+        var window = RealizeInWindow(new OperationalNotesView { DataContext = viewModel }, width, height);
+        window.RequestedThemeVariant = theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        AssertNoControlClipsHorizontally(window);
+        var list = window.GetVisualDescendants().OfType<ListBox>().Single(l => AutomationProperties.GetName(l) == "Operational notes list");
+        var items = list.GetVisualDescendants().OfType<ListBoxItem>().ToList();
+        Assert.NotEmpty(items);
+        Assert.All(items, item =>
+        {
+            // Title, "Category · Priority", "Lifecycle · range": three blocks (was five plus a chip), 16px padding + spacing.
+            var (blocks, content) = Phase22ERowContent(item, window);
+            Assert.Equal(3, blocks);
+            Assert.True(item.Bounds.Height <= content + 22, $"note row {item.Bounds.Height:F0}px for {content:F0}px of text");
+        });
+        var listRight = AbsoluteBounds(list, window).Right;
+        Assert.All(list.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible && t.Bounds.Width > 0),
+            t => Assert.True(AbsoluteBounds(t, window).Right <= listRight + 1.0, $"'{t.Text}' overflows the list"));
+
+        window.Close();
+    }
+
+    [Theory]
+    [InlineData(960d, 640d, "Dark")]
+    [InlineData(1280d, 860d, "Light")]
+    public async Task HistoryView_Rows_AreTwoLines_AndThePdfActionsStayReachable(double width, double height, string theme)
+    {
+        var service = new FakePassdownHistoryService();
+        for (var i = 1; i <= 9; i++)
+        {
+            var date = FixedDate.AddDays(-i);
+            var summary = new FinalizedPassdownSummary(date, new DateTimeOffset(date.AddDays(1).ToDateTime(new TimeOnly(10, 2)), TimeSpan.Zero), FinalizationOrigin.Scheduled, i != 3, i != 3 ? 1000 : null);
+            service.Summaries.Add(summary);
+            service.Details[date] = new Application.History.PassdownHistoryDetail(summary, null, null);
+        }
+
+        var viewModel = new PassdownHistoryViewModel(service, new FakeFinalizedPassdownPdfRetrievalService());
+        await viewModel.PendingLoad;
+        viewModel.SelectedItem = viewModel.HistoryItems[0];
+        await viewModel.PendingDetailLoad;
+        var window = RealizeInWindow(new HistoryView { DataContext = viewModel }, width, height);
+        window.RequestedThemeVariant = theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        AssertNoControlClipsHorizontally(window);
+        var list = window.GetVisualDescendants().OfType<ListBox>().Single(l => AutomationProperties.GetName(l) == "Finalized passdown history");
+        var items = list.GetVisualDescendants().OfType<ListBoxItem>().ToList();
+        Assert.NotEmpty(items);
+        Assert.All(items, item =>
+        {
+            // Date (+ PDF tag on the same line) and "Finalized … · origin": two lines, no chip row.
+            var (blocks, content) = Phase22ERowContent(item, window);
+            Assert.Equal(2, blocks);
+            Assert.True(item.Bounds.Height <= content + 20, $"history row {item.Bounds.Height:F0}px for {content:F0}px of text");
+        });
+        Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => AutomationProperties.GetName(b) == "Open Final PDF" && b.IsEffectivelyVisible);
+
+        window.Close();
+    }
 }

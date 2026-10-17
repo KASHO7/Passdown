@@ -133,7 +133,7 @@
                   <Button Content="Open Notes" Classes="linkAction" VerticalAlignment="Center"
                           Command="{Binding OpenNotesCommand}"
                           AutomationProperties.Name="Open Notes"
-                          AutomationProperties.HelpText="Opens Associate Passdown's Notes section, where the passdown's notes can be reviewed and edited." />
+                          AutomationProperties.HelpText="Opens today's Associate Passdown Notes section, where the passdown's notes can be reviewed and edited." />
                 </WrapPanel>
               </StackPanel>
 
