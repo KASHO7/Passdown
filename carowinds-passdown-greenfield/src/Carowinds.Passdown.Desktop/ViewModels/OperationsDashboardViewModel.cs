@@ -41,6 +41,7 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     [NotifyCanExecuteChangedFor(nameof(OpenPassdownCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenNotesCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenOperationalNotesCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenPricingCommand))]
     public partial OperationsDashboardSnapshot? Snapshot { get; set; }
 
     [ObservableProperty]
@@ -102,6 +103,19 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     public partial bool DeepRefreshHadIssues { get; set; }
 
     /// <summary>
+    /// Phase 22C: whether the Official Data source breakdown (per-source rows, Deep Refresh) is
+    /// expanded. Collapsed by default; purely presentational — toggling it never reads data, calls the
+    /// network or touches refresh scheduling. Genuine problems stay visible while collapsed through
+    /// <see cref="DashboardDataHealthPresentation.AttentionText"/>.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SourceDetailsToggleText))]
+    public partial bool IsSourceDetailsExpanded { get; set; }
+
+    /// <summary>Phase 22C: the disclosure's label states what activating it will do.</summary>
+    public string SourceDetailsToggleText => IsSourceDetailsExpanded ? "Hide Source Details" : "View Source Details";
+
+    /// <summary>
     /// Raised when the "Open Passdown" action is used (Phase 10A Part O; Phase 10C Part G) — routes to
     /// the existing Associate Passdown screen's Overview section specifically, rather than duplicating
     /// any of its editing UI here or leaving whatever internal section Associate was last on.
@@ -126,6 +140,12 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     /// filter/selection state in that screen is preserved exactly as it was.
     /// </summary>
     public event EventHandler? OpenOperationalNotesRequested;
+
+    /// <summary>
+    /// Phase 22C: raised by "View Pricing" on the Daily Admission tile — routes to the existing detailed
+    /// pricing reference (Associate Passdown → Products) for today's Eastern date, like Open Passdown.
+    /// </summary>
+    public event EventHandler? OpenPricingRequested;
 
     public OperationsDashboardViewModel(
         IOperationsDashboardService service,
@@ -409,6 +429,9 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     private void OpenNotes() => OpenAssociateNotesRequested?.Invoke(this, EventArgs.Empty);
 
     private bool CanOpenPassdown() => HasSnapshot;
+
+    [RelayCommand(CanExecute = nameof(CanOpenPassdown))]
+    private void OpenPricing() => OpenPricingRequested?.Invoke(this, EventArgs.Empty);
 
     [RelayCommand]
     private void OpenHistory() => OpenHistoryRequested?.Invoke(this, EventArgs.Empty);

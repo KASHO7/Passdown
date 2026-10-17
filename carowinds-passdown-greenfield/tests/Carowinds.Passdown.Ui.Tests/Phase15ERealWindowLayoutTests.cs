@@ -205,8 +205,9 @@ public class Phase15ERealWindowLayoutTests
         var window = ShowMainWindow(viewModel, 1280, 860);
         var expected = new Dictionary<AppSection, string>
         {
-            [AppSection.Dashboard] = "Dashboard", [AppSection.OperationsCalendar] = "Operations Calendar",
-            [AppSection.AssociatePassdown] = "Associate Passdown", [AppSection.OperationalNotes] = "Operational Notes",
+            // Phase 22C: short visible labels; Settings is the gear (identified by its accessible name).
+            [AppSection.Dashboard] = "Dashboard", [AppSection.OperationsCalendar] = "Calendar",
+            [AppSection.AssociatePassdown] = "Passdown", [AppSection.OperationalNotes] = "Notes",
             [AppSection.History] = "History", [AppSection.Settings] = "Settings",
         };
 
@@ -216,7 +217,7 @@ public class Phase15ERealWindowLayoutTests
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             var active = Assert.Single(SectionButtons(window), b => b.Classes.Contains("active"));
             Assert.Same(button, active);
-            Assert.Equal(expected[viewModel.SelectedSection], active.Content);
+            Assert.Equal(expected[viewModel.SelectedSection], active.Content as string ?? AutomationProperties.GetName(active));
             Assert.Equal("Current page", AutomationProperties.GetItemStatus(active));
             Assert.All(SectionButtons(window).Where(b => b != active), b => Assert.Null(AutomationProperties.GetItemStatus(b)));
             Assert.Equal(FontWeight.SemiBold, active.FontWeight);
@@ -248,6 +249,46 @@ public class Phase15ERealWindowLayoutTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.Equal(AppSection.History, viewModel.SelectedSection);
         Assert.True(buttons[4].IsFocused, "activating a section must not drop keyboard focus");
+
+        window.Close();
+    }
+
+    // Phase 22C: Settings is a trailing gear — right edge of the strip, after History, reachable by Tab
+    // from History, activated by Space, and announced as the current page when selected.
+    [Theory]
+    [InlineData(1280d, 860d)]
+    [InlineData(960d, 640d)]
+    public void MainWindow_SettingsGear_IsTrailing_KeyboardOperable_AndShowsTheSelectedState(double width, double height)
+    {
+        var viewModel = CreateMainViewModel();
+        var window = ShowMainWindow(viewModel, width, height);
+        var buttons = SectionButtons(window);
+        var history = buttons[4];
+        var gear = buttons[5];
+
+        Assert.Equal("SettingsNavigationItem", gear.Name);
+        Assert.Equal("Settings", AutomationProperties.GetName(gear));
+        Assert.Equal("Settings", ToolTip.GetTip(gear));
+        Assert.IsType<PathIcon>(gear.Content);
+        var gearBounds = AbsoluteBounds(gear, window);
+        var navigation = AbsoluteBounds(Named(window, "AppNavigation"), window);
+        Assert.Equal(navigation.Right - 10, gearBounds.Right, 1); // strip padding (PassdownNavigationStripPadding) on the right
+        Assert.True(gearBounds.Left >= AbsoluteBounds(history, window).Right, "gear must sit after History");
+        Assert.True(gearBounds.Height <= AbsoluteBounds(history, window).Height + 0.5, "gear must not make the strip taller");
+
+        Assert.True(history.Focus(NavigationMethod.Tab));
+        window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None);
+        window.KeyReleaseQwerty(PhysicalKey.Tab, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Same(gear, window.FocusManager!.GetFocusedElement());
+
+        window.KeyPressQwerty(PhysicalKey.Space, RawInputModifiers.None);
+        window.KeyReleaseQwerty(PhysicalKey.Space, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(AppSection.Settings, viewModel.SelectedSection);
+        Assert.Contains("active", gear.Classes);
+        Assert.Equal("Current page", AutomationProperties.GetItemStatus(gear));
+        Assert.Equal(FontWeight.SemiBold, gear.FontWeight);
 
         window.Close();
     }
@@ -571,6 +612,93 @@ public class Phase15ERealWindowLayoutTests
         Assert.True(bounds.Right <= clientWidth + 1.0,
             $"Official-data status right edge {bounds.Right} exceeds window client width {clientWidth}.");
 
+        window.Close();
+    }
+
+    // ==================================================================================
+    // Phase 22C — Dashboard Operations Overview (real-window geometry and keyboard disclosure)
+    // ==================================================================================
+
+    private static (Window Window, DashboardView View, OperationsDashboardViewModel ViewModel, FakeOperationsDashboardService Service) RealizeBusyDashboard(double width, double height)
+    {
+        var service = new FakeOperationsDashboardService { SnapshotFactory = Phase22CDashboardFixtures.BusyDayWithPartialFailure };
+        var viewModel = new OperationsDashboardViewModel(service);
+        var view = new DashboardView { DataContext = viewModel };
+        var window = RealizeInWindow(view, width, height);
+        viewModel.PendingLoad.GetAwaiter().GetResult();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        return (window, view, viewModel, service);
+    }
+
+    [Theory]
+    [InlineData(960d, 640d, false)]
+    [InlineData(960d, 640d, true)]
+    [InlineData(1280d, 690d, false)]
+    [InlineData(1280d, 860d, true)]
+    [InlineData(1920d, 1000d, false)]
+    public void DashboardView_OperationsOverview_NoControlClipsHorizontally_CollapsedOrExpanded(double width, double height, bool expanded)
+    {
+        var (window, _, viewModel, _) = RealizeBusyDashboard(width, height);
+        viewModel.IsSourceDetailsExpanded = expanded;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        AssertNoControlClipsHorizontally(window);
+
+        // The four principal areas sit in two columns at every supported width (MinWidth is 960).
+        var overview = window.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "OperationsOverview");
+        var tiles = overview.GetVisualDescendants().OfType<StackPanel>().Where(p => p.Classes.Contains("overviewTile")).ToList();
+        Assert.Equal(4, tiles.Count);
+        var tileBounds = tiles.Select(t => AbsoluteBounds(t, window)).ToList();
+        Assert.Equal(tileBounds[0].Top, tileBounds[1].Top, 1);
+        Assert.True(tileBounds[1].Left > tileBounds[0].Right, "admission must sit beside park hours");
+        Assert.True(tileBounds[2].Top >= tileBounds[0].Bottom, "passdown must sit under park hours");
+        Assert.All(tileBounds, b => Assert.True(b.Right <= window.ClientSize.Width + 1.0));
+
+        // A genuine source problem stays visible while the details are collapsed.
+        var attention = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "DataAttentionText");
+        Assert.True(attention.IsEffectivelyVisible);
+        Assert.True(attention.Bounds.Height > 0);
+
+        var expander = window.GetVisualDescendants().OfType<Expander>().Single(e => e.Name == "SourceDetailsExpander");
+        Assert.Equal(expanded, expander.IsExpanded);
+
+        window.Close();
+    }
+
+    [Fact]
+    public void DashboardView_SourceDetails_ToggleWithTheKeyboard_ReportsExpandCollapse_AndNeverCallsTheService()
+    {
+        var (window, _, viewModel, service) = RealizeBusyDashboard(1280, 860);
+        var loads = service.LoadCalls.Count;
+        var checks = service.CheckOnlineCallCount;
+        var expander = window.GetVisualDescendants().OfType<Expander>().Single(e => e.Name == "SourceDetailsExpander");
+        var header = expander.GetVisualDescendants().OfType<ToggleButton>().Single(t => t.Name == "DisclosureHeader");
+        var peer = Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(expander);
+        var expandCollapse = Assert.IsAssignableFrom<Avalonia.Automation.Provider.IExpandCollapseProvider>(peer);
+
+        Assert.False(viewModel.IsSourceDetailsExpanded);
+        Assert.Equal(ExpandCollapseState.Collapsed, expandCollapse.ExpandCollapseState);
+        Assert.True(header.Focusable && header.IsTabStop);
+        Assert.Equal("Source details", AutomationProperties.GetName(header));
+
+        Assert.True(header.Focus(NavigationMethod.Tab));
+        window.KeyPressQwerty(PhysicalKey.Space, RawInputModifiers.None);
+        window.KeyReleaseQwerty(PhysicalKey.Space, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(viewModel.IsSourceDetailsExpanded);
+        Assert.True(expander.IsExpanded);
+        Assert.Equal(ExpandCollapseState.Expanded, expandCollapse.ExpandCollapseState);
+        Assert.Equal("Hide Source Details", viewModel.SourceDetailsToggleText);
+        Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => AutomationProperties.GetName(b) == "Run Deep Refresh" && b.IsEffectivelyVisible);
+
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        window.KeyReleaseQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.False(viewModel.IsSourceDetailsExpanded);
+        Assert.True(header.IsFocused, "toggling must keep keyboard focus on the disclosure");
+
+        Assert.Equal(loads, service.LoadCalls.Count);
+        Assert.Equal(checks, service.CheckOnlineCallCount);
         window.Close();
     }
 

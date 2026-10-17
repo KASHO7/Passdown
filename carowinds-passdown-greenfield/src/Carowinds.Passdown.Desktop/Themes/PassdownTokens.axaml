@@ -39,6 +39,13 @@
   <Thickness x:Key="PassdownNavigationStripPadding">10,0</Thickness>
   <Thickness x:Key="PassdownNavigationItemPadding">14,8</Thickness>
 
+  <!-- Phase 22C icon geometries (Avalonia's built-in PathIcon; no icon package). The Settings gear is
+       an original 8-tooth outline drawn on a 24-unit grid (even-odd fill leaves the center hole);
+       the chevron marks a disclosure (rotated when expanded). Both take the foreground of their host. -->
+  <StreamGeometry x:Key="PassdownSettingsIconGeometry">F0 M9.60,5.00 L10.01,2.20 L13.99,2.20 L14.40,5.00 L15.25,5.35 L17.53,3.67 L20.33,6.47 L18.65,8.75 L19.00,9.60 L21.80,10.01 L21.80,13.99 L19.00,14.40 L18.65,15.25 L20.33,17.53 L17.53,20.33 L15.25,18.65 L14.40,19.00 L13.99,21.80 L10.01,21.80 L9.60,19.00 L8.75,18.65 L6.47,20.33 L3.67,17.53 L5.35,15.25 L5.00,14.40 L2.20,13.99 L2.20,10.01 L5.00,9.60 L5.35,8.75 L3.67,6.47 L6.47,3.67 L8.75,5.35 Z M15.30,12.00 A3.3,3.3 0 1 0 8.70,12.00 A3.3,3.3 0 1 0 15.30,12.00 Z</StreamGeometry>
+  <StreamGeometry x:Key="PassdownChevronDownGeometry">M1.4,3.6 L2.6,2.4 L6,5.8 L9.4,2.4 L10.6,3.6 L6,8.2 Z</StreamGeometry>
+  <sys:Double x:Key="PassdownNavigationIconSize">16</sys:Double>
+
   <!-- Fluent's own accent-driven controls (checked CheckBox/RadioButton, ToggleSwitch, text
        selection, the Fluent Calendar) follow the brand royal blue. -->
   <Color x:Key="SystemAccentColor">#1E5AA8</Color>

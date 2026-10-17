@@ -85,6 +85,16 @@ public partial class MainViewModel : ViewModelBase
         };
         Dashboard.OpenHistoryRequested += (_, _) => ShowHistorySection();
 
+        // Phase 22C: "View Pricing" on the Dashboard's Daily Admission tile opens the existing detailed
+        // pricing reference — Associate → Products — for today's Eastern date (the Dashboard is today's
+        // screen), through the same flush-then-load path as Open Passdown.
+        Dashboard.OpenPricingRequested += (_, _) =>
+        {
+            Associate.SelectEasternToday();
+            Associate.SelectedSection = AssociateSection.Products;
+            ShowAssociateSection();
+        };
+
         // Phase 11C Part O/P: generic navigation to the existing Operational Notes section — never
         // resets Notes.LifecycleFilter/SelectedNote, so a supervisor's existing filter/selection state
         // there is preserved exactly as it was before Dashboard routed here.

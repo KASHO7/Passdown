@@ -18,15 +18,17 @@ public sealed partial class Phase22BShellNavigationTests
 {
     private const string BannerAvaresUri = "avares://Carowinds.Passdown.Desktop/Assets/Branding/fury325-banner.jpg";
 
-    // (label, command, selection flag, accessible name) — the established destinations, in order.
-    public static readonly (string Label, string Command, string Flag)[] Destinations =
+    // (visible label, command, selection flag, accessible name) — the established destinations, in
+    // order. Phase 22C shortened the visible labels; Settings is a gear icon (no text label). Every
+    // accessible name still contains its visible label.
+    public static readonly (string? Label, string Command, string Flag, string AccessibleName)[] Destinations =
     [
-        ("Dashboard", "ShowDashboardSectionCommand", "IsDashboardSectionSelected"),
-        ("Operations Calendar", "ShowOperationsCalendarSectionCommand", "IsOperationsCalendarSectionSelected"),
-        ("Associate Passdown", "ShowAssociateSectionCommand", "IsAssociateSectionSelected"),
-        ("Operational Notes", "ShowOperationalNotesSectionCommand", "IsOperationalNotesSectionSelected"),
-        ("History", "ShowHistorySectionCommand", "IsHistorySectionSelected"),
-        ("Settings", "ShowSettingsSectionCommand", "IsSettingsSectionSelected"),
+        ("Dashboard", "ShowDashboardSectionCommand", "IsDashboardSectionSelected", "Dashboard section"),
+        ("Calendar", "ShowOperationsCalendarSectionCommand", "IsOperationsCalendarSectionSelected", "Operations Calendar section"),
+        ("Passdown", "ShowAssociateSectionCommand", "IsAssociateSectionSelected", "Associate Passdown section"),
+        ("Notes", "ShowOperationalNotesSectionCommand", "IsOperationalNotesSectionSelected", "Operational Notes section"),
+        ("History", "ShowHistorySectionCommand", "IsHistorySectionSelected", "History section"),
+        (null, "ShowSettingsSectionCommand", "IsSettingsSectionSelected", "Settings"),
     ];
 
     private static string MainWindowMarkup => File.ReadAllText(MarkupFiles.Find("src/Carowinds.Passdown.Desktop/Views/MainWindow.axaml"));
@@ -43,9 +45,20 @@ public sealed partial class Phase22BShellNavigationTests
     [Fact]
     public void Navigation_KeepsExactlyTheEstablishedDestinations_InOrder_WithNoDuplicates()
     {
-        var labels = NavigationButtons().Select(b => Attribute(b, "Content")).ToList();
-        Assert.Equal(Destinations.Select(d => d.Label), labels);
-        Assert.Equal(labels.Count, labels.Distinct().Count());
+        var buttons = NavigationButtons();
+        Assert.Equal(Destinations.Length, buttons.Count);
+        var commands = buttons.Select(b => Attribute(b, "Command")).ToList();
+        Assert.Equal(Destinations.Select(d => $"{{Binding {d.Command}}}"), commands);
+        Assert.Equal(commands.Count, commands.Distinct().Count());
+
+        // Phase 22C: the shortened visible labels, in order; Settings has no text label (gear icon).
+        var labels = buttons.Take(5).Select(b => Attribute(b, "Content")).ToList();
+        Assert.Equal(["Dashboard", "Calendar", "Passdown", "Notes", "History"], labels);
+        Assert.DoesNotMatch(new Regex("\\sContent=\""), buttons[5]);
+        foreach (var retired in new[] { "Content=\"Operations Calendar\"", "Content=\"Associate Passdown\"", "Content=\"Operational Notes\"", "Content=\"Settings\"" })
+        {
+            Assert.DoesNotContain(retired, MainWindowMarkup);
+        }
     }
 
     [Fact]
@@ -54,18 +67,50 @@ public sealed partial class Phase22BShellNavigationTests
         var buttons = NavigationButtons();
         for (var i = 0; i < Destinations.Length; i++)
         {
-            var (label, command, flag) = Destinations[i];
+            var (label, command, flag, accessibleName) = Destinations[i];
             Assert.Equal($"{{Binding {command}}}", Attribute(buttons[i], "Command"));
             Assert.Equal($"{{Binding {flag}}}", Attribute(buttons[i], "Classes.active"));
-            Assert.Equal("appSectionItem", Attribute(buttons[i], "Classes"));
-            Assert.Equal($"{label} section", Attribute(buttons[i], "AutomationProperties.Name"));
+            Assert.StartsWith("appSectionItem", Attribute(buttons[i], "Classes"));
+            Assert.Equal(accessibleName, Attribute(buttons[i], "AutomationProperties.Name"));
+            if (label is not null)
+            {
+                Assert.Contains(label, accessibleName); // WCAG 2.5.3: the accessible name contains the visible label
+            }
         }
 
         // Each selection flag drives exactly one item, so at most one item can ever be active.
-        foreach (var (_, _, flag) in Destinations)
+        foreach (var (_, _, flag, _) in Destinations)
         {
             Assert.Single(Regex.Matches(MainWindowMarkup, $"Classes.active=\"\\{{Binding {flag}\\}}\""));
         }
+    }
+
+    [Fact]
+    public void SettingsGear_IsATrailingAccessibleIconItem_UsingTheBuiltInPathIcon()
+    {
+        var settings = NavigationButtons()[^1];
+        Assert.Contains("x:Name=\"SettingsNavigationItem\"", settings);
+        Assert.Equal("appSectionItem iconItem", Attribute(settings, "Classes"));
+        Assert.Equal("Settings", Attribute(settings, "AutomationProperties.Name"));
+        Assert.Equal("Settings", Attribute(settings, "ToolTip.Tip"));
+        Assert.Equal("1", Attribute(settings, "Grid.Column")); // the trailing Auto column, right edge of the strip
+
+        var markup = MainWindowMarkup.Replace("\r\n", "\n");
+        var element = markup[markup.IndexOf("<Button x:Name=\"SettingsNavigationItem\"", StringComparison.Ordinal)..];
+        element = element[..(element.IndexOf("</Button>", StringComparison.Ordinal))];
+        Assert.Contains("<PathIcon Data=\"{StaticResource PassdownSettingsIconGeometry}\" AutomationProperties.AccessibilityView=\"Raw\" />", element);
+        Assert.Contains("<StreamGeometry x:Key=\"PassdownSettingsIconGeometry\">", TokensMarkup);
+
+        // The icon variant keeps every appSectionItem state; it only drops the string label template.
+        var section = ShellStylesSection();
+        var icon = Block(section, "Button.appSectionItem.iconItem");
+        Assert.Contains("<Setter Property=\"ContentTemplate\" Value=\"{x:Null}\" />", icon);
+        var padding = Regex.Match(icon, "Property=\"Padding\" Value=\"(\\d+),(\\d+)\"");
+        Assert.True(padding.Success);
+        // 16px icon + vertical padding stays within a text item's height (8+8 padding + a 14px label line),
+        // so the gear never makes the strip taller.
+        Assert.True(16 + 2 * int.Parse(padding.Groups[2].Value, CultureInfo.InvariantCulture) <= 16 + 16, "gear item taller than a text item");
+        Assert.Contains("<Setter Property=\"Width\" Value=\"{DynamicResource PassdownNavigationIconSize}\" />", Block(section, "Button.appSectionItem.iconItem PathIcon"));
     }
 
     [Fact]
@@ -86,7 +131,9 @@ public sealed partial class Phase22BShellNavigationTests
     [Fact]
     public void Navigation_IsAWrappingLandmark_SoNarrowWindowsKeepEveryDestinationReachable()
     {
-        Assert.Matches(new Regex("<WrapPanel x:Name=\"AppNavigationItems\" Orientation=\"Horizontal\"\\s+AutomationProperties.Name=\"Application sections\" AutomationProperties.LandmarkType=\"Navigation\">"), MainWindowMarkup);
+        // Phase 22C: the landmark is the Grid holding the wrapping label row and the trailing gear.
+        Assert.Matches(new Regex("<Grid x:Name=\"AppNavigationLayout\" ColumnDefinitions=\"\\*,Auto\"\\s+AutomationProperties.Name=\"Application sections\" AutomationProperties.LandmarkType=\"Navigation\">"), MainWindowMarkup);
+        Assert.Contains("<WrapPanel x:Name=\"AppNavigationItems\" Grid.Column=\"0\" Orientation=\"Horizontal\">", MainWindowMarkup);
         Assert.DoesNotContain("ScrollViewer", MainWindowMarkup[..MainWindowMarkup.IndexOf("<views:", StringComparison.Ordinal)]);
     }
 
@@ -385,6 +432,6 @@ public sealed partial class Phase22BShellNavigationTests
         throw new Xunit.Sdk.XunitException("no JPEG frame header");
     }
 
-    [GeneratedRegex("<Button Classes=\"appSectionItem\"[^>]*/>", RegexOptions.Singleline)]
+    [GeneratedRegex("<Button [^>]*Classes=\"appSectionItem[^\"]*\"[^>]*>", RegexOptions.Singleline)]
     private static partial Regex NavButton();
 }

@@ -1849,3 +1849,26 @@ says `0.1.0-rc.6`. The next packaged candidate is **`0.1.0-rc.7`**.
 | Release build | 0 warnings, 0 errors |
 | Windows validation | NOT EXECUTED — checklist in the Phase 22B doc §15 |
 | Banner image rights | **BANNER IMAGE DISTRIBUTION RIGHTS PENDING** (photographer/license unknown; see the Phase 22B doc §16). Separate from the pending QuestPDF distribution-license decision |
+
+# Unreleased development — Phase 22C (after RC.6)
+
+Dashboard information hierarchy, navigation labels and PDF Shows ordering: the Dashboard is one
+Operations Overview (park hours, a product-identified official admission price with its own freshness,
+passdown status, operational notes, a compact Official Data summary whose per-source breakdown and Deep
+Refresh are behind "View Source Details"; genuine source problems stay visible while collapsed), with
+Today's Shows beneath. Navigation reads Dashboard · Calendar · Passdown · Notes · History plus an
+accessible Settings gear. Newly generated PDFs print Shows as the final section in all three
+templates; stored History PDFs and Teams Copy are unchanged. See
+`docs/phase22c-dashboard-navigation-pdf-order.md`. RC.6 artifacts are unchanged; `Directory.Build.props`
+still says `0.1.0-rc.6`. The next packaged candidate is **`0.1.0-rc.7`**.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| Upgrade implications | None. Stored data is unaffected; previously finalized History PDFs keep their original (Shows-before-pricing) order; PDFs generated or finalized from this build put Shows last. |
+| Deterministic tests | **3601/3601** (baseline 3515 at `9dec1cb`; +24 `Phase22CDashboardAdmissionTests`, +19 `Phase22CPdfShowsOrderTests`, +34 `Phase22CDashboardOverviewTests`, +1 `Phase22BShellNavigationTests`, +8 `Phase15ERealWindowLayoutTests`) = 163 Domain + 1059 Application + 833 Infrastructure + 425 Documents + 1046 Ui together + 26 `OperationsCalendarViewTests` + 36 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). The run-alone set is unchanged (five classes). Known intermittent: `FinalizedPassdownProjectionTests.BuildProjection_NormalDay_PdfBytesMatchDirectGenerationFromSameModel` failed once in the baseline run at `9dec1cb` (byte comparison of two generations) and passed on every rerun |
+| Live smoke (opt-in) | not applicable (no retrieval change) |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 22C doc §21 |
+| Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
+

@@ -1082,3 +1082,28 @@ See `docs/phase22b-fury-banner-navigation.md`. Desktop presentation only.
 - No Domain/Application/Infrastructure/Documents change; no view-model change; PDF output unchanged.
 
 Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged.
+
+## Phase 22C — Dashboard information hierarchy, navigation labels, PDF Shows order
+
+See `docs/phase22c-dashboard-navigation-pdf-order.md`.
+
+- **Application** — `Dashboard/DashboardAdmissionSummary.cs`: `DashboardAdmissionSelector`, a pure
+  projection over the composed `AssociateWorkspace.Products` that picks the ordinary "Park Ticket"
+  official price for today's Eastern date (exact dated first, else the same product's advertised
+  "Starting From"; ambiguous, bundle, Military/First Responder, Fast Lane, add-on, pass, custom,
+  override and historical cases never yield a price). Exposed as `OperationsDashboardSnapshot.Admission`
+  (init property; local data only, no new retrieval).
+- **Desktop** — `DashboardView.axaml` rebuilt around one Operations Overview (park hours, daily
+  admission, passdown, operational notes, compact Official Data with an `Expander.disclosure` for the
+  source breakdown and Deep Refresh), Today's Shows beneath, then Today at a Glance / Latest Finalized.
+  New presentation `DashboardAdmissionPresentation`; overview strings on the existing presentations;
+  `OperationsDashboardViewModel.IsSourceDetailsExpanded` (view state only) and `OpenPricingCommand`,
+  routed by `MainViewModel` to Associate → Products for today. `MainWindow.axaml`: short labels and a
+  trailing Settings `PathIcon` gear (same six destinations/commands). Shared styles gained
+  `Expander.disclosure`, `ToggleButton.disclosureHeader`, `Button.appSectionItem.iconItem`; tokens
+  gained two `StreamGeometry` icons and `PassdownNavigationIconSize`.
+- **Documents** — Classic/Compact/Modern compose Shows after Operational Notes (final substantive
+  section); Compact's Shows line moved out of the summary strip under a "SHOWS" heading. Nothing else
+  in the templates changed; stored History PDFs are never regenerated.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged.

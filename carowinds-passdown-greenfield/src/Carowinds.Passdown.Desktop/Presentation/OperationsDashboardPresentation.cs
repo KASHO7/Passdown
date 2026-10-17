@@ -37,6 +37,28 @@ public sealed record OperationsDashboardPresentation(
     DashboardDataHealthPresentation DataHealth,
     PassdownHistorySummaryPresentation? LatestFinalized)
 {
+    /// <summary>Phase 22C: today's official admission reference for the Operations Overview (product-identified, with its own freshness).</summary>
+    public DashboardAdmissionPresentation Admission { get; init; } = DashboardAdmissionPresentation.Build(DashboardAdmissionSummary.NotChecked, DateTimeOffset.UtcNow);
+
+    /// <summary>
+    /// Phase 22C: the Operations Overview's park-hours headline. Open/closed use the shared hours
+    /// headline unchanged; otherwise it states the actual status (not published / unavailable / not
+    /// checked) instead of the shared formatter's generic "Hours not checked yet", so NotPublished and
+    /// Unavailable are never shown as "not checked".
+    /// </summary>
+    public string ParkHoursHeadlineText => ParkStatus switch
+    {
+        DashboardParkStatus.NotPublished => "Hours not published",
+        DashboardParkStatus.Unavailable => "Hours unavailable",
+        _ => ParkHours.HeadlineText,
+    };
+
+    /// <summary>The snapshot's park-status classification (kept so the headline above never re-derives it).</summary>
+    public DashboardParkStatus ParkStatus { get; init; }
+
+    /// <summary>Phase 22C: the compact date label above the Operations Overview heading (e.g. "FRIDAY, OCTOBER 16, 2026").</summary>
+    public string OperatingDayCaption => OperatingDayLabel.ToUpperInvariant();
+
     /// <summary>Presentation-only bound (spec Phase 10B Part K) — never applied to persisted draft data, only to the Dashboard's own read-only display strings.</summary>
     private const int MaxDailyFeaturePreviewLength = 140;
 
@@ -126,7 +148,11 @@ public sealed record OperationsDashboardPresentation(
             notesPreviewLines,
             activeOperationalNotes,
             dataHealth,
-            latestFinalized);
+            latestFinalized)
+        {
+            Admission = DashboardAdmissionPresentation.Build(snapshot.Admission, snapshot.GeneratedAt),
+            ParkStatus = snapshot.ParkStatus.Status,
+        };
     }
 
     /// <summary>Shared timestamp formatting, also reused by <see cref="DashboardDataHealthPresentation"/> so "Last verified"/"Last checked" text matches this screen's other timestamps exactly.</summary>

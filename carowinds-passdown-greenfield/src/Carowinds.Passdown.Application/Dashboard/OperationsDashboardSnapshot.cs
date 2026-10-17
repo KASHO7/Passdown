@@ -234,4 +234,11 @@ public sealed record OperationsDashboardSnapshot(
     }
 
     private readonly ShowScheduleView? _todayShows;
+
+    /// <summary>
+    /// Phase 22C: today's official general-admission reference (<see cref="DashboardAdmissionSelector"/>),
+    /// projected from the same composed workspace. Defaults to "not checked" for construction sites that
+    /// do not set it — never a fabricated price.
+    /// </summary>
+    public DashboardAdmissionSummary Admission { get; init; } = DashboardAdmissionSummary.NotChecked;
 }

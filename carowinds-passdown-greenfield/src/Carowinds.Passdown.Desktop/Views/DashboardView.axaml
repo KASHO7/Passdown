@@ -8,30 +8,45 @@
              x:Class="Carowinds.Passdown.Desktop.Views.DashboardView"
              x:DataType="vm:OperationsDashboardViewModel">
 
-  <!-- Phase 10A: the Operations Dashboard foundation — a summary/control surface answering "what do
-       I need to know today?", not another editing form. Shared typography, surface, button and status styles
-       come from Themes/PassdownStyles.axaml (Phase 22A); only this screen's own deltas live below. -->
+  <!-- Phase 10A: the Operations Dashboard — a summary/control surface answering "what do I need to
+       know today?", not another editing form. Phase 22C reorganized it around one Operations Overview
+       in priority order: park hours, daily admission, passdown status, operational notes, then a
+       compact Official Data summary whose source breakdown is collapsed until asked for. Today's
+       Shows and the secondary passdown details follow underneath. Shared typography, surface, button,
+       status and disclosure styles come from Themes/PassdownStyles.axaml; only this screen's own
+       deltas live below. -->
   <UserControl.Styles>
-    <Style Selector="TextBlock.hoursHeadline">
-      <Setter Property="Margin" Value="0,4,0,6" />
+    <!-- The secondary value on an overview tile (passdown state, notes summary): clearly readable,
+         deliberately smaller than the park-hours headline and the admission price. -->
+    <Style Selector="TextBlock.overviewValue">
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <!-- "Price not available" must never look like a price. -->
+    <Style Selector="TextBlock.statValue.unavailable">
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+    </Style>
+    <Style Selector="StackPanel.overviewTile">
+      <Setter Property="Spacing" Value="2" />
     </Style>
   </UserControl.Styles>
 
   <Grid RowDefinitions="Auto,*">
 
-    <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceBrush}"
+    <!-- Page header: a compact date label over the one page heading; the right-hand column holds the
+         shared official-data freshness line (Phase 19A). The title column is "*" so the status group
+         (a fixed Auto column) always stays visible at the 960×640 minimum window (Phase 15E). -->
+    <Border Grid.Row="0" Padding="24,12" Background="{DynamicResource PassdownSurfaceBrush}"
             BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
-      <!-- Phase 15E: the title column is "*" (not Auto) so the right-hand status group (a fixed Auto
-           column) always stays fully visible at the 960×640 minimum window size — a long real
-           operating-day label ("Wednesday, September 30, 2026") previously could push it partially off
-           the window since two Auto columns cannot both shrink to fit.
-           Phase 19A: the header "Refresh" button is gone — the Dashboard now reloads itself whenever local
-           data changes — and its place holds the shared, subtle official-data freshness line. -->
-      <Grid ColumnDefinitions="*,Auto">
-        <StackPanel Grid.Column="0" Spacing="2">
-          <TextBlock Text="TODAY" Classes="sectionTitle" Margin="0" />
-          <TextBlock Text="{Binding Presentation.OperatingDayLabel}" Classes="pageTitle"
-                     TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+        <StackPanel Grid.Column="0" Spacing="0">
+          <TextBlock x:Name="OperatingDayCaption" Text="{Binding Presentation.OperatingDayCaption}" Classes="statLabel" Margin="0"
+                     TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                     AutomationProperties.Name="{Binding Presentation.OperatingDayLabel}" />
+          <TextBlock Text="Operations Overview" Classes="pageTitle" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
         </StackPanel>
         <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center" HorizontalAlignment="Right"
                     IsVisible="{Binding OfficialDataStatus, Converter={x:Static ObjectConverters.IsNotNull}}">
@@ -47,7 +62,7 @@
       </Grid>
     </Border>
 
-    <ScrollViewer Grid.Row="1" Padding="24,20,24,24">
+    <ScrollViewer Grid.Row="1" Padding="24,16,24,24">
       <StackPanel Spacing="16">
 
         <ProgressBar IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoading}" />
@@ -62,71 +77,246 @@
 
         <StackPanel Spacing="16" IsVisible="{Binding HasSnapshot}">
 
-          <!-- Today's Operation / Passdown Status (spec Part M's top row). -->
-          <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+          <!-- Operations Overview: one cohesive panel, four principal areas in a 2×2 grid (reading
+               order = priority order: hours, admission, passdown, notes), then Official Data. -->
+          <Border x:Name="OperationsOverview" Classes="panel heroPanel" Padding="20,16" AutomationProperties.Name="Operations overview">
+            <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,*" ColumnSpacing="32" RowSpacing="18">
 
-            <Border Grid.Column="0" Classes="panel heroPanel" AutomationProperties.Name="Today's Operation">
-              <StackPanel Spacing="2">
-                <TextBlock Text="Today's Operation" Classes="sectionTitle" />
-                <TextBlock Text="{Binding Presentation.ParkHours.HeadlineText}" Classes="hoursHeadline" />
+              <!-- 1. Park hours: the strongest value on the page. -->
+              <StackPanel Grid.Row="0" Grid.Column="0" Classes="overviewTile" AutomationProperties.Name="Park hours">
+                <TextBlock Text="PARK HOURS" Classes="statLabel" />
+                <TextBlock Text="{Binding Presentation.ParkHoursHeadlineText}" Classes="hoursHeadline" Margin="0,0,0,2" TextWrapping="Wrap" />
                 <Border Classes="chip" HorizontalAlignment="Left">
                   <TextBlock Text="{Binding Presentation.ParkStatusBadgeText}" />
                 </Border>
-                <TextBlock Text="{Binding Presentation.ParkHours.VerificationText}" Classes="muted" Margin="0,6,0,0" TextWrapping="Wrap"
+                <TextBlock Text="{Binding Presentation.ParkHours.VerificationText}" Classes="muted" Margin="0,4,0,0" TextWrapping="Wrap"
                            IsVisible="{Binding Presentation.ParkHours.VerificationText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                <TextBlock Text="{Binding Presentation.ParkHours.StaleNoteText}" Classes="muted" TextWrapping="Wrap"
+                <TextBlock Text="{Binding Presentation.ParkHours.StaleNoteText}" Classes="muted statusStale" TextWrapping="Wrap"
                            IsVisible="{Binding Presentation.ParkHours.StaleNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
               </StackPanel>
-            </Border>
 
-            <Border Grid.Column="1" Classes="panel heroPanel" AutomationProperties.Name="Passdown Status">
-              <StackPanel Spacing="2">
-                <TextBlock Text="Passdown Status" Classes="sectionTitle" />
-                <TextBlock Text="{Binding Presentation.PassdownStatusText}" Classes="hoursHeadline" />
+              <!-- 2. Daily admission: one product-identified official price, or an honest "not available". -->
+              <StackPanel Grid.Row="0" Grid.Column="1" Classes="overviewTile" AutomationProperties.Name="Daily admission"
+                          AutomationProperties.HelpText="{Binding Presentation.Admission.AutomationText}">
+                <TextBlock Text="DAILY ADMISSION" Classes="statLabel" />
+                <TextBlock Text="{Binding Presentation.Admission.ProductName}" FontWeight="SemiBold" TextWrapping="Wrap"
+                           IsVisible="{Binding Presentation.Admission.HasProductName}" />
+                <TextBlock x:Name="AdmissionPriceText" Text="{Binding Presentation.Admission.PriceText}" Classes="statValue"
+                           Classes.unavailable="{Binding !Presentation.Admission.HasPrice}" TextWrapping="Wrap"
+                           AutomationProperties.Name="{Binding Presentation.Admission.AutomationText}" />
+                <TextBlock Text="{Binding Presentation.Admission.QualifierText}" Classes="muted" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding Presentation.Admission.FreshnessText}" Classes="muted" Classes.statusStale="{Binding Presentation.Admission.IsStale}"
+                           FontSize="12" TextWrapping="Wrap"
+                           IsVisible="{Binding Presentation.Admission.HasFreshnessText}" />
+                <Button Content="View Pricing →" Classes="linkAction" Margin="-8,2,0,0" HorizontalAlignment="Left"
+                        Command="{Binding OpenPricingCommand}"
+                        AutomationProperties.Name="View pricing"
+                        AutomationProperties.HelpText="Opens today's full official pricing in Associate Passdown, Products." />
+              </StackPanel>
+
+              <!-- 3. Passdown: today's real draft/finalized state, Open Passdown always targets today. -->
+              <StackPanel Grid.Row="1" Grid.Column="0" Classes="overviewTile" AutomationProperties.Name="Passdown Status">
+                <TextBlock Text="PASSDOWN" Classes="statLabel" />
+                <TextBlock Text="{Binding Presentation.PassdownStatusText}" Classes="overviewValue" />
                 <TextBlock Text="{Binding Presentation.PassdownStatusDetailText}" Classes="muted" TextWrapping="Wrap"
                            IsVisible="{Binding Presentation.PassdownStatusDetailText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                <Button Content="Open Passdown" Classes="primaryAction" Margin="0,10,0,0" HorizontalAlignment="Left"
-                        Command="{Binding OpenPassdownCommand}"
-                        IsVisible="{Binding Presentation.ShowOpenPassdownAction}"
-                        AutomationProperties.Name="Open Passdown"
-                        AutomationProperties.HelpText="Opens today's Associate Passdown for editing." />
+                <TextBlock Classes="muted" TextWrapping="Wrap" AutomationProperties.Name="Passdown Notes">
+                  <Run Text="Passdown notes:" />
+                  <Run Text="{Binding Presentation.NotesSummaryText}" />
+                </TextBlock>
+                <WrapPanel Orientation="Horizontal" Margin="0,8,0,0">
+                  <Button Content="Open Passdown" Classes="primaryAction" Margin="0,0,12,0"
+                          Command="{Binding OpenPassdownCommand}"
+                          IsVisible="{Binding Presentation.ShowOpenPassdownAction}"
+                          AutomationProperties.Name="Open Passdown"
+                          AutomationProperties.HelpText="Opens today's Associate Passdown for editing." />
+                  <Button Content="Open Notes" Classes="linkAction" VerticalAlignment="Center"
+                          Command="{Binding OpenNotesCommand}"
+                          AutomationProperties.Name="Open Notes"
+                          AutomationProperties.HelpText="Opens Associate Passdown's Notes section, where the passdown's notes can be reviewed and edited." />
+                </WrapPanel>
               </StackPanel>
-            </Border>
 
-          </Grid>
+              <!-- 4. Operational notes: the existing "relevant today" notes, Important only when a
+                   supervisor marked it so (said in words, never color alone). -->
+              <StackPanel Grid.Row="1" Grid.Column="1" Classes="overviewTile" AutomationProperties.Name="Active operational notes">
+                <TextBlock Text="OPERATIONAL NOTES" Classes="statLabel" />
+                <TextBlock Text="{Binding Presentation.ActiveOperationalNotes.SummaryText}" Classes="overviewValue"
+                           Classes.statusError="{Binding Presentation.ActiveOperationalNotes.LoadFailed}" />
+                <ItemsControl ItemsSource="{Binding Presentation.ActiveOperationalNotes.Items}" Margin="0,2,0,0"
+                              IsVisible="{Binding Presentation.ActiveOperationalNotes.HasNotes}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="presentation:DashboardOperationalNoteItemPresentation">
+                      <Grid ColumnDefinitions="Auto,*" Margin="0,1" AutomationProperties.Name="{Binding AccessibleSummary}" ToolTip.Tip="{Binding Title}">
+                        <TextBlock Grid.Column="0" Classes="priorityText important" Text="Important · " IsVisible="{Binding IsImportant}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Title}" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="{Binding Presentation.ActiveOperationalNotes.OverflowText}" Classes="muted"
+                           IsVisible="{Binding Presentation.ActiveOperationalNotes.HasOverflow}" />
+                <Button Content="View Notes →" Classes="linkAction" Margin="-8,4,0,0" HorizontalAlignment="Left"
+                        Command="{Binding OpenOperationalNotesCommand}"
+                        AutomationProperties.Name="Open operational notes"
+                        AutomationProperties.HelpText="Opens the Operational Notes manager." />
+              </StackPanel>
 
-          <!-- Daily snapshot region (spec Part M): attendance/pre-solds/Early Ride Time/Daily
-               Feature as compact stat tiles, not full editing controls. -->
-          <Border Classes="panel" AutomationProperties.Name="Today at a Glance">
-            <StackPanel Spacing="10">
-              <TextBlock Text="Today at a Glance" Classes="sectionTitle" Margin="0" />
-              <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="20">
-                <StackPanel Grid.Column="0" Spacing="0">
-                  <TextBlock Text="PROJECTED ATTENDANCE" Classes="statLabel" />
-                  <TextBlock Text="{Binding Presentation.AttendanceText}" Classes="statValue" />
-                </StackPanel>
-                <StackPanel Grid.Column="1" Spacing="0">
-                  <TextBlock Text="PRE-SOLDS" Classes="statLabel" />
-                  <TextBlock Text="{Binding Presentation.PreSoldsText}" Classes="statValue" />
-                </StackPanel>
-                <StackPanel Grid.Column="2" Spacing="0">
-                  <TextBlock Text="EARLY RIDE TIME" Classes="statLabel" />
-                  <TextBlock Text="{Binding Presentation.EarlyRideTimeText}" TextWrapping="Wrap" FontWeight="SemiBold" />
-                </StackPanel>
-                <StackPanel Grid.Column="3" Spacing="0">
-                  <TextBlock Text="{Binding Presentation.DailyFeatureLabel}" Classes="statLabel" />
-                  <TextBlock Text="{Binding Presentation.DailyFeatureText}" TextWrapping="Wrap" FontWeight="SemiBold" />
-                </StackPanel>
-              </Grid>
-            </StackPanel>
+              <!-- 5. Official Data: one summary line (+ an honest warning line when a source is stale,
+                   unavailable or unverified), Check Online, and the source breakdown on request. -->
+              <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Spacing="10" AutomationProperties.Name="Data status">
+                <Border Height="1" Background="{DynamicResource PassdownDividerBrush}" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                  <StackPanel Grid.Column="0" Spacing="2">
+                    <TextBlock Text="OFFICIAL DATA" Classes="statLabel" />
+                    <TextBlock TextWrapping="Wrap">
+                      <Run Text="{Binding Presentation.DataHealth.OverallHeadline}" FontWeight="SemiBold" />
+                      <Run Text="  ·  " Foreground="{DynamicResource PassdownTextSecondaryBrush}" />
+                      <Run Text="{Binding Presentation.DataHealth.SummaryText}" Foreground="{DynamicResource PassdownTextSecondaryBrush}" />
+                    </TextBlock>
+                    <TextBlock x:Name="DataAttentionText" Text="{Binding Presentation.DataHealth.AttentionText}" Classes="muted statusWarning"
+                               FontWeight="SemiBold" TextWrapping="Wrap"
+                               IsVisible="{Binding Presentation.DataHealth.HasAttention}" />
+                    <TextBlock Text="{Binding Presentation.DataHealth.LastVerifiedText}" Classes="muted" FontSize="12"
+                               IsVisible="{Binding Presentation.DataHealth.LastVerifiedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  </StackPanel>
+
+                  <StackPanel Grid.Column="1" Spacing="6" HorizontalAlignment="Right" VerticalAlignment="Top">
+                    <Button Content="Check Online" Classes="secondaryAction" HorizontalAlignment="Right"
+                            Command="{Binding CheckOnlineCommand}"
+                            AutomationProperties.Name="Check Online"
+                            AutomationProperties.HelpText="Checks official Carowinds/Six Flags sources now and updates today's information." />
+                    <!-- Phase 10E Part R: a dedicated busy indicator for Check Online, distinct from the
+                         page's IsLoading ProgressBar (local reload vs online check). -->
+                    <ProgressBar x:Name="CheckOnlineBusyBar" IsIndeterminate="True" Height="3" Width="140" HorizontalAlignment="Right"
+                                 IsVisible="{Binding IsCheckingOnline}" />
+                    <TextBlock Text="{Binding CheckOnlineStatusMessage}" Classes="muted" HorizontalAlignment="Right"
+                               TextWrapping="Wrap" MaxWidth="260" TextAlignment="Right"
+                               IsVisible="{Binding CheckOnlineStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <TextBlock Text="{Binding CheckOnlineResultMessage}" Classes="muted" FontWeight="SemiBold"
+                               TextWrapping="Wrap" MaxWidth="260" TextAlignment="Right"
+                               IsVisible="{Binding CheckOnlineResultMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  </StackPanel>
+                </Grid>
+
+                <Expander x:Name="SourceDetailsExpander" Classes="disclosure"
+                          Header="{Binding SourceDetailsToggleText}"
+                          IsExpanded="{Binding IsSourceDetailsExpanded}"
+                          AutomationProperties.Name="Source details">
+                  <StackPanel Spacing="10" Margin="0,2,0,0">
+
+                    <!-- WrapPanel so up to six count chips reflow instead of clipping at 960px (Part L/C). -->
+                    <ItemsControl ItemsSource="{Binding Presentation.DataHealth.Counts}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <WrapPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="presentation:DashboardCountChip">
+                          <Border Classes="chip" Margin="0,0,8,4">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                              <TextBlock Text="{Binding CountText}" FontWeight="Bold" />
+                              <TextBlock Text="{Binding Label}" />
+                            </StackPanel>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="{Binding Presentation.DataHealth.OverallDetailText}" Classes="muted" TextWrapping="Wrap"
+                               IsVisible="{Binding Presentation.DataHealth.OverallDetailText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="32">
+                      <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock Text="TODAY'S OPERATION" Classes="statLabel" />
+                        <ItemsControl ItemsSource="{Binding Presentation.DataHealth.OperationalSources}">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="presentation:DashboardSourceStatusPresentation">
+                              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,2"
+                                    AutomationProperties.Name="{Binding CategoryLabel}"
+                                    AutomationProperties.HelpText="{Binding TimestampText}">
+                                <StackPanel Grid.Column="0" Spacing="0">
+                                  <TextBlock Text="{Binding CategoryLabel}" />
+                                  <TextBlock Text="{Binding TimestampText}" Classes="muted" FontSize="12"
+                                             IsVisible="{Binding TimestampText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontWeight="SemiBold" />
+                              </Grid>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </StackPanel>
+
+                      <StackPanel Grid.Column="1" Spacing="2">
+                        <TextBlock Text="PRODUCTS / OFFERS" Classes="statLabel" />
+                        <ItemsControl ItemsSource="{Binding Presentation.DataHealth.ProductSources}">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="presentation:DashboardSourceStatusPresentation">
+                              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,2"
+                                    AutomationProperties.Name="{Binding CategoryLabel}"
+                                    AutomationProperties.HelpText="{Binding TimestampText}">
+                                <StackPanel Grid.Column="0" Spacing="0">
+                                  <TextBlock Text="{Binding CategoryLabel}" />
+                                  <TextBlock Text="{Binding TimestampText}" Classes="muted" FontSize="12"
+                                             IsVisible="{Binding TimestampText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontWeight="SemiBold" />
+                              </Grid>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </StackPanel>
+                    </Grid>
+
+                    <!-- Phase 13D Part U/V: Deep Refresh status + the always-available manual action —
+                         distinct from Check Online (Last Deep Refresh / Last Check Online / Last
+                         Verified are three different concepts). -->
+                    <Border Height="1" Background="{DynamicResource PassdownDividerBrush}" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                      <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock Text="DEEP REFRESH" Classes="statLabel" />
+                        <TextBlock Text="{Binding DeepRefreshPresentation.HeadlineText}" FontWeight="SemiBold"
+                                   AutomationProperties.Name="Deep Refresh status"
+                                   AutomationProperties.HelpText="{Binding DeepRefreshPresentation.AutomationText}" />
+                        <TextBlock Text="{Binding DeepRefreshPresentation.DetailText}" Classes="muted" TextWrapping="Wrap"
+                                   IsVisible="{Binding DeepRefreshPresentation.DetailText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                        <TextBlock Text="{Binding DeepRefreshPresentation.CoverageText}" Classes="muted" TextWrapping="Wrap"
+                                   IsVisible="{Binding DeepRefreshPresentation.CoverageText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                      </StackPanel>
+
+                      <StackPanel Grid.Column="1" Spacing="6" HorizontalAlignment="Right">
+                        <Button Content="Run Deep Refresh" Classes="secondaryAction" HorizontalAlignment="Right"
+                                Command="{Binding RunDeepRefreshCommand}"
+                                AutomationProperties.Name="Run Deep Refresh"
+                                AutomationProperties.HelpText="Restores upcoming Park Hours coverage and refreshes every supported product/pricing source, regardless of when it last ran." />
+                        <ProgressBar x:Name="DeepRefreshBusyBar" IsIndeterminate="True" Height="3" Width="140" HorizontalAlignment="Right"
+                                     IsVisible="{Binding IsRunningDeepRefresh}" />
+                        <TextBlock Text="{Binding DeepRefreshStatusMessage}" Classes="muted" HorizontalAlignment="Right"
+                                   TextWrapping="Wrap" MaxWidth="260" TextAlignment="Right"
+                                   IsVisible="{Binding DeepRefreshStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                        <TextBlock Text="{Binding DeepRefreshResultMessage}" Classes="muted" FontWeight="SemiBold" HorizontalAlignment="Right"
+                                   TextWrapping="Wrap" MaxWidth="260" TextAlignment="Right"
+                                   IsVisible="{Binding DeepRefreshResultMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                      </StackPanel>
+                    </Grid>
+
+                  </StackPanel>
+                </Expander>
+              </StackPanel>
+
+            </Grid>
           </Border>
 
-          <!-- Phase 21C: Today's Shows — the official schedule's upcoming performances, compact rows
-               (name · times · venue), never a large table. Empty/unpublished/failed states are one
-               quiet line; only a confirmed empty schedule says "No shows scheduled". -->
-          <Border Classes="panel" AutomationProperties.Name="Today's shows" IsVisible="{Binding ShowsPresentation, Converter={x:Static ObjectConverters.IsNotNull}}">
-            <StackPanel Spacing="6">
-              <TextBlock Text="{Binding ShowsPresentation.Heading}" Classes="sectionTitle" Margin="0" />
+          <!-- Phase 21C: Today's Shows — the official schedule's upcoming performances as compact rows
+               (name · times · venue), a secondary section under the overview. Empty/unpublished/failed
+               states are one quiet line; only a confirmed empty schedule says "No shows scheduled". -->
+          <Border Classes="panel" Padding="20,14" AutomationProperties.Name="Today's shows" IsVisible="{Binding ShowsPresentation, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <StackPanel Spacing="4">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <TextBlock Grid.Column="0" Text="{Binding ShowsPresentation.Heading}" Classes="sectionTitle" Margin="0,0,0,4" />
+                <TextBlock Grid.Column="1" Text="{Binding ShowsPresentation.FreshnessText}" Classes="muted" FontSize="12" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" IsVisible="{Binding ShowsPresentation.HasFreshnessText}" />
+              </Grid>
               <TextBlock Text="{Binding ShowsPresentation.StatusText}" Classes="muted" TextWrapping="Wrap"
                          IsVisible="{Binding ShowsPresentation.HasStatusText}" />
               <ItemsControl ItemsSource="{Binding ShowsPresentation.Rows}" IsVisible="{Binding ShowsPresentation.HasRows}">
@@ -145,235 +335,56 @@
               </ItemsControl>
               <TextBlock Text="{Binding ShowsPresentation.StartedEarlierText}" Classes="muted" TextWrapping="Wrap"
                          IsVisible="{Binding ShowsPresentation.HasStartedEarlierText}" />
-              <TextBlock Text="{Binding ShowsPresentation.FreshnessText}" Classes="muted" FontSize="12"
-                         IsVisible="{Binding ShowsPresentation.HasFreshnessText}" />
             </StackPanel>
           </Border>
 
-          <!-- Data Status (Phase 10D Part K): the Dashboard's compact data-confidence surface —
-               "are today's displayed values current enough to trust operationally?", never absolute
-               correctness. Given its own full-width row (rather than squeezed into half of a
-               two-column row) because Phase 10D gave it a source breakdown and the explicit Check
-               Online action, making it the page's most information-dense panel after the hero row. -->
-          <Border Classes="panel" AutomationProperties.Name="Data status">
-            <StackPanel Spacing="8">
+          <!-- Secondary passdown details: today's entered figures and the latest finalized record. -->
+          <Grid ColumnDefinitions="3*,2*" ColumnSpacing="16">
 
-              <Grid ColumnDefinitions="*,Auto">
-                <StackPanel Grid.Column="0" Spacing="2">
-                  <TextBlock Text="DATA STATUS" Classes="sectionTitle" Margin="0" />
-                  <TextBlock Text="{Binding Presentation.DataHealth.OverallHeadline}" FontSize="17" FontWeight="Bold" />
-                  <TextBlock Text="{Binding Presentation.DataHealth.OverallDetailText}" Classes="muted" TextWrapping="Wrap" />
-                  <TextBlock Text="{Binding Presentation.DataHealth.LastVerifiedText}" Classes="muted" Margin="0,2,0,0"
-                             IsVisible="{Binding Presentation.DataHealth.LastVerifiedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                </StackPanel>
-
-                <StackPanel Grid.Column="1" Spacing="6" HorizontalAlignment="Right">
-                  <Button Content="Check Online" Classes="primaryAction" HorizontalAlignment="Right"
-                          Command="{Binding CheckOnlineCommand}"
-                          AutomationProperties.Name="Check Online"
-                          AutomationProperties.HelpText="Checks official Carowinds/Six Flags sources now and updates today's information." />
-                  <!-- Phase 10E Part R: a subtle, dedicated busy indicator for Check Online, distinct
-                       from the header's IsLoading ProgressBar — the local reload and the online check
-                       are two different kinds of "busy" and must not look like the same one to a
-                       screen reader or at a glance. -->
-                  <ProgressBar x:Name="CheckOnlineBusyBar" IsIndeterminate="True" Height="3" Width="140" HorizontalAlignment="Right"
-                               IsVisible="{Binding IsCheckingOnline}" />
-                  <TextBlock Text="{Binding CheckOnlineStatusMessage}" Classes="muted" HorizontalAlignment="Right"
-                             TextWrapping="Wrap" MaxWidth="230" TextAlignment="Right"
-                             IsVisible="{Binding CheckOnlineStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                  <TextBlock Text="{Binding CheckOnlineResultMessage}" Classes="muted" FontWeight="SemiBold"
-                             TextWrapping="Wrap" MaxWidth="230" TextAlignment="Right"
-                             IsVisible="{Binding CheckOnlineResultMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                </StackPanel>
-              </Grid>
-
-              <!-- WrapPanel (not a fixed horizontal StackPanel) so up to six count chips reflow
-                   instead of clipping at the 960px fallback width (Part L/C). -->
-              <ItemsControl ItemsSource="{Binding Presentation.DataHealth.Counts}">
-                <ItemsControl.ItemsPanel>
-                  <ItemsPanelTemplate>
-                    <WrapPanel Orientation="Horizontal" />
-                  </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="presentation:DashboardCountChip">
-                    <Border Classes="chip" Margin="0,0,8,4">
-                      <StackPanel Orientation="Horizontal" Spacing="4">
-                        <TextBlock Text="{Binding CountText}" FontWeight="Bold" />
-                        <TextBlock Text="{Binding Label}" />
-                      </StackPanel>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-
-              <Grid ColumnDefinitions="*,*" ColumnSpacing="24">
-                <StackPanel Grid.Column="0" Spacing="4">
-                  <TextBlock Text="TODAY'S OPERATION" Classes="statLabel" />
-                  <ItemsControl ItemsSource="{Binding Presentation.DataHealth.OperationalSources}">
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate x:DataType="presentation:DashboardSourceStatusPresentation">
-                        <Grid ColumnDefinitions="*,Auto" Margin="0,2"
-                              ToolTip.Tip="{Binding TimestampText}"
-                              AutomationProperties.Name="{Binding CategoryLabel}"
-                              AutomationProperties.HelpText="{Binding TimestampText}">
-                          <TextBlock Grid.Column="0" Text="{Binding CategoryLabel}" />
-                          <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontWeight="SemiBold" />
-                        </Grid>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </StackPanel>
-
-                <StackPanel Grid.Column="1" Spacing="4">
-                  <TextBlock Text="PRODUCTS / OFFERS" Classes="statLabel" />
-                  <ItemsControl ItemsSource="{Binding Presentation.DataHealth.ProductSources}">
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate x:DataType="presentation:DashboardSourceStatusPresentation">
-                        <Grid ColumnDefinitions="*,Auto" Margin="0,2"
-                              ToolTip.Tip="{Binding TimestampText}"
-                              AutomationProperties.Name="{Binding CategoryLabel}"
-                              AutomationProperties.HelpText="{Binding TimestampText}">
-                          <TextBlock Grid.Column="0" Text="{Binding CategoryLabel}" />
-                          <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontWeight="SemiBold" />
-                        </Grid>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </StackPanel>
-              </Grid>
-
-              <!-- Phase 13D Part U/V: Deep Refresh status + the always-available manual action —
-                   distinct from Check Online (Part X: Last Deep Refresh / Last Check Online / Last
-                   Verified are three different concepts). Kept compact — one headline line, one
-                   optional detail line, one optional coverage line, and the button — never a second
-                   Alerts-style panel (Part V). -->
-              <Border Height="1" Background="{DynamicResource PassdownDividerBrush}" Margin="0,2,0,0" />
-              <Grid ColumnDefinitions="*,Auto">
-                <StackPanel Grid.Column="0" Spacing="2">
-                  <TextBlock Text="DEEP REFRESH" Classes="sectionTitle" Margin="0" />
-                  <TextBlock Text="{Binding DeepRefreshPresentation.HeadlineText}" FontWeight="SemiBold"
-                             AutomationProperties.Name="Deep Refresh status"
-                             AutomationProperties.HelpText="{Binding DeepRefreshPresentation.AutomationText}" />
-                  <TextBlock Text="{Binding DeepRefreshPresentation.DetailText}" Classes="muted" TextWrapping="Wrap"
-                             IsVisible="{Binding DeepRefreshPresentation.DetailText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                  <TextBlock Text="{Binding DeepRefreshPresentation.CoverageText}" Classes="muted" TextWrapping="Wrap"
-                             IsVisible="{Binding DeepRefreshPresentation.CoverageText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                </StackPanel>
-
-                <StackPanel Grid.Column="1" Spacing="6" HorizontalAlignment="Right">
-                  <Button Content="Run Deep Refresh" Classes="secondaryAction" HorizontalAlignment="Right"
-                          Command="{Binding RunDeepRefreshCommand}"
-                          AutomationProperties.Name="Run Deep Refresh"
-                          AutomationProperties.HelpText="Restores upcoming Park Hours coverage and refreshes every supported product/pricing source, regardless of when it last ran." />
-                  <ProgressBar x:Name="DeepRefreshBusyBar" IsIndeterminate="True" Height="3" Width="140" HorizontalAlignment="Right"
-                               IsVisible="{Binding IsRunningDeepRefresh}" />
-                  <TextBlock Text="{Binding DeepRefreshStatusMessage}" Classes="muted" HorizontalAlignment="Right"
-                             TextWrapping="Wrap" MaxWidth="230" TextAlignment="Right"
-                             IsVisible="{Binding DeepRefreshStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                  <TextBlock Text="{Binding DeepRefreshResultMessage}" Classes="muted" FontWeight="SemiBold" HorizontalAlignment="Right"
-                             TextWrapping="Wrap" MaxWidth="230" TextAlignment="Right"
-                             IsVisible="{Binding DeepRefreshResultMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                </StackPanel>
-              </Grid>
-
-            </StackPanel>
-          </Border>
-
-          <!-- Passdown Notes (today's Associate draft, unchanged from Phase 10) beside Active
-               Operational Notes (Phase 11C: persistent, supervisor-managed notes relevant today) —
-               kept as two clearly separate panels/headings so the two concepts can never be confused
-               (spec Part A/AF). The panel was renamed from "Operational Notes" to "Passdown Notes"
-               specifically because Phase 11C introduces a second, differently-scoped "operational
-               notes" concept next to it. -->
-          <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
-
-            <Border Grid.Column="0" Classes="panel" AutomationProperties.Name="Passdown Notes">
-              <StackPanel Spacing="6">
-                <TextBlock Text="Passdown Notes" Classes="sectionTitle" Margin="0" />
-                <TextBlock Text="Today's notes entered for the Associate Passdown" Classes="muted" Margin="0,0,0,4" />
-                <TextBlock Text="{Binding Presentation.NotesSummaryText}" FontWeight="SemiBold" />
-                <ItemsControl ItemsSource="{Binding Presentation.NotesPreviewLines}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="x:String">
-                      <TextBlock Text="{Binding}" Classes="muted" TextWrapping="Wrap" Margin="0,2,0,0" />
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <Button Content="Open Notes" Classes="secondaryAction" Margin="0,6,0,0" HorizontalAlignment="Left"
-                        Command="{Binding OpenNotesCommand}"
-                        AutomationProperties.Name="Open Notes"
-                        AutomationProperties.HelpText="Opens Associate Passdown's Notes section, where operational notes can be reviewed and edited." />
+            <Border Grid.Column="0" Classes="panel" Padding="20,14" AutomationProperties.Name="Today at a Glance">
+              <StackPanel Spacing="8">
+                <TextBlock Text="Today at a Glance" Classes="sectionTitle" Margin="0" />
+                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="20" RowSpacing="10">
+                  <StackPanel Grid.Row="0" Grid.Column="0" Spacing="0">
+                    <TextBlock Text="PROJECTED ATTENDANCE" Classes="statLabel" />
+                    <TextBlock Text="{Binding Presentation.AttendanceText}" Classes="overviewValue" />
+                  </StackPanel>
+                  <StackPanel Grid.Row="0" Grid.Column="1" Spacing="0">
+                    <TextBlock Text="PRE-SOLDS" Classes="statLabel" />
+                    <TextBlock Text="{Binding Presentation.PreSoldsText}" Classes="overviewValue" />
+                  </StackPanel>
+                  <StackPanel Grid.Row="1" Grid.Column="0" Spacing="0">
+                    <TextBlock Text="EARLY RIDE TIME" Classes="statLabel" />
+                    <TextBlock Text="{Binding Presentation.EarlyRideTimeText}" TextWrapping="Wrap" FontWeight="SemiBold" />
+                  </StackPanel>
+                  <StackPanel Grid.Row="1" Grid.Column="1" Spacing="0">
+                    <TextBlock Text="{Binding Presentation.DailyFeatureLabel}" Classes="statLabel" />
+                    <TextBlock Text="{Binding Presentation.DailyFeatureText}" TextWrapping="Wrap" FontWeight="SemiBold" />
+                  </StackPanel>
+                </Grid>
               </StackPanel>
             </Border>
 
-            <!-- Phase 11C: persistent Operational Notes relevant to today's Eastern date (spec Part
-                 B/D/E) — read-only, no editor controls, no "Include"/"Add to Passdown" affordance
-                 (Part T). Bounded to the first 3 relevant notes (Part H) with an overflow line when
-                 more exist; Important notes sort first via the shared OperationalNoteOrdering.ByRelevance
-                 rule (Part F/J), communicated with text, never color-only. -->
-            <Border Grid.Column="1" Classes="panel" AutomationProperties.Name="Active operational notes">
-              <StackPanel Spacing="6">
-                <TextBlock Text="Active Operational Notes" Classes="sectionTitle" Margin="0" />
-                <TextBlock Text="Persistent notes relevant today" Classes="muted" Margin="0,0,0,4" />
-
-                <TextBlock Text="Unable to load operational notes." Classes="fieldError"
-                           IsVisible="{Binding Presentation.ActiveOperationalNotes.LoadFailed}" />
-
-                <TextBlock Text="No active operational notes for today." Classes="muted"
-                           IsVisible="{Binding Presentation.ActiveOperationalNotes.ShowEmptyState}" />
-
-                <ItemsControl ItemsSource="{Binding Presentation.ActiveOperationalNotes.Items}"
-                              IsVisible="{Binding Presentation.ActiveOperationalNotes.HasNotes}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="presentation:DashboardOperationalNoteItemPresentation">
-                      <StackPanel Spacing="1" Margin="0,0,0,8"
-                                  AutomationProperties.Name="{Binding AccessibleSummary}">
-                        <StackPanel Orientation="Horizontal" Spacing="4">
-                          <TextBlock Classes="priorityText important" Text="Important" IsVisible="{Binding IsImportant}" />
-                          <TextBlock Classes="priorityText important" Text="·" IsVisible="{Binding IsImportant}" />
-                          <TextBlock Text="{Binding CategoryLabel}" Classes="muted" />
-                        </StackPanel>
-                        <TextBlock Text="{Binding Title}" TextWrapping="Wrap" FontWeight="SemiBold" MaxLines="2" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{Binding DateRangeText}" Classes="muted" />
-                      </StackPanel>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-
-                <TextBlock Text="{Binding Presentation.ActiveOperationalNotes.OverflowText}" Classes="muted"
-                           IsVisible="{Binding Presentation.ActiveOperationalNotes.HasOverflow}" />
-
-                <Button Content="Open Operational Notes" Classes="secondaryAction" Margin="0,6,0,0" HorizontalAlignment="Left"
-                        Command="{Binding OpenOperationalNotesCommand}"
-                        AutomationProperties.Name="Open operational notes"
-                        AutomationProperties.HelpText="Opens the Operational Notes manager." />
+            <!-- Latest Finalized (Phase 10C Part B/P): the most recent finalized passdown's metadata
+                 only, never the frozen snapshot or PDF. -->
+            <Border Grid.Column="1" Classes="panel" Padding="20,14" AutomationProperties.Name="Latest finalized passdown">
+              <StackPanel Spacing="4">
+                <TextBlock Text="Latest Finalized" Classes="sectionTitle" Margin="0,0,0,4" />
+                <StackPanel Spacing="2" IsVisible="{Binding Presentation.LatestFinalized, Converter={x:Static ObjectConverters.IsNotNull}}">
+                  <TextBlock Text="{Binding Presentation.LatestFinalized.PassdownDateText}" FontWeight="SemiBold" FontSize="15" />
+                  <TextBlock Text="{Binding Presentation.LatestFinalized.FinalizedText}" Classes="muted" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding Presentation.LatestFinalized.OriginText}" Classes="muted" TextWrapping="Wrap" />
+                </StackPanel>
+                <TextBlock Text="No finalized passdowns yet." Classes="muted"
+                           IsVisible="{Binding Presentation.LatestFinalized, Converter={x:Static ObjectConverters.IsNull}}" />
+                <Button Content="Open History" Classes="linkAction" Margin="-8,4,0,0" HorizontalAlignment="Left"
+                        Command="{Binding OpenHistoryCommand}"
+                        AutomationProperties.Name="Open History"
+                        AutomationProperties.HelpText="Opens the read-only Passdown History screen." />
               </StackPanel>
             </Border>
 
           </Grid>
-
-          <!-- Latest Finalized (spec Phase 10C Part B/P) now spans full width on its own row — moved
-               out of the two-column row above to make space for Active Operational Notes (spec Part
-               AE), the most recent finalized passdown's metadata only, never the frozen snapshot or PDF. -->
-          <Border Classes="panel" AutomationProperties.Name="Latest finalized passdown">
-            <StackPanel Spacing="6">
-              <TextBlock Text="Latest Finalized" Classes="sectionTitle" Margin="0" />
-
-              <StackPanel Spacing="2" IsVisible="{Binding Presentation.LatestFinalized, Converter={x:Static ObjectConverters.IsNotNull}}">
-                <TextBlock Text="{Binding Presentation.LatestFinalized.PassdownDateText}" FontWeight="SemiBold" FontSize="15" />
-                <TextBlock Text="{Binding Presentation.LatestFinalized.FinalizedText}" Classes="muted" />
-                <TextBlock Text="{Binding Presentation.LatestFinalized.OriginText}" Classes="muted" />
-              </StackPanel>
-              <TextBlock Text="No finalized passdowns yet." Classes="muted"
-                         IsVisible="{Binding Presentation.LatestFinalized, Converter={x:Static ObjectConverters.IsNull}}" />
-
-              <Button Content="Open History" Classes="secondaryAction" Margin="0,6,0,0" HorizontalAlignment="Left"
-                      Command="{Binding OpenHistoryCommand}"
-                      AutomationProperties.Name="Open History"
-                      AutomationProperties.HelpText="Opens the read-only Passdown History screen." />
-            </StackPanel>
-          </Border>
 
         </StackPanel>
 

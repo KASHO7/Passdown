@@ -57,7 +57,13 @@ public class DashboardViewTests
         // Phase 10E Part W: the remaining panels gained accessible names to match the precedent set
         // by "Data status"/"Latest finalized passdown" (Phase 10C/10D), so a screen reader can
         // navigate the page's landmark structure, not just its individual actions.
-        Assert.Contains("Today's Operation", names);
+        // Phase 22C: "Today's Operation" became the Operations Overview's "Park hours" area; the
+        // overview itself, Daily admission, View pricing and the Source details disclosure are named too.
+        Assert.Contains("Operations overview", names);
+        Assert.Contains("Park hours", names);
+        Assert.Contains("Daily admission", names);
+        Assert.Contains("View pricing", names);
+        Assert.Contains("Source details", names);
         Assert.Contains("Passdown Status", names);
         Assert.Contains("Today at a Glance", names);
 

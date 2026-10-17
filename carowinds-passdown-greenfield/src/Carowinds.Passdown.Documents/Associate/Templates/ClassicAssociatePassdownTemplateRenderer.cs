@@ -53,7 +53,6 @@ public sealed class ClassicAssociatePassdownTemplateRenderer : IAssociatePassdow
             // Operations information (hours, gates, attendance, Early Ride, Daily Feature)...
             ComposeSummaryList(column, model, m);
             ComposeDailyFeature(column, model, m);
-            ComposeShows(column, model.Shows, m, density);
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -65,6 +64,10 @@ public sealed class ClassicAssociatePassdownTemplateRenderer : IAssociatePassdow
 
             SingleColumnProductLayout.Compose(column, model.ProductCategories, m.SectionSpacing, (el, category) => ComposeCategory(el, category, m));
             ComposeNotes(column, model.OperationalNotes, m);
+
+            // Phase 22C: Shows is the final substantive section (after pricing and Notes) so it never
+            // interrupts the admissions/pricing flow; absent entirely when nothing is selected.
+            ComposeShows(column, model.Shows, m, density);
         });
 
         page.Footer().Element(footer => ComposeFooter(footer, model));
