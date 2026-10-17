@@ -49,5 +49,5 @@ public sealed record CategoryStatusPresentation(string CategoryDisplayName, stri
         return new CategoryStatusPresentation(SourceCategoryDisplay.FriendlyName(status.Category), statusText, detail);
     }
 
-    private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d 'at' h:mm tt", PresentationCulture.UnitedStates);
+    private static string FormatTimestamp(DateTimeOffset value) => EasternTimestampFormat.DateAndTime(value);
 }

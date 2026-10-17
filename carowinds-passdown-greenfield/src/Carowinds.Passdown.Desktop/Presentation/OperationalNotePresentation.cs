@@ -137,7 +137,7 @@ public sealed record OperationalNoteDetailPresentation(
 
     private static string FormatDate(DateOnly date, DateOnly referenceDate) => OperationalNoteDateRangeFormatter.FormatDate(date, referenceDate);
 
-    private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d 'at' h:mm tt", PresentationCulture.UnitedStates);
+    private static string FormatTimestamp(DateTimeOffset value) => EasternTimestampFormat.DateAndTime(value);
 }
 
 /// <summary>

@@ -206,6 +206,14 @@
     <Style Selector="Calendar.datePopupCalendar CalendarDayButton /template/ Border#Root, Calendar.datePopupCalendar CalendarDayButton /template/ Border#Border">
       <Setter Property="CornerRadius" Value="5" />
     </Style>
+    <!-- Phase 22F: adjacent-month days are muted text on the popup surface. Fluent's out-of-scope fill made
+         them read as emphasized gray tiles in both themes — the opposite of "muted". -->
+    <Style Selector="Calendar.datePopupCalendar CalendarDayButton:inactive /template/ Border#Root">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Calendar.datePopupCalendar CalendarDayButton:inactive /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextMutedBrush}" />
+    </Style>
     <Style Selector="Calendar.datePopupCalendar CalendarDayButton:pointerover /template/ Border#Root">
       <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
     </Style>
@@ -283,6 +291,9 @@
       <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentForegroundBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource PassdownSelectedForegroundBrush}" />
       <Setter Property="FontWeight" Value="SemiBold" />
+      <!-- Phase 22F: the same convention as the app's section strip (Button.appSectionItem.active) —
+           screen readers hear which Associate section is showing, not only sighted users. -->
+      <Setter Property="AutomationProperties.ItemStatus" Value="Current section" />
     </Style>
     <Style Selector="Button.railItem:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
@@ -595,7 +606,7 @@
         </WrapPanel>
 
         <ProgressBar IsIndeterminate="True" Height="3"
-                     IsVisible="{Binding IsBusy}" />
+                     IsVisible="{Binding IsBusy}" AutomationProperties.Name="Working" />
 
         <!-- Phase 22D: one feedback stack, visible on every section. Each line is present only while it
              has something to say (hidden lines take no space). Errors and conflicts stay full text in

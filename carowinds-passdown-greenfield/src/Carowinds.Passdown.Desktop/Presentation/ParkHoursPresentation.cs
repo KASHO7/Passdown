@@ -107,5 +107,5 @@ public sealed record ParkHoursPresentation(
 
     private static string? FormatTime(TimeOnly? time) => time?.ToString("h:mm tt", PresentationCulture.UnitedStates);
 
-    private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d 'at' h:mm tt", PresentationCulture.UnitedStates);
+    private static string FormatTimestamp(DateTimeOffset value) => EasternTimestampFormat.DateAndTime(value);
 }

@@ -91,7 +91,7 @@ public class Phase21CShowsUiTests
 
         var presentation = ShowSchedulePresentation.Build(view, FixedNow);
 
-        Assert.Equal("Official schedule checked 10:00 AM · latest check failed", presentation.FreshnessText);
+        Assert.Equal("Official schedule checked 10:00 AM ET · latest check failed", presentation.FreshnessText);
         Assert.True(presentation.IsProblem);
     }
 
@@ -149,7 +149,7 @@ public class Phase21CShowsUiTests
         Assert.False(viewModel.IncludeShows);
         Assert.Equal(3, viewModel.ShowRows.Count);
         Assert.All(viewModel.ShowRows, row => Assert.False(row.IsSelected));
-        Assert.Equal("Official schedule checked 10:00 AM", viewModel.ShowsFreshnessText);
+        Assert.Equal("Official schedule checked 10:00 AM ET", viewModel.ShowsFreshnessText);
     }
 
     [Fact]

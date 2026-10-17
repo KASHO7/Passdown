@@ -1125,4 +1125,160 @@ public class Phase15ERealWindowLayoutTests
 
         window.Close();
     }
+
+    // ==================================================================================
+    // Phase 22F — Settings layout, current-section status, Calendar date-change panel
+    // ==================================================================================
+
+    private static PersonalSyncSettingsViewModel CreateBusySettings()
+    {
+        var settingsService = new FakePersonalSyncSettingsService
+        {
+            PersonalSyncEnabled = true,
+            SyncRootPath = @"C:\Users\associate\OneDrive - Personal\Carowinds Operations Sync\A Deliberately Long Folder Name That Must Wrap Inside The Panel",
+            Status = Application.PersonalSync.PersonalSyncStatus.FolderUnavailable,
+            StatusDetail = "The sync folder can't be reached. Work is saved on this computer and will sync once the folder is back.",
+        };
+        var coordinator = new FakePersonalSyncCoordinator
+        {
+            CurrentStatus = Application.PersonalSync.PersonalSyncAutomationSnapshot.Initial with
+            {
+                State = Application.PersonalSync.PersonalSyncAutomationState.Error,
+                LastErrorMessage = "Couldn't write to the sync folder (access denied).",
+                LastSuccessfulSyncUtc = new DateTimeOffset(2026, 8, 20, 14, 0, 0, TimeSpan.Zero),
+            },
+        };
+        return new PersonalSyncSettingsViewModel(settingsService, new FakeSyncFolderPicker(), new FakePersonalSyncConflictResolutionService(), coordinator);
+    }
+
+    [Theory]
+    [InlineData(960d, 640d, "Light")]
+    [InlineData(960d, 640d, "Dark")]
+    [InlineData(1280d, 690d, "Dark")]
+    [InlineData(1280d, 860d, "Light")]
+    [InlineData(1920d, 1000d, "Dark")]
+    public async Task SettingsView_EveryGroupAndControl_FitsTheWindow_WithLongPathsWrapped(double width, double height, string theme)
+    {
+        var viewModel = CreateBusySettings();
+        await viewModel.PendingLoad;
+        var window = RealizeInWindow(new PersonalSyncSettingsView { DataContext = viewModel }, width, height);
+        window.RequestedThemeVariant = theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        AssertNoControlClipsHorizontally(window);
+        foreach (var group in new[] { "Appearance", "Data refresh", "Personal Sync", "Diagnostics", "About this build" })
+        {
+            Assert.Contains(window.GetVisualDescendants().OfType<Border>(), b => AutomationProperties.GetName(b) == group);
+        }
+
+        foreach (var name in new[] { "Choose Personal Sync Folder", "Sync Now", "Export Diagnostics" })
+        {
+            Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => AutomationProperties.GetName(b) == name);
+        }
+
+        var scroll = window.GetVisualDescendants().OfType<ScrollViewer>().Single(s => s.Name == "SettingsScroll");
+        Assert.True(scroll.Extent.Width <= scroll.Viewport.Width + 1, $"horizontal overflow {scroll.Extent.Width - scroll.Viewport.Width:F0}px");
+
+        var path = window.GetVisualDescendants().OfType<SelectableTextBlock>().Single(t => t.Text == viewModel.SyncRootPath);
+        Assert.True(AbsoluteBounds(path, window).Right <= window.ClientSize.Width + 1);
+        if (width <= 960)
+        {
+            Assert.True(path.Bounds.Height > path.FontSize * 1.8, "a long sync-folder path wraps rather than running off the panel");
+        }
+
+        window.Close();
+    }
+
+    [Fact]
+    public async Task SettingsView_TabOrder_RunsThroughTheEditableControlsTopToBottom()
+    {
+        var viewModel = new PersonalSyncSettingsViewModel(new FakePersonalSyncSettingsService(), new FakeSyncFolderPicker(), new FakePersonalSyncConflictResolutionService(), new FakePersonalSyncCoordinator());
+        await viewModel.PendingLoad;
+        var window = RealizeInWindow(new PersonalSyncSettingsView { DataContext = viewModel }, 1280, 860);
+
+        var checkBox = window.GetVisualDescendants().OfType<CheckBox>().Single(c => AutomationProperties.GetName(c) == "Enable Personal Sync");
+        checkBox.Focus();
+        var seen = new List<string?> { AutomationProperties.GetName(checkBox) };
+        for (var i = 0; i < 8; i++)
+        {
+            window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            if (window.FocusManager!.GetFocusedElement() is Button button)
+            {
+                seen.Add(AutomationProperties.GetName(button));
+            }
+        }
+
+        var choose = seen.IndexOf("Choose Personal Sync Folder");
+        var export = seen.IndexOf("Export Diagnostics");
+        Assert.True(choose > 0, string.Join(" → ", seen));
+        Assert.True(export > choose, string.Join(" → ", seen));
+        Assert.False(viewModel.PersonalSyncEnabled); // Tab alone never toggles anything
+
+        window.Close();
+    }
+
+    [Fact]
+    public void MainWindow_AndAssociateRail_ExposeTheCurrentSectionAsItemStatus()
+    {
+        var viewModel = CreateMainViewModel();
+        var window = ShowMainWindow(viewModel, 1280, 860);
+
+        string? Status(string name) => AutomationProperties.GetItemStatus(
+            window.GetVisualDescendants().OfType<Button>().Single(b => AutomationProperties.GetName(b) == name));
+
+        Assert.Equal("Current page", Status("Dashboard section"));
+        Assert.Null(Status("Settings"));
+
+        viewModel.SelectedSection = AppSection.Settings;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal("Current page", Status("Settings"));
+        Assert.Null(Status("Dashboard section"));
+
+        viewModel.SelectedSection = AppSection.AssociatePassdown;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var rail = window.GetVisualDescendants().OfType<Button>().Single(b => AutomationProperties.GetName(b) == "Overview section");
+        var products = window.GetVisualDescendants().OfType<Button>().Single(b => AutomationProperties.GetName(b) == "Products section");
+        Assert.Equal("Current section", AutomationProperties.GetItemStatus(rail));
+        Assert.Null(AutomationProperties.GetItemStatus(products));
+
+        window.Close();
+    }
+
+    [Theory]
+    [InlineData(960d, 640d, "Light")]
+    [InlineData(1280d, 860d, "Dark")]
+    public async Task CalendarView_WhileANewDateLoads_ShowsItsHeadingAndNoPreviousDetails(double width, double height, string theme)
+    {
+        var service = new FakeOperationsCalendarService();
+        var viewModel = new OperationsCalendarViewModel(service, CreateClock());
+        await viewModel.PendingLoad;
+        var window = RealizeInWindow(new OperationsCalendarView { DataContext = viewModel }, width, height);
+        window.RequestedThemeVariant = theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var details = window.GetVisualDescendants().OfType<StackPanel>().Single(p => p.Name == "SelectedDateDetails");
+        var placeholder = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "SelectedDetailPlaceholder");
+        var heading = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "SelectedDateHeading");
+        Assert.True(details.IsEffectivelyVisible);
+        Assert.False(placeholder.IsEffectivelyVisible);
+
+        service.Gate = new TaskCompletionSource<bool>();
+        viewModel.NextDayCommand.Execute(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal("Saturday, August 22, 2026", heading.Text);
+        Assert.False(details.IsEffectivelyVisible);
+        Assert.True(placeholder.IsEffectivelyVisible);
+        Assert.Equal("Loading details…", placeholder.Text);
+        AssertNoControlClipsHorizontally(window);
+
+        service.Gate.SetResult(true);
+        await viewModel.PendingLoad;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(details.IsEffectivelyVisible);
+        Assert.False(placeholder.IsEffectivelyVisible);
+
+        window.Close();
+    }
 }

@@ -202,7 +202,7 @@ public sealed class Phase22ECalendarShowsTests
     {
         var shows = CalendarShowsPresentation.Build(Scheduled(Busy, SixByFour), Now);
 
-        Assert.Equal("Official schedule checked 10:32 AM", shows.FreshnessText);
+        Assert.Equal("Official schedule checked 10:32 AM ET", shows.FreshnessText);
         Assert.False(shows.IsProblem);
     }
 
@@ -213,7 +213,7 @@ public sealed class Phase22ECalendarShowsTests
         var shows = CalendarShowsPresentation.Build(view, Now);
 
         Assert.Equal("6 scheduled shows · 24 performances", shows.SummaryText);
-        Assert.Equal("Official schedule checked Oct 15, 10:32 AM · latest check failed", shows.FreshnessText);
+        Assert.Equal("Official schedule checked Oct 15, 10:32 AM ET · latest check failed", shows.FreshnessText);
         Assert.True(shows.IsProblem);
     }
 
@@ -479,7 +479,8 @@ public sealed class Phase22ECalendarShowsTests
 
         foreach (var binding in new[]
         {
-            "Presentation.SelectedDateText", "Presentation.ParkStatusText", "Presentation.EffectiveHoursText",
+            // Phase 22F: the heading binds the view model's own SelectedDateHeadingText (it changes before the load).
+            "SelectedDateHeadingText", "Presentation.ParkStatusText", "Presentation.EffectiveHoursText",
             "Presentation.ParkHoursVerificationText", "Presentation.ParkHoursStaleNoteText", "Presentation.WaterparkHoursText",
             "Presentation.DailyAdmissionPriceText", "Presentation.PassdownStatusText", "Presentation.PassdownDetailNoteText",
             "Presentation.OperationalNotesCountText", "Presentation.OperationalNotesImportantText", "HistoryStatus.Text",

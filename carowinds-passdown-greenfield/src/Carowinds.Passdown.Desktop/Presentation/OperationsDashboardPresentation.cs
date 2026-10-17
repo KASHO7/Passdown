@@ -156,7 +156,7 @@ public sealed record OperationsDashboardPresentation(
     }
 
     /// <summary>Shared timestamp formatting, also reused by <see cref="DashboardDataHealthPresentation"/> so "Last verified"/"Last checked" text matches this screen's other timestamps exactly.</summary>
-    internal static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d 'at' h:mm tt", PresentationCulture.UnitedStates);
+    internal static string FormatTimestamp(DateTimeOffset value) => EasternTimestampFormat.DateAndTime(value);
 
     /// <summary>Bounds one display string to a maximum length with an ellipsis (Phase 10B Part K) — presentation-only; the underlying draft value is never modified.</summary>
     private static string Truncate(string value, int maxLength)

@@ -37,7 +37,7 @@ public class Phase22CDashboardOverviewTests
         Assert.Equal("Park Ticket", p.ProductName);
         Assert.Equal("$64.99", p.PriceText);
         Assert.Equal("Official price for today", p.QualifierText);
-        Assert.Equal("Verified 6:05 AM", p.FreshnessText);
+        Assert.Equal("Verified 6:05 AM ET", p.FreshnessText);
         Assert.False(p.IsStale);
         Assert.Contains("Park Ticket", p.AutomationText);
         Assert.Contains("$64.99", p.AutomationText);
@@ -63,7 +63,7 @@ public class Phase22CDashboardOverviewTests
         var p = DashboardAdmissionPresentation.Build(summary, Afternoon);
 
         Assert.True(p.IsStale);
-        Assert.Equal("Last verified Oct 15, 6:05 AM — may be out of date", p.FreshnessText);
+        Assert.Equal("Last verified Oct 15, 6:05 AM ET — may be out of date", p.FreshnessText);
     }
 
     [Theory]
@@ -83,7 +83,7 @@ public class Phase22CDashboardOverviewTests
         Assert.False(p.HasProductName);
         Assert.Equal(DashboardAdmissionPresentation.NotAvailableText, p.PriceText);
         Assert.Equal(expected, p.QualifierText);
-        Assert.Equal("Last checked 6:05 AM", p.FreshnessText); // attempt-only: never "Verified"
+        Assert.Equal("Last checked 6:05 AM ET", p.FreshnessText); // attempt-only: never "Verified"
         Assert.DoesNotContain("$", p.PriceText);
     }
 
@@ -94,7 +94,7 @@ public class Phase22CDashboardOverviewTests
         var verified = new DateTimeOffset(2026, 10, 17, 2, 30, 0, TimeSpan.Zero);
         var p = DashboardAdmissionPresentation.Build(Phase22CDashboardFixtures.ExactAdmission(Today, verified), new DateTimeOffset(2026, 10, 17, 3, 0, 0, TimeSpan.Zero));
 
-        Assert.Equal("Verified 10:30 PM", p.FreshnessText);
+        Assert.Equal("Verified 10:30 PM ET", p.FreshnessText);
     }
 
     [Fact]
@@ -271,7 +271,7 @@ public class Phase22CDashboardOverviewTests
         Assert.Equal("+1 earlier", shows.Rows[0].EarlierText);
         Assert.Equal("Synthetic Amphitheater", shows.Rows[0].Venue);
         Assert.Null(shows.Rows[1].Venue);
-        Assert.Equal("Official schedule checked 6:05 AM", shows.FreshnessText);
+        Assert.Equal("Official schedule checked 6:05 AM ET", shows.FreshnessText);
 
         var closed = new OperationsDashboardViewModel(new FakeOperationsDashboardService { SnapshotFactory = Phase22CDashboardFixtures.ClosedPark });
         await closed.PendingLoad;

@@ -145,7 +145,7 @@
               BorderThickness="0,0,1,0" BorderBrush="{DynamicResource PassdownDividerBrush}">
         <Grid RowDefinitions="Auto,*">
 
-          <ProgressBar Grid.Row="0" IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoading}" />
+          <ProgressBar Grid.Row="0" IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoading}" AutomationProperties.Name="Loading operational notes" />
 
           <TextBlock Grid.Row="1" Text="{Binding ListErrorMessage}" Classes="fieldError"
                      Margin="16" TextWrapping="Wrap" VerticalAlignment="Top"

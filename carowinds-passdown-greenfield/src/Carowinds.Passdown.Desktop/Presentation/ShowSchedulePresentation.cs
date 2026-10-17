@@ -112,7 +112,7 @@ public sealed record ShowSchedulePresentation(
             view.State == ShowScheduleState.CouldNotCheck || view.LastCheckFailed);
     }
 
-    /// <summary>"Official schedule checked 10:32 AM" — plus "latest check failed" when older verified data is being kept.</summary>
+    /// <summary>"Official schedule checked 10:32 AM ET" — plus "latest check failed" when older verified data is being kept.</summary>
     /// <remarks>Phase 22E: shared with <see cref="CalendarShowsPresentation"/> so both surfaces word freshness identically.</remarks>
     internal static string? BuildFreshnessText(ShowScheduleView view, DateTimeOffset nowUtc)
     {
@@ -121,11 +121,7 @@ public sealed record ShowSchedulePresentation(
             return null;
         }
 
-        var nowEastern = EasternTimeZone.ConvertFromUtc(nowUtc);
-        var verifiedEastern = EasternTimeZone.ConvertFromUtc(verifiedAt);
-        var when = verifiedEastern.Date == nowEastern.Date
-            ? verifiedEastern.ToString("h:mm tt", PresentationCulture.UnitedStates)
-            : verifiedEastern.ToString("MMM d, h:mm tt", PresentationCulture.UnitedStates);
+        var when = EasternTimestampFormat.Relative(verifiedAt, nowUtc);
         return view.LastCheckFailed
             ? $"Official schedule checked {when} · latest check failed"
             : $"Official schedule checked {when}";

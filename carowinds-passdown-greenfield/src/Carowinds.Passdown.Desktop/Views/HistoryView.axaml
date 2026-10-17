@@ -56,7 +56,7 @@
               BorderThickness="0,0,1,0" BorderBrush="{DynamicResource PassdownDividerBrush}">
         <Grid RowDefinitions="Auto,*">
 
-          <ProgressBar Grid.Row="0" IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoadingList}" />
+          <ProgressBar Grid.Row="0" IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoadingList}" AutomationProperties.Name="Loading history" />
 
           <TextBlock Grid.Row="1" Text="{Binding ListErrorMessage}" Classes="fieldError"
                      Margin="16" TextWrapping="Wrap"
@@ -107,7 +107,7 @@
 
           <StackPanel Spacing="16" IsVisible="{Binding HasSelection}">
 
-            <ProgressBar IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoadingDetail}" />
+            <ProgressBar IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoadingDetail}" AutomationProperties.Name="Loading finalized passdown" />
 
             <StackPanel Spacing="10">
               <Grid ColumnDefinitions="*,Auto">
@@ -165,10 +165,14 @@
                             IsVisible="{Binding SelectedDetail.Snapshot.ParkHours.BadgeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                       <TextBlock Text="{Binding SelectedDetail.Snapshot.ParkHours.BadgeText}" />
                     </Border>
-                    <TextBlock Text="{Binding SelectedDetail.Snapshot.ParkHours.NorthGateText}" Classes="muted" TextWrapping="Wrap"
-                               IsVisible="{Binding SelectedDetail.Snapshot.ParkHours.NorthGateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                    <TextBlock Text="{Binding SelectedDetail.Snapshot.ParkHours.AvenueText}" Classes="muted" TextWrapping="Wrap"
-                               IsVisible="{Binding SelectedDetail.Snapshot.ParkHours.AvenueText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <!-- Phase 22F: the frozen gate times are bare values ("9:30 AM"); label them as the PDFs do.
+                         Display only — the stored text is shown exactly as finalized. -->
+                    <TextBlock TextWrapping="Wrap"
+                               IsVisible="{Binding SelectedDetail.Snapshot.ParkHours.NorthGateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               AutomationProperties.Name="{Binding SelectedDetail.Snapshot.ParkHours.NorthGateText, StringFormat='North Gate: {0}'}"><Run Text="North Gate · " Foreground="{DynamicResource PassdownTextSecondaryBrush}" /><Run Text="{Binding SelectedDetail.Snapshot.ParkHours.NorthGateText}" /></TextBlock>
+                    <TextBlock TextWrapping="Wrap"
+                               IsVisible="{Binding SelectedDetail.Snapshot.ParkHours.AvenueText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               AutomationProperties.Name="{Binding SelectedDetail.Snapshot.ParkHours.AvenueText, StringFormat='Avenue: {0}'}"><Run Text="Avenue · " Foreground="{DynamicResource PassdownTextSecondaryBrush}" /><Run Text="{Binding SelectedDetail.Snapshot.ParkHours.AvenueText}" /></TextBlock>
                     <TextBlock Text="{Binding SelectedDetail.Snapshot.ParkHours.VerificationText}" Classes="muted" TextWrapping="Wrap"
                                IsVisible="{Binding SelectedDetail.Snapshot.ParkHours.VerificationText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                     <TextBlock Text="{Binding SelectedDetail.Snapshot.ParkHours.PrivateBuyoutDetails}" Classes="fieldWarning" TextWrapping="Wrap"

@@ -18,6 +18,10 @@ namespace Carowinds.Passdown.Desktop.ViewModels;
 public sealed partial class OperationsCalendarDayViewModel : ObservableObject
 {
     private readonly Action<DateOnly> _onSelect;
+    private readonly OperationsCalendarDay _day;
+    private readonly OperationsCalendarOperatingStatePresentation _operatingState;
+    private readonly OperationsCalendarPassdownPresentation _passdownPresentation;
+    private readonly OperationsCalendarNotesPresentation _notesPresentation;
 
     public DateOnly Date { get; }
 
@@ -37,7 +41,13 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
 
     public bool IsToday { get; }
 
-    public bool IsSelected { get; }
+    /// <summary>
+    /// Phase 22F: settable by the Calendar so a newly chosen date is highlighted the moment it is chosen
+    /// (before its detail load completes); <see cref="AutomationName"/> follows it.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AutomationName))]
+    public partial bool IsSelected { get; set; }
 
     public bool HasFinalizedPassdown { get; }
 
@@ -79,17 +89,29 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
 
     public bool HasEffectiveHoursLine => EffectiveHoursLine is not null;
 
+    /// <summary>
+    /// Phase 22F: <see cref="EffectiveHoursLine"/> with non-breaking spaces before AM/PM, so a narrow cell wraps
+    /// only after the en dash ("12 PM–" / "9 PM") and never strands "PM" on its own line. Display only.
+    /// </summary>
+    public string? EffectiveHoursLineDisplay => KeepMeridiemsAttached(EffectiveHoursLine);
+
     /// <summary>"Harbor 11–6", or <see langword="null"/> when Carolina Harbor's hours were not published for this date (Phase 13D Part D/E/F) — shown in the same cell as <see cref="EffectiveHoursLine"/>, never a separate badge.</summary>
     public string? WaterparkLine { get; }
 
     public bool HasWaterparkLine => WaterparkLine is not null;
+
+    /// <summary>Phase 22F: <see cref="WaterparkLine"/> wrapped the same way as <see cref="EffectiveHoursLineDisplay"/>.</summary>
+    public string? WaterparkLineDisplay => KeepMeridiemsAttached(WaterparkLine);
+
+    private static string? KeepMeridiemsAttached(string? text) =>
+        text?.Replace(" AM", "\u00A0AM", StringComparison.Ordinal).Replace(" PM", "\u00A0PM", StringComparison.Ordinal);
 
     public bool HasOperatingStateLabel => OperatingStateLabel is not null;
 
     /// <summary>Spec Part J: a compact, reused-not-recomputed staleness indicator — see <see cref="OperationsCalendarOperatingStatePresentation.IsStale"/>.</summary>
     public bool IsHoursStale { get; }
 
-    public string AutomationName { get; }
+    public string AutomationName => BuildAutomationName(_day, IsSelected, _operatingState, _passdownPresentation, _notesPresentation);
 
     public OperationsCalendarDayViewModel(OperationsCalendarDay day, bool isSelected, Action<DateOnly> onSelect)
     {
@@ -119,7 +141,10 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
         var notesPresentation = OperationsCalendarNotesPresentation.Build(day.RelevantOperationalNoteCount, day.ImportantOperationalNoteCount);
         NotesSummaryText = notesPresentation.CellText;
 
-        AutomationName = BuildAutomationName(day, isSelected, operatingStatePresentation, passdownPresentation, notesPresentation);
+        _day = day;
+        _operatingState = operatingStatePresentation;
+        _passdownPresentation = passdownPresentation;
+        _notesPresentation = notesPresentation;
     }
 
     [RelayCommand]

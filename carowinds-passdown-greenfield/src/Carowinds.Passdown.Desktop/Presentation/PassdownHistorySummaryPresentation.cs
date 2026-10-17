@@ -29,7 +29,7 @@ public sealed record PassdownHistorySummaryPresentation(
     /// <summary>Phase 22E: the compact PDF tag at the row's right edge — "PDF" when the exact frozen PDF is stored, "No PDF" otherwise (with <see cref="PdfAvailabilityText"/> as its full wording).</summary>
     public string PdfTagText => HasFrozenPdf ? "PDF" : "No PDF";
 
-    /// <summary>"Friday, October 16, 2026, finalized Oct 17, 6:02 AM, Scheduled, PDF available" for screen readers.</summary>
+    /// <summary>"Friday, October 16, 2026, finalized Oct 17, 6:02 AM ET, Scheduled, PDF available" for screen readers.</summary>
     public string AccessibleSummary => $"{ListTitleText}, {char.ToLowerInvariant(ListDetailText[0])}{ListDetailText[1..].Replace(" · ", ", ", StringComparison.Ordinal)}, {PdfAvailabilityText}";
 
     public static PassdownHistorySummaryPresentation Build(FinalizedPassdownSummary summary)
@@ -43,13 +43,13 @@ public sealed record PassdownHistorySummaryPresentation(
         return new PassdownHistorySummaryPresentation(
             summary.PassdownDate,
             summary.PassdownDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates),
-            string.Create(PresentationCulture.UnitedStates, $"Finalized {finalizedEastern:MMM d, yyyy 'at' h:mm tt}"),
+            $"Finalized {EasternTimestampFormat.DateYearAndTime(summary.FinalizedAtUtc)}",
             summary.Origin.ToString(),
             summary.HasFrozenPdf,
             summary.HasFrozenPdf ? "PDF available" : "Exact historical PDF unavailable")
         {
             ListTitleText = summary.PassdownDate.ToString("dddd, MMMM d, yyyy", PresentationCulture.UnitedStates),
-            ListDetailText = $"Finalized {finalizedEastern.ToString(finalizedShortFormat, PresentationCulture.UnitedStates)} · {summary.Origin}",
+            ListDetailText = $"Finalized {EasternTimestampFormat.Format(summary.FinalizedAtUtc, finalizedShortFormat)} · {summary.Origin}",
         };
     }
 }

@@ -1939,3 +1939,27 @@ schedules, historical backfill and Check Online scope are unchanged. See
 | Windows validation | NOT EXECUTED — checklist in the Phase 22E.1 doc §16 |
 | Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
 
+
+# Unreleased development — Phase 22F (after RC.6)
+
+Settings, accessibility and final UI/UX QA, the last Phase 22 phase. Settings is one page:
+Appearance, Data Refresh, Personal Sync, Diagnostics, About. Problems show in the error style, and a
+mixed-version sync caution is visible. The Calendar never shows a previous date's details under a newly
+selected date, including during rapid switching and after a failed read. Operational timestamps show
+the Eastern wall clock with "ET" whatever the PC's zone; the PDF footer is also Eastern. Fixes: date-picker
+adjacent days are muted, History gate times are labelled, Calendar day-cell hours wrap instead of
+truncating, the Associate rail announces its current section, and progress bars are named. Adds
+`tools/visual-fixtures` (synthetic screenshot harness, outside the solution). See
+`docs/phase22f-settings-accessibility-final-qa.md` and the consolidated
+`docs/phase22-windows-validation-checklist.md`. RC.6 artifacts are unchanged; `Directory.Build.props`
+still says `0.1.0-rc.6`. The next packaged candidate is **`0.1.0-rc.7`** (not packaged here).
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| Upgrade implications | None for data. Stored timestamps are unchanged; only their display is Eastern + "ET". Newly generated PDFs print the footer time in Eastern (identical on Eastern PCs); frozen History PDFs are never regenerated. |
+| Deterministic tests | **3968/3968** (baseline 3885 at `f685b72`; +30 `Phase22FCalendarAndTimeTests`, +38 `Phase22FSettingsAccessibilityTests`, +6 `Phase22FGeneratedTimestampTests`, +9 `Phase15ERealWindowLayoutTests`; 23 existing assertions gained " ET", host-local expectations moved to Eastern, one markup binding updated) = 221 Domain + 1089 Application + 852 Infrastructure + 457 Documents + 1244 Ui together + 26 `OperationsCalendarViewTests` + 66 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). Run-alone set unchanged (five classes). Known intermittent `DailyFeatureMathPdfTests.FinalizedSnapshot_KeepsTheSourceText_AndItsPdfMatchesTheLiveRender` failed once and passed 5/5 on rerun |
+| Release build | 0 warnings, 0 errors |
+| Visual QA | 232 synthetic after-captures (29 scenarios × Light/Dark × 960×640, 1280×690, 1280×860, 1920×1000) + before-captures from `f685b72`; no horizontal overflow or clipped button. Not DPI validation |
+| Windows validation | NOT EXECUTED — `docs/phase22-windows-validation-checklist.md` (Narrator, 100/125/150% scaling included) |
+| Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |

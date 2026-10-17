@@ -4,6 +4,7 @@ using Carowinds.Passdown.Application.HistoricalBackfill;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Desktop.Services;
+using Carowinds.Passdown.Domain;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -56,6 +57,8 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(HasSnapshot))]
     [NotifyPropertyChangedFor(nameof(ShowEmptyOrErrorState))]
     [NotifyPropertyChangedFor(nameof(OpenHistoryHelpText))]
+    [NotifyPropertyChangedFor(nameof(IsSelectedDetailCurrent))]
+    [NotifyPropertyChangedFor(nameof(SelectedDetailPlaceholderText))]
     [NotifyCanExecuteChangedFor(nameof(OpenHistoryCommand))]
     public partial OperationsCalendarSnapshot? Snapshot { get; set; }
 
@@ -75,6 +78,7 @@ public partial class OperationsCalendarViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmptyOrErrorState))]
+    [NotifyPropertyChangedFor(nameof(SelectedDetailPlaceholderText))]
     public partial bool IsLoading { get; set; }
 
     [ObservableProperty]
@@ -223,6 +227,32 @@ public partial class OperationsCalendarViewModel : ViewModelBase
 
     public bool HasSnapshot => Snapshot is not null;
 
+    /// <summary>Phase 22F: the page title follows <see cref="DisplayedMonth"/> directly (also when a load failed).</summary>
+    public string DisplayedMonthText => DisplayedMonth.ToString("MMMM yyyy", PresentationCulture.UnitedStates);
+
+    /// <summary>
+    /// Phase 22F: the selected-date heading comes from <see cref="SelectedDate"/> itself, so it changes the
+    /// instant a date is chosen — never from the previous date's snapshot.
+    /// </summary>
+    public string SelectedDateHeadingText => SelectedDate.ToString("dddd, MMMM d, yyyy", PresentationCulture.UnitedStates);
+
+    public bool SelectedDateIsToday => SelectedDate == TodayEastern();
+
+    /// <summary>
+    /// Phase 22F: true only while the loaded snapshot's selected-date summary belongs to <see cref="SelectedDate"/>.
+    /// The detail panel's hours, pricing, Shows, passdown status and notes are shown only then — between a date
+    /// change and its load completing (or after that load failed) none of the previous date's details appear
+    /// under the new heading.
+    /// </summary>
+    public bool IsSelectedDetailCurrent => Snapshot is { } snapshot && snapshot.Selected.Date == SelectedDate;
+
+    /// <summary>Phase 22F: the one compact line shown in place of the details while they are not current.</summary>
+    public string? SelectedDetailPlaceholderText => IsSelectedDetailCurrent
+        ? null
+        : IsLoading
+            ? "Loading details…"
+            : "Details for this date are unavailable.";
+
     public bool ShowEmptyOrErrorState => !IsLoading && Snapshot is null;
 
     /// <summary>The in-flight (or most recently finished) load, so a test can await it deterministically instead of racing the constructor's fire-and-forget load.</summary>
@@ -233,6 +263,7 @@ public partial class OperationsCalendarViewModel : ViewModelBase
         // Phase 20C: a viewed current-year month with missing history is checked next (still behind
         // every operational refresh). Local only — this never starts a request by itself.
         _historicalBackfill?.PrioritizeMonth(value);
+        OnPropertyChanged(nameof(DisplayedMonthText));
 
         if (!_suppressAutoLoad)
         {
@@ -264,6 +295,17 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     partial void OnSelectedDateChanged(DateOnly value)
     {
         RebuildCalendarShows();
+        foreach (var day in Days)
+        {
+            day.IsSelected = day.Date == value;
+        }
+
+        OnPropertyChanged(nameof(SelectedDateHeadingText));
+        OnPropertyChanged(nameof(SelectedDateIsToday));
+        OnPropertyChanged(nameof(IsSelectedDetailCurrent));
+        OnPropertyChanged(nameof(SelectedDetailPlaceholderText));
+        OnPropertyChanged(nameof(OpenHistoryHelpText));
+        OpenHistoryCommand.NotifyCanExecuteChanged();
         if (!_suppressAutoLoad)
         {
             _pendingLoad = LoadAsync();
@@ -279,7 +321,7 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     {
         Presentation = value is null ? null : OperationsCalendarPresentation.Build(value);
         RebuildCalendarShows();
-        Days = value?.Days.Select(day => new OperationsCalendarDayViewModel(day, day.Date == value.SelectedDate, SelectDate)).ToList() ?? [];
+        Days = value?.Days.Select(day => new OperationsCalendarDayViewModel(day, day.Date == SelectedDate, SelectDate)).ToList() ?? [];
         Weeks = Days.Chunk(7).Select(week => new OperationsCalendarWeekViewModel(week)).ToList();
     }
 
@@ -359,7 +401,7 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanOpenHistory))]
     private void OpenHistory() => OpenHistoryRequested?.Invoke(this, SelectedDate);
 
-    private bool CanOpenHistory() => Snapshot?.Selected.PassdownStatus == OperationsCalendarPassdownStatus.Finalized;
+    private bool CanOpenHistory() => IsSelectedDetailCurrent && Snapshot!.Selected.PassdownStatus == OperationsCalendarPassdownStatus.Finalized;
 
     /// <summary>
     /// Phase 12E Part S: "Open History" is disabled (not hidden) until the selected date is
@@ -400,8 +442,19 @@ public partial class OperationsCalendarViewModel : ViewModelBase
             }
 
             _logger?.LogError(ex, "Failed to load the Operations Calendar for {DisplayedMonth}.", DisplayedMonth);
-            Snapshot = null;
-            ErrorMessage = "Unable to load the operations calendar right now.";
+
+            // Phase 22F: the selected date stays as chosen. A grid already loaded for this same month is still
+            // that month's data, so it stays usable (with the detail panel saying the date is unavailable);
+            // any other month's grid is cleared. Nothing is inferred (never Closed / Not Published).
+            if (Snapshot is { } shown && shown.DisplayedMonth == DisplayedMonth)
+            {
+                ErrorMessage = $"Couldn't load {SelectedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)} from this computer's saved data. Choose the date again to retry.";
+            }
+            else
+            {
+                Snapshot = null;
+                ErrorMessage = "Unable to load the operations calendar right now.";
+            }
         }
         finally
         {

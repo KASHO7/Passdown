@@ -1179,3 +1179,28 @@ See `docs/phase22e1-published-park-schedule-coverage.md`.
 
 Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.
 
+
+## Phase 22F — Settings, accessibility & final UI/UX QA
+
+See `docs/phase22f-settings-accessibility-final-qa.md` and `docs/phase22-windows-validation-checklist.md`.
+
+- **Desktop** — `Presentation.EasternTimestampFormat` is the single display formatter for operational
+  timestamps. It sits on `Application.Time.EasternTimeZone` and appends "ET". Every presentation
+  formatter that used `ToLocalTime()` / `LocalDateTime`, plus the five Eastern ones, now goes through
+  it. Schedule times and date-only values are not labelled. `OperationsCalendarViewModel`:
+  `SelectedDateHeadingText`, `SelectedDateIsToday` and `DisplayedMonthText` come from the selection
+  itself. `IsSelectedDetailCurrent` gates the detail panel (`SelectedDateDetails`), and
+  `SelectedDetailPlaceholderText` stands in for it. `OperationsCalendarDayViewModel.IsSelected` is
+  observable. `CanOpenHistory` requires the current detail. A failed read keeps a same-month grid. The
+  `_loadVersion` token is unchanged. Settings is one page in five groups; Appearance and Data Refresh
+  are information only. `PersonalSyncStatusPresentation.IsProblem`,
+  `PersonalSyncAutomationStatusPresentation.IsProblem` and
+  `DiagnosticsExportViewModel.IsDiagnosticsExportProblem` drive error styling only. The
+  `Button.railItem.active` style sets ItemStatus "Current section". Small view fixes: date-picker
+  inactive days, History gate labels, wrapping day-cell hours, named progress bars.
+- **Documents** — `AssociatePassdownDocumentModelBuilder` footer stamp uses `EasternTimeZone` (wording
+  and layout unchanged).
+- **tools/visual-fixtures** — reusable synthetic Skia screenshot harness (outside the solution; links the
+  Ui.Tests fakes).
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.

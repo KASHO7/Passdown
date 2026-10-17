@@ -194,7 +194,7 @@ public class Phase19ADashboardAndStatusTests
 
         var p = OfficialDataStatusPresentation.Build(status, At1241PmEastern.AddMinutes(30));
 
-        Assert.Equal("Official data checked 12:41 PM", p.Text);
+        Assert.Equal("Official data checked 12:41 PM ET", p.Text);
         Assert.DoesNotContain("updated", p.Text, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(p.Text, p.AutomationText);
     }
@@ -206,7 +206,7 @@ public class Phase19ADashboardAndStatusTests
 
         var p = OfficialDataStatusPresentation.Build(status, At1241PmEastern.AddDays(1));
 
-        Assert.Equal("Official data checked Oct 15, 12:41 PM", p.Text);
+        Assert.Equal("Official data checked Oct 15, 12:41 PM ET", p.Text);
     }
 
     [Fact]
@@ -216,7 +216,7 @@ public class Phase19ADashboardAndStatusTests
 
         var p = OfficialDataStatusPresentation.Build(status, At1241PmEastern);
 
-        Assert.Equal("Some official data couldn't be updated · Last checked 12:41 PM", p.Text);
+        Assert.Equal("Some official data couldn't be updated · Last checked 12:41 PM ET", p.Text);
         Assert.Equal("Not updated: Fast Lane, Promotions", p.DetailText);
         Assert.True(p.HasIssue);
         Assert.Contains("Not updated: Fast Lane, Promotions", p.AutomationText);
@@ -230,7 +230,7 @@ public class Phase19ADashboardAndStatusTests
 
         var p = OfficialDataStatusPresentation.Build(status, At1241PmEastern);
 
-        Assert.Equal("Official data couldn't be updated · Last checked 12:41 PM", p.Text);
+        Assert.Equal("Official data couldn't be updated · Last checked 12:41 PM ET", p.Text);
         Assert.True(p.HasIssue);
     }
 
@@ -243,7 +243,7 @@ public class Phase19ADashboardAndStatusTests
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
             var status = new OfficialDataStatus(OfficialDataCheckState.Checked, At1241PmEastern, At1241PmEastern, At1241PmEastern, []);
 
-            Assert.Equal("Official data checked 12:41 PM", OfficialDataStatusPresentation.Build(status, At1241PmEastern).Text);
+            Assert.Equal("Official data checked 12:41 PM ET", OfficialDataStatusPresentation.Build(status, At1241PmEastern).Text);
         }
         finally
         {
@@ -290,7 +290,7 @@ public class Phase19ADashboardAndStatusTests
         Assert.Equal("Checking online for this date…", note.Text);
         Assert.Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(note));
         Assert.Same(status, viewModel.OfficialDataStatus);
-        Assert.Equal("Official data checked 12:41 PM", viewModel.OfficialDataStatus!.Presentation.Text);
+        Assert.Equal("Official data checked 12:41 PM ET", viewModel.OfficialDataStatus!.Presentation.Text);
 
         var markup = File.ReadAllText(FindRepoFile("src/Carowinds.Passdown.Desktop/Views/AssociateView.axaml"));
         Assert.Contains("Text=\"{Binding OfficialDataStatus.Presentation.Text}\"", markup);

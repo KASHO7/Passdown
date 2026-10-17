@@ -65,7 +65,7 @@
     <ScrollViewer Grid.Row="1" Padding="24,16,24,24">
       <StackPanel Spacing="16">
 
-        <ProgressBar IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoading}" />
+        <ProgressBar IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoading}" AutomationProperties.Name="Loading dashboard" />
 
         <StackPanel Orientation="Horizontal" Spacing="12"
                     IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
@@ -189,7 +189,7 @@
                     <!-- Phase 10E Part R: a dedicated busy indicator for Check Online, distinct from the
                          page's IsLoading ProgressBar (local reload vs online check). -->
                     <ProgressBar x:Name="CheckOnlineBusyBar" IsIndeterminate="True" Height="3" Width="140" HorizontalAlignment="Right"
-                                 IsVisible="{Binding IsCheckingOnline}" />
+                                 IsVisible="{Binding IsCheckingOnline}" AutomationProperties.Name="Checking official data" />
                     <TextBlock Text="{Binding CheckOnlineStatusMessage}" Classes="muted" HorizontalAlignment="Right"
                                TextWrapping="Wrap" MaxWidth="260" TextAlignment="Right"
                                IsVisible="{Binding CheckOnlineStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
@@ -290,7 +290,7 @@
                                 AutomationProperties.Name="Run Deep Refresh"
                                 AutomationProperties.HelpText="Restores upcoming Park Hours coverage and refreshes every supported product/pricing source, regardless of when it last ran." />
                         <ProgressBar x:Name="DeepRefreshBusyBar" IsIndeterminate="True" Height="3" Width="140" HorizontalAlignment="Right"
-                                     IsVisible="{Binding IsRunningDeepRefresh}" />
+                                     IsVisible="{Binding IsRunningDeepRefresh}" AutomationProperties.Name="Deep refresh in progress" />
                         <TextBlock Text="{Binding DeepRefreshStatusMessage}" Classes="muted" HorizontalAlignment="Right"
                                    TextWrapping="Wrap" MaxWidth="260" TextAlignment="Right"
                                    IsVisible="{Binding DeepRefreshStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

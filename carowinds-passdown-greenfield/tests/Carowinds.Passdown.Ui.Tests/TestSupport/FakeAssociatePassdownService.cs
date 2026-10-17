@@ -63,6 +63,9 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
     /// </summary>
     public Queue<TaskCompletionSource<bool>> SaveGates { get; } = new();
 
+    /// <summary>Phase 22F: when set, every draft save throws it (a failed local write) — the stored draft is left unchanged.</summary>
+    public Exception? SaveException { get; set; }
+
     public async Task<AssociateWorkspace> LoadAssociateDateAsync(DateOnly operatingDate, CancellationToken cancellationToken = default)
     {
         LoadCalls.Add(operatingDate);
@@ -148,6 +151,11 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
         if (SaveGates.Count > 0)
         {
             await SaveGates.Dequeue().Task;
+        }
+
+        if (SaveException is not null)
+        {
+            throw SaveException;
         }
 
         _savedDrafts[operatingDate] = draft;

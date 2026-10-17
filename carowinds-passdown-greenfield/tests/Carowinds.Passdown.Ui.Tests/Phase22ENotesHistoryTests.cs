@@ -3,6 +3,7 @@ using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.History;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
+using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Domain;
@@ -84,7 +85,8 @@ public sealed class Phase22ENotesHistoryTests
 
     // ---------------------------------------------------------------- timestamps
 
-    private static string Stamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d 'at' h:mm tt", PresentationCulture.UnitedStates);
+    // Phase 22F: Eastern wall clock + "ET" (was the host's local zone).
+    private static string Stamp(DateTimeOffset value) => EasternTimeZone.ConvertFromUtc(value).ToString("MMM d 'at' h:mm tt", PresentationCulture.UnitedStates) + " ET";
 
     [Fact]
     public void UneditedNote_ShowsOnlyItsCreatedTime()
@@ -116,7 +118,7 @@ public sealed class Phase22ENotesHistoryTests
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
             var created = new DateTimeOffset(2026, 10, 12, 13, 0, 0, TimeSpan.Zero);
             var detail = OperationalNoteDetailPresentation.Build(Note(created: created), Today);
-            Assert.Matches(@"^Created Oct 12 at \d{1,2}:\d{2} (AM|PM)$", detail.CreatedText!);
+            Assert.Matches(@"^Created Oct 12 at \d{1,2}:\d{2} (AM|PM) ET$", detail.CreatedText!);
         }
         finally
         {
@@ -292,13 +294,13 @@ public sealed class Phase22ENotesHistoryTests
         var row = PassdownHistorySummaryPresentation.Build(Summary(new DateOnly(2026, 10, 16), new DateTimeOffset(2026, 10, 17, 10, 2, 0, TimeSpan.Zero)));
 
         Assert.Equal("Friday, October 16, 2026", row.ListTitleText);
-        Assert.Equal("Finalized Oct 17, 6:02 AM · Scheduled", row.ListDetailText);
+        Assert.Equal("Finalized Oct 17, 6:02 AM ET · Scheduled", row.ListDetailText);
         Assert.Equal("PDF", row.PdfTagText);
-        Assert.Equal("Friday, October 16, 2026, finalized Oct 17, 6:02 AM, Scheduled, PDF available", row.AccessibleSummary);
+        Assert.Equal("Friday, October 16, 2026, finalized Oct 17, 6:02 AM ET, Scheduled, PDF available", row.AccessibleSummary);
 
         // The pre-22E fields are unchanged.
         Assert.Equal("October 16, 2026", row.PassdownDateText);
-        Assert.Equal("Finalized Oct 17, 2026 at 6:02 AM", row.FinalizedText);
+        Assert.Equal("Finalized Oct 17, 2026 at 6:02 AM ET", row.FinalizedText);
         Assert.Equal("PDF available", row.PdfAvailabilityText);
     }
 
@@ -307,7 +309,7 @@ public sealed class Phase22ENotesHistoryTests
     {
         var row = PassdownHistorySummaryPresentation.Build(Summary(new DateOnly(2026, 12, 31), new DateTimeOffset(2027, 1, 1, 11, 2, 0, TimeSpan.Zero), origin: FinalizationOrigin.Manual));
 
-        Assert.Equal("Finalized Jan 1, 2027, 6:02 AM · Manual", row.ListDetailText);
+        Assert.Equal("Finalized Jan 1, 2027, 6:02 AM ET · Manual", row.ListDetailText);
     }
 
     [Fact]

@@ -1,5 +1,4 @@
 using Carowinds.Passdown.Application.Refresh;
-using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Desktop.Presentation;
@@ -52,10 +51,6 @@ public sealed record OfficialDataStatusPresentation(
     /// <summary>"12:41 PM" for today (Eastern); "Oct 14, 12:41 PM" for an earlier day.</summary>
     private static string FormatTime(DateTimeOffset instantUtc, DateTimeOffset nowUtc)
     {
-        var eastern = EasternTimeZone.ConvertFromUtc(instantUtc);
-        var nowEastern = EasternTimeZone.ConvertFromUtc(nowUtc);
-        return eastern.Date == nowEastern.Date
-            ? eastern.ToString("h:mm tt", PresentationCulture.UnitedStates)
-            : eastern.ToString("MMM d, h:mm tt", PresentationCulture.UnitedStates);
+        return EasternTimestampFormat.Relative(instantUtc, nowUtc);
     }
 }

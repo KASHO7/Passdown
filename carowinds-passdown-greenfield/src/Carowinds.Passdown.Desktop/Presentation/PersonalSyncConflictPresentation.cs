@@ -65,7 +65,7 @@ public sealed record ConflictDetailPresentation(
         detail.BuildFieldComparisons());
 
     private static string BuildRemoteActivityLabel(DateTimeOffset remoteModifiedUtc) =>
-        string.Create(PresentationCulture.UnitedStates, $"Changed on another device on {remoteModifiedUtc.LocalDateTime:MMM d 'at' h:mm tt}.");
+        $"Changed on another device on {EasternTimestampFormat.DateAndTime(remoteModifiedUtc)}.";
 
     private static string? BuildNewerActivityNote(bool hasNewerRemoteActivity) =>
         hasNewerRemoteActivity ? "The other device has changed this again since this conflict was detected. Resolve this conflict first; the newer change will be picked up on a later sync." : null;

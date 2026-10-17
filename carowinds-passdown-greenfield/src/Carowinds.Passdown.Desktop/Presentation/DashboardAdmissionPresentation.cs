@@ -1,6 +1,5 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Dashboard;
-using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain;
 
 namespace Carowinds.Passdown.Desktop.Presentation;
@@ -73,10 +72,6 @@ public sealed record DashboardAdmissionPresentation(
     /// <summary>Eastern time; the date is omitted when it is the same Eastern day as <paramref name="nowUtc"/> (matches the official-data status line).</summary>
     internal static string FormatEastern(DateTimeOffset instantUtc, DateTimeOffset nowUtc)
     {
-        var eastern = EasternTimeZone.ConvertFromUtc(instantUtc);
-        var nowEastern = EasternTimeZone.ConvertFromUtc(nowUtc);
-        return eastern.Date == nowEastern.Date
-            ? eastern.ToString("h:mm tt", PresentationCulture.UnitedStates)
-            : eastern.ToString("MMM d, h:mm tt", PresentationCulture.UnitedStates);
+        return EasternTimestampFormat.Relative(instantUtc, nowUtc);
     }
 }
