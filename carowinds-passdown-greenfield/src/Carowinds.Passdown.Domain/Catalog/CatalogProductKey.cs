@@ -91,5 +91,14 @@ public sealed record CatalogProductKey
         return new CatalogProductKey(category, storedIdentity[(separatorIndex + 1)..]);
     }
 
+    /// <summary>
+    /// Phase 21A: a distinct identity for a different pass validity year under the same official
+    /// id/url/name tier — <c>{Value}|pass-year:{year}</c>. Used only when the stored product under
+    /// this key states a different year than the observation (see <see cref="PassValidityYear"/>), so
+    /// every existing key stays unchanged and no stored row is rewritten.
+    /// </summary>
+    public CatalogProductKey WithPassYear(int passYear) =>
+        new(Category, $"{Value}|pass-year:{passYear.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+
     public override string ToString() => $"{Category}:{Value}";
 }

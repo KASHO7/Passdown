@@ -1,0 +1,13 @@
+{
+  "parkId": 30,
+  "parkAbbreviation": "CA",
+  "parkName": "Carowinds",
+  "dates": [
+    {
+      "date": "10/19/2026",
+      "isParkClosed": true,
+      "shows": [],
+      "operatings": []
+    }
+  ]
+}

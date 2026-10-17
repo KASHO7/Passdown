@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Carowinds.Passdown.Application.OperationalNotes;
+using Carowinds.Passdown.Application.Shows;
 
 namespace Carowinds.Passdown.Application.Associate;
 
@@ -147,6 +148,17 @@ public sealed record AssociateDraftPayload(
     /// <summary>Phase 18D: manual Avenue opening time for this operating date — same contract as <see cref="NorthGateOpeningOverride"/>, fully independent of it.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public TimeOnly? AvenueOpeningOverride { get; init; }
+
+    /// <summary>
+    /// Phase 21C: the optional Shows section — whether it prints and which official shows were chosen
+    /// for this date (<see cref="AssociateShowsSelection"/>). Additive and optional, following the
+    /// Phase 18D precedent: a pre-21C draft has no such property and loads as "section off, nothing
+    /// selected" (never a fabricated selection), so <see cref="CurrentSchemaVersion"/> is unchanged.
+    /// Null — and therefore omitted from the JSON — whenever it carries nothing, so a draft that never
+    /// used Shows serializes and content-hashes byte-identically to a pre-21C draft.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public AssociateShowsSelection? Shows { get; init; }
 
     /// <summary>The draft an operating date starts with before an associate has entered anything (spec §8.3's "no draft -> default draft").</summary>
     public static AssociateDraftPayload CreateDefault() => new(

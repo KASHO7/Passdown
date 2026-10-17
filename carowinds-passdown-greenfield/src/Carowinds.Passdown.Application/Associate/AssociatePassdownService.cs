@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Carowinds.Passdown.Application.Catalog;
+using Carowinds.Passdown.Application.Changes;
 using Carowinds.Passdown.Application.Concurrency;
 using Carowinds.Passdown.Application.Ert;
 using Carowinds.Passdown.Application.Freshness;
@@ -8,11 +9,14 @@ using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
+using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Catalog;
 using Carowinds.Passdown.Domain.Ert;
 using Carowinds.Passdown.Domain.Retrieval;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Carowinds.Passdown.Application.Associate;
 
@@ -42,8 +46,14 @@ public sealed class AssociatePassdownService(
     ISyncChangeTracker? syncChangeTracker = null,
     IEffectiveErtResolver? effectiveErtResolver = null,
     IUnitOfWorkFactory? unitOfWorkFactory = null,
-    OpenEditorConflictRecorder? openEditorConflictRecorder = null) : IAssociatePassdownService
+    OpenEditorConflictRecorder? openEditorConflictRecorder = null,
+    IOfficialRefreshGate? refreshGate = null,
+    IDataChangeNotifier? dataChangeNotifier = null,
+    ISeasonPriceHistoryRepository? seasonPriceHistoryRepository = null,
+    ILogger<AssociatePassdownService>? logger = null) : IAssociatePassdownService
 {
+    private readonly ILogger _logger = logger ?? (ILogger)NullLogger.Instance;
+
     private static readonly SourceCategory[] CatalogCategories =
     [
         SourceCategory.SeasonPasses,
@@ -60,6 +70,7 @@ public sealed class AssociatePassdownService(
         SourceCategory.HauntedAttractions,
         SourceCategory.BringAFriendDuo,
         SourceCategory.DatedBringAFriend,
+        SourceCategory.DatedMilitaryFirstResponder,
     ];
 
     /// <summary>
@@ -70,8 +81,20 @@ public sealed class AssociatePassdownService(
     /// </summary>
     private const string OrdinaryBringAFriendDisplayName = "Bring-A-Friend Ticket";
 
+    /// <summary>
+    /// Phase 21A: the catalog identity of the official Military &amp; First Responder ticket card —
+    /// its own accesso keyword (<c>MilitaryWizard</c>, the page's "Buy Now"), which opens exactly the
+    /// store whose date calendar <see cref="SourceCategory.DatedMilitaryFirstResponder"/> reads. The
+    /// "2027 Military Gold Pass" card on the same page has a different keyword and is never touched.
+    /// </summary>
+    private static readonly string MilitaryTicketsCatalogIdentity =
+        AssociateProductIdentity.ForCatalogProduct(CatalogProductKey.FromOfficialId(SourceCategory.MilitaryFirstResponder, "MilitaryWizard").ToString());
+
     public Task<AssociateWorkspace> LoadAssociateDateAsync(DateOnly operatingDate, CancellationToken cancellationToken = default) =>
         ComposeAsync(operatingDate, cancellationToken);
+
+    public Task<AssociateWorkspace> LoadAssociateDateForFinalizationAsync(DateOnly operatingDate, CancellationToken cancellationToken = default) =>
+        ComposeAsync(operatingDate, cancellationToken, applyHistoricalPricingRule: false);
 
     public async Task<AssociateOnlineCheckResult> CheckAssociateDateOnlineAsync(DateOnly operatingDate, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)
     {
@@ -81,6 +104,11 @@ public sealed class AssociatePassdownService(
         // A null factory (every pre-13B test/caller) means no overlap protection at all, matching
         // ScheduledRefreshHost's own optional-lock-factory default — this never changes behavior for
         // a caller that doesn't supply one.
+        if (refreshGate is not null)
+        {
+            return await RunGatedForcedRefreshAsync(refreshGate, operatingDate, progress, cancellationToken).ConfigureAwait(false);
+        }
+
         if (refreshLockFactory is null)
         {
             return await RunForcedRefreshAsync(operatingDate, progress, cancellationToken).ConfigureAwait(false);
@@ -105,6 +133,29 @@ public sealed class AssociatePassdownService(
         {
             refreshLock.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Phase 19A: Check Online through the app-wide <see cref="IOfficialRefreshGate"/> (which also holds
+    /// the cross-process lock). An automatic check already running inside the app is waited for rather
+    /// than reported as "already in progress" — the explicit request then still runs in full, bypassing
+    /// every automatic freshness/cooldown rule. Only a different process (the scheduled task) holding the
+    /// lock still yields <see cref="RefreshSummary.AlreadyInProgress"/>.
+    /// </summary>
+    private async Task<AssociateOnlineCheckResult> RunGatedForcedRefreshAsync(IOfficialRefreshGate gate, DateOnly operatingDate, IProgress<RefreshProgress>? progress, CancellationToken cancellationToken)
+    {
+        var kind = deepRefreshStatusRepository is not null && await NeedsDeepRefreshAsync(cancellationToken).ConfigureAwait(false)
+            ? OfficialRefreshKind.DeepRefresh
+            : OfficialRefreshKind.DateCheck;
+
+        using var entry = await gate.TryEnterAsync(new OfficialRefreshActivity(kind, operatingDate), waitForInProcessWork: true, cancellationToken).ConfigureAwait(false);
+        if (entry is null)
+        {
+            var currentWorkspace = await ComposeAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+            return new AssociateOnlineCheckResult(currentWorkspace, RefreshSummary.AlreadyInProgress(clock.UtcNow));
+        }
+
+        return await RunForcedRefreshAsync(operatingDate, progress, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<AssociateOnlineCheckResult> RunForcedRefreshAsync(DateOnly operatingDate, IProgress<RefreshProgress>? progress, CancellationToken cancellationToken)
@@ -151,6 +202,7 @@ public sealed class AssociatePassdownService(
             await syncChangeTracker.MarkLocalChangeAsync(SyncEntityType.AssociateDraft, SyncEntityIdentity.ForDraft(operatingDate), cancellationToken).ConfigureAwait(false);
         }
 
+        dataChangeNotifier?.Publish(new DataChange(DataChangeKind.AssociateDraft, operatingDate));
         return new AssociateSaveStatus(AssociateSaveState.Saved, now);
     }
 
@@ -206,6 +258,8 @@ public sealed class AssociatePassdownService(
             await syncChangeTracker.MarkLocalChangeAsync(SyncEntityType.AssociateDraft, SyncEntityIdentity.ForDraft(operatingDate), cancellationToken).ConfigureAwait(false);
         }
 
+        // Phase 19A: committed — let local projections (the Dashboard) re-read it. Never a network trigger.
+        dataChangeNotifier?.Publish(new DataChange(DataChangeKind.AssociateDraft, operatingDate));
         return new AssociateDraftSaveResult(new AssociateSaveStatus(AssociateSaveState.Saved, now), newHash, conflictDetected);
     }
 
@@ -320,7 +374,7 @@ public sealed class AssociatePassdownService(
             : (AssociateDraftPayloadSerializer.Deserialize(draftRecord.PayloadJson), ComputeStoredDraftHash(draftRecord.PayloadJson));
     }
 
-    private async Task<AssociateWorkspace> ComposeAsync(DateOnly operatingDate, CancellationToken cancellationToken)
+    private async Task<AssociateWorkspace> ComposeAsync(DateOnly operatingDate, CancellationToken cancellationToken, bool applyHistoricalPricingRule = true)
     {
         var draftRecord = await draftRepository.GetAsync(operatingDate, cancellationToken).ConfigureAwait(false);
         var draft = draftRecord is null ? AssociateDraftPayload.CreateDefault() : AssociateDraftPayloadSerializer.Deserialize(draftRecord.PayloadJson);
@@ -359,14 +413,24 @@ public sealed class AssociatePassdownService(
             (DatedBringAFriendDuoPayload payload) => payload.Products.Select(p =>
                 new DatedProductFields(p.PackageId, p.DisplayName, p.PerPersonPrice, p.ComparisonPrice, p.PriceQualifier, p.ApplicableDate)).ToList()));
 
+        var priceHistoryKeys = await LoadPriceHistoryKeysAsync(cancellationToken).ConfigureAwait(false);
         foreach (var category in CatalogCategories)
         {
             var records = await catalogProductRepository.GetByCategoryAsync(category, lifecycleState: null, cancellationToken).ConfigureAwait(false);
-            products.AddRange(ComposeCatalogProducts(category, records, draft));
+            products.AddRange(ComposeCatalogProducts(category, records, draft, priceHistoryKeys));
         }
 
-        MergeExactDatedBringAFriend(products, datedByCategory.GetValueOrDefault(SourceCategory.DatedBringAFriend), operatingDate, asOf);
+        var timeframe = applyHistoricalPricingRule
+            ? HistoricalPricingPolicy.TimeframeFor(operatingDate, asOf)
+            : AssociatePricingTimeframe.Current;
+
+        MergeExactDatedBringAFriend(products, datedByCategory.GetValueOrDefault(SourceCategory.DatedBringAFriend), operatingDate, asOf, draft, timeframe);
+        MergeExactDatedMilitaryFirstResponder(products, datedByCategory.GetValueOrDefault(SourceCategory.DatedMilitaryFirstResponder), operatingDate, asOf, draft);
         SuppressGenericFallbacksSupersededByExactDated(products, operatingDate);
+
+        var withheld = timeframe == AssociatePricingTimeframe.Historical
+            ? LimitToHistoricalEvidence(products, operatingDate)
+            : 0;
 
         products.AddRange(ComposeCustomProducts(draft));
 
@@ -385,11 +449,50 @@ public sealed class AssociatePassdownService(
             ? await effectiveErtResolver.ResolveAsync(operatingDate, cancellationToken).ConfigureAwait(false)
             : EffectiveErt.NotConfigured;
 
-        return new AssociateWorkspace(operatingDate, draft, parkHours, products, categoryStatuses, saveStatus, selectedNoteSourceStates, earlyRideTime)
+        var workspace = new AssociateWorkspace(operatingDate, draft, parkHours, products, categoryStatuses, saveStatus, selectedNoteSourceStates, earlyRideTime)
         {
+            // Phase 21C: the date's recorded official show schedule (never another date's, never online).
+            ShowSchedule = ShowScheduleView.Compose(operatingDate, datedByCategory.GetValueOrDefault(SourceCategory.ShowSchedule), asOf),
             DraftContentHash = draftRecord is null ? null : SyncContentHash.ComputeDraftHash(draft),
+            PricingTimeframe = timeframe,
+            WithheldCurrentCatalogProductCount = withheld,
         };
+
+        if (workspace.IsHistoricalPricingUnavailable)
+        {
+            _logger.LogDebug(
+                "Historical pricing not available for {OperatingDate}: no official price was recorded for that date ({Withheld} current catalog products withheld).",
+                operatingDate, withheld);
+        }
+
+        return workspace;
     }
+
+    /// <summary>
+    /// Phase 21A historical selected-date rule (<see cref="HistoricalPricingPolicy"/>): keeps only the
+    /// official rows whose price was recorded for exactly <paramref name="operatingDate"/> and drops
+    /// every current-catalog row — a product listed today is not evidence it was offered, or at that
+    /// price, on an earlier date. A catalog row survives only when an exact dated value for this date
+    /// was merged into it (Bring-A-Friend, Military/First Responder); its comparison ("Gate Price")
+    /// is cleared because that figure comes from today's catalog card, not from the date. Returns how
+    /// many rows were withheld. Never touches stored data.
+    /// </summary>
+    private static int LimitToHistoricalEvidence(List<AssociateProduct> products, DateOnly operatingDate)
+    {
+        var withheld = products.RemoveAll(product => !HistoricalPricingPolicy.HasEvidenceFor(product, operatingDate));
+
+        for (var i = 0; i < products.Count; i++)
+        {
+            if (products[i].Category is { } category && IsCatalogCategory(category) && products[i].ComparisonPriceAmount is not null)
+            {
+                products[i] = products[i] with { ComparisonPriceAmount = null };
+            }
+        }
+
+        return withheld;
+    }
+
+    private static bool IsCatalogCategory(SourceCategory category) => Array.IndexOf(CatalogCategories, category) >= 0;
 
     /// <summary>
     /// Phase 11E Part G: one <see cref="IOperationalNotesService.ListAsync"/> call per compose (never
@@ -477,7 +580,32 @@ public sealed class AssociatePassdownService(
         }
     }
 
-    private static IEnumerable<AssociateProduct> ComposeCatalogProducts(SourceCategory category, IReadOnlyList<CatalogProductRecord> records, AssociateDraftPayload draft)
+    /// <summary>
+    /// Phase 20A: product keys with recorded season price history, used only to decide whether a row
+    /// offers "Price history". Price history is advisory — if it cannot be read, composition carries on
+    /// with the tracking policy alone instead of failing the Associate screen.
+    /// </summary>
+    private async Task<IReadOnlySet<string>> LoadPriceHistoryKeysAsync(CancellationToken cancellationToken)
+    {
+        if (seasonPriceHistoryRepository is null)
+        {
+            return EmptyKeySet;
+        }
+
+        try
+        {
+            return await seasonPriceHistoryRepository.GetTrackedProductKeysAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return EmptyKeySet;
+        }
+    }
+
+    private static readonly IReadOnlySet<string> EmptyKeySet = new HashSet<string>();
+
+    private static IEnumerable<AssociateProduct> ComposeCatalogProducts(
+        SourceCategory category, IReadOnlyList<CatalogProductRecord> records, AssociateDraftPayload draft, IReadOnlySet<string> priceHistoryKeys)
     {
         foreach (var record in records)
         {
@@ -511,7 +639,13 @@ public sealed class AssociatePassdownService(
                 priceKind,
                 BundleTotalPriceAmount: bundle is not null ? record.CurrentPriceAmount : null,
                 BundleQuantity: bundle?.Quantity,
-                PerPersonPriceAmount: bundle?.PerPersonPriceAmount);
+                PerPersonPriceAmount: bundle?.PerPersonPriceAmount)
+            {
+                PriceHistoryProductKey = PriceHistoryTrackingPolicy.ClassifyStoredProduct(
+                        category, record.LastEvidence.SourceName, record.DisplayName, record.DateSpecific, priceHistoryKeys.Contains(record.ProductKey)) is not null
+                    ? record.ProductKey
+                    : null,
+            };
         }
     }
 
@@ -534,7 +668,9 @@ public sealed class AssociatePassdownService(
         List<AssociateProduct> products,
         DatedResultRecord? record,
         DateOnly operatingDate,
-        DateTimeOffset asOf)
+        DateTimeOffset asOf,
+        AssociateDraftPayload draft,
+        AssociatePricingTimeframe timeframe)
     {
         var lastKnownGood = record?.ToLastKnownGood() ?? LastKnownGood<string>.Empty;
         if (lastKnownGood.SuccessValue is not { } json)
@@ -552,12 +688,26 @@ public sealed class AssociatePassdownService(
         var catalogIndex = products.FindIndex(p =>
             !p.IsCustom && p.Category == SourceCategory.Promotions &&
             string.Equals(p.DisplayName.Trim(), OrdinaryBringAFriendDisplayName, StringComparison.Ordinal));
+        var verification = AssociateVerificationInfo.From(lastKnownGood, asOf);
         if (catalogIndex < 0)
         {
+            // Phase 21A: an expired promotion's recorded exact price stays visible on its own past
+            // date even after the catalog card retired — under its official package name, filed
+            // under Promotions. Current dates keep Phase 15A behavior (no card, no row).
+            if (timeframe == AssociatePricingTimeframe.Historical)
+            {
+                var identity = AssociateProductIdentity.ForDatedProduct(SourceCategory.DatedBringAFriend, exactProduct.PackageId);
+                var draftOverride = draft.ProductOverrides.GetValueOrDefault(identity, ProductDraftOverride.Default);
+                products.Add(new AssociateProduct(
+                    identity, exactProduct.DisplayName, SourceCategory.Promotions, IsCustom: false,
+                    exactProduct.Price, OfficialDisplayPrice: null, ComparisonPriceAmount: null, PriceQualifier: null,
+                    DateSpecific: true, operatingDate, verification,
+                    draftOverride.IncludeOnPdf, draftOverride.DisplayPriceOverride, PriceKind.ExactDated));
+            }
+
             return;
         }
 
-        var verification = AssociateVerificationInfo.From(lastKnownGood, asOf);
         products[catalogIndex] = products[catalogIndex] with
         {
             OfficialPriceAmount = exactProduct.Price,
@@ -568,6 +718,105 @@ public sealed class AssociatePassdownService(
             Verification = verification,
             PriceKind = PriceKind.ExactDated,
         };
+    }
+
+    /// <summary>
+    /// Phase 21A: applies Military/First Responder's exact per-date price
+    /// (<see cref="SourceCategory.DatedMilitaryFirstResponder"/>, keyword <c>MilitaryWizardDailyTickets</c>)
+    /// with the precedence docs/retrieval/pricing-semantics.md defines — a verified exact price for
+    /// <paramref name="operatingDate"/> wins over the catalog card's undated "Starting From" minimum.
+    /// <list type="bullet">
+    /// <item>Every eligibility recorded for the date has the same amount (always the case live) and
+    /// the "Military &amp; First Responder Tickets" catalog row exists: that row switches in place to
+    /// the exact amount (<see cref="PriceKind.ExactDated"/>, qualifier dropped, catalog "Gate Price"
+    /// comparison kept), keeping its identity so draft include/override choices survive — exactly how
+    /// Bring-A-Friend merges.</item>
+    /// <item>Otherwise (amounts differ, or no catalog row): one exact row per eligibility, under the
+    /// official package name ("Military Ticket", "First Responder Ticket"), filed under
+    /// <see cref="SourceCategory.MilitaryFirstResponder"/>, and the catalog minimum row is removed so
+    /// a lower generic number never sits beside the exact one.</item>
+    /// </list>
+    /// No exact value for this date (never checked, a different date, NotPublished, Unavailable, Error)
+    /// leaves the catalog row exactly as it was: "From $x", never presented as exact.
+    /// </summary>
+    private void MergeExactDatedMilitaryFirstResponder(
+        List<AssociateProduct> products,
+        DatedResultRecord? record,
+        DateOnly operatingDate,
+        DateTimeOffset asOf,
+        AssociateDraftPayload draft)
+    {
+        var lastKnownGood = record?.ToLastKnownGood() ?? LastKnownGood<string>.Empty;
+        var exactProducts = lastKnownGood.SuccessValue is { } json
+            ? JsonSerializer.Deserialize<DatedMilitaryFirstResponderPayload>(json)?.Products
+                .Where(p => p.ApplicableDate == operatingDate)
+                .ToList() ?? []
+            : [];
+
+        var catalogIndex = products.FindIndex(p => !p.IsCustom && p.ProductIdentity == MilitaryTicketsCatalogIdentity);
+
+        if (exactProducts.Count == 0)
+        {
+            if (catalogIndex >= 0)
+            {
+                _logger.LogDebug(
+                    "No verified exact Military/First Responder price for {OperatingDate}; showing the official starting-from price.", operatingDate);
+            }
+
+            return;
+        }
+
+        var verification = AssociateVerificationInfo.From(lastKnownGood, asOf);
+        var amounts = exactProducts.Select(p => p.Price).Distinct().ToList();
+
+        if (amounts.Count == 1 && catalogIndex >= 0)
+        {
+            products[catalogIndex] = products[catalogIndex] with
+            {
+                OfficialPriceAmount = amounts[0],
+                OfficialDisplayPrice = null,
+                PriceQualifier = null,
+                DateSpecific = true,
+                ApplicableDate = operatingDate,
+                Verification = verification,
+                PriceKind = PriceKind.ExactDated,
+                BundleTotalPriceAmount = null,
+                BundleQuantity = null,
+                PerPersonPriceAmount = null,
+            };
+            _logger.LogDebug("Verified exact Military/First Responder price applied for {OperatingDate}.", operatingDate);
+            return;
+        }
+
+        var comparison = catalogIndex >= 0 ? products[catalogIndex].ComparisonPriceAmount : null;
+        if (catalogIndex >= 0)
+        {
+            products.RemoveAt(catalogIndex);
+        }
+
+        foreach (var exact in exactProducts)
+        {
+            var identity = AssociateProductIdentity.ForDatedProduct(SourceCategory.DatedMilitaryFirstResponder, exact.PackageId);
+            var draftOverride = draft.ProductOverrides.GetValueOrDefault(identity, ProductDraftOverride.Default);
+            products.Add(new AssociateProduct(
+                identity,
+                exact.DisplayName,
+                SourceCategory.MilitaryFirstResponder,
+                IsCustom: false,
+                exact.Price,
+                OfficialDisplayPrice: null,
+                comparison,
+                PriceQualifier: null,
+                DateSpecific: true,
+                operatingDate,
+                verification,
+                draftOverride.IncludeOnPdf,
+                draftOverride.DisplayPriceOverride,
+                PriceKind.ExactDated));
+        }
+
+        _logger.LogDebug(
+            "Verified exact Military/First Responder prices for {OperatingDate} shown per eligibility ({Count} rows).", operatingDate, exactProducts.Count);
     }
 
     /// <summary>

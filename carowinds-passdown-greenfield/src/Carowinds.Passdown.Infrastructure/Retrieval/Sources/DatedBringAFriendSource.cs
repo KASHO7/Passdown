@@ -141,6 +141,16 @@ public sealed class DatedBringAFriendSource(IRetrievalHttpClient httpClient, ICl
         }
 
         var horizonService = horizonResult.Service!;
+
+        // Phase 19B: the endpoint's own "no dates found" answer for a window starting today means
+        // the offer has no published dates from today onward (e.g. it ended) — a
+        // successful "not currently published" check, never a retrieval failure (live-confirmed
+        // shape; see AccessoKeywordCalendarService.IsNoDatesFound).
+        if (horizonService.IsNoDatesFound)
+        {
+            return NotPublished(timeChecked, requestedDate);
+        }
+
         if (!string.Equals(horizonService.Status, "OK", StringComparison.OrdinalIgnoreCase))
         {
             return Error(

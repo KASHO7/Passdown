@@ -41,7 +41,7 @@ Components: Avalonia, Avalonia.Base, Avalonia.Controls, Avalonia.Desktop,
             Avalonia.*.dll files, version 12.1.1
 License:    MIT
 Copyright:  Copyright 2013-2026 (c) The AvaloniaUI Project
-Full text:  MIT License text in section 12 below (the packages declare
+Full text:  MIT License text in section 13 below (the packages declare
             "MIT" but contain no license file).
 
 
@@ -105,7 +105,21 @@ Copyright:  Copyright (c) 2010-2014 by tyPoland Lukasz Dziedzic, with
 Full text:  LatoFont\OFL.txt
 
 
-8. SQLitePCLRaw and SQLite (e_sqlite3.dll, SQLitePCLRaw.*.dll)
+8. STIX Two Math font (embedded in Carowinds.Passdown.Documents.dll)
+--------------------------------------------------------------------
+Component:  STIX Two Math 2.13 b171 (STIXTwoMath-Regular.ttf, from
+            https://github.com/stipub/stixfonts tag v2.13b171; used to
+            draw Daily Feature math in the Associate preview and PDFs)
+License:    SIL Open Font License 1.1
+Copyright:  Copyright 2001-2021 The STIX Fonts Project Authors
+            (https://github.com/stipub/stixfonts), with Reserved Font Name
+            "TM Math". STIX Fonts is a trademark of The Institute of
+            Electrical and Electronics Engineers, Inc.
+Full text:  licenses\STIXTwoMath-OFL.txt (the project's OFL.txt, unchanged)
+Note:       Embedded unmodified; not sold by itself.
+
+
+9. SQLitePCLRaw and SQLite (e_sqlite3.dll, SQLitePCLRaw.*.dll)
 --------------------------------------------------------------
 Components: SQLitePCLRaw.core, SQLitePCLRaw.provider.e_sqlite3,
             SQLitePCLRaw.batteries_v2 / bundle_e_sqlite3,
@@ -120,8 +134,8 @@ Note:       The packages declare "Apache-2.0" but contain no license file.
             public domain and needs no license notice.
 
 
-9. CommunityToolkit.Mvvm
-------------------------
+10. CommunityToolkit.Mvvm
+-------------------------
 Component:  CommunityToolkit.Mvvm 8.4.2
 License:    MIT
 Copyright:  Copyright (c) .NET Foundation and Contributors
@@ -129,26 +143,26 @@ Full text:  licenses\CommunityToolkit.Mvvm-LICENSE.txt
 Notices:    licenses\CommunityToolkit.Mvvm-THIRD-PARTY-NOTICES.txt
 
 
-10. MicroCom.Runtime
+11. MicroCom.Runtime
 --------------------
 Component:  MicroCom.Runtime 0.11.6 (used by Avalonia)
 License:    MIT
 Copyright:  Copyright 2021 (c) Nikita Tsukanov
-Full text:  MIT License text in section 12 below (the package declares
+Full text:  MIT License text in section 13 below (the package declares
             "MIT" but contains no license file).
 
 
-11. Tmds.DBus.Protocol
+12. Tmds.DBus.Protocol
 ----------------------
 Component:  Tmds.DBus.Protocol 0.94.1 (an Avalonia dependency; Linux-only
             code, included in the release but not used on Windows)
 License:    MIT
 Copyright:  Copyright (c) Tom Deseyn
-Full text:  MIT License text in section 12 below (the package declares
+Full text:  MIT License text in section 13 below (the package declares
             "MIT" but contains no license file).
 
 
-12. MIT License text (for sections 2, 10 and 11)
+13. MIT License text (for sections 2, 11 and 12)
 ------------------------------------------------
 Applies with each copyright line given in the section above.
 

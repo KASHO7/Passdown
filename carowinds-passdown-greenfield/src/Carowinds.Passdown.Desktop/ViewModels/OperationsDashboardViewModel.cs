@@ -1,6 +1,8 @@
+using Carowinds.Passdown.Application.Changes;
 using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Desktop.Presentation;
+using Carowinds.Passdown.Desktop.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -18,6 +20,12 @@ namespace Carowinds.Passdown.Desktop.ViewModels;
 /// to <see cref="MainViewModel"/>, so this view model stays independent of app-shell navigation
 /// concerns (spec Part P) — <see cref="MainViewModel"/> is the one place that wires these events to
 /// an actual section switch.
+///
+/// Phase 19A: stays current on its own. One long-lived instance listens to the app's local
+/// <see cref="IDataChangeNotifier"/> — an Associate autosave, an ERT or Operational Notes save, a
+/// Personal Sync import, a finished online refresh, the operating day rolling over — and re-reads
+/// today's local projection (coalesced, never polled, never a network call). This replaced the header
+/// "Refresh" button, which only ever did this same local reload.
 /// </summary>
 public partial class OperationsDashboardViewModel : ViewModelBase
 {
@@ -25,6 +33,8 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     private readonly ILogger<OperationsDashboardViewModel>? _logger;
 
     private Task _pendingLoad = Task.CompletedTask;
+    private bool _quietReloadInFlight;
+    private bool _quietReloadRequested;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSnapshot))]
@@ -35,6 +45,10 @@ public partial class OperationsDashboardViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial OperationsDashboardPresentation? Presentation { get; set; }
+
+    /// <summary>Phase 21C: "Today's Shows" — rebuilt with every snapshot and, for the upcoming/started split, on the view's minute tick (<see cref="RefreshShowsForTime"/>).</summary>
+    [ObservableProperty]
+    public partial ShowSchedulePresentation? ShowsPresentation { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmptyOrErrorState))]
@@ -113,17 +127,121 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     /// </summary>
     public event EventHandler? OpenOperationalNotesRequested;
 
-    public OperationsDashboardViewModel(IOperationsDashboardService service, ILogger<OperationsDashboardViewModel>? logger = null)
+    public OperationsDashboardViewModel(
+        IOperationsDashboardService service,
+        ILogger<OperationsDashboardViewModel>? logger = null,
+        IDataChangeNotifier? dataChangeNotifier = null,
+        OfficialDataStatusViewModel? officialDataStatus = null,
+        IUiDispatcher? uiDispatcher = null)
     {
         ArgumentNullException.ThrowIfNull(service);
 
         _service = service;
         _logger = logger;
+        OfficialDataStatus = officialDataStatus;
 
         _pendingLoad = LoadAsync();
+
+        if (dataChangeNotifier is not null)
+        {
+            var dispatcher = uiDispatcher ?? new AvaloniaUiDispatcher();
+            dataChangeNotifier.Changed += (_, change) => dispatcher.Post(() => HandleDataChange(change));
+        }
+    }
+
+    /// <summary>Phase 19A: the shared official-data freshness line shown in the Dashboard header (null only in tests that do not supply one).</summary>
+    public OfficialDataStatusViewModel? OfficialDataStatus { get; }
+
+    /// <summary>
+    /// Phase 19A: reacts to one committed local change (on the UI thread). A change that names a
+    /// different operating date than the one shown is ignored; anything else re-reads today's local
+    /// projection. Internal so tests can drive it without a dispatcher.
+    /// </summary>
+    internal void HandleDataChange(DataChange change)
+    {
+        if (change.Kind != DataChangeKind.OperatingDay && Snapshot is { } shown && !change.MayAffect(shown.OperatingDate))
+        {
+            return;
+        }
+
+        _logger?.LogInformation("Dashboard local data invalidated ({ChangeKind}); reloading today's summary from local data.", change.Kind);
+        RequestLocalReload();
+    }
+
+    /// <summary>
+    /// Re-reads today's local projection without the visible loading state. Coalesced: requests that
+    /// arrive while a load is running collapse into one follow-up reload, so a burst of saves never
+    /// queues a burst of reads.
+    /// </summary>
+    internal void RequestLocalReload()
+    {
+        if (_quietReloadInFlight || IsLoading)
+        {
+            _quietReloadRequested = true;
+            return;
+        }
+
+        _pendingLoad = RunQuietReloadsAsync();
+    }
+
+    private async Task RunQuietReloadsAsync()
+    {
+        _quietReloadInFlight = true;
+        try
+        {
+            do
+            {
+                _quietReloadRequested = false;
+                await ReloadQuietlyAsync().ConfigureAwait(true);
+            }
+            while (_quietReloadRequested);
+        }
+        finally
+        {
+            _quietReloadInFlight = false;
+        }
+    }
+
+    private async Task ReloadQuietlyAsync()
+    {
+        try
+        {
+            var snapshot = await _service.GetTodayAsync().ConfigureAwait(true);
+            Snapshot = snapshot;
+            Presentation = OperationsDashboardPresentation.Build(snapshot);
+            ErrorMessage = null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Keep showing the last good summary rather than blanking the screen over a transient
+            // read failure (e.g. SQLite busy); the next change, or "Try again", reloads it.
+            _logger?.LogWarning(ex, "Failed to reload today's operations summary after a local change.");
+            if (Snapshot is null)
+            {
+                ErrorMessage = "Unable to load today's operations summary.";
+            }
+        }
+
+        await LoadDeepRefreshStatusAsync().ConfigureAwait(true);
     }
 
     public bool HasSnapshot => Snapshot is not null;
+
+    partial void OnSnapshotChanged(OperationsDashboardSnapshot? value) =>
+        ShowsPresentation = value is null ? null : ShowSchedulePresentation.Build(value.TodayShows, value.GeneratedAt, isDashboard: true);
+
+    /// <summary>
+    /// Phase 21C: re-evaluates which of today's performances are still upcoming at <paramref name="nowUtc"/>
+    /// from the snapshot already shown — local text only, never a data read or network call. Called by
+    /// the view once a minute while it is displayed.
+    /// </summary>
+    public void RefreshShowsForTime(DateTimeOffset nowUtc)
+    {
+        if (Snapshot is { } snapshot)
+        {
+            ShowsPresentation = ShowSchedulePresentation.Build(snapshot.TodayShows, nowUtc, isDashboard: true);
+        }
+    }
 
     /// <summary>Shown only once loading has finished and produced neither a snapshot nor an error is impossible in practice (every load path sets one or the other) — kept for a graceful first-frame render before the initial load completes.</summary>
     public bool ShowEmptyOrErrorState => !IsLoading && Snapshot is null;
@@ -132,9 +250,10 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     public Task PendingLoad => _pendingLoad;
 
     /// <summary>
-    /// Manual reload (Phase 10A Part R) — the dashboard does not poll or subscribe to an automatic
-    /// refresh event; a user revisits/reopens it to see persisted state that changed elsewhere
-    /// (e.g. after the background <c>StartupCatchUpRefresh</c> completes).
+    /// Local reload (Phase 10A Part R). Phase 19A: no longer a header "Refresh" button — the Dashboard
+    /// updates itself from local change notifications — but kept as the "Try again" action shown only
+    /// when today's summary could not be loaded at all, the one case with no snapshot to keep showing.
+    /// Never checks the website.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanReload))]
     private async Task ReloadAsync() => await LoadAsync().ConfigureAwait(true);
@@ -209,6 +328,12 @@ public partial class OperationsDashboardViewModel : ViewModelBase
         }
 
         await LoadDeepRefreshStatusAsync().ConfigureAwait(true);
+
+        // A local change arrived while this load was running — read again so it is not missed.
+        if (_quietReloadRequested)
+        {
+            RequestLocalReload();
+        }
     }
 
     private async Task LoadDeepRefreshStatusAsync()

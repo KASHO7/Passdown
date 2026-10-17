@@ -27,19 +27,25 @@
             <Setter Property="Padding" Value="18,11" />
             <Setter Property="FontSize" Value="13.5" />
             <Setter Property="FontWeight" Value="Medium" />
-            <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+            <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
             <Setter Property="Cursor" Value="Hand" />
         </Style>
         <Style Selector="Button.appSectionItem.active">
-            <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
-            <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
         <Style Selector="Button.appSectionItem:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource PassdownSubtleSurfaceBrush}" />
+            <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
         </Style>
+        <Style Selector="Button.appSectionItem.active:pointerover /template/ ContentPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+        </Style>
+    
     </Window.Styles>
 
+    <Grid>
     <DockPanel LastChildFill="True">
 
         <!-- Brand identity band (spec §10.2): a constant, theme-invariant deep-navy strip so the app
@@ -87,7 +93,7 @@
              CanExecute (every section except Operational Notes itself, which is always reachable) is
              disabled while Notes.IsEditing is true (spec Part X), so its own IsEnabled need not be
              bound separately here. -->
-        <Border DockPanel.Dock="Top" Background="{DynamicResource PassdownSurfaceTintBrush}"
+        <Border DockPanel.Dock="Top" Background="{DynamicResource PassdownSurfaceBrush}"
                 BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
             <!-- Phase 15E: WrapPanel, not a fixed-width StackPanel — at the documented 960×640 minimum
                  window size, five section labels plus padding exceed 960px and a plain StackPanel would
@@ -146,5 +152,13 @@
         </Grid>
 
     </DockPanel>
+
+    <!-- Phase 20A: the read-only Season Price History screen, opened from Associate → Products. An
+         overlay over the whole shell (not a section): closing it returns to exactly what was showing,
+         with no Associate state touched. -->
+    <Border IsVisible="{Binding IsPriceHistoryOpen}" Background="{DynamicResource PassdownOverlayScrimBrush}">
+        <views:PriceHistoryView DataContext="{Binding PriceHistory}" />
+    </Border>
+    </Grid>
 
 </Window>

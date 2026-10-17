@@ -137,6 +137,16 @@ public sealed class DatedFastLaneSource(IRetrievalHttpClient httpClient, IClock 
         }
 
         var horizonService = horizonResult.Service!;
+
+        // Phase 19B: the endpoint's own "no dates found" answer for a window starting today means
+        // Fast Lane has no published dates from today onward — a
+        // successful "not currently published" check, never a retrieval failure (live-confirmed
+        // shape; see AccessoKeywordCalendarService.IsNoDatesFound).
+        if (horizonService.IsNoDatesFound)
+        {
+            return NotPublished(timeChecked, requestedDate);
+        }
+
         if (!string.Equals(horizonService.Status, "OK", StringComparison.OrdinalIgnoreCase))
         {
             // The horizon window always spans from "today" through at least HorizonPaddingDays, and

@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Preferences;
+using Carowinds.Passdown.Documents.DailyFeatureMath;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -127,6 +128,26 @@ public sealed class CompactAssociatePassdownTemplateRenderer : IAssociatePassdow
                 Label(text, "EARLY RIDE");
                 text.Span(PdfFormatting.ErtLineText(model.EarlyRideTime.Kind, model.EarlyRideTime.Rides, model.OperatingDate)).FontSize(BodySize).Bold();
             });
+
+            // Phase 21C: selected shows as one more strip line — "Show A (1:00, 3:00 PM)  •  Show B (5:00 PM)" —
+            // so Shows costs a line or two, never a section. Absent entirely when nothing is selected.
+            if (model.Shows.Count > 0)
+            {
+                strip.Item().Text(text =>
+                {
+                    Label(text, "SHOWS");
+                    for (var i = 0; i < model.Shows.Count; i++)
+                    {
+                        if (i > 0)
+                        {
+                            text.Span("  •  ").FontSize(BodySize).FontColor(MutedTextColor);
+                        }
+
+                        text.Span(model.Shows[i].Name).FontSize(BodySize).Bold();
+                        text.Span($" ({model.Shows[i].CompactTimesText})").FontSize(BodySize);
+                    }
+                });
+            }
         });
 
     /// <summary>A tight heading line directly over its body, no rule, no panel. Phase 18F: omitted entirely when no text was entered.</summary>
@@ -141,7 +162,7 @@ public sealed class CompactAssociatePassdownTemplateRenderer : IAssociatePassdow
         {
             section.Spacing(1f);
             section.Item().Text((model.DailyFeature.TypeLabel ?? "Daily Feature").ToUpperInvariant()).FontSize(7.5f).Bold().LetterSpacing(0.03f);
-            section.Item().Text(model.DailyFeature.Text!).FontSize(BodySize).Italic();
+            section.Item().Element(body => DailyFeaturePdfText.Compose(body, model.DailyFeature.Text!, new DailyFeaturePdfTextStyle(BodySize, null, InkColor)));
         });
     }
 

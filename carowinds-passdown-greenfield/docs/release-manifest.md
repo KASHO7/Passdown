@@ -1170,3 +1170,660 @@ To be run with `docs/phase18g-rc2-windows-checklist.md` against the exact hashes
   acceptance gate needs the ZIP to launch on Windows and the Dashboard, overrides, PDFs, clipboard,
   Teams paste, scaling, logs, diagnostics and the scheduler to work there. None of that has run yet.
 - **Distribution: LICENSE DECISION PENDING** (QuestPDF, above).
+
+## Unreleased development since RC.2 — Phase 19A
+
+Phase 19A (automatic refresh and live local propagation, `docs/phase19a-automatic-refresh.md`) changes
+shipped code after RC.2. The RC.2 artifacts, hashes and Windows validation above are unchanged and
+still describe the pre-19A candidate; they were not rebuilt. A build containing Phase 19A must be
+packaged as a new release candidate (`0.1.0-rc.3` unless sequencing changes) and validated with the
+Phase 19A Windows checklist. Schemas unchanged: DB 15, Draft 4, Snapshot 2, SyncSchemaVersion 1.
+Deterministic tests at the Phase 19A commit: 2735/2735; Release build 0 warnings / 0 errors.
+
+## Unreleased development since RC.2 — Phase 19B
+
+Phase 19B (seasonal catalog and product lifecycle, `docs/phase19b-seasonal-catalog.md`) is a further
+shipped-code change after RC.2: ended promotions and the end of SCarowinds no longer produce false
+refresh errors, retired products leave current presentation automatically, and non-exclusive
+Carowinds/SCarowinds/WinterFest season tags are supported internally. RC.2 artifacts are unchanged and
+RC.3 was not packaged in this phase. The next candidate containing Phase 19A + 19B should be
+`0.1.0-rc.3`, validated with the Phase 19A Windows checklist plus
+`docs/phase19b-seasonal-catalog.md` §13. Schemas unchanged: DB 15, Draft 4, Snapshot 2,
+SyncSchemaVersion 1. Deterministic tests at the Phase 19B commit: 2780/2780; Release build
+0 warnings / 0 errors.
+
+# Release manifest — 0.1.0-rc.3 (Phase 19C: Phase 19A automatic refresh + Phase 19B seasonal catalog)
+
+**Status: built and validated on the build host. Windows validation PENDING.** The owner should run it
+on the affected x64 PC with `docs/phase19c-rc3-windows-checklist.md`. No Windows PC was reachable
+from the build session. Every Windows item below stays **NOT EXECUTED** until results come back; they
+will be filled in here, not inferred.
+
+| | |
+|---|---|
+| Product (visible) | Carowinds Operations |
+| Version | **`0.1.0-rc.3`**, file version `0.1.0.3`, informational `0.1.0-rc.3+1744320378628fc9a00e402551e169feb06b7697`. Read from the packaged `Carowinds.Passdown.Desktop.dll`, the apphost `.exe` version resource and the single-file EXE; none contains `0.1.0-rc.2`, `0.1.0-rc.1` or `0.1.0.2` |
+| Source commits (features) | `2c610fb` (Phase 19A) and `97de18f` (Phase 19B) |
+| Release/version commit | `1744320`: `Directory.Build.props` only (`<Version>` and `<FileVersion>`). Artifacts were built from this commit |
+| About this build | `0.1.0-rc.3 (1744320)` |
+| Target | Windows 11 x64 (`win-x64`), self-contained, R2R |
+| Build host | macOS 27.0.1 (Darwin), Apple Silicon arm64; .NET SDK 10.0.400; PowerShell 7.6.7 (local `dotnet tool` in a scratch folder, nothing installed system-wide) |
+| DB / Draft / Snapshot / SyncSchemaVersion | 15 / 4 / 2 / 1 (unchanged; no migration; no sync format change) |
+| Legacy identities | Unchanged: `Carowinds.Passdown.Desktop.exe`, `%LOCALAPPDATA%\Carowinds Passdown`, `Carowinds Passdown Daily Refresh` task, database file name, sync product identity, AssemblyVersion `0.1.0.0` |
+| Deterministic tests | Baseline at `97de18f`: **2780/2780**. Final at `1744320`: **2780/2780** = 125 Domain + 779 Application + 762 Infrastructure + 309 Documents + 767 Ui together + 26 `OperationsCalendarViewTests` + 10 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` alone (`-c Release --filter "Category!=LiveSmoke"`). No tests added |
+| Build | `dotnet build CarowindsPassdown.slnx -c Release --no-incremental`: 0 warnings, 0 errors (before and after the version change) |
+| Superseded | RC.2, RC.1 and the `0.1.0-dev` artifacts stay in `artifacts/releases/` under their own names, unmodified. RC.2 hashes were re-verified after this build: unchanged. None of them is nested in RC.3. Do not distribute |
+
+## Primary release: multi-file portable ZIP (RECOMMENDED)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.3-win-x64.zip` |
+| Bytes | 73,547,365 |
+| SHA-256 | `6f08a796473abee5d94efe4e7e0cee47b6830537b1856d023a962efc929980eb` |
+| Extracted folder | `Carowinds-Operations-0.1.0-rc.3-win-x64\` |
+| Content | 282 files / 282 entries, 154.2 MB uncompressed |
+
+- **Packaging validator (`Test-ReleasePackage.ps1`): PASS** on the staging folder and on the final ZIP
+  (282 files each), run by the real `Build-PortableRelease.ps1` under PowerShell 7.6.7 on macOS. The
+  C# mirror (`CAROWINDS_RELEASE_ZIP=… --filter RealReleaseZip`) also PASSES on the final ZIP. Nothing
+  bypassed. Not yet run on Windows.
+- **ZIP structure: PASS.** CRC test clean. Exactly one top-level folder. 282 entries, no duplicates,
+  no backslash names, no empty files. No `.DS_Store`, `__MACOSX`, `.pdb`, `.db`, `-wal`, `-shm`,
+  `.log`, `.zip`, `.pdf`, `.png`, `.dylib`, `.so`, source files, test assemblies, or
+  `0.1.0-dev`/`rc.1`/`rc.2` names. Extracted to a scratch folder outside `artifacts/`, it is
+  byte-identical (`diff -rq`) to the staging folder. The executable, `README.txt`, `TESTER-GUIDE.txt`,
+  both `Enable/Disable Automatic Refresh.cmd` files, the `tools\` scheduler scripts,
+  `THIRD-PARTY-NOTICES.txt`, `licenses\` and the native libraries are all present. The `.exe` is
+  `PE32+ (GUI) x86-64`.
+- **Developer-path scan: PASS.** The checkout path, the repository folder name and the build user's
+  name appear in no file (UTF-8 and UTF-16), including the single-file EXE. `/Users/` and `/home/`
+  appear only in the documented Phase 18B vendor exceptions: `SQLitePCLRaw.batteries_v2.dll`,
+  `SQLitePCLRaw.core.dll` and `SQLitePCLRaw.provider.e_sqlite3.dll` (`/Users/eric`), and
+  `MicroCom.Runtime.dll` (`/home/kekekeks`). `C:\Users\` appears nowhere.
+- **Third-party notices: PASS (preserved).** `THIRD-PARTY-NOTICES.txt` and `licenses\` are
+  byte-identical to the repository sources, unchanged since Phase 18C (`5c0ddf2`). Shipped
+  `deps.json` versions match the notices table exactly: Avalonia/Avalonia.Fonts.Inter 12.1.1, ANGLE
+  2.1.27548.20260419, .NET runtime/Microsoft.Data.Sqlite.Core 10.0.11, SkiaSharp 3.119.4,
+  HarfBuzzSharp 8.3.1.3, QuestPDF 2026.7.3, SQLitePCLRaw 2.1.12, CommunityToolkit.Mvvm 8.4.2,
+  MicroCom.Runtime 0.11.6, Tmds.DBus.Protocol 0.94.1. No licence text was regenerated.
+- **Known packaging note (docs only, not a code defect):** the `TESTER-GUIDE.txt` inside this ZIP
+  still describes the Dashboard "Refresh" button that Phase 19A removed (step 3). Under the
+  never-rebuild rule the RC.3 bytes are kept. The repository copy was corrected after packaging, so
+  the next RC ships the fixed text. Testers are told to ignore that sentence in the checklist.
+
+## Single-file release (EXPERIMENTAL)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.3-win-x64.exe` |
+| Bytes | 186,606,412 |
+| SHA-256 | `915cc5488c734299d80a236a639808932e5006297a3906dea0164680bcc4ff72` |
+| Checks | Built with the Phase 15F single-file command. Carries `0.1.0-rc.3+1744320…` and file version `0.1.0.3`. No checkout path or user name; only the SQLitePCLRaw `/Users/eric` and MicroCom `/home/kekekeks` vendor paths |
+| Status | EXPERIMENTAL. Ships without `THIRD-PARTY-NOTICES.txt`/`licenses\` when distributed alone, so do **not** hand it out independently. The ZIP stays the distribution |
+
+## QuestPDF licence
+
+**Technical status:** QuestPDF 2026.7.3 is shipped, its licence texts are included, and
+`LicenseType.Community` is selected in code. No legal conclusion is drawn here.
+
+**DISTRIBUTION LICENSE DECISION: PENDING USER/ORGANIZATION CONFIRMATION**
+
+## Build-host evidence for Phase 19A / 19B behaviour (not Windows)
+
+| Area | Evidence |
+|---|---|
+| Startup background refresh, 4-hour coordinator, startup fresh-skip, Deep Refresh clock reset, today/future auto-check, past-date silence, freshness indicator, offline failure state | Phase 19A deterministic tests (part of 2780) |
+| Dashboard reactive propagation (attendance, pre-solds, ERT, gate overrides and resets) | Phase 19A deterministic tests |
+| Duo ended offer | Live 2026-10-15: the official calendar answers "No dates found" for `SUBAF50`. The opt-in live test passes (result is NotPublished, not Error). Duo card absent from `daily-tickets` |
+| Confirmed absence (2 successful misses), Error never counts, reactivation, SCarowinds → WinterFest, season overlap, History immutability, PDF/copy consistency, empty seasonal section | `SeasonalCatalogLifecycleTests`, `AssociateTeamsTextFormatterTests`, `AssociateViewModelTests` (PASS BY SIMULATION) |
+| No hard-coded season dates | `ProductSeasonClassifier` takes no date input. Availability comes only from official source results |
+
+## Windows validation
+
+To be run with `docs/phase19c-rc3-windows-checklist.md` against the exact hashes above.
+
+| Item | Result |
+|---|---|
+| Windows machine record, hash check (ZIP, EXE) | NOT EXECUTED (pending) |
+| Windows Search stale-copy check | NOT EXECUTED (pending) |
+| Direct ZIP launch, second launch, About = `0.1.0-rc.3 (1744320)`, running folder | NOT EXECUTED (pending) |
+| Startup background refresh / duplicate suppression / 4-hour coordinator | NOT EXECUTED (pending) |
+| Dashboard propagation: projected, pre-solds, ERT, Avenue, North Gate, reset | NOT EXECUTED (pending) |
+| Today / future / past auto-check, rapid date switching | NOT EXECUTED (pending) |
+| Check Online, Deep Refresh, freshness indicator | NOT EXECUTED (pending) |
+| Offline startup, sleep/resume | NOT EXECUTED (pending) |
+| Task Scheduler coexistence from the RC.3 folder | NOT EXECUTED (pending) |
+| Duo no false failure; retirement after two checks | NOT EXECUTED on Windows (live source behaviour verified on the build host) |
+| SCarowinds current behaviour, Conjuring, PDF/copy by selection | NOT EXECUTED (pending) |
+| SCarowinds end-of-season, WinterFest | NOT EXECUTED LIVE: PASS BY SIMULATION |
+| Retired-product presentation, dated NotPublished vs global | NOT EXECUTED (pending; PASS BY SIMULATION) |
+| Classic / Compact / Modern PDF | NOT EXECUTED (pending) |
+| Teams paste: pricing, operations, both | NOT EXECUTED (pending) |
+| History immutability, old-draft compatibility | NOT EXECUTED (pending; PASS BY SIMULATION) |
+| One-PC / two-PC Personal Sync | NOT EXECUTED / NOT EXECUTED (two-PC needs a second RC.3 PC) |
+| App log, diagnostics export | NOT EXECUTED (pending) |
+| Scaling 100% / 125% / 150%, US formatting | NOT EXECUTED (pending) |
+| Single-file EXE launch | NOT EXECUTED (pending) |
+| Packaging validator on Windows | NOT EXECUTED (PASS on macOS under PowerShell 7.6.7) |
+
+## Known limitations
+
+- All Windows and two-PC validation is outstanding, including the first Windows run of automatic
+  refresh, reactive Dashboard updates and the lifecycle changes.
+- The shipped `TESTER-GUIDE.txt` still mentions the removed Dashboard Refresh button (docs only;
+  fixed in source for the next RC).
+- Live SCarowinds end-of-season and WinterFest arrival cannot be observed yet; they are simulated
+  only.
+- Season tags are internal (not shown in the UI). Event products whose names do not mention the
+  event stay unclassified.
+- Single-file EXE: experimental; no bundled notices. QuestPDF distribution licence decision pending.
+- Do not mix RC.3 with older builds on synced PCs.
+- Blocker policy: any shipped-code fix found during Windows validation becomes `0.1.0-rc.4`. These
+  RC.3 bytes and hashes are never replaced under the same name.
+
+## Release status
+
+- **Technical: RELEASE BLOCKED, pending Windows validation.** No defect is open. Every build-host gate
+  passes: tests, clean Release build, packaging validator, ZIP structure, path scan, notices, and the
+  live Duo source behaviour. The acceptance gate needs the ZIP to launch on Windows and the automatic
+  refresh, reactive Dashboard, auto-check, freshness indicator, lifecycle presentation, PDF/Teams
+  copy and the scheduler to work there. None of that has run yet.
+- **Distribution: DISTRIBUTION LICENSE DECISION PENDING** (QuestPDF, above).
+
+## Unreleased development since RC.3 — Phase 20A
+
+Phase 20A (spell check and Season Pass price history, `docs/phase20a-spellcheck-price-history.md`)
+changes shipped code after RC.3. The RC.3 artifacts, hashes and Windows validation above are unchanged
+and still describe the pre-20A candidate; they were not rebuilt. RC.3 was already built from `1744320`,
+so a build containing Phase 20A must be packaged as **`0.1.0-rc.4`** and validated with the RC.3
+checklist plus the Phase 20A checklist. Schema change: **DB 16** (new `season_price_history` table,
+one-time backfill); Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged. Older builds refuse a DB-16
+profile. Deterministic tests at the Phase 20A commit: 2893/2893; Release build 0 warnings / 0 errors.
+
+# Release manifest — 0.1.0-rc.4 (Phase 20B: Phase 20A spell check + Season Pass price history)
+
+**Status: built and validated on the build host. Windows validation PENDING.** No Windows PC was
+reachable from the build session. Run `docs/phase20b-rc4-windows-checklist.md` on the affected x64
+PC — **backup first** (§0). Every Windows item stays **NOT EXECUTED** until results come back.
+
+| | |
+|---|---|
+| Product (visible) | Carowinds Operations |
+| Version | **`0.1.0-rc.4`**, file version `0.1.0.4`, informational `0.1.0-rc.4+67a5dd6417eeb887d769b6011c9971f1770142ba` (read from the packaged `.exe`/`Desktop.dll` version resources and the single-file EXE; none contains `0.1.0-rc.3` or `0.1.0.3`) |
+| Source commit (features) | `588cd93` (Phase 20A) |
+| Release/version commit | `67a5dd6`: `Directory.Build.props` only. Artifacts were built from this commit |
+| About this build | `0.1.0-rc.4 (67a5dd6)` |
+| Target | Windows 11 x64 (`win-x64`), self-contained, R2R |
+| Build host | macOS 27.0.1 (Darwin), Apple Silicon arm64; .NET SDK 10.0.400; PowerShell 7.6.7 (local `dotnet tool` in a scratch folder) |
+| DB / Draft / Snapshot / SyncSchemaVersion | **16** / 4 / 2 / 1. DB 15 → 16 adds `season_price_history` with a one-time backfill. RC.3 and older refuse a DB-16 profile |
+| Legacy identities | Unchanged: `Carowinds.Passdown.Desktop.exe`, `%LOCALAPPDATA%\Carowinds Passdown`, `Carowinds Passdown Daily Refresh`, database file name, sync product identity, AssemblyVersion `0.1.0.0` |
+| Deterministic tests | Baseline at `588cd93`: **2893/2893**. Final at `67a5dd6`: **2893/2893** = 136 Domain + 842 Application + 773 Infrastructure + 309 Documents + 795 Ui together + 26 + 10 + 2 window classes alone. No tests added this phase |
+| Build | `dotnet build CarowindsPassdown.slnx -c Release`: 0 warnings, 0 errors |
+| Superseded | RC.3/RC.2/RC.1/dev artifacts untouched in `artifacts/releases/` (RC.3 hashes re-verified unchanged after this build). None nested in RC.4. Do not distribute |
+
+## Primary release: multi-file portable ZIP (RECOMMENDED)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.4-win-x64.zip` |
+| Bytes | 73,696,526 |
+| SHA-256 | `55f0babb84b82bbc0e3498806b1140916384bd6bb42e8a22a693fd6ed469b3fb` |
+| Extracted folder | `Carowinds-Operations-0.1.0-rc.4-win-x64\` |
+| Content | 282 files / 282 entries, 154.6 MB uncompressed — the same file list as RC.3 |
+
+- **Packaging validator (`Test-ReleasePackage.ps1`): PASS** on staging and on the final ZIP (282 files
+  each), run by the real `Build-PortableRelease.ps1`. C# mirror (`CAROWINDS_RELEASE_ZIP=…
+  --filter RealReleaseZip`): PASS. Nothing bypassed. Not yet run on Windows.
+- **ZIP structure: PASS.** CRC clean; one top-level folder; no duplicates, backslash names or empty
+  files; no `.DS_Store`, `__MACOSX`, `.pdb`, `.db`, `-wal`, `-shm`, `.log`, `.zip`, `.pdf`, `.png`,
+  `.dylib`, `.so`, source, test assemblies, or dev/rc.1–rc.3 names. Extracted copy `diff -rq`-identical
+  to staging. Executable (`PE32+ (GUI) x86-64`), README, TESTER-GUIDE (now without the removed
+  Dashboard Refresh button), both `.cmd` helpers, `tools\` scheduler scripts, notices, `licenses\`
+  present.
+- **Developer-path scan: PASS.** Checkout path, repository folder name and build user name appear in
+  no file (UTF-8/UTF-16), including the EXE. `/Users/` only in the documented SQLitePCLRaw vendor
+  DLLs, `/home/` only in `MicroCom.Runtime.dll`; `C:\Users\` nowhere.
+- **Third-party notices: PASS (preserved).** `THIRD-PARTY-NOTICES.txt` and `licenses\` byte-identical
+  to the repository (unchanged since `5c0ddf2`). The shipped `deps.json` package set is **identical to
+  RC.3** (44 packages, none added or removed): Phase 20A added **no** spell-check package or
+  dictionary file — spell checking uses the Windows Spell Checking API through built-in COM interop.
+
+## Single-file release (EXPERIMENTAL)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.4-win-x64.exe` |
+| Bytes | 187,097,932 |
+| SHA-256 | `2f3b1b922fbe222c5216a83e5c3f450ca6a3a4a1dccef93d5679ef69113cf070` |
+| Checks | Phase 15F single-file command. Carries `0.1.0-rc.4+67a5dd6…` and `0.1.0.4`. Only the vendor `/Users/eric`, `/home/kekekeks` paths |
+| Status | EXPERIMENTAL. No notices when distributed alone — do **not** hand it out independently |
+
+## QuestPDF licence
+
+QuestPDF 2026.7.3 shipped with its licence texts; `LicenseType.Community` selected in code. No legal
+conclusion drawn. **DISTRIBUTION LICENSE DECISION: PENDING USER/ORGANIZATION CONFIRMATION**
+
+## Build-host evidence for Phase 20A behaviour (not Windows)
+
+| Area | Evidence |
+|---|---|
+| DB 15 → 16 on real data | A **copy** of the macOS dev profile DB (schema 15; live file never opened, its timestamp unchanged) migrated to 16. `season_price_history` created; 11 tracked products, 17 backfilled states from `product_history` (first observations 2026-08-22, changes seen 2026-10-15, e.g. All Season Fast Lane $499 → $599, 2027 Gold Pass $89 sale → $99). Finalized History snapshot + frozen PDF, drafts, catalog and product_history byte/row-identical before and after |
+| Price history pipeline | Isolated scratch profile, real migrations + real `SeasonPassCatalogSource` on fixture HTML: baseline; 2 repeats → no new row, last confirmed advanced; network error → nothing written; $89 → $95 (+$6.00, +6.7%); repeat; $95 → $85 (-$10.00, -10.5%); Prestige missing twice → retired, its history intact and listed with "Include retired" |
+| Spell check UI | Headless Skia render: underlines exactly under "opne"/"runing"; ERT, 9:00, Carowinds, WinterFest, Copperhead not flagged; suggestions returned. Uses a word-list backend — the Windows COM backend cannot run on macOS |
+| Matrix (increase/decrease/sale/Exact↔From/error/NotPublished/reactivation/rename/concurrency/rollback) | PASS BY TEST — `SeasonPriceHistoryReconciliationTests`, `SeasonPriceHistorySqliteTests`, `Migration0016BackfillTests`, `PriceHistoryTests`, `SpellCheck*Tests` (part of 2893) |
+
+## Windows validation
+
+To be run with `docs/phase20b-rc4-windows-checklist.md` against the hashes above.
+
+| Item | Result |
+|---|---|
+| Live-profile backup (`%LOCALAPPDATA%\Carowinds Passdown`) | NOT EXECUTED (required first) |
+| Hash check, launch, second launch, About `0.1.0-rc.4 (67a5dd6)` | NOT EXECUTED |
+| DB 15 → 16 migration on the real profile, data survives | NOT EXECUTED (PASS on build-host copy) |
+| Spell check: underline, correct words, domain words, covered/excluded fields | NOT EXECUTED |
+| Suggestions, Ignore, Add to dictionary, keyboard menu | NOT EXECUTED |
+| Non-blocking (autosave/PDF/finalize/Teams/shutdown), privacy, performance | NOT EXECUTED (PASS BY TEST for non-blocking) |
+| Spell-check failure behavior | NOT EXECUTED (PASS BY TEST) |
+| Price History UI, row buttons, scope, backfill, baseline, search, retired | NOT EXECUTED (PASS on build host) |
+| Repeat-price dedup via Check Online / Deep Refresh / automatic refresh | NOT EXECUTED (PASS on build host + tests) |
+| Increase/decrease/sale/Exact↔From/error/NotPublished/reactivation/rename | PASS BY TEST (runtime NOT EXECUTED) |
+| Phase 19A regressions (Dashboard propagation, auto-check, freshness) | NOT EXECUTED (tests pass) |
+| Phase 19B regressions (Duo, SCarowinds, Conjuring) | NOT EXECUTED (tests pass) |
+| PDF Classic/Compact/Modern, Teams copy | NOT EXECUTED (tests pass) |
+| History immutability | NOT EXECUTED (PASS on build-host DB copy) |
+| Personal Sync one-PC / two-PC | NOT EXECUTED / NOT EXECUTED |
+| App log, diagnostics | NOT EXECUTED |
+| Scaling 100/125/150%, keyboard/accessibility, non-US region | NOT EXECUTED |
+| Single-file EXE launch | NOT EXECUTED |
+
+## Known limitations
+
+- All Windows validation is outstanding — most importantly the Windows spell-check COM path (never
+  executed anywhere yet) and the real-profile 15 → 16 migration.
+- Upgrading is one-way for older builds: keep the pre-RC.4 backup to return to RC.3.
+- Price history is local per PC (not synced); a PC that is off during a short sale never records it.
+- Backfilled intervals' "last confirmed" can be earlier than the true last check (the old table only
+  recorded changes).
+- Spell check: Windows only; `en-US` then the Windows UI language; Ignore is per session.
+- Single-file EXE experimental; QuestPDF distribution decision pending; two-PC sync pending.
+- Blocker policy: any shipped-code fix found during Windows validation becomes `0.1.0-rc.5`.
+
+## Release status
+
+- **Technical: RELEASE BLOCKED, pending Windows validation.** No defect is open and every build-host
+  gate passes (tests, clean Release build, packaging validator, ZIP structure, path scan, notices,
+  migration on a real-data copy). The acceptance gate needs the ZIP launched on Windows, the real
+  15 → 16 migration, Windows spell checking and the Price History screen exercised there, and the
+  19A/19B/PDF/Teams regressions re-run. None of that has run yet.
+- **Distribution: DISTRIBUTION LICENSE DECISION PENDING** (QuestPDF).
+
+---
+
+# Unreleased after 0.1.0-rc.4 — Phase 20C (next candidate: `0.1.0-rc.5`, not yet packaged)
+
+Phase 20C changed shipped code after RC.4 was built. RC.4 artifacts are unchanged and were not rebuilt;
+the next package must be versioned **`0.1.0-rc.5`**. Details: `docs/phase20c-historical-backfill.md`.
+
+| | |
+|---|---|
+| Changes | Spell-check underline no longer lingers over other screens after navigating away (RC.4 Windows finding); current-year historical park-hours backfill (background, lowest priority, resumable, ~0.1–0.2 MB/year); Operations Calendar live-updates from local changes; historical status line under the Calendar month |
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 — unchanged (no migration) |
+| Deterministic tests | **2952/2952** = 136 Domain + 873 Application + 309 Documents + 782 Infrastructure + 807 Ui together + 26 `OperationsCalendarViewTests` + 10 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` alone (`-c Release --filter "Category!=LiveSmoke"`). The new real-Window class joins the documented run-alone partition (same headless thread-affinity issue when mixed) |
+| Build | `dotnet build CarowindsPassdown.slnx -c Release` — 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in `docs/phase20c-historical-backfill.md` (S1–S6, H1–H11) plus the outstanding RC.4 list above |
+
+**Packaged as `0.1.0-rc.5` in Phase 20D (below).**
+
+# Release manifest — 0.1.0-rc.5 (Phase 20D: Phase 20C spell-check navigation + current-year history)
+
+**Status: built and validated on the build host. Windows validation PENDING.** No Windows PC was
+reachable from the build session. Run `docs/phase20d-rc5-windows-checklist.md` on the x64 PC used for
+RC.4 — **backup first** (§0). Every Windows item stays **NOT EXECUTED** until results come back.
+
+| | |
+|---|---|
+| Product (visible) | Carowinds Operations |
+| Version | **`0.1.0-rc.5`**, file version `0.1.0.5`, informational `0.1.0-rc.5+10bf37dcd5f7b5b2d678903d4dc18c2ca30089c5` (read from the packaged `.exe`/`Desktop.dll` version resources and the single-file EXE; none contains `0.1.0-rc.4` or `0.1.0.4`) |
+| Source commit (features) | `6498aa9` (Phase 20C) |
+| Release/version commit | `10bf37d`: `Directory.Build.props` only. Artifacts were built from this commit |
+| About this build | `0.1.0-rc.5 (10bf37d)` |
+| Target | Windows 11 x64 (`win-x64`), self-contained, R2R |
+| Build host | macOS 27.0.1 (Darwin 27.0.0), Apple Silicon arm64; .NET SDK 10.0.400; PowerShell 7.6.7 (local `dotnet tool` reused from the RC.4 scratch folder; a fresh download failed in this session) |
+| DB / Draft / Snapshot / SyncSchemaVersion | **16** / 4 / 2 / 1 — unchanged from RC.4, no migration. RC.4 can still open an RC.5 profile |
+| Legacy identities | Unchanged: `Carowinds.Passdown.Desktop.exe`, `%LOCALAPPDATA%\Carowinds Passdown`, `Carowinds Passdown Daily Refresh`, database file name, sync product identity, AssemblyVersion `0.1.0.0` |
+| Deterministic tests | Baseline at `6498aa9`: **2952/2952**. Final at `10bf37d`: **2952/2952** = 136 Domain + 873 Application + 782 Infrastructure + 309 Documents + 807 Ui together + 26 + 10 + 2 + 7 real-Window classes alone. No tests added this phase |
+| Build | `dotnet build CarowindsPassdown.slnx -c Release`: 0 warnings, 0 errors (before and after the version commit) |
+| Superseded | RC.4/RC.3/RC.2/RC.1/dev artifacts untouched in `artifacts/releases/` (RC.4 hashes re-verified unchanged after this build). None nested in RC.5. Do not distribute |
+
+## Primary release: multi-file portable ZIP (RECOMMENDED)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.5-win-x64.zip` |
+| Bytes | 73,739,645 |
+| SHA-256 | `570c00df05a933a383ed69b7508ecd5e33ea22c5ee21096e0062e1c4145e3c25` |
+| Extracted folder | `Carowinds-Operations-0.1.0-rc.5-win-x64\` |
+| Content | 282 files / 282 entries, 162,179,275 bytes uncompressed — the same file list as RC.4 |
+
+- **Packaging validator (`Test-ReleasePackage.ps1`): PASS** on staging and on the final ZIP (282 files
+  each), run by the real `Build-PortableRelease.ps1`. C# mirror (`CAROWINDS_RELEASE_ZIP=…
+  --filter RealReleaseZip`): PASS. Nothing bypassed. Not yet run on Windows.
+- **ZIP structure: PASS.** CRC clean; one top-level folder; no duplicates, backslash names or empty
+  files; no `.DS_Store`, `__MACOSX`, `.pdb`, `.db`, `-wal`, `-shm`, `.log`, `.zip`, `.pdf`, `.png`,
+  `.dylib`, `.so`, source, test assemblies, or dev/rc.1–rc.4 names. Extracted copy `diff -rq`-identical
+  to staging. Executable (`PE32+ (GUI) x86-64`), `README.txt`, `TESTER-GUIDE.txt`, both `.cmd` helpers,
+  `tools\` scheduler scripts, notices, `licenses\` present.
+- **Developer-path scan: PASS.** Checkout path, repository folder name and build user name appear in
+  no file (UTF-8/UTF-16), including the EXE. `/Users/` only in the documented SQLitePCLRaw vendor
+  DLLs (`/Users/eric`), `/home/` only in `MicroCom.Runtime.dll` (`/home/kekekeks`); `C:\Users\` nowhere.
+- **Third-party notices: PASS (preserved).** `THIRD-PARTY-NOTICES.txt` and `licenses\` byte-identical
+  to the repository (unchanged since `5c0ddf2`). Shipped `deps.json` package set **identical to RC.4**
+  (44 packages): Phase 20C added no dependency, so notice needs are unchanged.
+
+## Single-file release (EXPERIMENTAL)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.5-win-x64.exe` |
+| Bytes | 187,364,172 |
+| SHA-256 | `2bbf540cac7f4b1dc1f499c26829e6a21457440fa04bc622aee2e3a943a2c5ad` |
+| Checks | Phase 15F single-file command. Carries `0.1.0-rc.5+10bf37d…` and `0.1.0.5`. Only the vendor `/Users/eric`, `/home/kekekeks` paths |
+| Status | EXPERIMENTAL. No notices when distributed alone — do **not** hand it out independently |
+
+## QuestPDF licence
+
+QuestPDF 2026.7.3 shipped with its licence texts; `LicenseType.Community` selected in code. No legal
+conclusion drawn. **DISTRIBUTION LICENSE DECISION: PENDING USER/ORGANIZATION CONFIRMATION**
+
+## Build-host evidence for Phase 20C behaviour (not Windows)
+
+From `docs/phase20c-historical-backfill.md`; nothing new was run against the live profile in 20D.
+
+| Area | Evidence |
+|---|---|
+| Spell-check lifecycle | `SpellCheckNavigationLifecycleTests` (7, real headless Window): underline removed on navigation, pending check cancelled, re-check on return, no duplicate handlers. Windows COM backend never executed |
+| Backfill, live source | Isolated scratch-DB harness, real feed, production pacing: 206 requests / 295 s, 205 stored (140 Verified, 65 Closed), boundary 2026-03-24 found with one probe, simulated Check Online acquired the gate in 0 ms, second launch = 1 request and no new rows. Real profile DB untouched |
+| Storage | 205 dates: 155,648 → 274,432 B (+118,784 B, ≈579 B/date); full-year projection ≈205 KB. Guarded by `Phase20CHistoricalBackfillSqliteTests` (< 2 KB/date, no raw venue marker, table/index count unchanged) |
+| Priority, scope, resume, no-fabrication, offline, scheduled task, isolation | PASS BY TEST (Phase 20C +59 tests, part of 2952) |
+
+## Windows validation
+
+To be run with `docs/phase20d-rc5-windows-checklist.md` against the hashes above.
+
+| Item | Result |
+|---|---|
+| Live-profile backup (`%LOCALAPPDATA%\Carowinds Passdown`), DB size before | NOT EXECUTED (required first) |
+| Windows environment | NOT EXECUTED |
+| Hash check, launch, second launch, About `0.1.0-rc.5 (10bf37d)`, running folder | NOT EXECUTED |
+| Spell-check navigate-away (Dashboard / Calendar / Products) | NOT EXECUTED (PASS BY TEST) |
+| Pending-check (< 350 ms) navigation | NOT EXECUTED (PASS BY TEST) |
+| Navigate back re-checks; repeated navigation | NOT EXECUTED (PASS BY TEST) |
+| Price History overlay underline (S6) | NOT EXECUTED — judgement required on Windows |
+| Spell-check RC.4 regression (quick) | NOT EXECUTED |
+| Current-year scope, newest first, month promotion | NOT EXECUTED (PASS BY TEST) |
+| Current/future priority (Check Online, Deep Refresh yield) | NOT EXECUTED (PASS BY TEST; 0 ms gate acquisition on build host) |
+| Calendar live update, historical status line | NOT EXECUTED (PASS BY TEST) |
+| Operational freshness isolation | NOT EXECUTED (PASS BY TEST) |
+| Resume / completed-date dedup | NOT EXECUTED (PASS on build host: 2nd run 1 request) |
+| Source boundary / no fabrication | NOT EXECUTED (PASS on build host: boundary 2026-03-24, nothing stored for 404 dates) |
+| Storage: DB before / after / dates / bytes per date | NOT EXECUTED (build host: 205 dates, ≈116 KB, ≈579 B/date) |
+| Raw response storage | NOT EXECUTED (PASS BY TEST) |
+| Responsiveness, shutdown during backfill | NOT EXECUTED |
+| Offline backfill | NOT EXECUTED (PASS BY TEST) |
+| 6 AM scheduled task current-only | NOT EXECUTED (PASS BY TEST) |
+| Phase 19A regressions | NOT EXECUTED (tests pass) |
+| Phase 19B regressions (Duo, SCarowinds, Conjuring) | NOT EXECUTED (tests pass) |
+| Phase 20A Season Pass price history | NOT EXECUTED (tests pass) |
+| PDF Classic/Compact/Modern, Teams copy | NOT EXECUTED (tests pass) |
+| History immutability | NOT EXECUTED (tests pass) |
+| Personal Sync impact (history not synced, SyncSchemaVersion 1) | PASS BY TEST; one-PC / two-PC runtime NOT EXECUTED |
+| App log, diagnostics | NOT EXECUTED (PASS BY TEST for the diagnostics section) |
+| Scaling 100/125/150%, keyboard/accessibility | NOT EXECUTED |
+| Single-file EXE launch | NOT EXECUTED |
+
+## Known limitations
+
+- All Windows validation is outstanding, including the still-unexecuted Windows spell-check COM path
+  and the RC.4 checklist items not yet recorded in this manifest (only the lingering-underline finding came back, fixed in 20C).
+- Price History overlay: an underline in a visible Associate field may draw above the dimmed overlay
+  (known, intentionally not fixed before RC.5; judge in S6).
+- Official park-hours history before the feed's retention window (≈2026-03-24 and earlier when
+  observed) cannot be obtained; those dates stay empty. The window is observed, not documented.
+- Historical rows and Season Pass price history are local per PC (not synced).
+- Single-file EXE experimental; QuestPDF distribution decision pending; two-PC sync pending.
+- Blocker policy: any shipped-code fix found during Windows validation becomes `0.1.0-rc.6`.
+
+## Release status
+
+- **Technical: RELEASE BLOCKED, pending Windows validation.** No defect is open and every build-host
+  gate passes (tests, clean Release build, packaging validator, ZIP structure, path scan, notices,
+  version resources). The acceptance gate needs the ZIP launched on Windows, the spell-check
+  navigation fix and the Price History overlay judged there, and the historical backfill, priority,
+  resume, storage, scheduled task and 19A/19B/20A/PDF/Teams regressions exercised there.
+- **TWO-PC SYNC VALIDATION PENDING.**
+- **Distribution: DISTRIBUTION LICENSE DECISION PENDING** (QuestPDF).
+
+# Unreleased development — Phase 21A (after RC.5)
+
+Not a release. Phase 21A (`docs/phase21a-pricing-historical-integrity.md`) changes shipped code:
+Military/First Responder exact dated pricing, historical selected-date pricing rule, pass-year identity
+guard, Dashboard Open Passdown → today. RC.5 artifacts are unchanged. The next packaged candidate must
+be **`0.1.0-rc.6`**; `Directory.Build.props` still says `0.1.0-rc.5` until that packaging phase.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged) |
+| Deterministic tests | **3040/3040** (baseline 2952 at `6cd8d96`; +88 Phase 21A) |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 21A doc |
+
+# Unreleased development — Phase 21B (after RC.5, after Phase 21A)
+
+Not a release. Phase 21B (`docs/phase21b-associate-navigation-toolbar.md`) changes shipped UI code:
+Associate date header (‹ date › Today, Today/Yesterday/Tomorrow label), built-in `Calendar` popup with
+click/Enter commit and Escape/outside-click dismissal, toolbar regrouped (Check Online, Create PDF ·
+style, Copy ▾, More ▾ with PDF Style and Season Price History), Export Diagnostics moved to Settings →
+Diagnostics. RC.5 artifacts are unchanged. The next packaged candidate is still **`0.1.0-rc.6`**;
+`Directory.Build.props` still says `0.1.0-rc.5`. `TESTER-GUIDE.txt` and `README-portable-release.md`
+now point to Settings → Diagnostics.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| Deterministic tests | **3092/3092** (baseline 3040 at `50793de`; +52 Phase 21B) = 154 Domain + 908 Application + 804 Infrastructure + 311 Documents + 863 Ui together + 26 `OperationsCalendarViewTests` + 17 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`) |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 21B doc |
+
+# Unreleased development — Phase 21C (after RC.5, after Phase 21B)
+
+Not a release. Phase 21C (`docs/phase21c-official-show-schedules.md`) changes shipped code: official
+date-specific show schedules (FIMS operating-hours feed `shows[]`) on the Dashboard ("Today's Shows"),
+Operations Calendar (selected date), Associate (optional Shows section with per-show selection), and
+Classic/Compact/Modern PDFs; finalized snapshots freeze printed shows. Teams Copy is unchanged (no
+show information). RC.5 artifacts are unchanged. The next packaged candidate is still
+**`0.1.0-rc.6`**; `Directory.Build.props` still says `0.1.0-rc.5`.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration — additive optional `Shows` properties omitted when unused) |
+| Upgrade implications | New `dated_results` category `ShowSchedule` (like 21A's `DatedMilitaryFirstResponder`): do not run RC.5 against a profile used by RC.6 — **back up `%LOCALAPPDATA%\Carowinds Passdown` before upgrading**. Personal Sync: upgrade every PC sharing a sync folder before using Shows (an older build drops a draft's `Shows` if it re-saves that date). |
+| Deterministic tests | **3227/3227** (baseline 3092 at `2452935`; +135 Phase 21C) = 163 Domain + 949 Application + 832 Infrastructure + 346 Documents + 885 Ui together + 26 `OperationsCalendarViewTests` + 17 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`) |
+| Live smoke (opt-in) | `ShowScheduleSourceLiveSmokeTests` + `ParkHoursSourceLiveSmokeTests` passed 2026-10-16 from the dev host |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 21C doc |
+
+# Unreleased development — Phase 21D (after RC.5, after Phase 21C)
+
+Not a release. Phase 21D (`docs/phase21d-daily-feature-math.md`) changes shipped code: Daily Feature
+math — a "∑ Math" symbol/template picker, `\( … \)` / `\[ … \]` LaTeX-style syntax (documented subset),
+a live Associate preview, math-aware spell checking for that field, and vector formula rendering in
+the Classic/Compact/Modern PDFs through one shared parser/layout pipeline. Ordinary Daily Feature text
+is unchanged. Teams Copy is unchanged (no Daily Feature, no LaTeX, no shows). Adds the bundled
+**STIX Two Math** font (SIL OFL 1.1, embedded in `Carowinds.Passdown.Documents.dll`, +1.5 MB) and its
+notice (`THIRD-PARTY-NOTICES.txt` §8, `licenses\STIXTwoMath-OFL.txt`). No new NuGet packages. The
+QuestPDF distribution-license decision remains unresolved (unchanged). RC.5 artifacts are unchanged.
+The next packaged candidate is still **`0.1.0-rc.6`**; `Directory.Build.props` still says `0.1.0-rc.5`.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; math is stored as the ordinary Daily Feature text) |
+| Upgrade implications | None beyond Phase 21A/21C. Older builds show/print the raw source (e.g. `\(\frac{1}{2}\)`) but never lose it; upgrade every PC sharing a sync folder to see formulas everywhere. |
+| Deterministic tests | **3410/3410** (baseline 3227 at `2ca472a`; +183 Phase 21D) = 163 Domain + 1035 Application + 833 Infrastructure + 406 Documents + 917 Ui together + 26 `OperationsCalendarViewTests` + 17 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`) — `Phase21DMathEditorWindowTests` is a new real-Window class and runs alone like the others |
+| Live smoke (opt-in) | not applicable (no retrieval change) |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 21D doc |
+
+
+**Phases 21A–21D packaged as `0.1.0-rc.6` in Phase 21E (below).**
+
+# Release manifest — 0.1.0-rc.6 (Phase 21E: Phases 21A–21D combined)
+
+**Mac-side automated verification complete. Windows validation PENDING.** No Windows PC was
+reachable from the build session. Run `docs/phase21e-rc6-windows-checklist.md` — **backup first**
+(§1) and read the cross-device Shows warning. Every Windows item stays **NOT EXECUTED** until
+results come back.
+
+| | |
+|---|---|
+| Product (visible) | Carowinds Operations |
+| Version | **`0.1.0-rc.6`**, file version `0.1.0.6`, informational `0.1.0-rc.6+ef13a6d03aacc316b876ed2029b0fb0da09b6a16` (read from the packaged `.exe`, `Desktop.dll`, `Documents.dll` and the single-file EXE; none contains `0.1.0-rc.5` or `0.1.0.5`) |
+| Starting HEAD / source commit (features) | `91a4a65` (Phase 21D) |
+| Release/version commit | `ef13a6d`: `Directory.Build.props` + shipped `TESTER-GUIDE.txt` / `README-portable-release.md`. Artifacts were built from this commit (clean tree apart from the unrelated pre-staged `.DS_Store`/`.claude` files, which are not build inputs) |
+| About this build | `0.1.0-rc.6 (ef13a6d)` + running executable path |
+| Target | Windows 11 x64 (`win-x64`), self-contained, R2R |
+| Build host | macOS 27.0.1 (Darwin 27.0.0), Apple Silicon arm64; .NET SDK 10.0.400; PowerShell 7.6.7 (local `dotnet tool` reused from an earlier scratch folder, nothing installed system-wide) |
+| DB / Draft / Snapshot / SyncSchemaVersion | **16** / 4 / 2 / 1 — unchanged from RC.5, no migration |
+| Legacy identities | Unchanged: `Carowinds.Passdown.Desktop.exe`, `%LOCALAPPDATA%\Carowinds Passdown`, `carowinds-passdown.db`, `Carowinds Passdown Daily Refresh`, `Carowinds Passdown Personal Sync`, AssemblyVersion `0.1.0.0` |
+| Deterministic tests | Baseline at `91a4a65`: **3410/3410**. Final at `ef13a6d`: **3410/3410** = 163 Domain + 1035 Application + 833 Infrastructure + 406 Documents + 917 Ui together + 26 `OperationsCalendarViewTests` + 17 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release --filter "Category!=LiveSmoke"`). No tests added; live tests not counted |
+| Build | `dotnet build CarowindsPassdown.slnx -c Release`: 0 warnings, 0 errors (before and after the version commit) |
+| Superseded | RC.5/RC.4/RC.3/RC.2/RC.1/dev artifacts untouched in `artifacts/releases/` (RC.5 hashes re-verified unchanged after this build). None nested in RC.6. Do not distribute |
+
+## Primary release: multi-file portable ZIP (RECOMMENDED)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.6-win-x64.zip` |
+| Bytes | 74,889,881 (RC.5: 73,739,645; +1,150,236) |
+| SHA-256 | `04feee4b7b928f26dac982c7e0fa1700a058b454679b95db85bc3ed90bf1e381` |
+| Extracted folder | `Carowinds-Operations-0.1.0-rc.6-win-x64\` |
+| Content | 283 files / 283 entries, 164,549,199 bytes uncompressed (RC.5: 282 files, 162,179,275 bytes; +2,369,924). Only new file: `licenses\STIXTwoMath-OFL.txt` |
+
+Size drivers (all of Phases 21A–21D, not only the font): `Carowinds.Passdown.Documents.dll`
+12,070,912 → 13,787,136 (+1.64 MiB; embedded STIX Two Math is 1,518,116 bytes of that),
+`Carowinds.Passdown.Desktop.dll` +282,624, `Carowinds.Passdown.Application.dll` +286,720.
+
+- **Packaging validator (`Test-ReleasePackage.ps1`): PASS** on staging and on the final ZIP (283 files
+  each), run by the real `Build-PortableRelease.ps1`. C# mirror (`CAROWINDS_RELEASE_ZIP=…
+  --filter RealReleaseZip`): PASS. Nothing bypassed. Not yet run on Windows.
+- **ZIP structure: PASS.** `unzip -t` CRC clean; one top-level folder; 283 unique entries; no
+  backslash names; no zero-length files. Fresh extraction `diff -rq`-identical to staging; the
+  extracted `.exe` SHA-256 equals the staged copy. Executable `PE32+ (GUI) x86-64`.
+- **Forbidden content: PASS.** No `.DS_Store`, `__MACOSX`, `.pdb`, `.db`, `-wal`, `-shm`, `.log`,
+  `.zip`, `.pdf`, `.png`, `.dylib`, `.so`, source, test assemblies, macOS/Linux runtime folders,
+  `CLAUDE.md`/`AGENT_BUILD_SPEC.md`, or dev/rc.1–rc.5 names. No user data, drafts, notes, sync
+  payloads, config, diagnostics or preview PDFs.
+- **Developer-path scan: PASS.** Checkout path, repository folder name and build user name appear in
+  no file (UTF-8/UTF-16), including the single-file EXE. `/Users/` only in the documented
+  SQLitePCLRaw vendor DLLs, `/home/` only in `MicroCom.Runtime.dll`; `C:\Users\` nowhere.
+- **Math renderer packaging: PASS (build host).** The published (win-x64 R2R) `Documents.dll` carries
+  manifest resource `DailyFeatureMath.STIXTwoMath-Regular.ttf` (the exact name the code loads),
+  byte-identical to the source font; the font bytes occur exactly once in the release folder and
+  once in the single-file EXE (no duplication, no loose `.ttf`). No TeX, network or machine-specific
+  dependency. The same-commit portable `Documents.dll` rendered all tester-guide expressions plus the
+  nine required symbols with no issues, and the malformed sample fell back to readable text
+  ("shown as typed"); the composed PDF was visually checked. The win-x64 R2R image itself cannot load
+  on macOS, so rendering *from the published binary* on Windows remains a Windows check (§7/§8).
+- **Third-party notices: PASS.** `THIRD-PARTY-NOTICES.txt` and `licenses\` byte-identical to the
+  repository; §8 covers STIX Two Math 2.13 b171 under SIL OFL 1.1 with
+  `licenses\STIXTwoMath-OFL.txt` (identical to the font's source OFL). Shipped `deps.json` package
+  set **identical to RC.5** (44 packages; none added or removed), so no other notice changes were
+  needed. No existing notice removed.
+
+## Single-file release (EXPERIMENTAL)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.6-win-x64.exe` |
+| Bytes | 190,509,900 (RC.5: 187,364,172) |
+| SHA-256 | `9987edcad06c7dfb5bdc51ccb996ef0852e62e3d7fee1c4245c9edeb8ab45aaa` |
+| Checks | Phase 15F single-file command; publish output = exe + `LatoFont/OFL.txt` only. Carries `0.1.0-rc.6+ef13a6d…` and `0.1.0.6`; STIX font embedded once. Only the vendor `/Users/`, `/home/` paths |
+| Status | EXPERIMENTAL. No notices when distributed alone — do **not** hand it out independently. Launch NOT EXECUTED |
+
+## QuestPDF licence
+
+QuestPDF 2026.7.3 shipped with its licence texts; `LicenseType.Community` selected in code. No legal
+conclusion drawn; a technical PASS is not a licensing approval.
+**DISTRIBUTION LICENSE DECISION: PENDING USER/ORGANIZATION CONFIRMATION**
+
+## Compatibility and known risks
+
+- **Schema numbers unchanged ≠ rollback safe.** RC.6 writes new cached categories
+  (`DatedMilitaryFirstResponder`, `ShowSchedule`) and drafts may carry `Shows` and LaTeX source.
+  Back up `%LOCALAPPDATA%\Carowinds Passdown` before first launch; do not run RC.5 against a profile
+  RC.6 has used.
+- **Cross-device Shows (SyncSchemaVersion still 1):** an older build that edits and saves a draft drops
+  its show selections, and the loss syncs. Upgrade every PC sharing a sync folder before using Shows;
+  back up the shared folder first. Older builds display/print LaTeX as raw source but do not lose it.
+- Math Daily Feature paragraphs are drawn as shapes in PDFs (not selectable/searchable); plain text
+  remains searchable.
+- Historical pricing/show data before local recording cannot be reconstructed; it is shown as
+  unavailable, never fabricated.
+
+## Windows validation
+
+To be run with `docs/phase21e-rc6-windows-checklist.md` against the hashes above.
+
+| Item | Result |
+|---|---|
+| Profile and sync-folder backup | NOT EXECUTED (required first) |
+| Hash check, extraction, launch, second launch, About `0.1.0-rc.6 (ef13a6d)`, running path, Windows Search stale copy | NOT EXECUTED |
+| 21A Military/First Responder dated prices vs official store | NOT EXECUTED (PASS BY TEST) |
+| 21A historical pricing, pass-year identity, Open Passdown → today | NOT EXECUTED (PASS BY TEST) |
+| 21B date bar, calendar popup, toolbar, Settings → Diagnostics | NOT EXECUTED (PASS BY TEST) |
+| 21C Dashboard / Calendar / Associate Shows | NOT EXECUTED (PASS BY TEST; live source smoke passed 2026-10-16 in Phase 21C) |
+| 21C Classic / Compact / Modern PDF Shows | NOT EXECUTED (PASS BY TEST) |
+| 21C Teams Copy exclusion | NOT EXECUTED (PASS BY TEST) |
+| 21C frozen History shows | NOT EXECUTED (PASS BY TEST) |
+| 21D math picker, preview, spell check, invalid input | NOT EXECUTED (PASS BY TEST) |
+| 21D math font/glyphs, math PDFs | NOT EXECUTED on Windows (PASS on build host, see above) |
+| Shows + math combined PDFs | NOT EXECUTED (PASS BY TEST) |
+| Historical backfill, spell-check navigation, Season Price History regressions | NOT EXECUTED (PASS BY TEST) |
+| Personal Sync one-PC | NOT EXECUTED (PASS BY TEST) |
+| Personal Sync two-PC | **NOT EXECUTED — TWO-PC VALIDATION PENDING** |
+| Scheduled refresh | NOT EXECUTED (PASS BY TEST) |
+| Diagnostics/privacy | NOT EXECUTED (PASS BY TEST) |
+| Scaling 100/125/150%, narrow, dark, keyboard | NOT EXECUTED |
+| Experimental EXE | NOT EXECUTED |
+
+## Release status
+
+- **BUILD VERIFIED.** 3410/3410 deterministic tests, Release build 0/0, packaging validator (PS and
+  C#), ZIP integrity, forbidden-content and developer-path scans, notices, version resources and
+  hashes all pass on the build host. No open defect.
+- **WINDOWS VALIDATION PENDING.** No Windows environment was available.
+- **TWO-PC SYNC VALIDATION PENDING.**
+- **DISTRIBUTION LICENSE DECISION PENDING** (QuestPDF).
+- Next release decision: if Windows validation finds a shipped-code defect, fix it in source and ship
+  **`0.1.0-rc.7`**; RC.6 artifacts are immutable. If Windows validation passes, RC.6 is the candidate
+  for the installer/update work, subject to the QuestPDF decision.
+
+# Unreleased development — Phase 22A (after RC.6)
+
+Design foundation and dark mode: shared semantic color tokens (light + dark), typography/spacing/radius
+scales, consolidated button/input/popup/panel/status styles (`Themes/PassdownTokens.axaml`,
+`Themes/PassdownStyles.axaml`), reduced decorative blue, charcoal dark theme (no pure-black window),
+fixed primary-button hover, accessible dark primary buttons. No layout rearranged, no operational
+logic changed, PDF output unchanged. See `docs/phase22a-design-foundation.md`. RC.6 artifacts are
+unchanged; `Directory.Build.props` still says `0.1.0-rc.6`. The next packaged candidate is
+**`0.1.0-rc.7`**.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration — styling only) |
+| Upgrade implications | None. Stored data is unaffected. |
+| Deterministic tests | **3479/3479** (baseline 3410 at `04a71c3`; +69 `Phase22ADesignFoundationTests`) = 163 Domain + 1035 Application + 833 Infrastructure + 406 Documents + 986 Ui together + 26 `OperationsCalendarViewTests` + 17 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). The new class uses no real Window and runs in the mixed Ui partition |
+| Live smoke (opt-in) | not applicable (no retrieval change) |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 22A doc §19 |

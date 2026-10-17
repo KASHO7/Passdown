@@ -1,0 +1,76 @@
+{
+  "SERVICE": {
+    "keyword_image": "",
+    "request_type": "GetKeywordCalendar",
+    "session_id": "fixture",
+    "status": "OK",
+    "DATES": {
+      "D": {
+        "bookings_sold_out": "null",
+        "date": "2026-11-08",
+        "lowest_price": "0.00",
+        "lowest_price_customer_type": "",
+        "lowest_price_package": "",
+        "lowest_price_savings": "",
+        "PS": {
+          "P": [
+            {
+              "available": "6",
+              "capacity": "6",
+              "event_id": "10048997",
+              "id": "10098278",
+              "name": "Fall Military Ticket",
+              "CT": {
+                "fee_amount": "0",
+                "id": "427",
+                "retail_amount": "40.00",
+                "tax_amount": "2.65"
+              }
+            },
+            {
+              "available": "6",
+              "capacity": "6",
+              "event_id": "10048997",
+              "id": "10098292",
+              "name": "Fall First Responder Ticket",
+              "CT": {
+                "fee_amount": "0",
+                "id": "750",
+                "retail_amount": "40.00",
+                "tax_amount": "2.65"
+              }
+            },
+            {
+              "available": "6",
+              "capacity": "6",
+              "event_id": "10048997",
+              "id": "10099674",
+              "name": "Military Ticket",
+              "CT": {
+                "fee_amount": "0",
+                "id": "427",
+                "retail_amount": "40.00",
+                "tax_amount": "2.65"
+              }
+            },
+            {
+              "available": "6",
+              "capacity": "6",
+              "event_id": "10048997",
+              "id": "10099684",
+              "name": "First Responder Ticket",
+              "CT": {
+                "fee_amount": "0",
+                "id": "750",
+                "retail_amount": "40.00",
+                "tax_amount": "2.65"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "request_token": "FIXTURE",
+    "_client_ip": "0.0.0.0"
+  }
+}

@@ -74,9 +74,10 @@ public sealed class ScheduledPassdownFinalizer(
 
             var origin = DetermineOrigin(passdownDate, todayEastern);
 
-            // Local-only composition (Part M/U) — LoadAssociateDateAsync never calls
-            // IRefreshOrchestrator/HTTP/Playwright, so this whole pass performs zero network calls.
-            var workspace = await associatePassdownService.LoadAssociateDateAsync(passdownDate, cancellationToken).ConfigureAwait(false);
+            // Local-only composition (Part M/U) — never calls IRefreshOrchestrator/HTTP/Playwright, so
+            // this whole pass performs zero network calls. Phase 21A: the finalization load freezes the
+            // passdown as it stood at the end of its day, without the historical-view pricing rule.
+            var workspace = await associatePassdownService.LoadAssociateDateForFinalizationAsync(passdownDate, cancellationToken).ConfigureAwait(false);
             var result = await finalizationService.FinalizeAsync(passdownDate, workspace, origin, now, cancellationToken).ConfigureAwait(false);
 
             if (result.Outcome == FinalizationOutcome.Created)

@@ -9,8 +9,12 @@ using Carowinds.Passdown.Domain.Retrieval;
 /// </summary>
 public sealed record CatalogProductLifecycle
 {
-    /// <summary>Consecutive successful absence checks required before archiving (spec §7.3: "a confirmation retry or a second successful absence check").</summary>
-    private const int ConfirmedAbsenceThreshold = 2;
+    /// <summary>
+    /// Consecutive successful absence checks required before archiving (spec §7.3: "a confirmation
+    /// retry or a second successful absence check"). Phase 19B: this archive is the product's
+    /// "retired from the current catalog" state; an Error never advances the count.
+    /// </summary>
+    public const int ConfirmedAbsenceThreshold = 2;
 
     public CatalogProductKey Key { get; }
     public ProductLifecycleState State { get; }

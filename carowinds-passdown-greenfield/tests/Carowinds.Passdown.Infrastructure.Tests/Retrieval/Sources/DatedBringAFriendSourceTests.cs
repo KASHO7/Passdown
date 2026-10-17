@@ -166,6 +166,29 @@ public class DatedBringAFriendSourceTests
     }
 
     [Fact]
+    public async Task RetrieveAsync_OfferHasNoDatesFromTodayOnward_ReturnsNotPublishedNotError()
+    {
+        // Phase 19B: a seasonal/limited offer with nothing published from today onward is a
+        // successful "not currently published" check, never a retrieval failure.
+        var source = BuildSource(JsonResponse("no-dates-found.json"), JsonResponse("no-dates-found.json"), out _);
+
+        var result = await source.RetrieveAsync(Request(Today), CancellationToken.None);
+
+        Assert.Equal(RetrievalStatus.NotPublished, result.Evidence.Status);
+        Assert.Null(result.Payload);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_HorizonFailedWithAnyOtherMessage_StillReturnsError()
+    {
+        var source = BuildSource(JsonResponse("no-dates-found.json"), JsonResponse("unexpected-failed-message.json"), out _);
+
+        var result = await source.RetrieveAsync(Request(Today), CancellationToken.None);
+
+        Assert.Equal(RetrievalStatus.Error, result.Evidence.Status);
+    }
+
+    [Fact]
     public async Task RetrieveAsync_PastDate_ReturnsUnavailableWithoutAnyRequest()
     {
         var source = BuildSource(JsonResponse("published-2026-08-29.json"), out var httpClient);

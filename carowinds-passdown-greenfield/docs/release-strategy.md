@@ -3154,3 +3154,32 @@ its bytes.
 `%LOCALAPPDATA%\Carowinds Passdown`, the `Carowinds Passdown Daily Refresh` task, the sync manifest
 product, and `AssemblyVersion` `0.1.0.0`. The RC number exists to identify stale builds, not to move
 data.
+
+## Phase 21D — bundled math font (no release built)
+
+- New redistributed component: **STIX Two Math 2.13 b171** (SIL OFL 1.1), embedded as a resource in
+  `Carowinds.Passdown.Documents.dll` (not a loose file; +1.5 MB). Notice added as
+  `THIRD-PARTY-NOTICES.txt` §8 and `licenses\STIXTwoMath-OFL.txt`, listed in
+  `release-content-rules.json` `requiredFiles` (validated by
+  `RepositoryNoticeSources_MatchTheRequiredSet_AndAreComplete`). Later sections renumbered 9–13.
+- No new NuGet packages, native libraries or runtime downloads; math rendering is fully offline.
+- The QuestPDF distribution-license question is unchanged and still open.
+- RC.6 was not packaged in Phase 21D; the next real build must confirm the new notice file reaches the
+  release folder (`Test-ReleasePackage.ps1` on Windows).
+
+
+## Phase 21E — RC.6 packaging
+
+- `0.1.0-rc.6` (file version `0.1.0.6`) packages Phases 21A–21D from version commit `ef13a6d` with
+  the real `Build-PortableRelease.ps1` (PowerShell 7.6.7 local tool on the macOS build host).
+  Hashes, sizes and gate results: `docs/release-manifest.md` "0.1.0-rc.6"; Windows checklist:
+  `docs/phase21e-rc6-windows-checklist.md`.
+- The Phase 21D open item is closed on the build host: `licenses\STIXTwoMath-OFL.txt` reaches the
+  release folder (validator PASS, 283 files) and the published `Documents.dll` embeds the font once.
+  Running the validator on Windows is still pending.
+- The shipped `TESTER-GUIDE.txt` now opens with the backup-first and "upgrade every sync PC before
+  using Shows" notices, the About check, and copy/paste math samples. Because the guide ships inside
+  the ZIP, guide changes go in the version commit, before the build.
+- A win-x64 ReadyToRun assembly cannot be loaded on a macOS host, so build-host checks of the
+  published math renderer read its manifest resources with `System.Reflection.Metadata`; rendering
+  itself is checked with the same-commit portable build and, finally, on Windows.

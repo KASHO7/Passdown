@@ -77,6 +77,18 @@ Logs live at:
 New to testing this app? See TESTER-GUIDE.txt in this same folder for a short
 step-by-step walkthrough.
 
+Before upgrading from an older version
+---------------------------------------
+- Close the app and copy the whole %LOCALAPPDATA%\Carowinds Passdown folder somewhere
+  else first (TESTER-GUIDE.txt explains how). Newer versions add data that older
+  versions do not understand, so going back to an older version is not guaranteed
+  to be safe.
+- Personal Sync users: upgrade EVERY computer that shares the sync folder before
+  selecting any Shows. An older version that edits and saves a passdown drops its
+  show selections.
+- Settings → About this build shows the version and the folder the app is running
+  from, so you can confirm you opened the copy you meant to.
+
 Passdown History
 -----------------
 Next to "Associate Passdown" at the top of the window is a "History" section. Each
@@ -87,8 +99,8 @@ Use it to look up or re-print an exact past passdown at any time.
 
 Something not working?
 ------------------------
-Click "Export Diagnostics" inside the app (next to "Create PDF") and save the
-resulting ZIP file. It contains version/health information and recent activity logs
+Open Settings inside the app, click "Export Diagnostics" (under Diagnostics) and save
+the resulting ZIP file. It contains version/health information and recent activity logs
 only — never your drafts, notes, or saved database — and is the fastest way to get
 help from whoever supports this app.
 

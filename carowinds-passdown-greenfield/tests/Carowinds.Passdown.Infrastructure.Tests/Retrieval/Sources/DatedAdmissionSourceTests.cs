@@ -191,9 +191,22 @@ public class DatedAdmissionSourceTests
     }
 
     [Fact]
-    public async Task RetrieveAsync_EntireWindowFailed_ReturnsErrorRatherThanGuessingAStatus()
+    public async Task RetrieveAsync_EntireWindowNoDatesFound_ReturnsNotPublishedNotError()
     {
+        // Phase 19B: the endpoint's own "No dates found" answer for a window starting today is a
+        // successful "nothing published from today onward" check (e.g. a long off-season gap).
         var source = BuildSource(JsonResponse("no-dates-found.json"), out _);
+
+        var result = await source.RetrieveAsync(Request(Today), CancellationToken.None);
+
+        Assert.Equal(RetrievalStatus.NotPublished, result.Evidence.Status);
+        Assert.Null(result.Payload);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_EntireWindowFailedWithAnyOtherMessage_ReturnsErrorRatherThanGuessingAStatus()
+    {
+        var source = BuildSource(JsonResponse("unexpected-failed-message.json"), out _);
 
         var result = await source.RetrieveAsync(Request(Today), CancellationToken.None);
 

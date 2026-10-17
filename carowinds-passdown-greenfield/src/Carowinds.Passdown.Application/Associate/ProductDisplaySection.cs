@@ -1,4 +1,6 @@
+using Carowinds.Passdown.Application.Catalog;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Catalog;
 
 namespace Carowinds.Passdown.Application.Associate;
 
@@ -41,6 +43,11 @@ public static class ProductDisplaySectionResolver
     /// <item><see cref="SourceCategory.DatedBringAFriend"/> — never an independent row at all; its
     /// exact per-date price is merged directly into the existing Promotions "Bring-A-Friend Ticket"
     /// catalog row by <c>AssociatePassdownService.MergeExactDatedBringAFriend</c>.</item>
+    /// <item><see cref="SourceCategory.DatedMilitaryFirstResponder"/> (Phase 21A) — its exact per-date
+    /// price is merged into the Military &amp; First Responder catalog row, or composed as rows under
+    /// <see cref="SourceCategory.MilitaryFirstResponder"/>, by
+    /// <c>AssociatePassdownService.MergeExactDatedMilitaryFirstResponder</c>; its status never gets a
+    /// banner of its own (Daily Admission already has one).</item>
     /// </list>
     /// </summary>
     public static ProductDisplaySection? Resolve(SourceCategory category) => category switch
@@ -54,6 +61,8 @@ public static class ProductDisplaySectionResolver
         SourceCategory.Promotions => ProductDisplaySection.Promotions,
         SourceCategory.BringAFriendDuo => null,
         SourceCategory.DatedBringAFriend => null,
+        SourceCategory.DatedMilitaryFirstResponder => null,
+        SourceCategory.ShowSchedule => null, // Phase 21C: operational information, never a product row.
         _ => ProductDisplaySection.Promotions,
     };
 
@@ -160,6 +169,12 @@ public static class ProductDisplaySectionResolver
     private static bool IsNativeToSection(SourceCategory? category, ProductDisplaySection section) =>
         category is { } c && Resolve(c) == section;
 
+    /// <summary>
+    /// The season-pass tier-word rule (a tier word plus "Pass"). Public since Phase 20A so
+    /// <see cref="Catalog.PriceHistoryTrackingPolicy"/> reuses the exact same rule rather than a copy.
+    /// </summary>
+    public static bool IsSeasonPassName(string displayName) => IsSeasonPassProduct(displayName);
+
     private static bool IsSeasonPassProduct(string displayName)
     {
         if (!displayName.Contains("Pass", StringComparison.OrdinalIgnoreCase))
@@ -170,8 +185,9 @@ public static class ProductDisplaySectionResolver
         return SeasonPassTierWords.Any(tier => displayName.Contains(tier, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>Phase 19B: the one SCarowinds name rule, shared with season tagging (<see cref="ProductSeasonClassifier"/>).</summary>
     private static bool IsScarowindsSpecific(string displayName) =>
-        displayName.Contains("SCarowinds", StringComparison.OrdinalIgnoreCase);
+        ProductSeasonClassifier.FromOfficialName(displayName).HasFlag(ProductSeasonTags.SCarowinds);
 
     /// <summary>Same normalization as <see cref="ProductDisplayIdentity"/> — trims, lowercases, and collapses internal whitespace so cosmetic source variation never creates a false duplicate or a false mismatch.</summary>
     private static string NormalizeName(string displayName) => ProductDisplayIdentity.FromDisplayName(displayName).NormalizedDisplayName;

@@ -133,16 +133,21 @@ public sealed class DatedHauntedSource(IRetrievalHttpClient httpClient, IClock c
         }
 
         var horizonService = horizonResult.Service!;
+
+        // Phase 19B: the endpoint's own "no dates found" answer for a window starting today means
+        // SCarowinds is off-season for the whole window (e.g. after the season ends) — a
+        // successful "not currently published" check, never a retrieval failure (live-confirmed
+        // shape; see AccessoKeywordCalendarService.IsNoDatesFound).
+        if (horizonService.IsNoDatesFound)
+        {
+            return NotPublished(timeChecked, requestedDate);
+        }
+
         if (!string.Equals(horizonService.Status, "OK", StringComparison.OrdinalIgnoreCase))
         {
-            // The horizon window always spans from "today" through at least HorizonPaddingDays. If
-            // SCarowinds is fully off-season for the *entire* window (e.g. checked well before any
-            // season announcement), this branch is reachable in practice — unlike the other two
-            // adapters, where every live check during investigation always returned something. Since
-            // that specific scenario was not itself directly observed live (investigation happened
-            // to occur while the *current* season was already both announced and orderable), it is
-            // still treated as an unexpected shape rather than guessed at as a specific business
-            // status (CLAUDE.md "never invent data") — see docs' limitations section.
+            // Any FAILED answer other than "no dates found" (handled above as off-season) is an
+            // unexpected contract shape, never guessed at as a business status (CLAUDE.md "never
+            // invent data").
             return Error(
                 timeChecked,
                 requestedDate,

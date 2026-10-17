@@ -872,3 +872,198 @@ section; this entry only records the API-contract/schema changes future phases n
 `FinalizedPassdownSnapshot` schema stays 1 — neither was touched; both waterpark hours
 (`ParkHoursPayload`'s two new nullable fields) and PDF page count (`AssociatePassdownPdfResult.PageCount`)
 are additive-nullable/transient values that needed no schema change of their own.
+
+## Phase 19A additions — automatic refresh and live local propagation
+
+Full design: `docs/phase19a-automatic-refresh.md`. Two deliberately separate mechanisms:
+
+- **Local propagation** — `Application.Changes.IDataChangeNotifier`/`DataChangeNotifier` (singleton): a
+  purely in-process invalidation signal published after a committed save by `AssociatePassdownService`
+  (draft saves), `ErtConfigurationService` and `OperationalNotesService` (all via new optional
+  constructor parameters), forwarded from Personal Sync's `ISyncLocalChangeNotifier`, and raised when any
+  online refresh finishes. `OperationsDashboardViewModel` reloads its local projection from it (coalesced,
+  no polling); `AssociateViewModel` re-reads its selected date after newer official data when clean. It
+  never triggers network activity.
+- **Automatic official refresh** — `Application.Refresh.OfficialDataRefreshCoordinator` (singleton,
+  started once in `App.OnFrameworkInitializationCompleted`, stopped in `AttachShutdownFlush`, never in
+  `--scheduled-refresh`). It absorbed and retired `Desktop.Startup.StartupCatchUpRefresh`: startup
+  finalization, missed-daily-maintenance catch-up only when today's maintenance has not run, then one
+  comprehensive check unless every source was already checked within the 60-minute startup grace; then a check every
+  `OfficialRefreshPolicy.AutomaticInterval` (4 h) from the latest qualifying comprehensive check; plus
+  quiet today/future Associate date checks when date-specific data is missing/stale
+  (`DateCheckFreshness`, reusing the daily `FreshnessPolicy`). `IRefreshOrchestrator` gained
+  `RunComprehensiveRefreshAsync` (`RefreshJobType.Comprehensive`: every source over the rolling window,
+  unconditional, records `source_state`).
+- **Concurrency** — `Application.Concurrency.IOfficialRefreshGate`/`OfficialRefreshGate` is the single
+  in-process entry for every online refresh and holds the existing cross-process
+  `IScheduledRefreshLock` while held. `AssociatePassdownService` (Check Online) and
+  `OperationsDashboardService` (Deep Refresh) use it when supplied (new optional parameters).
+- **Status** — `OfficialDataStatus` is derived from persisted `source_state` only (also used by the
+  diagnostics summary); `Desktop.ViewModels.OfficialDataStatusViewModel` (single instance) renders it on
+  the Dashboard header and Associate screen. `Desktop.Services.IUiDispatcher` marshals background events
+  onto the UI thread.
+
+No Domain change; no schema/payload change (DB 15, Draft 4, Snapshot 2, SyncSchemaVersion 1).
+
+## Phase 19B additions — seasonal catalog and product lifecycle
+
+Full design: `docs/phase19b-seasonal-catalog.md`. The existing catalog lifecycle
+(`CatalogProductLifecycle`, 2-check confirmed absence, Error never counts) is unchanged.
+
+- **Domain** — `Catalog.ProductSeasonTags` (`[Flags]`: Carowinds, SCarowinds, WinterFest);
+  `CatalogProductLifecycle.ConfirmedAbsenceThreshold` made public (value 2, unchanged).
+- **Application** — `Catalog.ProductSeasonClassifier` (source category + official event name; never the
+  calendar date; never persisted); `AssociateProduct.SeasonTags` (computed);
+  `ProductDisplaySectionResolver` shares its SCarowinds name rule from the classifier;
+  `ProductReconciliationService` gains an optional `ILogger` and reports `DisplayName`/`SeasonTags`/
+  `PreviousSeasonTags` on `ReconciledProduct`; `DiagnosticReportBuilder` gains an optional
+  `ICatalogProductRepository` for `CatalogLifecycleDiagnostics` (counts only).
+- **Infrastructure** — `AccessoKeywordCalendarService.IsNoDatesFound`; the five dated accesso
+  adapters return `NotPublished` (not `Error`) when nothing is published from today onward.
+- **Desktop** — `CategoryStatusPresentation.Build` omits the empty section of an event-only seasonal
+  category (SCarowinds) whose state is `NotPublished`.
+
+No schema/payload change (DB 15, Draft 4, Snapshot 2, SyncSchemaVersion 1); no new event bus — the
+Phase 19A `OfficialData` change already invalidates screens after reconciliation.
+
+## Phase 20A additions — spell check and Season Pass price history
+
+Full design: `docs/phase20a-spellcheck-price-history.md`. The two features share nothing.
+
+- **Domain** — `Catalog.SeasonPriceState` (amount + `PriceKind`), `SeasonPriceTimeline` (baseline /
+  confirm / price / semantics change / reappearance), `SeasonPriceChange` (derived delta and percent).
+- **Application** — `Catalog.PriceHistoryTrackingPolicy` (the single "is this tracked" decision),
+  `SeasonPriceHistoryRecorder` (called only by `ProductReconciliationService`, in the catalog upsert's
+  unit of work), `SeasonPriceHistoryService` (read side); `Persistence.ISeasonPriceHistoryRepository`;
+  `AssociateProduct.PriceHistoryProductKey` (composition-time only); `DiagnosticReport.SeasonPriceHistory`
+  (counts). `SpellCheck.ISpellingBackend`, `SpellCheckTokenizer`, `DomainSpellingTerms`,
+  `ISpellCheckService`/`SpellCheckService`.
+- **Infrastructure** — `Migration0016CreateSeasonPriceHistoryTable` (new table + one-time backfill from
+  `product_history`), `SqliteSeasonPriceHistoryRepository`; `SpellCheck.WindowsSpellingBackend`
+  (Windows Spell Checking API via built-in COM interop, **Windows-only — needs Windows VM testing**),
+  `SpellingBackendFactory`.
+- **Desktop** — `Spelling.SpellCheck` attached behavior + adorner (no view-model involvement);
+  `PriceHistoryViewModel` / `PriceHistoryView` overlay opened from Associate → Products
+  (`AssociateViewModel.PriceHistoryRequested` → `MainViewModel.PriceHistory`).
+
+Schemas: DB **16**; Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged. Nothing new is synced.
+
+---
+
+## Phase 20C additions — spell-check lifecycle and current-year historical backfill
+
+Full design and measurements: `docs/phase20c-historical-backfill.md`. The two workstreams share nothing.
+
+- **Desktop / spelling** — `SpellCheckController` owns the adorner's presence: it exists only while the
+  TextBox is attached *and* effectively visible (watched via `IsVisible` on the editor and its visual
+  ancestors). Hiding a section (the shell's navigation) removes the adorner, cancels the pending
+  debounce and drops the dictionary subscription; showing it again re-checks. Fixes underlines lingering
+  over other screens.
+- **Application** — `HistoricalBackfill.HistoricalBackfillService` (interactive-only, one session per
+  launch, after `IOfficialDataRefreshCoordinator.StartupCompletion`), `HistoricalBackfillPolicy`
+  (scope = Jan 1 of the current Eastern year → yesterday; completeness derived from `dated_results`),
+  `HistoricalBackfillStatus` (separate from `OfficialDataStatus`), `IParkHoursHistorySource`.
+  `OfficialRefreshGate` gains the low-priority `OfficialRefreshKind.HistoricalBackfill`
+  (`IsLowPriority`): never queues, never starts while operational work waits (`HasPriorityWorkWaiting`),
+  and is asked to cancel its in-flight request (`PriorityWorkWaiting`) when any other kind arrives.
+  The coordinator ignores low-priority gate activity. `DataChangeKind.HistoricalOfficialData`.
+  `DiagnosticReport.HistoricalBackfill`.
+- **Infrastructure** — `ParkHoursSource` implements `IParkHoursHistorySource` (same request/parsing;
+  structured "not retained" flag for the feed's JSON 404 on a past date). Storage reuses
+  `dated_results` via `RecordSuccessAsync` only — no migration, no raw responses.
+- **Desktop** — `OperationsCalendarViewModel` quietly reloads the displayed month on relevant local
+  changes (`IDataChangeNotifier`), promotes the viewed month for the backfill, and shows
+  `HistoricalBackfillStatusPresentation` as one muted header line.
+
+Schemas: DB **16**, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged. Nothing new is synced.
+
+## Phase 21A — pricing accuracy, historical integrity, pass-year identity
+
+See `docs/phase21a-pricing-historical-integrity.md`.
+
+- **Domain** — `SourceCategory.DatedMilitaryFirstResponder`; `PassValidityYear` (explicit year in an
+  official pass name); `CatalogProductKey.WithPassYear`.
+- **Application** — `HistoricalPricingPolicy` (a date is historical from its 6:00 AM finalization
+  cutoff; only rows with evidence for that exact date are composed), `AssociateWorkspace.PricingTimeframe`
+  / `IsHistoricalPricingUnavailable`, `IAssociatePassdownService.LoadAssociateDateForFinalizationAsync`
+  (used by the scheduled finalizer; History unchanged), Military exact-date merge in
+  `AssociatePassdownService`, pass-year separation in `ProductReconciliationService`,
+  `HistoricalPricingSourceCapabilities` (diagnostics).
+- **Infrastructure** — `DatedMilitaryFirstResponderSource` (anonymous `getkeywordcalendar`, keyword
+  `MilitaryWizardDailyTickets`).
+- **Desktop** — Products historical notice; Dashboard Open Passdown → `AssociateViewModel.SelectEasternToday`.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged. No new background service.
+
+## Phase 21B — Associate navigation and toolbar
+
+See `docs/phase21b-associate-navigation-toolbar.md`. Desktop only; no Domain/Application/Infrastructure
+change.
+
+- **Desktop** — `AssociateDateNavigationPresentation` (date header text, Today/Yesterday/Tomorrow from
+  the Eastern date, host-vs-Eastern guard for the calendar's built-in today marker);
+  `AssociateViewModel.GoToTodayCommand` (same `SelectEasternToday` path as Dashboard → Open Passdown),
+  `DateNavigation`, `SelectTemplateCommand`; `AssociateView` date popup = `Button` + `Flyout` +
+  built-in `Calendar`, with commit/dismiss handled in view-only code-behind that hands the date to the
+  existing `SelectedDateForPicker` adapter. `DiagnosticsExportViewModel` (moved out of
+  `AssociateViewModel`, exposed as `PersonalSyncSettingsViewModel.Diagnostics`, shown under Settings →
+  Diagnostics); diagnostics generation stays in Infrastructure's `DiagnosticExportService`.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged.
+
+## Phase 21C — official show schedules
+
+See `docs/phase21c-official-show-schedules.md`.
+
+- **Domain** — `Shows/ShowTimes` (operating-day ordering incl. after-midnight times, U.S. formatting,
+  compact list) and `Shows/ShowIdentity` (official id → numeric id → normalized name+venue);
+  `SourceCategory.ShowSchedule`.
+- **Application** — `Retrieval/ShowSchedulePayload`; `Refresh/CurrentAndFutureDatedSourceRegistration`
+  (past dates skipped before any request or write); `Shows/ShowScheduleView` (one status
+  classification from the last-known-good record), `Shows/ShowScheduleService` (local read),
+  `Shows/AssociateShows` (draft selection, reconciliation, printable rows). `AssociateWorkspace.ShowSchedule`/
+  `.Shows`, `OperationsDashboardSnapshot.TodayShows`, `OperationsCalendarSelectedDateSummary.Shows`,
+  optional `AssociateDraftPayload.Shows` and `FinalizedPassdownSnapshot.Shows`.
+- **Infrastructure** — `ShowScheduleSource` (FIMS operating-hours feed `shows[]`, DirectApi) and
+  `CoalescingRetrievalHttpClient` shared by `ParkHoursSource`/`ShowScheduleSource` (one request per date).
+- **Documents** — `AssociatePassdownDocumentModel.Shows` (`PdfShow`); Classic/Compact/Modern Shows
+  sections; snapshot builder freezes printed shows. Teams Copy never reads them.
+- **Desktop** — `ShowSchedulePresentation` (Dashboard "Today's Shows", Calendar detail),
+  `AssociateShowRowViewModel` + Associate Shows panel, History frozen shows.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged (additive optional properties).
+
+## Phase 21D — Daily Feature math
+
+See `docs/phase21d-daily-feature-math.md`.
+
+- **Application** — `DailyFeatureMath/DailyFeatureMathText` (finds `\( \)` / `\[ \]` regions, limits,
+  spell-check mask), `MathParser` + `MathSymbols` + `MathNode` (the closed LaTeX-style subset → node
+  tree or `MathIssue`; never throws). Pure; no rendering.
+- **Documents** — `DailyFeatureMath/TrueTypeFont` (read-only TrueType reader for the embedded fonts),
+  `MathLayoutEngine`/`MathBox` (TeX-style layout), `MathParagraphRenderer` (prose + math lines as
+  vector paths, bounded LRU cache, `ToSvg`), `DailyFeaturePdfText` (the Daily Feature body composer for
+  all three templates; plain text unchanged), `MathFontSet` (embedded STIX Two Math + Lato),
+  `MathRenderDiagnostics` (status-only logging). STIX is also registered with QuestPDF as a glyph fallback.
+- **Desktop** — `Controls/MathSymbolPicker` + `TextBoxInsertion` (typing-path insertion),
+  `Controls/DailyFeatureMathPreview` + `MathParagraphView` (coalesced preview drawing the shared paths),
+  `Presentation/MathSymbolCatalog`, `Spelling.SpellCheck.ExcludeMath` (Daily Feature only).
+  View models are unchanged — the preview binds to the editor's own text.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged.
+
+
+## Phase 22A — design foundation and dark mode
+
+See `docs/phase22a-design-foundation.md`. Desktop presentation only.
+
+- **Desktop** — `Themes/PassdownTokens.axaml` (semantic color tokens per Light/Dark theme dictionary,
+  typography/spacing/radius tokens, color-only overrides of Fluent popup/input/focus resource keys),
+  merged into `App.axaml` resources; `Themes/PassdownStyles.axaml` (shared class styles: typography,
+  panels/insets/chips/status badges, button variants, selectable list rows), included after
+  `FluentTheme`. Views keep only local deltas in `<UserControl.Styles>`.
+  `Converters/ThemeBrushLookup` resolves tokens for the element's `ActualThemeVariant` (bound via
+  `MultiBinding`) so converter-produced brushes follow a live theme switch.
+- No Domain/Application/Infrastructure/Documents change; no view-model change; PDF output unchanged.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged.

@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Catalog;
 using Carowinds.Passdown.Domain.Retrieval;
 
 namespace Carowinds.Passdown.Application.Catalog;
@@ -25,7 +26,25 @@ public enum ReconciliationOutcome
     Expired,
 }
 
-public sealed record ReconciledProduct(string ProductKey, ReconciliationOutcome Outcome, bool HistoryAppended);
+/// <summary>
+/// One product's reconciliation outcome. Phase 19B adds the seasonal-transition metadata a later
+/// "what appeared / disappeared / changed season" view needs, without any new persistence:
+/// <paramref name="DisplayName"/> and <paramref name="SeasonTags"/> (computed, never stored) and, when
+/// the product was already known, <paramref name="PreviousSeasonTags"/>.
+/// </summary>
+public sealed record ReconciledProduct(
+    string ProductKey,
+    ReconciliationOutcome Outcome,
+    bool HistoryAppended,
+    string? DisplayName = null,
+    ProductSeasonTags SeasonTags = ProductSeasonTags.None,
+    ProductSeasonTags? PreviousSeasonTags = null)
+{
+    public bool SeasonTagsChanged => PreviousSeasonTags is { } previous && previous != SeasonTags;
+
+    /// <summary>Phase 20A: what this observation did to the product's price history; <see langword="null"/> when nothing was recorded (not tracked, not observed, or no numeric price).</summary>
+    public SeasonPriceObservationOutcome? PriceHistoryOutcome { get; init; }
+}
 
 public sealed record ReconciliationResult(SourceCategory Category, IReadOnlyList<ReconciledProduct> Products);
 

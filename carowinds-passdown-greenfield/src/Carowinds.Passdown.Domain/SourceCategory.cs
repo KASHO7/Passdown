@@ -40,4 +40,23 @@ public enum SourceCategory
     /// existing Promotions-category "Bring-A-Friend Ticket" row at composition time.
     /// </summary>
     DatedBringAFriend,
+
+    /// <summary>
+    /// Military and First Responder exact per-date ticket prices (accesso keyword
+    /// <c>MilitaryWizardDailyTickets</c>) — the date calendar the official Military &amp; First
+    /// Responder "Buy Now" store opens, which shows each date's price before any ID.me step (Phase
+    /// 21A; docs/phase21a-pricing-historical-integrity.md). Distinct from
+    /// <see cref="MilitaryFirstResponder"/> (the generic "Starting From" catalog card) so an exact
+    /// dated value is never confused with the marketing minimum. Merged into that card's row at
+    /// composition time when both eligibilities agree on one amount.
+    /// </summary>
+    DatedMilitaryFirstResponder,
+
+    /// <summary>
+    /// Official date-specific entertainment schedule — show names, venues, and start times from the
+    /// <c>shows</c> array of the same official FIMS operating-hours feed <see cref="ParkHours"/> reads
+    /// (Phase 21C; docs/phase21c-official-show-schedules.md). Dated scope; operational information,
+    /// never a priced product — it never composes into any product section or Teams Copy output.
+    /// </summary>
+    ShowSchedule,
 }

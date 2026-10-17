@@ -36,6 +36,18 @@ public class DiagnosticReportFormatterTests
         Assert.Contains(GeneratedAt.ToString("O"), text);
     }
 
+    /// <summary>Phase 21A: the support summary states each pricing source's historical capability — fixed findings, no prices or user content.</summary>
+    [Fact]
+    public void BuildSummaryText_IncludesHistoricalPricingSourceCapabilities()
+    {
+        var text = DiagnosticReportFormatter.BuildSummaryText(BuildReport());
+
+        Assert.Contains("Historical pricing sources (past dates show only prices recorded for that date):", text);
+        Assert.Contains("  DatedMilitaryFirstResponder: StoredObservationsOnly", text);
+        Assert.Contains("  SeasonPasses: CurrentOnly", text);
+        Assert.DoesNotContain("$", text);
+    }
+
     [Fact]
     public void BuildSummaryText_DatabaseMissing_ReportsExistsNoWithoutSchemaVersion()
     {
@@ -92,5 +104,58 @@ public class DiagnosticReportFormatterTests
 
         Assert.Contains("NotAvailableOnThisPlatform", text);
         Assert.Contains("Task Scheduler is a Windows-only feature.", text);
+    }
+
+    [Fact]
+    public void BuildSummaryText_SeasonPriceHistory_IsCountsAndATimestampOnly()
+    {
+        var report = BuildReport() with
+        {
+            SeasonPriceHistory = new Persistence.SeasonPriceHistorySummary(4, 9, new DateTimeOffset(2026, 9, 19, 16, 0, 0, TimeSpan.Zero)),
+        };
+
+        var text = DiagnosticReportFormatter.BuildSummaryText(report);
+
+        Assert.Contains("Season price history:", text);
+        Assert.Contains("tracked products with history: 4", text);
+        Assert.Contains("recorded price states: 9", text);
+        Assert.Contains("most recent price change first seen: 2026-09-19T16:00:00", text);
+        Assert.DoesNotContain("$", text);
+    }
+
+    [Fact]
+    public void BuildSummaryText_WithoutSeasonPriceHistory_OmitsTheSection() =>
+        Assert.DoesNotContain("Season price history:", DiagnosticReportFormatter.BuildSummaryText(BuildReport()));
+
+    [Fact]
+    public void BuildSummaryText_HistoricalBackfill_IsStateCountsAndDatesOnly()
+    {
+        var report = BuildReport() with
+        {
+            HistoricalBackfill = new global::Carowinds.Passdown.Application.HistoricalBackfill.HistoricalBackfillStatus(
+                2026, global::Carowinds.Passdown.Application.HistoricalBackfill.HistoricalBackfillState.PartiallyAvailable,
+                DatesInScope: 288, DatesComplete: 205, SessionQueued: 288, SessionChecked: 205, SessionFailed: 0,
+                OldestNotRetainedDate: new DateOnly(2026, 3, 24), LastActivityAtUtc: new DateTimeOffset(2026, 10, 16, 16, 5, 0, TimeSpan.Zero)),
+        };
+
+        var text = DiagnosticReportFormatter.BuildSummaryText(report);
+
+        Assert.Contains("Historical park-hours backfill (current year only, this app session):", text);
+        Assert.Contains("target year: 2026", text);
+        Assert.Contains("status: PartiallyAvailable", text);
+        Assert.Contains("dates holding official hours: 205", text);
+        Assert.Contains("dates remaining: 83", text);
+        Assert.Contains("this session: 205 of 288 checked, 0 failed", text);
+        Assert.Contains("official feed no longer publishes: 2026-03-24 and earlier", text);
+        Assert.Contains("last activity: 2026-10-16T16:05:00", text);
+    }
+
+    [Fact]
+    public void BuildSummaryText_HistoricalBackfillNotStarted_ShowsOnlyTheState()
+    {
+        var text = DiagnosticReportFormatter.BuildSummaryText(BuildReport() with { HistoricalBackfill = global::Carowinds.Passdown.Application.HistoricalBackfill.HistoricalBackfillStatus.NotStarted(2026) });
+
+        Assert.Contains("status: NotStarted", text);
+        Assert.DoesNotContain("dates remaining", text);
     }
 }

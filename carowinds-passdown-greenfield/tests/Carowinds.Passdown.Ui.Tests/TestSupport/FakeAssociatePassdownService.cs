@@ -2,6 +2,7 @@ using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Refresh;
+using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Hours;
 using Carowinds.Passdown.Domain.Retrieval;
@@ -263,8 +264,12 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
             sourceStates)
         {
             DraftContentHash = _savedDrafts.TryGetValue(date, out var stored) ? SyncContentHash.ComputeDraftHash(stored) : null,
+            ShowSchedule = ShowSchedules.TryGetValue(date, out var shows) ? shows : ShowScheduleView.NotCheckedFor(date),
         };
     }
+
+    /// <summary>Phase 21C: scripted official show schedule per date (default: not checked).</summary>
+    public Dictionary<DateOnly, ShowScheduleView> ShowSchedules { get; } = [];
 
     /// <summary>Phase 18D: optional official hours for this fake (default none, as before) so gate-time tests have a real calculated default to override.</summary>
     public (TimeOnly Opening, TimeOnly Closing)? OfficialHours { get; set; }

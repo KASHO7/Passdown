@@ -1,6 +1,7 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
+using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Ert;
 
@@ -220,4 +221,17 @@ public sealed record OperationsDashboardSnapshot(
     DashboardOperationalNotesSummary ActiveOperationalNotes,
     DashboardDataHealthSummary DataHealth,
     FinalizedPassdownSummary? LatestFinalized,
-    DateTimeOffset GeneratedAt);
+    DateTimeOffset GeneratedAt)
+{
+    /// <summary>
+    /// Phase 21C: today's recorded official show schedule (the same <see cref="AssociateWorkspace.ShowSchedule"/>
+    /// the Associate screen composes). Defaults to "not checked" for construction sites that do not set it.
+    /// </summary>
+    public ShowScheduleView TodayShows
+    {
+        get => _todayShows ?? ShowScheduleView.NotCheckedFor(OperatingDate);
+        init => _todayShows = value;
+    }
+
+    private readonly ShowScheduleView? _todayShows;
+}

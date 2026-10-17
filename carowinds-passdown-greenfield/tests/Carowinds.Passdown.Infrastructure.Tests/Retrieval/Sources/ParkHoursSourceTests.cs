@@ -250,4 +250,63 @@ public class ParkHoursSourceTests
 
         Assert.Equal(EasternTimeZone.ConvertFromUtc(SampleUtcNow), result.Evidence.TimeChecked);
     }
+
+    // ------------------------------------------------------------------ Phase 20C: historical retrieval
+
+    [Fact]
+    public async Task RetrieveHistoricalAsync_FeedNotFoundForAPastDate_IsNotRetained_ButStillAnErrorThatStoresNothing()
+    {
+        var pastDate = new DateOnly(2026, 3, 1); // before SampleUtcNow's 2026-08-20
+        var response = JsonResponse("error-not-found.json", HttpStatusCode.NotFound);
+        var source = BuildSource(response, out var httpClient);
+
+        var historical = await source.RetrieveHistoricalAsync(pastDate, CancellationToken.None);
+        var operational = await source.RetrieveAsync(Request(pastDate), CancellationToken.None);
+
+        Assert.True(historical.NotRetainedBySource);
+        Assert.Equal(RetrievalStatus.Error, historical.Result.Evidence.Status); // never a fabricated Closed/Unavailable value
+        Assert.Null(historical.Result.Payload);
+        Assert.Equal(RetrievalStatus.Error, operational.Evidence.Status); // the operational path is unchanged
+        Assert.Contains("date=20260301", httpClient.LastRequestedUri!.Query);
+    }
+
+    [Fact]
+    public async Task RetrieveHistoricalAsync_NotFoundForTodayOrLater_IsNotARetentionBoundary()
+    {
+        var source = BuildSource(JsonResponse("error-not-found.json", HttpStatusCode.NotFound), out _);
+
+        Assert.False((await source.RetrieveHistoricalAsync(new DateOnly(2026, 8, 20), CancellationToken.None)).NotRetainedBySource);
+        Assert.False((await source.RetrieveHistoricalAsync(new DateOnly(2026, 9, 1), CancellationToken.None)).NotRetainedBySource);
+    }
+
+    [Fact]
+    public async Task RetrieveHistoricalAsync_OutageOrNetworkFailure_IsNeverMistakenForNotRetained()
+    {
+        var html = new RetrievalHttpResponse(HttpStatusCode.ServiceUnavailable, "text/html", FixtureFile.ReadText("park-hours/cloudfront-lambda-error.html"));
+        var htmlNotFound = new RetrievalHttpResponse(HttpStatusCode.NotFound, "text/html", "<html>Not Found</html>");
+        var pastDate = new DateOnly(2026, 4, 1);
+
+        Assert.False((await BuildSource(html, out _).RetrieveHistoricalAsync(pastDate, CancellationToken.None)).NotRetainedBySource);
+        Assert.False((await BuildSource(htmlNotFound, out _).RetrieveHistoricalAsync(pastDate, CancellationToken.None)).NotRetainedBySource);
+
+        var offline = new ParkHoursSource(new FakeRetrievalHttpClient(new HttpRequestException("offline")), new FakeClock(SampleUtcNow));
+        var result = await offline.RetrieveHistoricalAsync(pastDate, CancellationToken.None);
+        Assert.False(result.NotRetainedBySource);
+        Assert.Equal(RetrievalStatus.Error, result.Result.Evidence.Status);
+    }
+
+    [Fact]
+    public async Task RetrieveHistoricalAsync_PublishedPastDate_ParsesExactlyLikeTheOperationalPath()
+    {
+        var date = new DateOnly(2026, 8, 20);
+        var source = BuildSource(JsonResponse("open-date.json"), out _);
+        var clockAfter = new ParkHoursSource(new FakeRetrievalHttpClient(JsonResponse("open-date.json")), new FakeClock(SampleUtcNow.AddDays(30)));
+
+        var historical = await clockAfter.RetrieveHistoricalAsync(date, CancellationToken.None);
+        var operational = await source.RetrieveAsync(Request(date), CancellationToken.None);
+
+        Assert.False(historical.NotRetainedBySource);
+        Assert.Equal(RetrievalStatus.Verified, historical.Result.Evidence.Status);
+        Assert.Equal(operational.Payload, historical.Result.Payload);
+    }
 }

@@ -36,7 +36,7 @@ public enum AppSection
 /// </summary>
 public partial class MainViewModel : ViewModelBase
 {
-    public MainViewModel(OperationsDashboardViewModel dashboard, OperationsCalendarViewModel calendar, AssociateViewModel associate, OperationalNotesViewModel notes, PassdownHistoryViewModel history, PersonalSyncSettingsViewModel settings)
+    public MainViewModel(OperationsDashboardViewModel dashboard, OperationsCalendarViewModel calendar, AssociateViewModel associate, OperationalNotesViewModel notes, PassdownHistoryViewModel history, PersonalSyncSettingsViewModel settings, PriceHistoryViewModel? priceHistory = null)
     {
         ArgumentNullException.ThrowIfNull(dashboard);
         ArgumentNullException.ThrowIfNull(calendar);
@@ -51,12 +51,30 @@ public partial class MainViewModel : ViewModelBase
         Notes = notes;
         History = history;
         Settings = settings;
+        PriceHistory = priceHistory;
+
+        // Phase 20A: Associate → Products asks for the Season Price History screen; it opens as an
+        // overlay on top of whatever section is showing, so no Associate state is touched.
+        if (PriceHistory is not null)
+        {
+            Associate.PriceHistoryRequested += (_, productKey) => _ = PriceHistory.OpenAsync(productKey);
+            PriceHistory.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(PriceHistoryViewModel.IsOpen))
+                {
+                    OnPropertyChanged(nameof(IsPriceHistoryOpen));
+                }
+            };
+        }
 
         // "Open Passdown"/"Open Notes" (spec Phase 10C Parts F/G/H): switch the top-level section and
-        // set Associate's own internal section explicitly — never Associate.SelectedDate, so an
-        // associate mid-edit on another date is never silently switched to today's record.
+        // set Associate's own internal section explicitly. Phase 21A: Dashboard is today's screen, so
+        // "Open Passdown" always opens today's Eastern date (AssociateViewModel.SelectEasternToday,
+        // which flushes any unsaved edit on the previous date first). "Open Notes" still keeps the
+        // current Associate date, and Calendar/History routes keep their explicit dates.
         Dashboard.OpenAssociateOverviewRequested += (_, _) =>
         {
+            Associate.SelectEasternToday();
             Associate.SelectedSection = AssociateSection.Overview;
             ShowAssociateSection();
         };
@@ -143,6 +161,11 @@ public partial class MainViewModel : ViewModelBase
 
     /// <summary>Phase 16B: the local Personal Sync configuration/status screen — never touches any Associate draft, note, or finalized passdown data itself.</summary>
     public PersonalSyncSettingsViewModel Settings { get; }
+
+    /// <summary>Phase 20A: the read-only Season Price History overlay; null only in composition-free tests.</summary>
+    public PriceHistoryViewModel? PriceHistory { get; }
+
+    public bool IsPriceHistoryOpen => PriceHistory?.IsOpen == true;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDashboardSectionSelected))]

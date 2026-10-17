@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.Changes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Time;
@@ -63,7 +64,8 @@ public sealed class OperationalNotesService(
     IClock clock,
     ISyncChangeTracker? syncChangeTracker = null,
     IUnitOfWorkFactory? unitOfWorkFactory = null,
-    OpenEditorConflictRecorder? openEditorConflictRecorder = null) : IOperationalNotesService
+    OpenEditorConflictRecorder? openEditorConflictRecorder = null,
+    IDataChangeNotifier? dataChangeNotifier = null) : IOperationalNotesService
 {
     /// <summary>The canonical Personal Sync content hash of a note — the version identity an editor compares against.</summary>
     public static string ContentHashOf(OperationalNote note) =>
@@ -210,8 +212,21 @@ public sealed class OperationalNotesService(
     }
 
     /// <summary>Phase 16C §7: SQLite save first, sync metadata second — never part of the same write, never skipped for any of the three ways a note's content can change.</summary>
-    private Task MarkChangedAsync(Guid noteId, CancellationToken cancellationToken) =>
-        syncChangeTracker?.MarkLocalChangeAsync(SyncEntityType.OperationalNote, SyncEntityIdentity.ForNote(noteId), cancellationToken) ?? Task.CompletedTask;
+    /// <remarks>Phase 19A: also announces the committed change to local projections (the Dashboard's notes panel) — never a network trigger.</remarks>
+    private async Task MarkChangedAsync(Guid noteId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (syncChangeTracker is not null)
+            {
+                await syncChangeTracker.MarkLocalChangeAsync(SyncEntityType.OperationalNote, SyncEntityIdentity.ForNote(noteId), cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            dataChangeNotifier?.Publish(new DataChange(DataChangeKind.OperationalNotes));
+        }
+    }
 
     public async Task<IReadOnlyList<OperationalNote>> ListAsync(CancellationToken cancellationToken = default)
     {

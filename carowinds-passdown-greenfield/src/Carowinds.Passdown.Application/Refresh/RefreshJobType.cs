@@ -24,4 +24,13 @@ public enum RefreshJobType
     /// a fresh check for every source it touches.
     /// </summary>
     DeepRefresh,
+
+    /// <summary>
+    /// Phase 19A: the interactive app's automatic comprehensive check (startup and every four hours)
+    /// — every registered dated source over the normal rolling window and every catalog source once,
+    /// all unconditionally (the daily due-gate would otherwise skip everything after the 6 AM run).
+    /// Updates scheduled-cadence source state like <see cref="DeepRefresh"/>, because every source
+    /// genuinely was checked; unlike Deep Refresh it never widens Park Hours past the rolling window.
+    /// </summary>
+    Comprehensive,
 }

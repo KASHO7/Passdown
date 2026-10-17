@@ -237,9 +237,22 @@ public class DatedHauntedSourceTests
     }
 
     [Fact]
-    public async Task RetrieveAsync_HorizonWindowEntirelyFailed_ReturnsErrorRatherThanGuessingAStatus()
+    public async Task RetrieveAsync_HorizonWindowNoDatesFound_ReturnsNotPublishedNotError()
     {
+        // Phase 19B: nothing published anywhere from today onward (e.g. off-season) is a successful
+        // "not currently published" check, never a retrieval failure.
         var source = BuildSource(JsonResponse("no-dates-found.json"), JsonResponse("no-dates-found.json"), out _);
+
+        var result = await source.RetrieveAsync(Request(new DateOnly(2027, 6, 15)), CancellationToken.None);
+
+        Assert.Equal(RetrievalStatus.NotPublished, result.Evidence.Status);
+        Assert.Null(result.Payload);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_HorizonWindowFailedWithAnyOtherMessage_ReturnsErrorRatherThanGuessingAStatus()
+    {
+        var source = BuildSource(JsonResponse("no-dates-found.json"), JsonResponse("unexpected-failed-message.json"), out _);
 
         var result = await source.RetrieveAsync(Request(new DateOnly(2027, 6, 15)), CancellationToken.None);
 

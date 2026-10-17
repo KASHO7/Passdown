@@ -33,6 +33,9 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
     /// <summary>Phase 18D "About this build": which exact copy is running (support/stale-copy troubleshooting).</summary>
     public BuildIdentity Build { get; }
 
+    /// <summary>Phase 21B: Settings → Diagnostics (Export Diagnostics moved here from the Associate toolbar).</summary>
+    public DiagnosticsExportViewModel Diagnostics { get; }
+
     public string BuildProductName => Build.ProductName;
 
     /// <summary>"0.1.0-rc.1 (096bc4a)" — the release version plus the source commit it was built from.</summary>
@@ -117,7 +120,8 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         IPersonalSyncConflictResolutionService conflictService,
         IPersonalSyncCoordinator coordinator,
         ILogger<PersonalSyncSettingsViewModel>? logger = null,
-        BuildIdentity? buildIdentity = null)
+        BuildIdentity? buildIdentity = null,
+        DiagnosticsExportViewModel? diagnostics = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(folderPicker);
@@ -130,6 +134,7 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         _coordinator = coordinator;
         _logger = logger;
         Build = buildIdentity ?? BuildIdentity.Current();
+        Diagnostics = diagnostics ?? new DiagnosticsExportViewModel();
 
         AutomationStatus = coordinator.CurrentStatus;
         // This ViewModel is resolved exactly once for the app's session (MainViewModel's own

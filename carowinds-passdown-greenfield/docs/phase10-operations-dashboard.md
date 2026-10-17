@@ -1615,3 +1615,15 @@ distinguishable — its underlying data source (`AssociateDraftPayload.Operation
 `DashboardNotesSummary`) is otherwise unchanged. See `docs/phase11-operational-notes.md`'s own Phase
 11C section for the full read model, relevance/ordering reuse, navigation, and test details; this
 document's prior Phase 10A–10F history above is left as originally recorded.
+
+## Phase 19A update — header Refresh removed, Dashboard reacts to local changes
+
+The header "Refresh" button (`ReloadCommand`, Part R) and its "Updated h:mm" local-reload timestamp are
+removed. The Dashboard was stale because its single long-lived view model loaded only in its
+constructor; it now subscribes to the app's local `IDataChangeNotifier` and reloads today's local
+projection after Associate draft saves (attendance, pre-solds, North Gate/Avenue overrides…), ERT and
+Operational Notes saves, Personal Sync imports, finished online refreshes, startup finalization and the
+Eastern day rolling over — coalesced, never polled, never a network call. `ReloadCommand` survives only
+as the "Try again" button inside the load-error message. The header now shows the shared official-data
+status line ("Official data checked 12:41 PM"). Check Online and Run Deep Refresh are unchanged (both now
+pass through the in-process refresh gate). See `docs/phase19a-automatic-refresh.md`.

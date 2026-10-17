@@ -83,9 +83,12 @@ This is one of two independent layers that cover a missed 6 AM run:
 
 1. **Task Scheduler's own missed-start catch-up** (this setting) — fires the task once the machine
    is next awake, whether or not the desktop app is ever opened that day.
-2. **The application's interactive startup catch-up** (Phase 6B,
-   `Carowinds.Passdown.Desktop.Startup.StartupCatchUpRefresh`) — fires a background refresh attempt
-   the next time a user opens the desktop app, independent of Task Scheduler.
+2. **The application's interactive startup catch-up** (Phase 6B; since Phase 19A part of
+   `Carowinds.Passdown.Application.Refresh.OfficialDataRefreshCoordinator`) — the next time a user opens
+   the desktop app it finalizes and, only if today's maintenance has not run yet (no Deep Refresh
+   attempted since 6:00 AM Eastern, or Park Hours coverage fell behind), runs the same maintenance in the
+   background, independent of Task Scheduler. While the app stays open it also runs its own lighter
+   comprehensive check every four hours (`docs/phase19a-automatic-refresh.md`).
 
 Both call the exact same `IScheduledRefreshRunner`/`IRefreshOrchestrator` pipeline and both acquire
 the same `FileScheduledRefreshLock` before doing any real work, so if both happen to trigger around
@@ -186,9 +189,14 @@ handled entirely by the existing `FileScheduledRefreshLock`, not by anything new
 
 - Whichever acquires the lock first performs the actual refresh.
 - The other observes the lock held and skips its own refresh attempt without error: the scheduled
-  process exits with code `4` (Overlap); the interactive startup catch-up logs and swallows the
-  skip internally (it never surfaces an error to the UI — see Phase 6B's
-  `StartupCatchUpRefresh`).
+  process exits with code `4` (Overlap); the interactive app logs the skip (it never surfaces an error
+  to the UI) and re-evaluates within five minutes. Inside the app, every online refresh (automatic,
+  Check Online, Deep Refresh) additionally passes through one in-process gate, so the app never runs
+  two of its own at once (Phase 19A).
+- Phase 19A: when the scheduled task already ran today, opening the app does not repeat its Park Hours
+  coverage sweep, and if every source was checked within the last 60 minutes the app skips
+  its startup check entirely. A scheduled run also resets the app's four-hour automatic clock, because
+  that clock is derived from the same persisted `source_state` timestamps.
 - The desktop window always opens normally regardless of which path is refreshing, since the
   startup catch-up runs as a detached background task that never blocks `MainWindow` being shown.
 - No duplicate refresh occurs and no data corruption can result, because only the lock holder ever

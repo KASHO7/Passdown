@@ -1,7 +1,10 @@
+using Carowinds.Passdown.Application.Catalog;
 using Carowinds.Passdown.Application.Diagnostics;
 using Carowinds.Passdown.Application.Refresh;
+using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Tests.TestSupport;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Catalog;
 
 namespace Carowinds.Passdown.Application.Tests.Diagnostics;
 
@@ -34,6 +37,43 @@ public class DiagnosticReportBuilderTests
             new FakeScheduledTaskStatusProvider(scheduledTask ?? new ScheduledTaskDiagnostics(ScheduledTaskDiagnosticStatus.NotFound, null)),
             new FakeScheduledRefreshLogProvider(logLines ?? []),
             new FakeClock(Now));
+
+    // Phase 19B §49: lifecycle and season-tag counts only — never product names or payloads.
+    [Fact]
+    public async Task BuildAsync_WithCatalogRepository_ReportsLifecycleAndSeasonTagCounts()
+    {
+        var catalog = new InMemoryCatalogProductRepository();
+        var reconciliation = new ProductReconciliationService(catalog, new InMemoryProductHistoryRepository(), new FakeUnitOfWorkFactory());
+        ObservedProduct Promo(string name) => new(
+            CatalogProductKey.FromSourceAndName(SourceCategory.Promotions, "promotions", name), name, 10m, "$10", null, null, false, null);
+        await reconciliation.ReconcileAsync(SourceCategory.Promotions, FakeEvidence.Verified(Now.AddHours(-8)),
+            [Promo("Bring-A-Friend Ticket"), Promo("SCarowinds Bundles"), Promo("Ended Offer"), Promo("Fading Offer")]);
+        await reconciliation.ReconcileAsync(SourceCategory.Promotions, FakeEvidence.Verified(Now.AddHours(-4)),
+            [Promo("Bring-A-Friend Ticket"), Promo("SCarowinds Bundles"), Promo("Fading Offer")]);
+        await reconciliation.ReconcileAsync(SourceCategory.Promotions, FakeEvidence.Verified(Now),
+            [Promo("Bring-A-Friend Ticket"), Promo("SCarowinds Bundles"), Promo("WinterFest Ticket")]);
+        var promotions = new CatalogSourceRegistration(
+            new FakeOfficialDataSource<CatalogPayload>("promotions", SourceCategory.Promotions, (_, _) => throw new InvalidOperationException("must not execute")),
+            reconciliation);
+
+        var sut = new DiagnosticReportBuilder(
+            [promotions],
+            new InMemorySourceStateRepository(),
+            new FakeDatabaseDiagnosticsProvider(new DatabaseDiagnostics(false, null, null, false, null)),
+            new FakeScheduledTaskStatusProvider(new ScheduledTaskDiagnostics(ScheduledTaskDiagnosticStatus.NotFound, null)),
+            new FakeScheduledRefreshLogProvider([]),
+            new FakeClock(Now),
+            catalogProductRepository: catalog);
+
+        var report = await sut.BuildAsync();
+
+        Assert.Equal(new CatalogLifecycleDiagnostics(
+            Active: 3, PendingConfirmation: 1, Inactive: 1,
+            ActiveCarowinds: 0, ActiveSCarowinds: 1, ActiveWinterFest: 1, ActiveUnclassified: 1), report.CatalogLifecycle);
+        var summary = DiagnosticReportFormatter.BuildSummaryText(report);
+        Assert.Contains("inactive (retired/expired, kept for history): 1", summary);
+        Assert.DoesNotContain("Ended Offer", summary);
+    }
 
     [Fact]
     public async Task BuildAsync_IncludesABoundedAppLogExcerpt_WhenAnAppLogProviderIsRegistered()

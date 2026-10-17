@@ -248,3 +248,38 @@ removed the dedicated section: `ProductDisplaySectionResolver` now maps `SourceC
 to no display section at all, so only the Promotions catalog card (already carrying the correct
 bundle/per-person breakdown) is shown. The dated `SUBAF50` retrieval itself, its freshness cadence,
 and its Dashboard health visibility are all untouched — only its *display* composition changed.
+
+## Phase 19B addendum — lifecycle never changes price semantics
+
+A retired (confirmed-absent) catalog product is excluded from current composition, so its price
+simply stops appearing in the Associate screen, PDF and Today's Pricing copy — no "Retired"/"Ended"
+price label exists. A dated keyword with nothing published from today onward now answers
+`NotPublished` (successful, no payload), never `Error`; no price is fabricated for it. Exact-dated vs
+"Starting From" precedence, Bring-A-Friend merging and bundle/per-person semantics are unchanged.
+Season tags (`ProductSeasonTags`) are classification only and never affect price kind or inclusion.
+See `docs/phase19b-seasonal-catalog.md`.
+
+## Phase 20A addendum — Season Pass price history
+
+Season Passes and Season Pass Add-Ons now keep a persistent history of advertised price **states**
+(`season_price_history`; `docs/phase20a-spellcheck-price-history.md`). A state is the amount **plus**
+its `PriceKind`, so `$99.00` (StandardCatalog), `From $99.00` (StartingFrom) and `$99.00` with a
+comparison price (Sale) are three different states — the first time `PriceKind` is persisted anywhere,
+and only as a recorded observation (composition still computes it from qualifier/comparison as before).
+Only successful official catalog retrievals write history; manual overrides, PDFs, Teams copy, cached
+rereads and failed checks never do. Dated/exact-dated pricing (daily admission, dated Fast Lane, dated
+haunted, dated Bring-A-Friend) is deliberately excluded and its storage is unchanged. Existing pricing
+semantics, precedence and display are unchanged.
+
+## Phase 21A addendum — Military dated precedence and historical dates
+
+- Military/First Responder now has an exact-date source (`DatedMilitaryFirstResponder`, keyword
+  `MilitaryWizardDailyTickets`). For a selected date, a verified exact amount wins over the catalog's
+  "Starting From" minimum and switches the "Military & First Responder Tickets" row to `ExactDated` in
+  place (gate comparison kept); differing eligibility amounts give one exact row each. Without an exact
+  amount for that date the row stays `From $x` — never presented as exact.
+- A past date (from its 6:00 AM finalization cutoff) composes only rows whose price is `DateSpecific`
+  with `ApplicableDate` equal to that date; current catalog values are never historical evidence, and
+  merged rows drop the catalog comparison. Empty → "Historical pricing not available for this date."
+- `PriceKind` vocabulary and every other precedence rule are unchanged. See
+  `docs/phase21a-pricing-historical-integrity.md`.

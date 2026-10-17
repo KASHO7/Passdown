@@ -1,0 +1,1860 @@
+{
+  "SERVICE": {
+    "keyword_image": "",
+    "request_type": "GetKeywordCalendar",
+    "session_id": "fixture",
+    "status": "OK",
+    "DATES": {
+      "D": [
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-10-16",
+          "lowest_price": "55.00",
+          "lowest_price_customer_type": "427",
+          "lowest_price_package": "10098283",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "48948",
+                "capacity": "50000",
+                "event_id": "10048997",
+                "id": "10098283",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "55.00",
+                  "tax_amount": "3.64"
+                }
+              },
+              {
+                "available": "48948",
+                "capacity": "50000",
+                "event_id": "10048997",
+                "id": "10098297",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "55.00",
+                  "tax_amount": "3.64"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-10-17",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098286",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "60.00",
+                  "tax_amount": "3.98"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098300",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "60.00",
+                  "tax_amount": "3.98"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-10-18",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098284",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "55.00",
+                  "tax_amount": "3.64"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098298",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "55.00",
+                  "tax_amount": "3.64"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-10-22",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098280",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098294",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-10-23",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098284",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "55.00",
+                  "tax_amount": "3.64"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098298",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "55.00",
+                  "tax_amount": "3.64"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-10-24",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098286",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "60.00",
+                  "tax_amount": "3.98"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098300",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "60.00",
+                  "tax_amount": "3.98"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-10-25",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098284",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "55.00",
+                  "tax_amount": "3.64"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098298",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "55.00",
+                  "tax_amount": "3.64"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-10-29",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098280",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098294",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-10-30",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098286",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "60.00",
+                  "tax_amount": "3.98"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098300",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "60.00",
+                  "tax_amount": "3.98"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-10-31",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098286",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "60.00",
+                  "tax_amount": "3.98"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098300",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "60.00",
+                  "tax_amount": "3.98"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-11-01",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098280",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098294",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-11-06",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098278",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098292",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-11-07",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099676",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099686",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-11-08",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098278",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098292",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099674",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099684",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-11-14",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099676",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099686",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-11-15",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098278",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098292",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099674",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099684",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-11-21",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099676",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099686",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-11-22",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098278",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098292",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099674",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099684",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-11-27",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099676",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099686",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-11-28",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099676",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099686",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-11-29",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098278",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098292",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099674",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099684",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-12-05",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099676",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099686",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-12-06",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098278",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098292",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099674",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099684",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-12-12",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098282",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098296",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099678",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099688",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-12-13",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099676",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099686",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-12-18",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099676",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099686",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-12-19",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098282",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098296",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099678",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099688",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-12-20",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099676",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099686",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-12-21",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098280",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098294",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-12-22",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098278",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098292",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099674",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099684",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-12-23",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098278",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098292",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099674",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099684",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-12-26",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098282",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098296",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099678",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099688",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-12-27",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098282",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098296",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099678",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099688",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-12-28",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098280",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098294",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "45.00",
+                  "tax_amount": "2.98"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-12-29",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098278",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098292",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099674",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099684",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-12-30",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098278",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098292",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099674",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099684",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2026-12-31",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098282",
+                "name": "Fall Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10098296",
+                "name": "Fall First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099678",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099688",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2027-01-02",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099678",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099688",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "50.00",
+                  "tax_amount": "3.31"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "bookings_sold_out": "null",
+          "date": "2027-01-03",
+          "lowest_price": "0.00",
+          "lowest_price_customer_type": "",
+          "lowest_price_package": "",
+          "lowest_price_savings": "",
+          "PS": {
+            "P": [
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099674",
+                "name": "Military Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "427",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              },
+              {
+                "available": "6",
+                "capacity": "6",
+                "event_id": "10048997",
+                "id": "10099684",
+                "name": "First Responder Ticket",
+                "CT": {
+                  "fee_amount": "0",
+                  "id": "750",
+                  "retail_amount": "40.00",
+                  "tax_amount": "2.65"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "request_token": "FIXTURE",
+    "_client_ip": "0.0.0.0"
+  }
+}

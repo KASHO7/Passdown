@@ -91,7 +91,7 @@ Confirmed via direct `curl` (no Playwright) — this is a case where §6.4's
       "date": "08/20/2026",           // MM/dd/yyyy — matches the requested date
       "isParkClosed": false,
       "venues": [ /* per-ride/restaurant/retail detail — NOT used; see below */ ],
-      "shows": [ /* not used */ ],
+      "shows": [ /* not used here — read by ShowScheduleSource (Phase 21C) */ ],
       "events": [ /* not used */ ],
       "operatings": [
         {
@@ -193,3 +193,43 @@ assumption.
   read — spec §8.2's private-buyout handling is a manual associate override,
   not sourced from this feed, so reading it here would be speculative scope
   creep.
+
+## Phase 20C update — past dates, retention window, and the monthly form
+
+Re-investigated live on 2026-10-16 (plain GETs, no Playwright):
+
+- **Daily form serves past dates within a retention window.** 2026-03-25 through yesterday returned the
+  normal shape (open with Park/Waterpark `operatings`, or `isParkClosed: true`). 2026-03-24 and every
+  earlier 2026 date tried (03-01, 02-15, 01-01) returned **HTTP 404** with the JSON body
+  `{"error":"Not Found","message":"The requested resource could not be found."}` — the same shape
+  already documented above for "far outside the retained range".
+- **Monthly form is not history.** `?date=202606` / `202609` / `202603` each returned a single entry
+  (the month's last day); `?date=202610` returned only 10/17–10/31 (tomorrow onward). It cannot be used
+  for backfill, so the backfill makes one daily request per date.
+- `ParkHoursSource` now also implements `IParkHoursHistorySource.RetrieveHistoricalAsync`: identical
+  request and parsing, plus `NotRetainedBySource` = (HTTP 404 with that JSON error body) **and** the date
+  is before today (Eastern). The evidence is still `Error`, so the operational contract above is
+  unchanged and a "Not Found" can never be stored or replace a stored value. HTML error pages (the 503
+  CloudFront/Lambda page), other statuses and network failures are never treated as "not retained".
+- A live response is ~28–30 KB (mostly `venues`); only the normalized `ParkHoursPayload` (≤ 119 bytes
+  of JSON) and evidence are stored — measured at ~580 bytes per date on disk.
+
+The retention window is observed behavior, not a documented contract; the backfill re-probes it once
+per session. See `docs/phase20c-historical-backfill.md`.
+
+## Phase 21A — January 1–3, 2026
+
+Checked live 2026-10-16: the feed returns HTTP 404 "Not Found" for 2026-01-01..03, for the `202601`
+and `202512` month files, and for every date before 2026-03-25 (CloudFront "Error from cloudfront").
+The official WinterFest/park-hours pages now describe only the 2026–27 season. These dates are no
+longer exposed by the official source; the Phase 20C backfill includes them in scope (calendar year
+2026 even though they belong to the previous WinterFest season), probes the boundary from the 404,
+and stores nothing. No hours are inferred from neighboring dates; no cutoff date is hard-coded.
+
+## Phase 21C update — shared request with the show schedule
+
+The `shows[]` array of this same response is now read by `ShowScheduleSource`
+(`docs/phase21c-official-show-schedules.md`); this adapter still reads only `operatings`. In the app
+both adapters share a `CoalescingRetrievalHttpClient`, so checking a date's hours and shows together
+issues one GET (identical in-flight requests joined; a successful response reused for 2 minutes;
+failures never cached). `ParkHoursSource`'s own behavior and contract are unchanged.

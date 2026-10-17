@@ -9,129 +9,40 @@
              x:DataType="vm:OperationsDashboardViewModel">
 
   <!-- Phase 10A: the Operations Dashboard foundation — a summary/control surface answering "what do
-       I need to know today?", not another editing form. Every style class below is a small,
-       self-contained subset mirroring AssociateView/HistoryView's own visual language (Avalonia
-       Styles declared inside one UserControl are scoped to its own visual tree), since this screen
-       has no editable controls at all. -->
+       I need to know today?", not another editing form. Shared typography, surface, button and status styles
+       come from Themes/PassdownStyles.axaml (Phase 22A); only this screen's own deltas live below. -->
   <UserControl.Styles>
-
-    <Style Selector="TextBlock.pageTitle">
-      <Setter Property="FontSize" Value="20" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
-    <Style Selector="TextBlock.sectionTitle">
-      <Setter Property="FontSize" Value="13.5" />
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="LetterSpacing" Value="0.4" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="Margin" Value="0,0,0,8" />
-    </Style>
-    <Style Selector="TextBlock.muted">
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
-      <Setter Property="FontSize" Value="12.5" />
-    </Style>
-    <Style Selector="TextBlock.fieldError">
-      <Setter Property="Foreground" Value="{DynamicResource PassdownErrorBrush}" />
-      <Setter Property="FontSize" Value="12.5" />
-      <Setter Property="FontWeight" Value="Medium" />
-    </Style>
-
-    <Style Selector="Border.panel">
-      <Setter Property="Padding" Value="18" />
-      <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
-      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceTintBrush}" />
-    </Style>
-    <!-- The two strongest panels on the page (Today's Operation / Passdown Status): same surface, with a brand top rule. -->
-    <Style Selector="Border.heroPanel">
-      <Setter Property="BorderThickness" Value="1,3,1,1" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
-    </Style>
-
-    <Style Selector="Border.chip">
-      <Setter Property="Background" Value="{DynamicResource PassdownChipBrush}" />
-      <Setter Property="CornerRadius" Value="10" />
-      <Setter Property="Padding" Value="9,3" />
-    </Style>
-    <Style Selector="Border.chip TextBlock">
-      <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="FontWeight" Value="Medium" />
-    </Style>
-
     <Style Selector="TextBlock.hoursHeadline">
-      <Setter Property="FontSize" Value="26" />
-      <Setter Property="FontWeight" Value="Bold" />
       <Setter Property="Margin" Value="0,4,0,6" />
     </Style>
-
-    <Style Selector="TextBlock.statValue">
-      <Setter Property="FontSize" Value="20" />
-      <Setter Property="FontWeight" Value="Bold" />
-    </Style>
-    <Style Selector="TextBlock.statLabel">
-      <Setter Property="FontSize" Value="11" />
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="LetterSpacing" Value="0.5" />
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
-      <Setter Property="Margin" Value="0,0,0,4" />
-    </Style>
-
-    <!-- Phase 11C Part J: the Priority text on an active-note preview row — restrained accent +
-         weight for Important, never alarm-style color, matching OperationalNotesView's own
-         convention exactly (the word "Important" itself communicates priority; this is reinforcement
-         only). -->
-    <Style Selector="TextBlock.priorityText">
-      <Setter Property="FontSize" Value="12.5" />
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
-    </Style>
-    <Style Selector="TextBlock.priorityText.important">
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownChipAccentForegroundBrush}" />
-    </Style>
-
-    <Style Selector="Button.primaryAction">
-      <Setter Property="Background" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownHeaderForegroundBrush}" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="CornerRadius" Value="5" />
-      <Setter Property="Padding" Value="14,7" />
-    </Style>
-    <Style Selector="Button.secondaryAction">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="BorderThickness" Value="1.5" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="CornerRadius" Value="5" />
-      <Setter Property="Padding" Value="14,7" />
-    </Style>
-    <Style Selector="Button.secondaryAction:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
-    </Style>
-
   </UserControl.Styles>
 
   <Grid RowDefinitions="Auto,*">
 
-    <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceTintBrush}"
+    <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceBrush}"
             BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
-      <!-- Phase 15E: the title column is "*" (not Auto) so the Refresh action group (a fixed Auto
-           column) always stays fully visible and reachable at the 960×640 minimum window size — a long
-           real operating-day label ("Wednesday, September 30, 2026") previously could push the Refresh
-           button/timestamp partially off the window since two Auto columns cannot both shrink to fit. -->
+      <!-- Phase 15E: the title column is "*" (not Auto) so the right-hand status group (a fixed Auto
+           column) always stays fully visible at the 960×640 minimum window size — a long real
+           operating-day label ("Wednesday, September 30, 2026") previously could push it partially off
+           the window since two Auto columns cannot both shrink to fit.
+           Phase 19A: the header "Refresh" button is gone — the Dashboard now reloads itself whenever local
+           data changes — and its place holds the shared, subtle official-data freshness line. -->
       <Grid ColumnDefinitions="*,Auto">
         <StackPanel Grid.Column="0" Spacing="2">
           <TextBlock Text="TODAY" Classes="sectionTitle" Margin="0" />
           <TextBlock Text="{Binding Presentation.OperatingDayLabel}" Classes="pageTitle"
                      TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
         </StackPanel>
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-          <TextBlock Text="{Binding Presentation.GeneratedAtText}" Classes="muted" VerticalAlignment="Center"
-                     IsVisible="{Binding HasSnapshot}" />
-          <Button Content="Refresh" Classes="secondaryAction" Command="{Binding ReloadCommand}"
-                  AutomationProperties.Name="Refresh today's operations summary"
-                  AutomationProperties.HelpText="Reloads today's summary from your saved local information. Does not check the website." />
+        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center" HorizontalAlignment="Right"
+                    IsVisible="{Binding OfficialDataStatus, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <TextBlock x:Name="OfficialDataStatusText" Text="{Binding OfficialDataStatus.Presentation.Text}" Classes="muted"
+                     HorizontalAlignment="Right" TextWrapping="NoWrap"
+                     AutomationProperties.Name="{Binding OfficialDataStatus.Presentation.AutomationText}"
+                     AutomationProperties.LiveSetting="Polite"
+                     ToolTip.Tip="{Binding OfficialDataStatus.Presentation.DetailText}" />
+          <TextBlock Text="{Binding OfficialDataStatus.Presentation.DetailText}" Classes="muted" FontSize="11"
+                     HorizontalAlignment="Right" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" MaxWidth="420"
+                     IsVisible="{Binding OfficialDataStatus.Presentation.DetailText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         </StackPanel>
       </Grid>
     </Border>
@@ -141,8 +52,13 @@
 
         <ProgressBar IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoading}" />
 
-        <TextBlock Text="{Binding ErrorMessage}" Classes="fieldError" TextWrapping="Wrap"
-                   IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <StackPanel Orientation="Horizontal" Spacing="12"
+                    IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+          <TextBlock Text="{Binding ErrorMessage}" Classes="fieldError" TextWrapping="Wrap" VerticalAlignment="Center" />
+          <Button Content="Try again" Classes="secondaryAction" Command="{Binding ReloadCommand}"
+                  AutomationProperties.Name="Try loading today's operations summary again"
+                  AutomationProperties.HelpText="Reloads today's summary from your saved local information. Does not check the website." />
+        </StackPanel>
 
         <StackPanel Spacing="16" IsVisible="{Binding HasSnapshot}">
 
@@ -202,6 +118,35 @@
                   <TextBlock Text="{Binding Presentation.DailyFeatureText}" TextWrapping="Wrap" FontWeight="SemiBold" />
                 </StackPanel>
               </Grid>
+            </StackPanel>
+          </Border>
+
+          <!-- Phase 21C: Today's Shows — the official schedule's upcoming performances, compact rows
+               (name · times · venue), never a large table. Empty/unpublished/failed states are one
+               quiet line; only a confirmed empty schedule says "No shows scheduled". -->
+          <Border Classes="panel" AutomationProperties.Name="Today's shows" IsVisible="{Binding ShowsPresentation, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <StackPanel Spacing="6">
+              <TextBlock Text="{Binding ShowsPresentation.Heading}" Classes="sectionTitle" Margin="0" />
+              <TextBlock Text="{Binding ShowsPresentation.StatusText}" Classes="muted" TextWrapping="Wrap"
+                         IsVisible="{Binding ShowsPresentation.HasStatusText}" />
+              <ItemsControl ItemsSource="{Binding ShowsPresentation.Rows}" IsVisible="{Binding ShowsPresentation.HasRows}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="presentation:ShowRowPresentation">
+                    <Grid ColumnDefinitions="2*,3*,1.5*" ColumnSpacing="16" Margin="0,2">
+                      <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="{Binding TimesText}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding EarlierText}" Classes="muted" IsVisible="{Binding HasEarlierText}" />
+                      </StackPanel>
+                      <TextBlock Grid.Column="2" Text="{Binding Venue}" Classes="muted" TextWrapping="Wrap" IsVisible="{Binding HasVenue}" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Text="{Binding ShowsPresentation.StartedEarlierText}" Classes="muted" TextWrapping="Wrap"
+                         IsVisible="{Binding ShowsPresentation.HasStartedEarlierText}" />
+              <TextBlock Text="{Binding ShowsPresentation.FreshnessText}" Classes="muted" FontSize="12"
+                         IsVisible="{Binding ShowsPresentation.HasFreshnessText}" />
             </StackPanel>
           </Border>
 

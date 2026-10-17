@@ -5,7 +5,7 @@ whoever actually fields a tester's report. Not shipped inside the release ZIP �
 Keep the tester-facing copy simple (spec Part M); this one can use the real vocabulary.
 
 Ask for the diagnostic export ZIP (`Carowinds-Passdown-Diagnostics-YYYYMMDD-HHmm.zip`, produced by
-the app's "Export Diagnostics" button) before doing anything else — `summary.txt`, `system.txt`,
+Settings → Diagnostics → "Export Diagnostics"; before Phase 21B the button sat on the Associate toolbar) before doing anything else — `summary.txt`, `system.txt`,
 `source-status.txt`, and the log excerpt inside it answer most of the questions below without
 needing remote access to the tester's machine.
 
@@ -50,6 +50,34 @@ needing remote access to the tester's machine.
   for anything more specific.
 - Check `logs\scheduled-refresh-YYYYMMDD.log` under `%LOCALAPPDATA%\Carowinds Passdown` (also
   excerpted in the diagnostics export) for what the last scheduled run actually did.
+
+## Official data status / data looks out of date (Phase 19A)
+
+The Dashboard header and Associate screen show one quiet line:
+
+- **"Official data checked 12:41 PM"** — every official source was verified at (or since) that time.
+  "Checked" means verified, even if no value changed.
+- **"Checking official data…"** — an automatic check (startup, every four hours) or a Deep Refresh is
+  running. The app stays usable.
+- **"Some official data couldn't be updated · Last checked …"** — one or more sources failed (names in
+  the second line/tooltip). Last-known-good values are still shown. Usually a site hiccup or no internet.
+- **"Official data not checked yet"** — a fresh install before the first check.
+
+The app checks automatically at startup (skipped if everything was checked in the last hour, e.g. by the
+6 AM scheduled task), every four hours while open, and quietly for a today/future Associate date whose
+data is missing or stale ("Checking online for this date…"). Past dates are never checked automatically.
+To check **now**, use **Check Online** (one date) or **Run Deep Refresh** (everything, including next
+month's park hours) — both work at any time and reset nothing the user typed. Manual values (attendance,
+pre-solds, ERT, gate overrides, price overrides) are never replaced by downloaded data.
+
+The Dashboard no longer has a Refresh button: it updates itself whenever something is saved locally or
+synced. If it ever shows "Unable to load today's operations summary.", use its **Try again** button.
+
+Log lines to look for in `app-yyyyMMdd.log`: "Startup official-data check …", "Automatic official-data
+refresh started/completed/partially failed/failed", "Associate date auto-check …", "Dashboard local data
+invalidated". The diagnostics `summary.txt` has an "Automatic official-data refresh" section (last check,
+next check estimate, sources not updated). After a network outage the next automatic attempt is four
+hours after the failed one (no rapid retries) — press Check Online to retry sooner.
 
 ## PDF does not save
 
@@ -284,4 +312,91 @@ By design, the app shows "Saturday, September 19, 2026", "Sep 19, 2026", "10:30 
 regardless of the PC's Windows region or display language. A UK, French, or German Windows setting
 does not change month/day names, date order, AM/PM, or the dollar sign. This is intentional — not a
 bug — and there is no setting to change it. Times of day for park operations remain Eastern Time.
+
+## A product disappeared / seasonal products changed (Phase 19B)
+
+Products come and go with the official site — that is normal, not an error:
+
+- A product missing from **one** successful check is kept; after **two** consecutive successful checks
+  without it, it is retired from the current product list, PDF and Teams copy. Nothing is deleted;
+  History is unchanged. If it is published again later it comes back automatically.
+- A failed check (no internet, site error) **never** removes a product.
+- Ended limited-time offers (e.g. Bring-A-Friend Duo) and the end of SCarowinds no longer cause
+  "Some official data couldn't be updated". If that message appears, a source genuinely failed.
+- After SCarowinds ends, dates without SCarowinds show no SCarowinds section at all.
+
+Log lines in `app-yyyyMMdd.log`: "Catalog product discovered", "missing from a successful … check
+(candidate absence …)", "now inactive (retired from the current catalog)", "reactivated", "season tags
+changed", "checked successfully with zero products". The diagnostics `summary.txt` has an "Official
+catalog lifecycle" section (active / missing once / inactive / season-tag counts).
+
+## Spell check (Phase 20A)
+
+- Red wavy underlines in note/feature/reason fields are advice only — they never block saving, PDF,
+  finalization, Teams copy or closing the app. Right-click a flagged word for suggestions, **Ignore**
+  (this session) or **Add to dictionary** (your Windows custom dictionary).
+- No underlines at all: Windows has no US English (or current-language) spelling dictionary installed
+  (Settings → Time & language → Language), or the spell checker failed — the app log then has one line
+  "Spell checking was turned off for this session…". Typing still works normally.
+- Spell checking is local to Windows; nothing you type is sent anywhere or written to logs.
+- Phase 20C: an underline should disappear as soon as you switch to another screen and come back when
+  you return to the field. If a red squiggle stays visible on Dashboard / Calendar / Products, that is a
+  regression — note the steps and export diagnostics.
+
+## Historical park hours / "Historical data partially available" (Phase 20C)
+
+- After startup, the app quietly fills in this calendar year's past park hours (newest first) from the
+  official park-hours feed. The line under the Operations Calendar month shows "Loading this year's
+  history…", "Historical data: N of M dates checked", "Historical data up to date" or "Historical data
+  partially available". It is separate from "Official data checked …", which reflects today's and
+  upcoming data only.
+- **Partially available** is normal: the official feed keeps only a limited history (on 2026-10-16 it
+  started at March 25), and the tooltip names the date before which hours are no longer published.
+  Those dates are left empty — nothing is guessed. If the tooltip instead says some dates couldn't be
+  checked (offline/outage), they are retried automatically the next time the app starts.
+- It never delays Check Online, Deep Refresh or automatic checks (it steps aside immediately), never runs
+  in the 6 AM scheduled task, and is never synced. Expected disk use: about 0.1–0.2 MB per year.
+- App log lines start with "Historical backfill …" (start/resume/finished/yielded/paused). Diagnostics
+  `summary.txt` has a "Historical park-hours backfill" section (target year, status, counts, boundary).
+
+## Season pass price history (Phase 20A)
+
+- Associate → Products → **Season pass price history** (or **Price history** on a Season Pass / Season
+  Pass Add-On row). Daily tickets and dated Fast Lane intentionally have no history.
+- "First seen" is the first successful official check that showed a price; the real change happened
+  between the previous row's "last confirmed" date and that date.
+- History starts from the first observation recorded by this install (an upgraded install includes
+  its earlier official checks). Retired products: tick **Include retired products**.
+- Each PC keeps its own history (not synced). The database is now schema 16 — older builds (RC.3 and
+  earlier) will refuse to open it.
+- Log lines: "Price history baseline created", "Price changed", "Price semantics changed". Diagnostics
+  `summary.txt` has a "Season price history" section (counts only).
+
+## Pricing on past dates and Military prices (Phase 21A)
+
+- A past date (after 6:00 AM the next morning) shows only prices recorded for that date. "Historical
+  pricing not available for this date." means the app never captured official prices for that day;
+  official ticket calendars do not offer past dates, so it cannot be fetched now. This is not an error.
+- Current products (e.g. SCarowinds, today's pass prices) are intentionally not shown on past dates.
+- Military & First Responder shows the exact price for the selected date when the official store
+  publishes one (e.g. `$55.00`), otherwise the official minimum (`From $40.00`).
+- Dashboard → Open Passdown always opens today's date. Use the date picker or Calendar for other dates.
+- January 1–3, 2026 have no park hours: the official feed no longer publishes dates before late March
+  2026.
+- Diagnostics `summary.txt` has a "Historical pricing sources" section; logs mention "Dashboard Open
+  Passdown reset the Associate date" and "Pass validity year differs".
+
+## Daily Feature math (Phase 21D)
+
+- Math is only recognized between `\(` … `\)` (in a sentence) or `\[` … `\]` (own line). Everything
+  else — `$`, `\`, `_`, `^`, Unicode symbols — prints exactly as typed. "∑ Math" under the Daily
+  Feature inserts symbols and templates at the cursor.
+- "Shown as typed: …" under the preview means that formula uses something outside the supported
+  subset (see `docs/phase21d-daily-feature-math.md` §3) or is incomplete; it prints as its source text.
+  The Daily Feature is still saved exactly as typed.
+- "Math preview isn't available on this computer" means the embedded math font could not be loaded;
+  PDFs then print the Daily Feature as plain text. Export diagnostics — the log has one
+  "Daily Feature math: RendererUnavailable" line (status only; formulas are never logged).
+- A PC running an older version shows the raw source (e.g. `\(\frac{1}{2}\)`) instead of the formula.
+- Formulas in PDFs are drawn, not text: they can't be selected or searched in a PDF viewer.
 

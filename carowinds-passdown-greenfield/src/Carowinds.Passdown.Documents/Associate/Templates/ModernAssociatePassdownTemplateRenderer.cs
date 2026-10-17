@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Preferences;
+using Carowinds.Passdown.Documents.DailyFeatureMath;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -62,6 +63,7 @@ public sealed class ModernAssociatePassdownTemplateRenderer : IAssociatePassdown
             // Operations information...
             ComposeSummaryGrid(column, model, m);
             ComposeDailyFeature(column, model);
+            ComposeShows(column, model.Shows, m, density);
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -183,7 +185,42 @@ public sealed class ModernAssociatePassdownTemplateRenderer : IAssociatePassdown
         {
             section.Item().Text((model.DailyFeature.TypeLabel ?? "Daily Feature").ToUpperInvariant()).Bold().FontSize(10).LetterSpacing(0.12f);
             section.Item().PaddingTop(3).PaddingBottom(5).Height(0.75f).Background(HairlineColor);
-            section.Item().Text(model.DailyFeature.Text!).FontSize(10.5f).Italic().LineHeight(1.25f);
+            section.Item().Element(body => DailyFeaturePdfText.Compose(body, model.DailyFeature.Text!, new DailyFeaturePdfTextStyle(10.5f, 1.25f, InkColor)));
+        });
+    }
+
+    /// <summary>
+    /// Phase 21C: the selected shows on the editorial measure under the standard accent heading — show
+    /// name in the body weight with its venue as a small muted line beneath, start times right-aligned
+    /// in a wrapping column. No numbering, no cards. Omitted entirely when nothing is selected.
+    /// </summary>
+    private static void ComposeShows(ColumnDescriptor column, IReadOnlyList<PdfShow> shows, Metrics m, PdfDensity density)
+    {
+        if (shows.Count == 0)
+        {
+            return;
+        }
+
+        column.Item().KeepSection(shows.Count, headingWithFirstRowsHeight: 80f).MaxWidth(ReferenceMeasure + 60f).Column(section =>
+        {
+            SectionHeading(section, "Shows", m);
+
+            foreach (var show in shows)
+            {
+                section.Item().PaddingVertical(m.RowPadding).Row(row =>
+                {
+                    row.RelativeItem(5).PaddingRight(10).Column(name =>
+                    {
+                        name.Item().Text(show.Name).FontSize(BodySize).SemiBold();
+                        if (show.Venue is { } venue)
+                        {
+                            name.Item().Text(venue).FontSize(7.75f).FontColor(MutedTextColor);
+                        }
+                    });
+                    // Tight density (a just-overflowing day) writes AM/PM once per run to recover space.
+                    row.RelativeItem(6).AlignRight().Text(density == PdfDensity.Tight ? show.CompactTimesText : show.TimesText).FontSize(BodySize);
+                });
+            }
         });
     }
 

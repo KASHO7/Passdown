@@ -173,3 +173,20 @@ category-scoping (`{Category}:{Value}`) means even a hypothetical future id coll
 categories would still be safe — only a collision *within* the same category's id tier is a real
 risk, and none of the three new ids/keywords share a category with any pre-existing one that also
 uses the id tier for the same value.
+
+## Phase 21A — Military / First Responder exact dated pricing
+
+Re-investigated live 2026-10-16. The page's card now reads "Starting From $40" (Gate Price $80); its
+Buy Now (`MilitaryWizard`) opens the accesso store, whose "Select a date to begin!" calendar shows
+"Fall Military Ticket"/"Fall First Responder Ticket" per-date prices **before** ID.me (ID.me is
+prompted only after selecting products). The calendar data is anonymously available from
+`getkeywordcalendar` with keyword `MilitaryWizardDailyTickets` — confirmed equal to the store (Oct 16
+$55.00, Oct 17 $60.00). Military and First Responder are separate packages and matched in price on
+every observed date; some dates list both a "Fall"-prefixed and a plain package at the same amount.
+No authentication, cookie, cart or purchase step is used. Adapter: `DatedMilitaryFirstResponderSource`;
+composition precedence and fixtures: `docs/phase21a-pricing-historical-integrity.md`,
+`fixtures/dated-military-first-responder/`.
+
+Identity check: `MilitaryWizardDailyTickets` is a new keyword in its own new category — no collision
+with any existing id/keyword. The page's "2027 Military Gold Pass" (`FallMilitaryGoldSP2027`) is a
+separate catalog product and is never affected by daily pricing.

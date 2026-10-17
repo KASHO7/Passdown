@@ -1,0 +1,233 @@
+{
+  "parkId": 30,
+  "parkAbbreviation": "CA",
+  "parkName": "Carowinds",
+  "dates": [
+    {
+      "date": "07/04/2026",
+      "isParkClosed": false,
+      "shows": [
+        {
+          "showId": 21,
+          "extLocationID": "SHOW-030-00021",
+          "showName": "Fireworks 4th of July",
+          "items": [
+            {
+              "assignmentLocation": "",
+              "assignmentDescription": "",
+              "times": "09:30 PM"
+            }
+          ]
+        },
+        {
+          "showId": 101,
+          "extLocationID": "SHOW-030-00101",
+          "showName": "Camp Snoopy Meet and Greet",
+          "items": [
+            {
+              "assignmentLocation": "Camp Snoopy",
+              "assignmentDescription": "",
+              "times": "10:15 AM, 10:45 AM, 11:15 AM, 11:30 AM, 11:45 AM, 12:15 PM, 12:30 PM, 12:45 PM, 01:30 PM, 02:00 PM, 02:30 PM, 03:00 PM, 03:15 PM, 03:30 PM, 04:00 PM, 04:15 PM, 04:30 PM, 05:00 PM, 05:15 PM, 05:30 PM, 06:15 PM"
+            }
+          ]
+        },
+        {
+          "showId": 3548,
+          "extLocationID": "SHOW-030-00128",
+          "showName": "Crossroads Meet and Greet",
+          "items": [
+            {
+              "assignmentLocation": "",
+              "assignmentDescription": "",
+              "times": ""
+            }
+          ]
+        },
+        {
+          "showId": 3603,
+          "extLocationID": "SHOW-030-00133",
+          "showName": "Snoopy's Talent Show Bonanza",
+          "items": [
+            {
+              "assignmentLocation": "",
+              "assignmentDescription": "",
+              "times": "02:00 PM, 03:15 PM, 05:45 PM, 07:00 PM"
+            }
+          ]
+        },
+        {
+          "showId": 3887,
+          "extLocationID": "SHOW-030-00172",
+          "showName": "Hook & Laughter",
+          "items": [
+            {
+              "assignmentLocation": "",
+              "assignmentDescription": "",
+              "times": ""
+            }
+          ]
+        },
+        {
+          "showId": 3888,
+          "extLocationID": "SHOW-030-00173",
+          "showName": "Glow Block Party",
+          "items": [
+            {
+              "assignmentLocation": "Plaza Stage",
+              "assignmentDescription": "",
+              "times": "08:30 PM"
+            }
+          ]
+        },
+        {
+          "showId": 3889,
+          "extLocationID": "SHOW-030-00174",
+          "showName": "Splash Parade",
+          "items": [
+            {
+              "assignmentLocation": "",
+              "assignmentDescription": "",
+              "times": "12:00 PM, 05:00 PM"
+            }
+          ]
+        },
+        {
+          "showId": 3890,
+          "extLocationID": "SHOW-030-00175",
+          "showName": "Bands in Residence - Harmony Hall",
+          "items": [
+            {
+              "assignmentLocation": "Event Pad",
+              "assignmentDescription": "",
+              "times": "04:15 PM, 05:15 PM, 06:30 PM, 08:00 PM, 09:00 PM"
+            }
+          ]
+        },
+        {
+          "showId": 3891,
+          "extLocationID": "SHOW-030-00176",
+          "showName": "Bands in Residence - Gazebo",
+          "items": [
+            {
+              "assignmentLocation": "Gazebo",
+              "assignmentDescription": "",
+              "times": "11:00 AM, 01:15 PM, 02:30 PM, 03:45 PM"
+            }
+          ]
+        },
+        {
+          "showId": 3892,
+          "extLocationID": "SHOW-030-00177",
+          "showName": "Bands in Residence - Swim up Bar",
+          "items": [
+            {
+              "assignmentLocation": "Swim Up Bar",
+              "assignmentDescription": "",
+              "times": "12:30 PM, 01:45 PM, 03:15 PM, 04:45 PM"
+            }
+          ]
+        },
+        {
+          "showId": 3893,
+          "extLocationID": "SHOW-030-00178",
+          "showName": "Gazillion Bubble Show",
+          "items": [
+            {
+              "assignmentLocation": "Carowinds Theatre",
+              "assignmentDescription": "",
+              "times": "01:15 PM, 02:45 PM, 04:15 PM"
+            }
+          ]
+        },
+        {
+          "showId": 3927,
+          "extLocationID": "SHOW-030-00179",
+          "showName": "Spray & Play Pop Up Party",
+          "items": [
+            {
+              "assignmentLocation": "",
+              "assignmentDescription": "",
+              "times": "01:30 PM, 03:30 PM"
+            }
+          ]
+        },
+        {
+          "showId": 3985,
+          "extLocationID": "SHOW-030-00180",
+          "showName": "Daughters of Liberty",
+          "items": [
+            {
+              "assignmentLocation": "County Fair",
+              "assignmentDescription": "",
+              "times": "04:30 PM, 05:30 PM, 06:30 PM, 07:30 PM"
+            }
+          ]
+        },
+        {
+          "showId": 3986,
+          "extLocationID": "SHOW-030-00181",
+          "showName": "Jelly of the Month Club Band",
+          "items": [
+            {
+              "assignmentLocation": "Plaza",
+              "assignmentDescription": "",
+              "times": "06:30 PM, 07:45 PM, 09:15 PM"
+            }
+          ]
+        },
+        {
+          "showId": 3987,
+          "extLocationID": "SHOW-030-00182",
+          "showName": "Uncle Sam's American Trivia",
+          "items": [
+            {
+              "assignmentLocation": "Plaza",
+              "assignmentDescription": "",
+              "times": "11:30 AM, 02:00 PM"
+            }
+          ]
+        },
+        {
+          "showId": 3988,
+          "extLocationID": "SHOW-030-00183",
+          "showName": "Watermelon Eating Contest",
+          "items": [
+            {
+              "assignmentLocation": "Plaza",
+              "assignmentDescription": "",
+              "times": "12:30 PM, 03:00 PM"
+            }
+          ]
+        }
+      ],
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Park",
+          "items": [
+            {
+              "assignmentDisplayName": "Park",
+              "assignmentDescription": "",
+              "timeFrom": "10:00",
+              "timeTo": "22:00",
+              "isBuyout": false
+            }
+          ]
+        },
+        {
+          "operatingTypeId": 70,
+          "operatingTypeName": "Waterpark",
+          "items": [
+            {
+              "assignmentDisplayName": "Waterpark",
+              "assignmentDescription": "",
+              "timeFrom": "11:00",
+              "timeTo": "18:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

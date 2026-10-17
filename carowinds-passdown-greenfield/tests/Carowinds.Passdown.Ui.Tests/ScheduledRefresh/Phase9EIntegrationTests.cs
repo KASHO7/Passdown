@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.Concurrency;
 using Carowinds.Passdown.Application.Finalization;
+using Carowinds.Passdown.Application.Freshness;
 using Carowinds.Passdown.Application.History;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
@@ -8,7 +10,6 @@ using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.ScheduledRefresh;
-using Carowinds.Passdown.Desktop.Startup;
 using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Catalog;
@@ -50,6 +51,29 @@ public class Phase9EIntegrationTests
 
         public Task<RefreshSummary> RunDeepRefreshAsync(bool bypassFreshness, DateOnly? focusDate = null, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Finalization must never trigger a refresh.");
+
+        public Task<RefreshSummary> RunComprehensiveRefreshAsync(IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Finalization must never trigger a refresh.");
+    }
+
+    /// <summary>Phase 19A: an orchestrator that performs no retrieval and just counts the startup comprehensive check.</summary>
+    private sealed class CountingRefreshOrchestrator : IRefreshOrchestrator
+    {
+        public int ComprehensiveCalls { get; private set; }
+
+        private static RefreshSummary Empty(RefreshJobType type) => new(type, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 0, 0, 0, 0, []);
+
+        public Task<RefreshSummary> RunScheduledRefreshAsync(IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default) => Task.FromResult(Empty(RefreshJobType.ScheduledRollingWindow));
+
+        public Task<RefreshSummary> RunUserForcedRefreshAsync(DateOnly date, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default) => Task.FromResult(Empty(RefreshJobType.UserForced));
+
+        public Task<RefreshSummary> RunDeepRefreshAsync(bool bypassFreshness, DateOnly? focusDate = null, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default) => Task.FromResult(Empty(RefreshJobType.DeepRefresh));
+
+        public Task<RefreshSummary> RunComprehensiveRefreshAsync(IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)
+        {
+            ComprehensiveCalls++;
+            return Task.FromResult(Empty(RefreshJobType.Comprehensive));
+        }
     }
 
     private static IReadOnlyList<IMigration> AllMigrations =>
@@ -613,11 +637,24 @@ public class Phase9EIntegrationTests
             var services = BuildHostProvider(tempDb, clock, refreshRunner);
             services.GetRequiredService<MigrationRunner>().Run();
 
-            using var scheduledLock = new FileScheduledRefreshLock(lockPath);
+            // Phase 19A: the interactive startup catch-up now lives in OfficialDataRefreshCoordinator —
+            // same finalize-then-maintenance ordering, same real cross-process lock (via the gate).
+            var orchestrator = new CountingRefreshOrchestrator();
+            var coordinator = new OfficialDataRefreshCoordinator(
+                orchestrator,
+                registrations: [],
+                new SqliteSourceStateRepository(seedEnv.ConnectionFactory),
+                new SqliteDatedResultRepository(seedEnv.ConnectionFactory),
+                FreshnessPolicyCatalog.Build(new FreshnessOptions()),
+                new OfficialRefreshGate(() => new FileScheduledRefreshLock(lockPath)),
+                clock,
+                finalizer: services.GetRequiredService<IScheduledPassdownFinalizer>(),
+                maintenanceRunner: refreshRunner);
 
-            await StartupCatchUpRefresh.RunAsync(services, scheduledLock, NullLogger<Phase9EIntegrationTests>.Instance);
+            await coordinator.RunStartupAsync();
 
             Assert.Equal(1, refreshRunner.CallCount);
+            Assert.Equal([RefreshMode.StartupCatchUp], refreshRunner.ModesInvoked);
             var verifyEnv = BuildEnvironment(tempDb, clock);
             Assert.True(await verifyEnv.FinalizedPassdowns.ExistsForDateAsync(passdownDate));
             var list = await verifyEnv.HistoryService.ListAsync();

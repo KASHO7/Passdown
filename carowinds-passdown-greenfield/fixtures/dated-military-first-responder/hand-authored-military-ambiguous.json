@@ -1,0 +1,63 @@
+{
+  "SERVICE": {
+    "keyword_image": "",
+    "request_type": "GetKeywordCalendar",
+    "session_id": "fixture",
+    "status": "OK",
+    "DATES": {
+      "D": {
+        "bookings_sold_out": "null",
+        "date": "2026-10-16",
+        "lowest_price": "55.00",
+        "lowest_price_customer_type": "427",
+        "lowest_price_package": "10098283",
+        "lowest_price_savings": "",
+        "PS": {
+          "P": [
+            {
+              "available": "48948",
+              "capacity": "50000",
+              "event_id": "10048997",
+              "id": "10098283",
+              "name": "Fall Military Ticket",
+              "CT": {
+                "fee_amount": "0",
+                "id": "427",
+                "retail_amount": "55.00",
+                "tax_amount": "3.64"
+              }
+            },
+            {
+              "available": "48948",
+              "capacity": "50000",
+              "event_id": "10048997",
+              "id": "10098297",
+              "name": "Fall First Responder Ticket",
+              "CT": {
+                "fee_amount": "0",
+                "id": "750",
+                "retail_amount": "55.00",
+                "tax_amount": "3.64"
+              }
+            },
+            {
+              "available": "48948",
+              "capacity": "50000",
+              "event_id": "10048997",
+              "id": "99999901",
+              "name": "Military Ticket",
+              "CT": {
+                "fee_amount": "0",
+                "id": "427",
+                "retail_amount": "45.00",
+                "tax_amount": "3.64"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "request_token": "FIXTURE",
+    "_client_ip": "0.0.0.0"
+  }
+}

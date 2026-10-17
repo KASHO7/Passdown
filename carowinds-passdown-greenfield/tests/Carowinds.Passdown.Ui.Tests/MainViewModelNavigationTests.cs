@@ -224,20 +224,24 @@ public class MainViewModelNavigationTests
         Assert.Equal(AssociateSection.Notes, associate.SelectedSection);
     }
 
-    // Phase 10C Part H: neither deep link ever changes AssociateViewModel.SelectedDate — an associate
-    // mid-edit on another date is never silently switched to today's record.
+    // Phase 10C Part H: Dashboard's "Open Notes" never changes AssociateViewModel.SelectedDate.
+    // Phase 21A revised "Open Passdown": it always opens today's Eastern date (see
+    // Phase21ADashboardOpenPassdownTests), so it is no longer covered by this date-preservation rule.
     [Fact]
-    public async Task DashboardDeepLinks_NeverChangeAssociateSelectedDate()
+    public async Task DashboardOpenNotes_NeverChangesAssociateSelectedDate()
     {
         var main = CreateMainViewModel(out var dashboard, out var associate, out _);
         await dashboard.PendingLoad;
         await associate.PendingLoad;
+        var otherDate = AssociateDate.AddDays(5);
+        associate.SelectedDate = otherDate;
+        await associate.PendingLoad;
 
         dashboard.OpenNotesCommand.Execute(null);
-        Assert.Equal(AssociateDate, associate.SelectedDate);
+        Assert.Equal(otherDate, associate.SelectedDate);
 
         dashboard.OpenPassdownCommand.Execute(null);
-        Assert.Equal(AssociateDate, associate.SelectedDate);
+        Assert.Equal(AssociateDate, associate.SelectedDate); // today, per Phase 21A
     }
 
     // Phase 10C Part H: merely viewing/switching top-level sections never touches Associate's internal

@@ -1,12 +1,13 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using Carowinds.Passdown.Application.Associate;
-using Carowinds.Passdown.Application.Diagnostics;
+using Carowinds.Passdown.Application.Changes;
 using Carowinds.Passdown.Application.Ert;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Application.Refresh;
+using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Desktop.Services;
@@ -64,13 +65,15 @@ public partial class AssociateViewModel : ViewModelBase
     private static readonly IReadOnlyDictionary<Guid, OperationalNoteSourceComparisonState> EmptySourceStates = new Dictionary<Guid, OperationalNoteSourceComparisonState>();
 
     private readonly IAssociatePassdownService _service;
+
+    private readonly IClock _clock;
     private readonly IErtConfigurationService _ertConfigurationService;
     private readonly IAssociatePassdownPdfExportService _pdfExportService;
     private readonly IPdfSaveFilePicker _pdfSavePicker;
-    private readonly IDiagnosticExportService _diagnosticExportService;
-    private readonly IDiagnosticExportFilePicker _diagnosticExportPicker;
     private readonly IAssociatePassdownTemplatePreferenceStore _templatePreferenceStore;
     private readonly IClipboardService _clipboardService;
+    private readonly IOfficialDataRefreshCoordinator? _refreshCoordinator;
+    private readonly IUiDispatcher _uiDispatcher;
     private readonly ILogger<AssociateViewModel>? _logger;
     private readonly TimeSpan _autosaveDebounce;
     private readonly Func<TimeSpan, CancellationToken, Task> _autosaveDelay;
@@ -83,6 +86,13 @@ public partial class AssociateViewModel : ViewModelBase
     private Task _pendingTemplatePreferenceSave = Task.CompletedTask;
     private bool _isLoadingTemplatePreference;
     private CancellationTokenSource? _debounceCts;
+
+    // Phase 19A: the quiet automatic check of the selected date (cancelled/superseded whenever the date
+    // changes or Check Online starts), and a newer-official-data reload deferred until the editor is clean.
+    private CancellationTokenSource? _autoCheckCts;
+    private Task _pendingAutoCheck = Task.CompletedTask;
+    private Task _pendingOfficialDataReload = Task.CompletedTask;
+    private bool _officialDataReloadDeferred;
 
     /// <summary>The operating date the current editable fields belong to — distinct from <see cref="SelectedDate"/>, which may already hold a newer date while a flush-then-load is still switching over (Part H).</summary>
     private DateOnly? _draftDateInEdit;
@@ -169,6 +179,8 @@ public partial class AssociateViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedDateForPicker))]
+    [NotifyPropertyChangedFor(nameof(DateNavigation))]
+    [NotifyPropertyChangedFor(nameof(IsCalendarTodayHighlighted))]
     [NotifyPropertyChangedFor(nameof(AvailableOperationalNoteSuggestionsHeading))]
     [NotifyPropertyChangedFor(nameof(SelectedMonthLabel))]
     [NotifyPropertyChangedFor(nameof(UseOverrideForDateLabel))]
@@ -214,6 +226,17 @@ public partial class AssociateViewModel : ViewModelBase
     [NotifyCanExecuteChangedFor(nameof(CreatePdfCommand))]
     [NotifyCanExecuteChangedFor(nameof(CopyForTeamsCommand))]
     public partial bool IsCheckingOnline { get; set; }
+
+    /// <summary>
+    /// Phase 19A: true while the quiet automatic check of the selected (today/future, missing/stale)
+    /// date is actually online. Deliberately separate from <see cref="IsCheckingOnline"/>: it never
+    /// disables Check Online, Create PDF, or Copy, and never blocks the screen.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsAutoCheckingDate { get; set; }
+
+    /// <summary>Phase 19A: the shared app-wide official-data freshness line (null only in tests that do not supply one).</summary>
+    public OfficialDataStatusViewModel? OfficialDataStatus { get; }
 
     /// <summary>Concise in-progress copy such as "Checked Fast Lane — 3 of 4 complete" (spec Part F). Null while not refreshing.</summary>
     [ObservableProperty]
@@ -418,6 +441,9 @@ public partial class AssociateViewModel : ViewModelBase
     /// "changing draft data" and "changing the template" are deliberately independent).
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsClassicTemplateSelected))]
+    [NotifyPropertyChangedFor(nameof(IsCompactTemplateSelected))]
+    [NotifyPropertyChangedFor(nameof(IsModernTemplateSelected))]
     public partial AssociatePassdownTemplateOption SelectedTemplateOption { get; set; } = AssociatePassdownTemplateOption.For(AssociatePassdownTemplate.Classic);
 
     /// <summary>
@@ -447,6 +473,52 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IncludeOperationalNotes { get; set; } = true;
 
+    /// <summary>Phase 21C: the optional Shows section switch (off by default; old drafts load off).</summary>
+    [ObservableProperty]
+    public partial bool IncludeShows { get; set; }
+
+    /// <summary>Phase 21C: the selected date's official shows (plus any selected show no longer on the schedule, explained).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasShowRows))]
+    [NotifyCanExecuteChangedFor(nameof(SelectAllShowsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ClearShowsCommand))]
+    public partial IReadOnlyList<AssociateShowRowViewModel> ShowRows { get; set; } = [];
+
+    public bool HasShowRows => ShowRows.Count > 0;
+
+    /// <summary>Phase 21C: why there are no rows ("not published", "couldn't check", …) — null when rows are listed.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasShowsStatusText))]
+    public partial string? ShowsStatusText { get; set; }
+
+    public bool HasShowsStatusText => ShowsStatusText is not null;
+
+    /// <summary>Phase 21C: "Official schedule checked 10:32 AM" (plus "latest check failed" when older data is kept).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasShowsFreshnessText))]
+    public partial string? ShowsFreshnessText { get; set; }
+
+    public bool HasShowsFreshnessText => ShowsFreshnessText is not null;
+
+    /// <summary>Phase 21C: selects every show currently on the official schedule (never a show that no longer is).</summary>
+    [RelayCommand(CanExecute = nameof(HasShowRows))]
+    private void SelectAllShows()
+    {
+        foreach (var row in ShowRows.Where(row => row.Row.State is AssociateShowRowState.Current or AssociateShowRowState.TimesChanged))
+        {
+            row.SetSelected(true);
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(HasShowRows))]
+    private void ClearShows()
+    {
+        foreach (var row in ShowRows)
+        {
+            row.SetSelected(false);
+        }
+    }
+
     /// <summary>True while <see cref="CreatePdfCommand"/> is building/saving the PDF (spec Part I) — kept separate from <see cref="IsBusy"/> so a load/Check Online in progress is the only thing that disables the export action itself.</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CreatePdfCommand))]
@@ -474,14 +546,6 @@ public partial class AssociateViewModel : ViewModelBase
         ? $"WARNING — Passdown is {PdfPageCount} pages. Reduce content before printing if possible."
         : null;
 
-    /// <summary>True while <see cref="ExportDiagnosticsCommand"/> is building/saving the diagnostic ZIP (Phase 7F Part F) — mirrors <see cref="IsExportingPdf"/>; kept independent of <see cref="IsBusy"/> so a Check Online/date load doesn't block this local-only export.</summary>
-    [ObservableProperty]
-    public partial bool IsExportingDiagnostics { get; set; }
-
-    /// <summary>Concise post-export feedback for the diagnostics action (mirrors <see cref="PdfExportMessage"/>). A cancelled picker leaves this null.</summary>
-    [ObservableProperty]
-    public partial string? DiagnosticsExportMessage { get; set; }
-
     /// <summary>Phase 18F: subtle feedback for the last Copy action ("Today's pricing copied", "No pricing selected", or a short failure message). Null when there is nothing to say.</summary>
     [ObservableProperty]
     public partial string? CopyMessage { get; set; }
@@ -498,27 +562,31 @@ public partial class AssociateViewModel : ViewModelBase
         Func<TimeSpan, CancellationToken, Task>? autosaveDelay = null,
         IAssociatePassdownPdfExportService? pdfExportService = null,
         IPdfSaveFilePicker? pdfSavePicker = null,
-        IDiagnosticExportService? diagnosticExportService = null,
-        IDiagnosticExportFilePicker? diagnosticExportPicker = null,
         IErtConfigurationService? ertConfigurationService = null,
         IAssociatePassdownTemplatePreferenceStore? templatePreferenceStore = null,
         ISyncLocalChangeNotifier? syncLocalChangeNotifier = null,
-        IClipboardService? clipboardService = null)
+        IClipboardService? clipboardService = null,
+        IOfficialDataRefreshCoordinator? refreshCoordinator = null,
+        IDataChangeNotifier? dataChangeNotifier = null,
+        OfficialDataStatusViewModel? officialDataStatus = null,
+        IUiDispatcher? uiDispatcher = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
 
         _service = service;
+        _clock = clock;
         _ertConfigurationService = ertConfigurationService ?? new UnavailableErtConfigurationService();
         _logger = logger;
         _autosaveDebounce = autosaveDebounce ?? DefaultAutosaveDebounce;
         _autosaveDelay = autosaveDelay ?? Task.Delay;
         _pdfExportService = pdfExportService ?? new AssociatePassdownPdfExportService(new AssociatePassdownPdfGenerator());
         _pdfSavePicker = pdfSavePicker ?? new UnavailablePdfSaveFilePicker();
-        _diagnosticExportService = diagnosticExportService ?? new UnavailableDiagnosticExportService();
-        _diagnosticExportPicker = diagnosticExportPicker ?? new UnavailableDiagnosticExportFilePicker();
         _templatePreferenceStore = templatePreferenceStore ?? new FileAssociatePassdownTemplatePreferenceStore(FileAssociatePassdownTemplatePreferenceStore.DefaultPath);
         _clipboardService = clipboardService ?? new UnavailableClipboardService();
+        _refreshCoordinator = refreshCoordinator;
+        _uiDispatcher = uiDispatcher ?? new AvaloniaUiDispatcher();
+        OfficialDataStatus = officialDataStatus;
 
         // "Today" in the park's own wall-clock time (spec §6.5/§6.6 use the same Eastern
         // convention for "today") rather than the host machine's arbitrary local time zone.
@@ -534,6 +602,162 @@ public partial class AssociateViewModel : ViewModelBase
             syncLocalChangeNotifier.LocalDataChanged += (_, changed) =>
                 Dispatcher.UIThread.Post(() => _pendingSyncReload = HandleSyncLocalChangesAsync(changed));
         }
+
+        // Phase 19A: newer official data (an automatic check, or a refresh started elsewhere) reloads the
+        // presentation of the selected date. Personal Sync changes keep their own REL-004 path above.
+        if (dataChangeNotifier is not null)
+        {
+            dataChangeNotifier.Changed += (_, change) =>
+            {
+                if (change.Kind is DataChangeKind.OfficialData or DataChangeKind.HistoricalOfficialData)
+                {
+                    _uiDispatcher.Post(() => _pendingOfficialDataReload = HandleOfficialDataChangedAsync(change));
+                }
+            };
+        }
+    }
+
+    /// <summary>The in-flight (or most recent) automatic date check, so a test can await it.</summary>
+    public Task PendingAutoCheck => _pendingAutoCheck;
+
+    /// <summary>The in-flight (or most recent) reload triggered by newer official data, so a test can await it.</summary>
+    public Task PendingOfficialDataReload => _pendingOfficialDataReload;
+
+    /// <summary>
+    /// Phase 19A: after a date's local data is shown, quietly check it online when it is today or a
+    /// future date whose official data is missing or stale (the coordinator decides; past dates never
+    /// go online automatically). Any earlier automatic check is superseded first, so rapid date changes
+    /// never fan out into overlapping requests, and a late result can never be applied to another date
+    /// — the reload it triggers is keyed to the date it checked.
+    /// </summary>
+    private void StartAutomaticDateCheck(DateOnly date)
+    {
+        CancelAutomaticDateCheck();
+        if (_refreshCoordinator is null)
+        {
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _autoCheckCts = cts;
+        _pendingAutoCheck = RunAutomaticDateCheckAsync(date, cts);
+    }
+
+    private void CancelAutomaticDateCheck()
+    {
+        _autoCheckCts?.Cancel();
+        _autoCheckCts = null;
+        IsAutoCheckingDate = false;
+    }
+
+    private async Task RunAutomaticDateCheckAsync(DateOnly date, CancellationTokenSource cts)
+    {
+        try
+        {
+            await _refreshCoordinator!.CheckDateIfStaleAsync(
+                date,
+                onCheckStarted: () => _uiDispatcher.Post(() =>
+                {
+                    if (_autoCheckCts == cts)
+                    {
+                        IsAutoCheckingDate = true;
+                    }
+                }),
+                cts.Token).ConfigureAwait(true);
+
+            // A completed check publishes an OfficialData change for this date; HandleOfficialDataChangedAsync
+            // applies it (only if this date is still selected and the editor is clean).
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by another date, Check Online, or shutdown.
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Automatic online check failed for {OperatingDate}; cached information is still shown.", date);
+        }
+        finally
+        {
+            if (_autoCheckCts == cts)
+            {
+                _autoCheckCts = null;
+                IsAutoCheckingDate = false;
+            }
+
+            cts.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Phase 19A: re-reads the selected date's local workspace after official cached data changed, so
+    /// Associate, Create PDF and Copy all read the same newer prices (they all consume
+    /// <see cref="Workspace"/>). Never touches the network, never autosaves (a load is applied through
+    /// <see cref="ApplyWorkspaceToFields"/>, which is not a user edit), and never overwrites unsaved
+    /// edits: a dirty editor defers the reload until its next successful autosave. Manual values
+    /// (attendance, pre-solds, gate/hours overrides, display-price overrides) live in the draft, which an
+    /// online refresh never writes, so they always survive. Internal so tests can drive it directly.
+    /// </summary>
+    internal async Task HandleOfficialDataChangedAsync(DataChange change)
+    {
+        try
+        {
+            var date = SelectedDate;
+            if (!change.MayAffect(date) || IsCheckingOnline || _draftDateInEdit != date)
+            {
+                return; // Check Online applies its own result; a load in flight reads fresh data itself.
+            }
+
+            if (_isDirty || _saveInFlight || IsErtEditorDirty())
+            {
+                _officialDataReloadDeferred = true;
+                return;
+            }
+
+            await ReloadOfficialDataAsync(date).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogWarning(ex, "Failed to show newer official data for the selected date; the previous information is still shown.");
+        }
+    }
+
+    private async Task ReloadOfficialDataAsync(DateOnly date)
+    {
+        _officialDataReloadDeferred = false;
+        var ertPanelWasOpen = IsErtEditorOpen;
+
+        var workspace = await _service.LoadAssociateDateAsync(date).ConfigureAwait(true);
+        if (date != SelectedDate || _draftDateInEdit != date || _isDirty || _saveInFlight || IsCheckingOnline || IsErtEditorDirty())
+        {
+            _officialDataReloadDeferred = date == SelectedDate;
+            return;
+        }
+
+        if (Workspace is { } current && current.OperatingDate == date && HasSameEditableOfficialContent(current, workspace))
+        {
+            // Nothing an associate edits changed (only verification timestamps): swap the workspace in
+            // without rebuilding the product rows, so focus and scroll position are left alone.
+            Workspace = workspace;
+            _draftBaseHash = workspace.DraftContentHash;
+            return;
+        }
+
+        ApplyWorkspaceToFields(workspace);
+        IsErtEditorOpen = ertPanelWasOpen;
+    }
+
+    /// <summary>True when two workspaces for the same date show the same official products, prices and hours — differing at most in when they were verified.</summary>
+    private static bool HasSameEditableOfficialContent(AssociateWorkspace current, AssociateWorkspace reloaded)
+    {
+        var unverified = AssociateVerificationInfo.NotCheckedYet;
+        if (current.ParkHours with { Verification = unverified } != reloaded.ParkHours with { Verification = unverified }
+            || current.Products.Count != reloaded.Products.Count)
+        {
+            return false;
+        }
+
+        return current.Products.Zip(reloaded.Products).All(pair =>
+            pair.First with { Verification = unverified } == pair.Second with { Verification = unverified });
     }
 
     private Task _pendingSyncReload = Task.CompletedTask;
@@ -665,6 +889,29 @@ public partial class AssociateViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// Phase 21B: the date header's text ("Friday, October 16, 2026" plus a Today/Yesterday/Tomorrow
+    /// label), always relative to the Eastern operational date read at the moment it is shown.
+    /// </summary>
+    public AssociateDateNavigationPresentation DateNavigation => AssociateDateNavigationPresentation.Build(SelectedDate, EasternToday);
+
+    /// <summary>
+    /// Phase 21B: whether the calendar popup's built-in "today" marker (which follows the host's local
+    /// date) may be shown — only when the host date agrees with the Eastern operational date.
+    /// </summary>
+    public bool IsCalendarTodayHighlighted =>
+        AssociateDateNavigationPresentation.ShouldHighlightHostToday(_clock.UtcNow, TimeZoneInfo.Local, EasternToday);
+
+    /// <summary>
+    /// Phase 21B: re-reads "today" for the date header (e.g. when the calendar popup opens after the
+    /// Eastern date has rolled over). Changes nothing else — never loads or retrieves.
+    /// </summary>
+    public void RefreshTodayIndicators()
+    {
+        OnPropertyChanged(nameof(DateNavigation));
+        OnPropertyChanged(nameof(IsCalendarTodayHighlighted));
+    }
+
     public bool HasWorkspace => Workspace is not null;
 
     /// <summary>
@@ -787,6 +1034,29 @@ public partial class AssociateViewModel : ViewModelBase
 
     public bool HasProductSections => ProductSections.Count > 0;
 
+    /// <summary>
+    /// Phase 21A: shown on the Products section for a past date — either that only prices recorded for
+    /// that date are listed, or <see cref="HistoricalPricingPolicy.UnavailableMessage"/> when none were.
+    /// Null for today/future dates. Rebuilt with <see cref="ProductSections"/>.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasHistoricalPricingNotice))]
+    public partial string? HistoricalPricingNotice { get; set; }
+
+    public bool HasHistoricalPricingNotice => HistoricalPricingNotice is not null;
+
+    /// <summary>
+    /// Phase 20A: asks the app shell to open the read-only Season Price History screen — with a
+    /// product key from a tracked row's "Price history" action, or null from the Products section's
+    /// general entry point (which also reaches retired products). Navigation only; no retrieval.
+    /// </summary>
+    public event EventHandler<string?>? PriceHistoryRequested;
+
+    [RelayCommand]
+    private void OpenPriceHistory() => PriceHistoryRequested?.Invoke(this, null);
+
+    private void RequestPriceHistory(string productKey) => PriceHistoryRequested?.Invoke(this, productKey);
+
     public bool HasCustomProducts => CustomProducts.Count > 0;
 
     public SaveStatusPresentation? SaveStatus => Workspace is { } workspace ? SaveStatusPresentation.Build(workspace.SaveStatus) : null;
@@ -818,9 +1088,46 @@ public partial class AssociateViewModel : ViewModelBase
     /// could reach the network. Spec Part H: the previous date's pending edits are flushed/saved
     /// before the new date's workspace is composed and applied.
     /// </summary>
+    /// <summary>Today's operational date: the park's Eastern calendar date at this moment, never the host machine's local date.</summary>
+    public DateOnly EasternToday => DateOnly.FromDateTime(EasternTimeZone.ConvertFromUtc(_clock.UtcNow).DateTime);
+
+    /// <summary>
+    /// Phase 21A: Dashboard's "Open Passdown" always lands on today's Eastern date — read at click
+    /// time, so a date rollover since the last load is honored. Goes through the ordinary
+    /// <see cref="SelectedDate"/> path (unsaved edits on the previous date are flushed first); when
+    /// today is already selected nothing reloads, so there is no redundant load or check. Returns
+    /// true when the date changed. Calendar and History routes keep their explicit dates.
+    /// </summary>
+    public bool SelectEasternToday() => SelectEasternToday("Dashboard Open Passdown");
+
+    private bool SelectEasternToday(string trigger)
+    {
+        var today = EasternToday;
+        if (SelectedDate == today)
+        {
+            // Already today: nothing reloads, but the header's Today label may need to catch up with a
+            // rollover that happened while this date stayed selected.
+            RefreshTodayIndicators();
+            return false;
+        }
+
+        _logger?.LogInformation("{Trigger} reset the Associate date from {PreviousDate} to today ({Today}).", trigger, SelectedDate, today);
+        SelectedDate = today;
+        return true;
+    }
+
+    /// <summary>
+    /// Phase 21B: the date header's Today button — the same path as Dashboard → Open Passdown: today's
+    /// Eastern date read at click time, unsaved edits flushed by the ordinary date switch, and no
+    /// reload or retrieval when today is already selected.
+    /// </summary>
+    [RelayCommand]
+    private void GoToToday() => SelectEasternToday("Associate Today");
+
     partial void OnSelectedDateChanged(DateOnly value)
     {
         CopyMessage = null; // a "copied" confirmation belongs to the date it was copied from.
+        CancelAutomaticDateCheck(); // Phase 19A: an automatic check of the previous date is superseded.
         _pendingLoad = SwitchDateAsync(value);
     }
 
@@ -845,7 +1152,14 @@ public partial class AssociateViewModel : ViewModelBase
             }
 
             ApplyWorkspaceToFields(workspace);
+            _officialDataReloadDeferred = false;
             await RefreshOperationalNoteSuggestionsAsync(date).ConfigureAwait(true);
+
+            // Phase 19A: cached data is already on screen; only now consider a quiet online check.
+            if (version == _loadVersion)
+            {
+                StartAutomaticDateCheck(date);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -881,6 +1195,7 @@ public partial class AssociateViewModel : ViewModelBase
     private async Task CheckOnlineAsync()
     {
         var date = SelectedDate;
+        CancelAutomaticDateCheck(); // Phase 19A: the explicit request runs now, never queued behind the quiet one.
         IsCheckingOnline = true;
         RefreshResultMessage = null;
         RefreshHadFailures = false;
@@ -1033,37 +1348,17 @@ public partial class AssociateViewModel : ViewModelBase
     private bool CanCopyForTeams(AssociateTeamsCopyKind kind) => HasWorkspace && !IsBusy;
 
     /// <summary>
-    /// Phase 7F Part F/G: builds the sanitized diagnostic export ZIP (local-only — never triggers a
-    /// network check) and hands it to the native save-file picker. Never flushes/reads draft edits;
-    /// diagnostics are independent of whatever is currently on screen.
+    /// Phase 21B: "More → PDF Style". Sets the same <see cref="SelectedTemplateOption"/> the PDF Style
+    /// picker always used, so the saved template preference behaves exactly as before.
     /// </summary>
     [RelayCommand]
-    private async Task ExportDiagnosticsAsync()
-    {
-        IsExportingDiagnostics = true;
-        DiagnosticsExportMessage = null;
-        try
-        {
-            var export = await _diagnosticExportService.BuildZipAsync().ConfigureAwait(true);
-            var saveResult = await _diagnosticExportPicker.SaveAsync(export.ZipBytes, export.SuggestedFileName).ConfigureAwait(true);
+    private void SelectTemplate(AssociatePassdownTemplate template) => SelectedTemplateOption = AssociatePassdownTemplateOption.For(template);
 
-            DiagnosticsExportMessage = saveResult.Outcome switch
-            {
-                DiagnosticExportOutcome.Saved => "Diagnostics saved.",
-                DiagnosticExportOutcome.Cancelled => null,
-                _ => saveResult.ErrorMessage ?? "Diagnostics could not be saved. Try again.",
-            };
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger?.LogError(ex, "Export Diagnostics failed unexpectedly.");
-            DiagnosticsExportMessage = "Diagnostics could not be created. Try again.";
-        }
-        finally
-        {
-            IsExportingDiagnostics = false;
-        }
-    }
+    public bool IsClassicTemplateSelected => SelectedTemplateOption.Value == AssociatePassdownTemplate.Classic;
+
+    public bool IsCompactTemplateSelected => SelectedTemplateOption.Value == AssociatePassdownTemplate.Compact;
+
+    public bool IsModernTemplateSelected => SelectedTemplateOption.Value == AssociatePassdownTemplate.Modern;
 
     [RelayCommand]
     private void PreviousDay() => SelectedDate = SelectedDate.AddDays(-1);
@@ -1562,6 +1857,8 @@ public partial class AssociateViewModel : ViewModelBase
 
     partial void OnIncludeOperationalNotesChanged(bool value) => ScheduleAutosave();
 
+    partial void OnIncludeShowsChanged(bool value) => ScheduleAutosave();
+
     /// <summary>Pushes a freshly loaded/refreshed workspace's draft into the editable fields without treating that as a user edit (see <see cref="_isApplyingWorkspace"/>), then publishes the workspace itself.</summary>
     private void ApplyWorkspaceToFields(AssociateWorkspace workspace)
     {
@@ -1632,8 +1929,10 @@ public partial class AssociateViewModel : ViewModelBase
             IncludeAddOns = draft.SectionSelection.IncludeAddOns;
             IncludeHauntedAttractions = draft.SectionSelection.IncludeHauntedAttractions;
             IncludeOperationalNotes = draft.SectionSelection.IncludeOperationalNotes;
+            IncludeShows = draft.Shows?.IncludeInPassdown ?? false;
 
             BuildProductSections(workspace);
+            BuildShowRows(workspace);
 
             _draftDateInEdit = workspace.OperatingDate;
             _draftBaseHash = workspace.DraftContentHash;
@@ -1689,15 +1988,34 @@ public partial class AssociateViewModel : ViewModelBase
                 continue;
             }
 
-            var rows = products.Select(product => new ProductRowViewModel(product, ScheduleAutosave)).ToList();
+            var rows = products.Select(product => new ProductRowViewModel(product, ScheduleAutosave, RequestPriceHistory)).ToList();
             result.Add(new ProductCategorySectionViewModel(ProductDisplaySectionDisplay.FriendlyName(section), status, rows));
         }
 
         ProductSections = result;
+        HistoricalPricingNotice = BuildHistoricalPricingNotice(workspace);
 
         CustomProducts = new ObservableCollection<CustomProductRowViewModel>(
             workspace.Draft.CustomProducts.Select(custom => new CustomProductRowViewModel(custom, ScheduleAutosave, RemoveCustomProduct)));
     }
+
+    /// <summary>Phase 21C: rows from the workspace's reconciled Shows section — this date's only.</summary>
+    private void BuildShowRows(AssociateWorkspace workspace)
+    {
+        var section = workspace.Shows;
+        ShowRows = section.Rows.Select(row => new AssociateShowRowViewModel(row, ScheduleAutosave)).ToList();
+
+        var presentation = ShowSchedulePresentation.Build(section.Schedule, _clock.UtcNow);
+        ShowsStatusText = ShowRows.Count == 0 ? presentation.StatusText : null;
+        ShowsFreshnessText = presentation.FreshnessText;
+    }
+
+    internal static string? BuildHistoricalPricingNotice(AssociateWorkspace workspace) =>
+        workspace.PricingTimeframe != AssociatePricingTimeframe.Historical
+            ? null
+            : workspace.IsHistoricalPricingUnavailable
+                ? HistoricalPricingPolicy.UnavailableMessage
+                : $"Showing prices recorded for {workspace.OperatingDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}. Current catalog products are not shown for past dates.";
 
     /// <summary>Converts the current editable fields into a full <see cref="AssociateDraftPayload"/>, including product overrides/custom products read from the current <see cref="ProductSections"/>/<see cref="CustomProducts"/> row view models (spec Phase 4D Parts D/E/F).</summary>
     private AssociateDraftPayload BuildDraft()
@@ -1729,6 +2047,11 @@ public partial class AssociateViewModel : ViewModelBase
                 IncludeAddOns,
                 IncludeOperationalNotes,
                 IncludeHauntedAttractions),
+            Shows = AssociateShowsSection.BuildSelection(
+                IncludeShows,
+                ShowRows.Where(row => row.IsSelected).Select(row => row.Row),
+                existing.Shows,
+                _clock.UtcNow),
         };
     }
 
@@ -1824,6 +2147,13 @@ public partial class AssociateViewModel : ViewModelBase
             _saveInFlight = false;
             AutosaveState = _isDirty ? AssociateAutosaveState.Unsaved : AssociateAutosaveState.Saved;
             _saveSemaphore.Release();
+        }
+
+        // Phase 19A: newer official data arrived while this editor had unsaved edits; now that they are
+        // saved (and nothing new was typed meanwhile), show it.
+        if (_officialDataReloadDeferred && !_isDirty && _draftDateInEdit == date && date == SelectedDate && !IsCheckingOnline)
+        {
+            _pendingOfficialDataReload = HandleOfficialDataChangedAsync(new DataChange(DataChangeKind.OfficialData, date));
         }
     }
 
@@ -1987,19 +2317,5 @@ public partial class AssociateViewModel : ViewModelBase
     {
         public Task SetTextAsync(string text, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Clipboard is not available.");
-    }
-
-    /// <summary>Default <see cref="IDiagnosticExportService"/> when none is supplied — only reachable if the composition root failed to register the real one; every production path registers <see cref="Infrastructure.Diagnostics.DiagnosticExportService"/>.</summary>
-    private sealed class UnavailableDiagnosticExportService : IDiagnosticExportService
-    {
-        public Task<DiagnosticExportResult> BuildZipAsync(CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("Diagnostic export is not available.");
-    }
-
-    /// <summary>Default <see cref="IDiagnosticExportFilePicker"/> when none is supplied — only reachable if the composition root failed to register the real one; every production path registers <see cref="Services.AvaloniaDiagnosticExportFilePicker"/>.</summary>
-    private sealed class UnavailableDiagnosticExportFilePicker : IDiagnosticExportFilePicker
-    {
-        public Task<DiagnosticExportSaveResult> SaveAsync(byte[] zipBytes, string suggestedFileName, CancellationToken cancellationToken = default) =>
-            Task.FromResult(DiagnosticExportSaveResult.Failed("Diagnostic export is not available."));
     }
 }

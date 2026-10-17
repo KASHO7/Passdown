@@ -274,15 +274,52 @@ public class AssociateViewModelTests
 
     // 13. Category-level Unavailable/NotPublished can be displayed.
     [Theory]
-    [InlineData(AssociateVerificationState.Unavailable, "Not available for this date")]
-    [InlineData(AssociateVerificationState.NotPublished, "Not published for this date")]
-    public async Task CategoryStatuses_UnavailableOrNotPublished_IsDisplayed(AssociateVerificationState state, string expectedText)
+    [InlineData(SourceCategory.HauntedAttractions, AssociateVerificationState.Unavailable, "SCarowinds", "Not available for this date")]
+    [InlineData(SourceCategory.DatedFastLane, AssociateVerificationState.NotPublished, "Fast Lane", "Not published for this date")]
+    public async Task CategoryStatuses_UnavailableOrNotPublished_IsDisplayed(
+        SourceCategory category, AssociateVerificationState state, string expectedSection, string expectedText)
     {
         var service = new FakeAssociatePassdownService
         {
             WorkspaceFactory = date => FakeAssociatePassdownService.DefaultWorkspace(date) with
             {
-                CategoryStatuses = [new AssociateProductCategoryStatus(SourceCategory.HauntedAttractions, state, FixedNow, "Detail.")],
+                CategoryStatuses = [new AssociateProductCategoryStatus(category, state, FixedNow, "Detail.")],
+            },
+        };
+        var viewModel = CreateViewModel(service);
+        await viewModel.PendingLoad;
+
+        var section = Assert.Single(viewModel.ProductSections);
+        Assert.Equal(expectedSection, section.CategoryDisplayName);
+        Assert.Equal(expectedText, section.Status!.StatusText);
+    }
+
+    // Phase 19B §27: SCarowinds not running for the date (off-season / season ended) leaves no empty heading.
+    [Fact]
+    public async Task CategoryStatuses_SeasonalEventNotPublished_OmitsTheEmptySection()
+    {
+        var service = new FakeAssociatePassdownService
+        {
+            WorkspaceFactory = date => FakeAssociatePassdownService.DefaultWorkspace(date) with
+            {
+                CategoryStatuses = [new AssociateProductCategoryStatus(SourceCategory.HauntedAttractions, AssociateVerificationState.NotPublished, FixedNow, "Detail.")],
+            },
+        };
+        var viewModel = CreateViewModel(service);
+        await viewModel.PendingLoad;
+
+        Assert.DoesNotContain(viewModel.ProductSections, section => section.CategoryDisplayName == "SCarowinds");
+    }
+
+    // Phase 19B §12: a genuine SCarowinds retrieval failure is still surfaced, never hidden as "seasonal".
+    [Fact]
+    public async Task CategoryStatuses_SeasonalEventError_IsStillDisplayed()
+    {
+        var service = new FakeAssociatePassdownService
+        {
+            WorkspaceFactory = date => FakeAssociatePassdownService.DefaultWorkspace(date) with
+            {
+                CategoryStatuses = [new AssociateProductCategoryStatus(SourceCategory.HauntedAttractions, AssociateVerificationState.Error, FixedNow, "Detail.")],
             },
         };
         var viewModel = CreateViewModel(service);
@@ -290,7 +327,7 @@ public class AssociateViewModelTests
 
         var section = Assert.Single(viewModel.ProductSections);
         Assert.Equal("SCarowinds", section.CategoryDisplayName);
-        Assert.Equal(expectedText, section.Status!.StatusText);
+        Assert.Equal("Unable to verify current pricing", section.Status!.StatusText);
     }
 
     [Fact]

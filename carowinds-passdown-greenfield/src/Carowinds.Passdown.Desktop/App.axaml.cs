@@ -4,9 +4,11 @@ using Avalonia.Markup.Xaml;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Calendar;
 using Carowinds.Passdown.Application.Catalog;
+using Carowinds.Passdown.Application.Changes;
 using Carowinds.Passdown.Application.Concurrency;
 using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Diagnostics;
+using Carowinds.Passdown.Application.HistoricalBackfill;
 using Carowinds.Passdown.Application.Ert;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Freshness;
@@ -18,9 +20,10 @@ using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Retrieval.Browser;
+using Carowinds.Passdown.Application.Shows;
+using Carowinds.Passdown.Application.SpellCheck;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Services;
-using Carowinds.Passdown.Desktop.Startup;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
 using Carowinds.Passdown.Documents.Associate;
@@ -36,6 +39,7 @@ using Carowinds.Passdown.Infrastructure.Preferences;
 using Carowinds.Passdown.Infrastructure.Retrieval.Browser;
 using Carowinds.Passdown.Infrastructure.Retrieval.Http;
 using Carowinds.Passdown.Infrastructure.Retrieval.Sources;
+using Carowinds.Passdown.Infrastructure.SpellCheck;
 using Carowinds.Passdown.Infrastructure.Storage;
 using Carowinds.Passdown.Infrastructure.Storage.Migrations;
 using Carowinds.Passdown.Infrastructure.Storage.Repositories;
@@ -116,13 +120,30 @@ public partial class App : global::Avalonia.Application
 
             var migrationsRunMs = ElapsedSinceProcessStartMs();
 
+            // Phase 20A: advisory spell checking for free-text fields. Independent of storage and
+            // retrieval — if it cannot be set up the app simply runs without underlines.
+            try
+            {
+                Spelling.SpellCheck.Service = services.GetRequiredService<ISpellCheckService>();
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning("Spell checking is unavailable ({ExceptionType}).", ex.GetType().Name);
+            }
+
+            // Phase 21D: Daily Feature math logs renderer status values only (never the text or formula).
+            Carowinds.Passdown.Documents.DailyFeatureMath.MathRenderDiagnostics.Logger =
+                services.GetRequiredService<ILoggerFactory>().CreateLogger("DailyFeatureMath");
+
             var mainWindow = services.GetRequiredService<MainWindow>();
             var mainViewModel = services.GetRequiredService<MainViewModel>();
             mainWindow.DataContext = mainViewModel;
             var mainViewModelResolvedMs = ElapsedSinceProcessStartMs();
 
             var syncCoordinator = services.GetRequiredService<IPersonalSyncCoordinator>();
-            AttachShutdownFlush(desktop, mainViewModel, syncCoordinator, logger);
+            var refreshCoordinator = services.GetRequiredService<IOfficialDataRefreshCoordinator>();
+            var historicalBackfill = services.GetRequiredService<IHistoricalBackfillService>();
+            AttachShutdownFlush(desktop, mainViewModel, syncCoordinator, refreshCoordinator, historicalBackfill, logger);
 
             // Phase 15D: the closest available cross-platform proxy for "the shell became visible" —
             // Window.Opened fires once the platform has actually shown the window, well after
@@ -147,7 +168,21 @@ public partial class App : global::Avalonia.Application
             // this can never delay the first usable window the way a blocking bootstrap would.
             syncCoordinator.Start();
 
-            StartCatchUpRefresh(services);
+            // Phase 19A: replaces the Phase 6B startup catch-up. Started once, after the window is
+            // assigned, for the interactive app's whole lifetime: it finalizes/catches up a missed daily
+            // maintenance run, makes sure official data is fresh (skipping that when it was just checked),
+            // then keeps it fresh every four hours — all on a background task, so cached data is usable
+            // immediately. Never started by the headless --scheduled-refresh host.
+            refreshCoordinator.Start();
+            logger.LogInformation(
+                "Automatic official-data refresh started (interval {IntervalHours}h, startup grace {GraceMinutes}min).",
+                OfficialRefreshPolicy.AutomaticInterval.TotalHours, OfficialRefreshPolicy.StartupFreshnessGrace.TotalMinutes);
+
+            // Phase 20C: current-year historical park hours, lowest priority — it waits for the startup
+            // work above to finish (today, the next days, month-ahead coverage) and yields to every other
+            // refresh. Interactive only; the headless --scheduled-refresh host never starts it.
+            historicalBackfill.Start();
+
             StartTempPdfCleanup(logger);
         }
 
@@ -164,7 +199,7 @@ public partial class App : global::Avalonia.Application
     /// again to actually close; the <c>flushed</c> guard prevents that second request from looping
     /// back into this handler.
     /// </summary>
-    private static void AttachShutdownFlush(IClassicDesktopStyleApplicationLifetime desktop, MainViewModel mainViewModel, IPersonalSyncCoordinator syncCoordinator, ILogger logger)
+    private static void AttachShutdownFlush(IClassicDesktopStyleApplicationLifetime desktop, MainViewModel mainViewModel, IPersonalSyncCoordinator syncCoordinator, IOfficialDataRefreshCoordinator refreshCoordinator, IHistoricalBackfillService historicalBackfill, ILogger logger)
     {
         var flushed = false;
 
@@ -198,6 +233,21 @@ public partial class App : global::Avalonia.Application
                 logger.LogWarning(ex, "Failed to stop the Personal Sync coordinator during shutdown; closing anyway.");
             }
 
+            // Phase 19A: cancels any automatic official-data check in flight (cancelled operations never
+            // overwrite last-known-good data or source state) — bounded, so a slow network can never hold
+            // the window open.
+            // Phase 20C: the historical backfill stops alongside it (an interrupted request writes nothing;
+            // the remaining dates resume next start), within the same bound.
+            try
+            {
+                var stop = Task.WhenAll(refreshCoordinator.StopAsync(), historicalBackfill.StopAsync());
+                await Task.WhenAny(stop, Task.Delay(RefreshStopTimeout)).ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to stop automatic official-data refresh during shutdown; closing anyway.");
+            }
+
             flushed = true;
             desktop.Shutdown();
         }
@@ -210,6 +260,9 @@ public partial class App : global::Avalonia.Application
     /// answer to "how long is a database allowed to look stuck before this app stops waiting on it."
     /// </summary>
     private static readonly TimeSpan ShutdownFlushTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>Phase 19A: the most shutdown waits for an in-flight automatic official-data check to observe cancellation.</summary>
+    private static readonly TimeSpan RefreshStopTimeout = TimeSpan.FromSeconds(2);
 
     /// <summary>
     /// The actual drain-before-exit work, split out from <see cref="AttachShutdownFlush"/> so it can
@@ -281,19 +334,6 @@ public partial class App : global::Avalonia.Application
         });
 
     /// <summary>
-    /// Phase 6B Part C: fires the missed-run catch-up (spec §6.6) as a detached background task —
-    /// deliberately not awaited, so a slow or failing refresh can never delay or block the window
-    /// that was just assigned above. See <see cref="StartupCatchUpRefresh"/> for the guard/failure
-    /// semantics.
-    /// </summary>
-    private static void StartCatchUpRefresh(IServiceProvider services)
-    {
-        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("StartupCatchUpRefresh");
-        var scheduledLock = new FileScheduledRefreshLock(FileScheduledRefreshLock.DefaultPath);
-        _ = StartupCatchUpRefresh.RunAsync(services, scheduledLock, logger);
-    }
-
-    /// <summary>
     /// Phase 15F: appsettings.json is an embedded resource (Carowinds.Passdown.Desktop.csproj),
     /// not a physical file read via AppContext.BaseDirectory — see the csproj comment for why a
     /// single-file publish makes the physical-file approach unreliable. Caller disposes the stream
@@ -345,6 +385,7 @@ public partial class App : global::Avalonia.Application
             new Migration0013CreateSyncConflictsTable(),
             new Migration0014CreateMonthlyErtConfigurationsTable(),
             new Migration0015CreateErtDateOverridesTable(),
+            new Migration0016CreateSeasonPriceHistoryTable(),
         ]);
         services.AddSingleton<MigrationRunner>();
 
@@ -360,10 +401,17 @@ public partial class App : global::Avalonia.Application
         // RefreshMode.UserForced entry point, shared by Dashboard and Associate's own Check Online
         // actions) uses this factory to guard against running concurrently with a scheduled refresh
         // or startup catch-up already holding the same file lock. A fresh FileScheduledRefreshLock
-        // instance per attempt is deliberate (mirrors ScheduledRefreshHost/StartupCatchUpRefresh's own
+        // instance per attempt is deliberate (mirrors ScheduledRefreshHost/OfficialRefreshGate's own
         // pattern) — OS-level exclusive file access is what actually enforces the single-holder
         // guarantee, not shared C# instance state.
         services.AddSingleton<Func<IScheduledRefreshLock>>(_ => () => new FileScheduledRefreshLock(FileScheduledRefreshLock.DefaultPath));
+
+        // Phase 19A: the one in-process gate every online refresh passes through (automatic checks,
+        // Check Online, Deep Refresh) — it also holds the cross-process lock above while held — and the
+        // one local data-change signal (draft/ERT/notes saves, Personal Sync imports, finished refreshes)
+        // the Dashboard and Associate screens react to without any network traffic.
+        services.AddSingleton<IOfficialRefreshGate>(provider => new OfficialRefreshGate(provider.GetRequiredService<Func<IScheduledRefreshLock>>()));
+        services.AddSingleton<IDataChangeNotifier, DataChangeNotifier>();
 
         // Phase 17B: the persistent monthly Early Ride Time foundation, registered ahead of
         // IAssociatePassdownService so its IEffectiveErtResolver constructor dependency resolves.
@@ -402,7 +450,7 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IFinalizedPassdownPdfRetrievalService, FinalizedPassdownPdfRetrievalService>();
 
         // Phase 9B: the 6:00 AM automatic finalization coordinator, invoked by ScheduledRefreshHost
-        // and StartupCatchUpRefresh before either ever runs a source refresh.
+        // and the interactive startup catch-up (OfficialDataRefreshCoordinator) before either runs a source refresh.
         services.AddSingleton<IScheduledPassdownFinalizer, ScheduledPassdownFinalizer>();
 
         // Phase 9D: the read-only Passdown History screen. IPassdownHistoryService reads
@@ -427,6 +475,10 @@ public partial class App : global::Avalonia.Application
         // (IAssociatePassdownService/IAssociateDraftRepository/IFinalizedPassdownRepository/
         // IOperationalNotesService/IClock); no HTTP/Playwright/Task Scheduler dependency exists.
         services.AddSingleton<IOperationsCalendarService, OperationsCalendarService>();
+
+        // Phase 21C: reads one date's recorded official show schedule (local only; retrieval is the
+        // refresh coordinator's job). Used by the Dashboard and Operations Calendar.
+        services.AddSingleton<IShowScheduleService, ShowScheduleService>();
         services.AddTransient<OperationsCalendarViewModel>();
 
         // Phase 11A: the persistent Operational Notes domain/persistence/service foundation.
@@ -517,7 +569,39 @@ public partial class App : global::Avalonia.Application
         // (spec §31 — Personal Sync operates only while the interactive app is running).
         services.AddSingleton<IPersonalSyncCoordinator, PersonalSyncCoordinator>();
 
+        // Phase 19A: automatic official-data refresh — one coordinator for the interactive app's lifetime
+        // (never per screen), started in OnFrameworkInitializationCompleted and stopped in
+        // AttachShutdownFlush; the headless --scheduled-refresh host never resolves or starts it. The
+        // shared status view model is likewise a single instance, so Dashboard and Associate always show
+        // the same freshness line.
+        services.AddSingleton<IOfficialDataRefreshCoordinator, OfficialDataRefreshCoordinator>();
+
+        // Phase 20C: the current-year historical park-hours backfill — one instance for the interactive
+        // app's lifetime, started after the coordinator and stopped with it. Reuses the official
+        // park-hours adapter and dated_results storage; no schema of its own.
+        services.AddSingleton<IParkHoursHistorySource>(provider => provider.GetRequiredService<ParkHoursSource>());
+        services.AddSingleton<IHistoricalBackfillService>(provider => new HistoricalBackfillService(
+            provider.GetRequiredService<IParkHoursHistorySource>(),
+            provider.GetRequiredService<IDatedResultRepository>(),
+            provider.GetRequiredService<IOfficialRefreshGate>(),
+            provider.GetRequiredService<IClock>(),
+            () => provider.GetRequiredService<IOfficialDataRefreshCoordinator>().StartupCompletion,
+            provider.GetRequiredService<IDataChangeNotifier>(),
+            provider.GetRequiredService<ILogger<HistoricalBackfillService>>()));
+        services.AddSingleton<IUiDispatcher, AvaloniaUiDispatcher>();
+        services.AddSingleton<OfficialDataStatusViewModel>();
+
+        services.AddTransient<DiagnosticsExportViewModel>();
         services.AddTransient<PersonalSyncSettingsViewModel>();
+        services.AddTransient<PriceHistoryViewModel>();
+
+        // Phase 20A: local/offline spell checking (Windows' own spell checker on Windows; none
+        // elsewhere). The backend creates its COM objects lazily, on first use, never at startup.
+        services.AddSingleton<ISpellingBackend>(_ => SpellingBackendFactory.Create());
+        services.AddSingleton<ISpellCheckService>(provider => new SpellCheckService(
+            provider.GetRequiredService<ISpellingBackend>(),
+            additionalTerms: null,
+            provider.GetRequiredService<ILogger<SpellCheckService>>()));
 
         services.AddTransient<MainWindow>();
         services.AddTransient<MainViewModel>();
@@ -544,6 +628,11 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<ICatalogProductRepository, SqliteCatalogProductRepository>();
         services.AddSingleton<IProductHistoryRepository, SqliteProductHistoryRepository>();
         services.AddSingleton<IUnitOfWorkFactory, SqliteUnitOfWorkFactory>();
+        // Phase 20A: season price history, written by reconciliation in the catalog upsert's own unit
+        // of work (no separate polling loop, no extra requests) and read by the Price History screen.
+        services.AddSingleton<ISeasonPriceHistoryRepository, SqliteSeasonPriceHistoryRepository>();
+        services.AddSingleton<SeasonPriceHistoryRecorder>();
+        services.AddSingleton<ISeasonPriceHistoryService, SeasonPriceHistoryService>();
         services.AddSingleton<IProductReconciliationService, ProductReconciliationService>();
 
         // Freshness/scheduling (Phase 2).
@@ -569,7 +658,14 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IJobBrowserSessionFactory, UnavailableJobBrowserSessionFactory>();
 
         // Completed Phase 3 source adapters (Part A "completed sources currently include").
-        services.AddSingleton<ParkHoursSource>();
+        // Phase 21C: park hours and the show schedule read the same official FIMS operating-hours GET;
+        // giving both one coalescing client means a date's hours and shows cost one request.
+        services.AddSingleton<CoalescingRetrievalHttpClient>(provider => new CoalescingRetrievalHttpClient(
+            provider.GetRequiredService<IRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
+        services.AddSingleton<ParkHoursSource>(provider => new ParkHoursSource(
+            provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
+        services.AddSingleton<ShowScheduleSource>(provider => new ShowScheduleSource(
+            provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
         services.AddSingleton<DatedAdmissionSource>();
         services.AddSingleton<DatedFastLaneSource>();
         services.AddSingleton<DatedHauntedSource>();
@@ -584,6 +680,9 @@ public partial class App : global::Avalonia.Application
         // Phase 15A: ordinary Bring-A-Friend's exact per-date price (anonymous, keyword
         // BAFWizardDailyTickets) — supersedes Phase 13C's passholder-login-only finding.
         services.AddSingleton<DatedBringAFriendSource>();
+        // Phase 21A: Military/First Responder exact per-date prices (anonymous, keyword
+        // MilitaryWizardDailyTickets) — the store calendar shown before ID.me.
+        services.AddSingleton<DatedMilitaryFirstResponderSource>();
 
         // Refresh-orchestrator source registrations (Part A) — every adapter above, paired with
         // how its successful payload is persisted (dated) or reconciled (catalog). None of the
@@ -607,6 +706,10 @@ public partial class App : global::Avalonia.Application
                 new DatedSourceRegistration<DatedBringAFriendDuoPayload>(provider.GetRequiredService<DatedBringAFriendDuoSource>(), datedResultRepository),
                 new CatalogSourceRegistration(provider.GetRequiredService<MilitaryFirstResponderCatalogSource>(), reconciliationService),
                 new DatedSourceRegistration<DatedBringAFriendPayload>(provider.GetRequiredService<DatedBringAFriendSource>(), datedResultRepository),
+                new DatedSourceRegistration<DatedMilitaryFirstResponderPayload>(provider.GetRequiredService<DatedMilitaryFirstResponderSource>(), datedResultRepository),
+                // Phase 21C: official show schedule — today and future dates only, so a past date's
+                // recorded schedule is never replaced.
+                new CurrentAndFutureDatedSourceRegistration<ShowSchedulePayload>(provider.GetRequiredService<ShowScheduleSource>(), datedResultRepository, provider.GetRequiredService<IClock>()),
             };
         });
 

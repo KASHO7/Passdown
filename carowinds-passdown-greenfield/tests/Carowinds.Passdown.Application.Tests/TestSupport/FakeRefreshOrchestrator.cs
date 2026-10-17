@@ -49,6 +49,25 @@ internal sealed class FakeRefreshOrchestrator : IRefreshOrchestrator
         return Task.FromResult(DeepRefreshSummaryOverride ?? EmptySummary(RefreshJobType.DeepRefresh));
     }
 
+    public int ComprehensiveRefreshCallCount { get; private set; }
+
+    /// <summary>Phase 19A: lets a test simulate what a real comprehensive check writes (e.g. source state) or block until released.</summary>
+    public Func<CancellationToken, Task>? OnComprehensiveRefresh { get; set; }
+
+    /// <summary>When set, returned by <see cref="RunComprehensiveRefreshAsync"/> instead of an empty summary.</summary>
+    public RefreshSummary? ComprehensiveRefreshSummaryOverride { get; set; }
+
+    public async Task<RefreshSummary> RunComprehensiveRefreshAsync(IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)
+    {
+        ComprehensiveRefreshCallCount++;
+        if (OnComprehensiveRefresh is not null)
+        {
+            await OnComprehensiveRefresh(cancellationToken).ConfigureAwait(false);
+        }
+
+        return ComprehensiveRefreshSummaryOverride ?? EmptySummary(RefreshJobType.Comprehensive);
+    }
+
     private static RefreshSummary EmptySummary(RefreshJobType jobType) =>
         new(jobType, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, OperationsAttempted: 0, Succeeded: 0, Failed: 0, Cancelled: 0, Results: []);
 }

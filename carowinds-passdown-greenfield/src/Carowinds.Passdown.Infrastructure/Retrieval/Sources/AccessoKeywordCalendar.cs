@@ -86,6 +86,22 @@ internal sealed class AccessoKeywordCalendarService
 
     [JsonPropertyName("DATES")]
     public AccessoKeywordCalendarDates? Dates { get; set; }
+
+    /// <summary>
+    /// The endpoint's own "nothing matched this range" answer: <c>status: "FAILED"</c> with exactly
+    /// this <c>error_msg</c>. Live-confirmed 2026-10-15 for the ended Bring-A-Friend Duo keyword
+    /// (<c>SUBAF50</c>) across a today→+120-day window (fixtures/dated-bring-a-friend-duo/
+    /// ended-no-dates-in-horizon.json), the same message every keyword returns for a closed, past or
+    /// beyond-horizon single date. Phase 19B: for a window starting today this is a successful check
+    /// that the keyword is not currently published — never an <c>Error</c>. Any other FAILED message
+    /// (e.g. the live-observed "A month value must be passed…" contract failure) is not this.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsNoDatesFound =>
+        string.Equals(Status, "FAILED", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(ErrorMessage?.Trim(), NoDatesFoundMessage, StringComparison.OrdinalIgnoreCase);
+
+    internal const string NoDatesFoundMessage = "No dates found that meet requirements";
 }
 
 internal sealed class AccessoKeywordCalendarDates

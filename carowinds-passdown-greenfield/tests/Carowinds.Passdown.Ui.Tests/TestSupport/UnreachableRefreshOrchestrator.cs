@@ -19,4 +19,7 @@ internal sealed class UnreachableRefreshOrchestrator : IRefreshOrchestrator
 
     public Task<RefreshSummary> RunDeepRefreshAsync(bool bypassFreshness, DateOnly? focusDate = null, IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default) =>
         throw new InvalidOperationException("Startup must never reach IRefreshOrchestrator.");
+
+    public Task<RefreshSummary> RunComprehensiveRefreshAsync(IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default) =>
+        throw new InvalidOperationException("Startup must never reach IRefreshOrchestrator.");
 }

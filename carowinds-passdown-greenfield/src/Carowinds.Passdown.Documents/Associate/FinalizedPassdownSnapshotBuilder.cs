@@ -74,7 +74,13 @@ public sealed class FinalizedPassdownSnapshotBuilder(IAssociatePassdownPdfGenera
             model.OperationalNotes.ToList(),
             model.ProductCategories.Select(MapCategory).ToList(),
             model.HasUnverifiedProductPricing,
-            model.GeneratedAtText);
+            model.GeneratedAtText)
+        {
+            // Phase 21C: frozen exactly as printed; null when no Shows section printed (schema unchanged).
+            Shows = model.Shows.Count == 0
+                ? null
+                : model.Shows.Select(show => new FinalizedShowSnapshot(show.Name, show.Venue, show.TimesText)).ToList(),
+        };
     }
 
     private static FinalizedParkHoursSnapshot MapParkHours(PdfParkHours hours) => new(
