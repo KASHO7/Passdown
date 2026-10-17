@@ -1052,3 +1052,18 @@ See `docs/phase21d-daily-feature-math.md`.
 
 Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged.
 
+
+## Phase 22A — design foundation and dark mode
+
+See `docs/phase22a-design-foundation.md`. Desktop presentation only.
+
+- **Desktop** — `Themes/PassdownTokens.axaml` (semantic color tokens per Light/Dark theme dictionary,
+  typography/spacing/radius tokens, color-only overrides of Fluent popup/input/focus resource keys),
+  merged into `App.axaml` resources; `Themes/PassdownStyles.axaml` (shared class styles: typography,
+  panels/insets/chips/status badges, button variants, selectable list rows), included after
+  `FluentTheme`. Views keep only local deltas in `<UserControl.Styles>`.
+  `Converters/ThemeBrushLookup` resolves tokens for the element's `ActualThemeVariant` (bound via
+  `MultiBinding`) so converter-produced brushes follow a live theme switch.
+- No Domain/Application/Infrastructure/Documents change; no view-model change; PDF output unchanged.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged.

@@ -1808,3 +1808,22 @@ To be run with `docs/phase21e-rc6-windows-checklist.md` against the hashes above
 - Next release decision: if Windows validation finds a shipped-code defect, fix it in source and ship
   **`0.1.0-rc.7`**; RC.6 artifacts are immutable. If Windows validation passes, RC.6 is the candidate
   for the installer/update work, subject to the QuestPDF decision.
+
+# Unreleased development — Phase 22A (after RC.6)
+
+Design foundation and dark mode: shared semantic color tokens (light + dark), typography/spacing/radius
+scales, consolidated button/input/popup/panel/status styles (`Themes/PassdownTokens.axaml`,
+`Themes/PassdownStyles.axaml`), reduced decorative blue, charcoal dark theme (no pure-black window),
+fixed primary-button hover, accessible dark primary buttons. No layout rearranged, no operational
+logic changed, PDF output unchanged. See `docs/phase22a-design-foundation.md`. RC.6 artifacts are
+unchanged; `Directory.Build.props` still says `0.1.0-rc.6`. The next packaged candidate is
+**`0.1.0-rc.7`**.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration — styling only) |
+| Upgrade implications | None. Stored data is unaffected. |
+| Deterministic tests | **3479/3479** (baseline 3410 at `04a71c3`; +69 `Phase22ADesignFoundationTests`) = 163 Domain + 1035 Application + 833 Infrastructure + 406 Documents + 986 Ui together + 26 `OperationsCalendarViewTests` + 17 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). The new class uses no real Window and runs in the mixed Ui partition |
+| Live smoke (opt-in) | not applicable (no retrieval change) |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 22A doc §19 |

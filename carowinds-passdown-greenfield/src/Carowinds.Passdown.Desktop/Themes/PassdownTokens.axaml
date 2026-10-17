@@ -1,0 +1,224 @@
+<!--
+  Phase 22A: the shared design tokens for Carowinds Operations. Every color, type size, spacing step
+  and corner radius a view needs should come from here (by key, via DynamicResource for anything
+  theme-dependent) instead of a literal in the view. See docs/phase22a-design-foundation.md for the
+  palette rationale, measured contrast ratios and how later phases should consume these keys.
+
+  Naming: Passdown{Role}{Variant}Brush. One key per purpose — do not add synonyms; reuse the
+  closest existing role or add a genuinely new one here and document it.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+
+  <!-- ===================================================================================
+       Theme-invariant: brand band, typography, spacing, radii
+       =================================================================================== -->
+
+  <!-- The brand band (deep navy + white text) is identity, not a surface: it does not invert with
+       the OS light/dark theme. Restyling it belongs to the app-shell phase (22B). -->
+  <Color x:Key="PassdownBrandDarkColor">#0B2A4A</Color>
+  <SolidColorBrush x:Key="PassdownBrandDarkBrush" Color="{StaticResource PassdownBrandDarkColor}" />
+  <SolidColorBrush x:Key="PassdownHeaderForegroundBrush" Color="#FFFFFF" />
+  <SolidColorBrush x:Key="PassdownHeaderMutedForegroundBrush" Color="#B9CBDE" />
+
+  <!-- Fluent's own accent-driven controls (checked CheckBox/RadioButton, ToggleSwitch, text
+       selection, the Fluent Calendar) follow the brand royal blue. -->
+  <Color x:Key="SystemAccentColor">#1E5AA8</Color>
+  <Color x:Key="SystemAccentColorLight1">#3E76BE</Color>
+  <Color x:Key="SystemAccentColorLight2">#6693CE</Color>
+  <Color x:Key="SystemAccentColorLight3">#97B7DE</Color>
+  <Color x:Key="SystemAccentColorDark1">#17447E</Color>
+  <Color x:Key="SystemAccentColorDark2">#113259</Color>
+  <Color x:Key="SystemAccentColorDark3">#0B2038</Color>
+
+  <!-- Typography (application font family unchanged; STIX Two Math stays math-only). -->
+  <sys:Double x:Key="PassdownFontSizePageTitle">20</sys:Double>
+  <sys:Double x:Key="PassdownFontSizePrimaryValue">22</sys:Double>
+  <sys:Double x:Key="PassdownFontSizeStatValue">20</sys:Double>
+  <sys:Double x:Key="PassdownFontSizeSectionHeading">14</sys:Double>
+  <sys:Double x:Key="PassdownFontSizeSubsection">12</sys:Double>
+  <sys:Double x:Key="PassdownFontSizeBody">14</sys:Double>
+  <sys:Double x:Key="PassdownFontSizeMetadata">12.5</sys:Double>
+  <sys:Double x:Key="PassdownFontSizeCaption">11.5</sys:Double>
+  <sys:Double x:Key="PassdownFontSizeTableHeader">11</sys:Double>
+
+  <!-- Spacing scale (4 / 8 / 12 / 16 / 24). Doubles for StackPanel/Grid spacing, Thickness for the
+       recurring padding patterns. -->
+  <sys:Double x:Key="PassdownSpace1">4</sys:Double>
+  <sys:Double x:Key="PassdownSpace2">8</sys:Double>
+  <sys:Double x:Key="PassdownSpace3">12</sys:Double>
+  <sys:Double x:Key="PassdownSpace4">16</sys:Double>
+  <sys:Double x:Key="PassdownSpace6">24</sys:Double>
+  <Thickness x:Key="PassdownPagePadding">24,20,24,24</Thickness>
+  <Thickness x:Key="PassdownPageHeaderPadding">24,16</Thickness>
+  <Thickness x:Key="PassdownPanelPadding">16</Thickness>
+  <Thickness x:Key="PassdownInsetPadding">12</Thickness>
+  <Thickness x:Key="PassdownButtonPadding">14,7</Thickness>
+  <Thickness x:Key="PassdownCompactButtonPadding">12,6</Thickness>
+  <Thickness x:Key="PassdownChipPadding">8,2</Thickness>
+  <Thickness x:Key="PassdownRowPadding">0,7</Thickness>
+
+  <!-- Corner radius scale: restrained, never pill-shaped. -->
+  <CornerRadius x:Key="PassdownRadiusSmall">3</CornerRadius>
+  <CornerRadius x:Key="PassdownRadiusControl">4</CornerRadius>
+  <CornerRadius x:Key="PassdownRadiusCard">6</CornerRadius>
+  <CornerRadius x:Key="PassdownRadiusPopup">8</CornerRadius>
+
+  <!-- ===================================================================================
+       Theme-dependent color tokens
+       =================================================================================== -->
+  <ResourceDictionary.ThemeDictionaries>
+
+    <!-- Light: soft neutral page, white surfaces, dark readable text, one restrained accent. -->
+    <ResourceDictionary x:Key="Light">
+      <!-- Backgrounds -->
+      <SolidColorBrush x:Key="PassdownAppBackgroundBrush" Color="#F3F4F6" />
+      <SolidColorBrush x:Key="PassdownSurfaceBrush" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="PassdownSurfaceSecondaryBrush" Color="#F6F7F9" />
+      <SolidColorBrush x:Key="PassdownSurfaceElevatedBrush" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="PassdownPopupSurfaceBrush" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="PassdownOverlayScrimBrush" Color="#800B0F14" />
+
+      <!-- Text -->
+      <SolidColorBrush x:Key="PassdownTextPrimaryBrush" Color="#1B1F24" />
+      <SolidColorBrush x:Key="PassdownTextSecondaryBrush" Color="#4A525C" />
+      <SolidColorBrush x:Key="PassdownTextMutedBrush" Color="#5F6873" />
+      <SolidColorBrush x:Key="PassdownTextDisabledBrush" Color="#8B939C" />
+      <SolidColorBrush x:Key="PassdownTextOnAccentBrush" Color="#FFFFFF" />
+
+      <!-- Borders -->
+      <SolidColorBrush x:Key="PassdownBorderBrush" Color="#D6DAE0" />
+      <SolidColorBrush x:Key="PassdownDividerBrush" Color="#E4E7EB" />
+      <SolidColorBrush x:Key="PassdownBorderStrongBrush" Color="#868E98" />
+      <SolidColorBrush x:Key="PassdownFocusBorderBrush" Color="#1B1F24" />
+
+      <!-- Interaction. Accent = fills (primary buttons, selected-date fill); AccentForeground =
+           accent used as text, glyph or thin indicator on a neutral surface (links, selected tab). -->
+      <SolidColorBrush x:Key="PassdownAccentBrush" Color="#1E5AA8" />
+      <SolidColorBrush x:Key="PassdownAccentHoverBrush" Color="#174B8E" />
+      <SolidColorBrush x:Key="PassdownAccentPressedBrush" Color="#123C73" />
+      <SolidColorBrush x:Key="PassdownAccentForegroundBrush" Color="#1E5AA8" />
+      <SolidColorBrush x:Key="PassdownSelectedBackgroundBrush" Color="#E6EEF8" />
+      <SolidColorBrush x:Key="PassdownSelectedForegroundBrush" Color="#164A8A" />
+      <SolidColorBrush x:Key="PassdownHoverBackgroundBrush" Color="#EEF0F3" />
+      <SolidColorBrush x:Key="PassdownPressedBackgroundBrush" Color="#E3E6EA" />
+
+      <!-- Tags/chips: neutral metadata chip, and the emphasized (read-only / today / saved) chip. -->
+      <SolidColorBrush x:Key="PassdownChipBrush" Color="#EAECEF" />
+      <SolidColorBrush x:Key="PassdownChipAccentBrush" Color="#E3ECF7" />
+      <SolidColorBrush x:Key="PassdownChipAccentForegroundBrush" Color="#1D4E8F" />
+
+      <!-- Statuses: foreground (text/icon) + subtle background. Always paired with words. -->
+      <SolidColorBrush x:Key="PassdownSuccessBrush" Color="#1E6B3C" />
+      <SolidColorBrush x:Key="PassdownSuccessBackgroundBrush" Color="#E5F2E9" />
+      <SolidColorBrush x:Key="PassdownWarningBrush" Color="#8A5A00" />
+      <SolidColorBrush x:Key="PassdownWarningBackgroundBrush" Color="#FBF1DC" />
+      <SolidColorBrush x:Key="PassdownErrorBrush" Color="#B3261E" />
+      <SolidColorBrush x:Key="PassdownErrorBackgroundBrush" Color="#FBE9E7" />
+      <SolidColorBrush x:Key="PassdownInfoBrush" Color="#2B5F94" />
+      <SolidColorBrush x:Key="PassdownInfoBackgroundBrush" Color="#E8F0F8" />
+      <SolidColorBrush x:Key="PassdownStaleBrush" Color="#7A5A10" />
+      <SolidColorBrush x:Key="PassdownStaleBackgroundBrush" Color="#F6F0E1" />
+      <SolidColorBrush x:Key="PassdownNotPublishedBrush" Color="#5F6873" />
+      <SolidColorBrush x:Key="PassdownUnavailableBrush" Color="#5F6873" />
+      <SolidColorBrush x:Key="PassdownNeutralStatusBackgroundBrush" Color="#EEF0F3" />
+
+      <!-- Fluent resource overrides: color only, so Fluent's own templates and behavior are kept. -->
+      <SolidColorBrush x:Key="SystemControlFocusVisualPrimaryBrush" Color="#1B1F24" />
+      <SolidColorBrush x:Key="FlyoutPresenterBackground" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="FlyoutBorderThemeBrush" Color="#D6DAE0" />
+      <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="MenuFlyoutPresenterBorderBrush" Color="#D6DAE0" />
+      <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPointerOver" Color="#EEF0F3" />
+      <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPressed" Color="#E3E6EA" />
+      <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush" Color="#D6DAE0" />
+      <SolidColorBrush x:Key="ToolTipBackground" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="ToolTipForeground" Color="#1B1F24" />
+      <SolidColorBrush x:Key="ToolTipBorderBrush" Color="#D6DAE0" />
+      <SolidColorBrush x:Key="TextControlBackground" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#FAFBFC" />
+      <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="TextControlBorderBrush" Color="#868E98" />
+      <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#4A525C" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#5F6873" />
+      <SolidColorBrush x:Key="ComboBoxBackground" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="#FAFBFC" />
+      <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#868E98" />
+      <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#4A525C" />
+    </ResourceDictionary>
+
+    <!-- Dark: charcoal/slate levels (never pure black), off-white text, a deeper accent fill so white
+         button text stays readable, and a lighter accent for text/indicators. -->
+    <ResourceDictionary x:Key="Dark">
+      <SolidColorBrush x:Key="PassdownAppBackgroundBrush" Color="#141619" />
+      <SolidColorBrush x:Key="PassdownSurfaceBrush" Color="#1F2227" />
+      <SolidColorBrush x:Key="PassdownSurfaceSecondaryBrush" Color="#252930" />
+      <SolidColorBrush x:Key="PassdownSurfaceElevatedBrush" Color="#2A2E35" />
+      <SolidColorBrush x:Key="PassdownPopupSurfaceBrush" Color="#2B3038" />
+      <SolidColorBrush x:Key="PassdownOverlayScrimBrush" Color="#B3000000" />
+
+      <SolidColorBrush x:Key="PassdownTextPrimaryBrush" Color="#E8EAED" />
+      <SolidColorBrush x:Key="PassdownTextSecondaryBrush" Color="#BAC0C8" />
+      <SolidColorBrush x:Key="PassdownTextMutedBrush" Color="#9EA6B0" />
+      <SolidColorBrush x:Key="PassdownTextDisabledBrush" Color="#6E757E" />
+      <SolidColorBrush x:Key="PassdownTextOnAccentBrush" Color="#FFFFFF" />
+
+      <SolidColorBrush x:Key="PassdownBorderBrush" Color="#353A42" />
+      <SolidColorBrush x:Key="PassdownDividerBrush" Color="#2D3138" />
+      <SolidColorBrush x:Key="PassdownBorderStrongBrush" Color="#737B86" />
+      <SolidColorBrush x:Key="PassdownFocusBorderBrush" Color="#E8EAED" />
+
+      <SolidColorBrush x:Key="PassdownAccentBrush" Color="#2F6DB8" />
+      <SolidColorBrush x:Key="PassdownAccentHoverBrush" Color="#2A64AA" />
+      <SolidColorBrush x:Key="PassdownAccentPressedBrush" Color="#24578F" />
+      <SolidColorBrush x:Key="PassdownAccentForegroundBrush" Color="#8DB9EB" />
+      <SolidColorBrush x:Key="PassdownSelectedBackgroundBrush" Color="#233650" />
+      <SolidColorBrush x:Key="PassdownSelectedForegroundBrush" Color="#B5D2F4" />
+      <SolidColorBrush x:Key="PassdownHoverBackgroundBrush" Color="#2A2E35" />
+      <SolidColorBrush x:Key="PassdownPressedBackgroundBrush" Color="#31363E" />
+
+      <SolidColorBrush x:Key="PassdownChipBrush" Color="#2D3239" />
+      <SolidColorBrush x:Key="PassdownChipAccentBrush" Color="#233650" />
+      <SolidColorBrush x:Key="PassdownChipAccentForegroundBrush" Color="#B5D2F4" />
+
+      <SolidColorBrush x:Key="PassdownSuccessBrush" Color="#7CC59A" />
+      <SolidColorBrush x:Key="PassdownSuccessBackgroundBrush" Color="#1D3326" />
+      <SolidColorBrush x:Key="PassdownWarningBrush" Color="#E3B45C" />
+      <SolidColorBrush x:Key="PassdownWarningBackgroundBrush" Color="#3A3020" />
+      <SolidColorBrush x:Key="PassdownErrorBrush" Color="#F1958D" />
+      <SolidColorBrush x:Key="PassdownErrorBackgroundBrush" Color="#3F2427" />
+      <SolidColorBrush x:Key="PassdownInfoBrush" Color="#8DB9EB" />
+      <SolidColorBrush x:Key="PassdownInfoBackgroundBrush" Color="#1F2F44" />
+      <SolidColorBrush x:Key="PassdownStaleBrush" Color="#D2AE68" />
+      <SolidColorBrush x:Key="PassdownStaleBackgroundBrush" Color="#33301F" />
+      <SolidColorBrush x:Key="PassdownNotPublishedBrush" Color="#9EA6B0" />
+      <SolidColorBrush x:Key="PassdownUnavailableBrush" Color="#9EA6B0" />
+      <SolidColorBrush x:Key="PassdownNeutralStatusBackgroundBrush" Color="#2A2E35" />
+
+      <SolidColorBrush x:Key="SystemControlFocusVisualPrimaryBrush" Color="#E8EAED" />
+      <SolidColorBrush x:Key="FlyoutPresenterBackground" Color="#2B3038" />
+      <SolidColorBrush x:Key="FlyoutBorderThemeBrush" Color="#434952" />
+      <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="#2B3038" />
+      <SolidColorBrush x:Key="MenuFlyoutPresenterBorderBrush" Color="#434952" />
+      <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPointerOver" Color="#363B44" />
+      <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPressed" Color="#3E444E" />
+      <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#2B3038" />
+      <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush" Color="#434952" />
+      <SolidColorBrush x:Key="ToolTipBackground" Color="#2B3038" />
+      <SolidColorBrush x:Key="ToolTipForeground" Color="#E8EAED" />
+      <SolidColorBrush x:Key="ToolTipBorderBrush" Color="#434952" />
+      <SolidColorBrush x:Key="TextControlBackground" Color="#1A1D21" />
+      <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#202328" />
+      <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#16181C" />
+      <SolidColorBrush x:Key="TextControlBorderBrush" Color="#737B86" />
+      <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#9EA6B0" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#9EA6B0" />
+      <SolidColorBrush x:Key="ComboBoxBackground" Color="#1A1D21" />
+      <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="#202328" />
+      <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#737B86" />
+      <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#9EA6B0" />
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

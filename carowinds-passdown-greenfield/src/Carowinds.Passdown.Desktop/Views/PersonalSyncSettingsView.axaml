@@ -10,68 +10,14 @@
   <!-- Phase 16B: the smallest configuration surface for the local sync foundation (§4/§14). Phase
        16C adds the one manual "Sync Now" action and a simple result line (§25/§26) — still no
        last-sync-time, automatic cadence, or conflict-resolution controls; those belong to 16D/16F.
-       Styles mirror HistoryView's own small, self-contained subset. -->
+       Shared typography, surface, button and status styles
+       come from Themes/PassdownStyles.axaml (Phase 22A); only this screen's own deltas live below. -->
   <UserControl.Styles>
-
-    <Style Selector="TextBlock.pageTitle">
-      <Setter Property="FontSize" Value="20" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
-    <Style Selector="TextBlock.sectionTitle">
-      <Setter Property="FontSize" Value="13.5" />
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="LetterSpacing" Value="0.4" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="Margin" Value="0,0,0,8" />
-    </Style>
-    <Style Selector="TextBlock.muted">
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
-      <Setter Property="FontSize" Value="12.5" />
-    </Style>
-
-    <Style Selector="Border.panel">
-      <Setter Property="Padding" Value="18" />
-      <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
-      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceTintBrush}" />
-    </Style>
-
-    <Style Selector="Border.chip">
-      <Setter Property="Background" Value="{DynamicResource PassdownChipBrush}" />
-      <Setter Property="CornerRadius" Value="10" />
-      <Setter Property="Padding" Value="9,3" />
-    </Style>
-    <Style Selector="Border.chip TextBlock">
-      <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="FontWeight" Value="Medium" />
-    </Style>
-
-    <Style Selector="Button.secondaryAction">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="BorderThickness" Value="1.5" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="CornerRadius" Value="5" />
-      <Setter Property="Padding" Value="14,7" />
-    </Style>
-    <Style Selector="Button.secondaryAction:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
-    </Style>
-
-    <Style Selector="Button.textAction">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="Padding" Value="0" />
-    </Style>
-
     <Style Selector="Border.conflictRow">
-      <Setter Property="Padding" Value="12" />
-      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Padding" Value="{DynamicResource PassdownInsetPadding}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusCard}" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderBrush}" />
     </Style>
 
     <Style Selector="Grid.fieldComparisonRow > TextBlock">
@@ -79,11 +25,12 @@
       <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
+  
   </UserControl.Styles>
 
   <Grid x:Name="PersonalSyncRoot" RowDefinitions="Auto,*">
 
-    <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceTintBrush}"
+    <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceBrush}"
             BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
       <StackPanel Spacing="2">
         <TextBlock Text="Settings" Classes="pageTitle" />

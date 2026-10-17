@@ -1,0 +1,352 @@
+<!--
+  Phase 22A: the shared, class-based styles every screen uses. Included once from App.axaml after
+  FluentTheme. Everything here is opt-in through a named class (Classes="panel", "primaryAction",
+  ...) except the Window background, so a style here can only affect controls that ask for it.
+  Views keep only genuinely local deltas in their own <UserControl.Styles>.
+
+  Colors come from Themes/PassdownTokens.axaml via DynamicResource, so a live light/dark switch
+  restyles everything without reloading a view. Hover/pressed states target Fluent's own
+  ContentPresenter#PART_ContentPresenter (where Fluent applies its state colors) rather than
+  replacing any control template, so focus adorners, keyboard behavior and disabled states remain
+  Fluent's.
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- Every window paints the neutral app background (Fluent's default is pure black in dark). -->
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource PassdownAppBackgroundBrush}" />
+  </Style>
+
+  <!-- ===================================================================================
+       Typography
+       =================================================================================== -->
+
+  <Style Selector="TextBlock.pageTitle">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizePageTitle}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+  </Style>
+  <!-- Section headings are structure, not interaction: primary text + weight, no accent color. -->
+  <Style Selector="TextBlock.sectionTitle">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeSectionHeading}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+    <Setter Property="Margin" Value="0,0,0,8" />
+  </Style>
+  <Style Selector="TextBlock.sectionTitle.detail">
+    <Setter Property="Margin" Value="0,4,0,0" />
+  </Style>
+  <Style Selector="TextBlock.subsectionTitle">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeSubsection}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="LetterSpacing" Value="0.2" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+    <Setter Property="Margin" Value="0,0,0,4" />
+  </Style>
+  <!-- Supporting text and metadata (last checked, last saved, venue, timestamps): readable
+       secondary text, never a placeholder-faint gray. -->
+  <Style Selector="TextBlock.muted">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeMetadata}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+  </Style>
+  <Style Selector="TextBlock.fieldLabel">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeMetadata}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+    <Setter Property="Margin" Value="0,0,0,4" />
+  </Style>
+  <Style Selector="TextBlock.fieldHint">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeCaption}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+    <Setter Property="Margin" Value="0,3,0,0" />
+  </Style>
+  <Style Selector="TextBlock.fieldError">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeMetadata}" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownErrorBrush}" />
+  </Style>
+  <Style Selector="TextBlock.fieldWarning">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeCaption}" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownWarningBrush}" />
+    <Setter Property="Margin" Value="0,3,0,0" />
+  </Style>
+  <!-- Table/list column headings (Products, Season Price History). -->
+  <Style Selector="TextBlock.columnHeader">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeTableHeader}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="LetterSpacing" Value="0.2" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+    <Setter Property="Margin" Value="0" />
+  </Style>
+  <!-- The single strongest value on a panel (park hours headline). -->
+  <Style Selector="TextBlock.hoursHeadline">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizePrimaryValue}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+    <Setter Property="Margin" Value="0,2,0,4" />
+  </Style>
+  <Style Selector="TextBlock.hoursHeadline.subtle">
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+  </Style>
+  <Style Selector="TextBlock.statValue">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeStatValue}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.statLabel">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeTableHeader}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="LetterSpacing" Value="0.2" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+    <Setter Property="Margin" Value="0,0,0,4" />
+  </Style>
+  <!-- Operational-note priority: the word "Important" carries the meaning; weight + the emphasized
+       chip color only reinforce it (never an alarm color). -->
+  <Style Selector="TextBlock.priorityText">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeMetadata}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+  </Style>
+  <Style Selector="TextBlock.priorityText.important">
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownChipAccentForegroundBrush}" />
+  </Style>
+
+  <!-- Status text: opt-in reinforcement for text that already states its status in words. -->
+  <Style Selector="TextBlock.statusSuccess">
+    <Setter Property="Foreground" Value="{DynamicResource PassdownSuccessBrush}" />
+  </Style>
+  <Style Selector="TextBlock.statusWarning">
+    <Setter Property="Foreground" Value="{DynamicResource PassdownWarningBrush}" />
+  </Style>
+  <Style Selector="TextBlock.statusError">
+    <Setter Property="Foreground" Value="{DynamicResource PassdownErrorBrush}" />
+  </Style>
+  <Style Selector="TextBlock.statusInfo">
+    <Setter Property="Foreground" Value="{DynamicResource PassdownInfoBrush}" />
+  </Style>
+  <Style Selector="TextBlock.statusStale">
+    <Setter Property="Foreground" Value="{DynamicResource PassdownStaleBrush}" />
+  </Style>
+  <Style Selector="TextBlock.statusNotPublished">
+    <Setter Property="Foreground" Value="{DynamicResource PassdownNotPublishedBrush}" />
+  </Style>
+  <Style Selector="TextBlock.statusUnavailable">
+    <Setter Property="Foreground" Value="{DynamicResource PassdownUnavailableBrush}" />
+  </Style>
+
+  <!-- ===================================================================================
+       Surfaces
+       =================================================================================== -->
+
+  <!-- The standard content panel: neutral surface on the app background, one subtle border. -->
+  <Style Selector="Border.panel">
+    <Setter Property="Padding" Value="{DynamicResource PassdownPanelPadding}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusCard}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderBrush}" />
+    <Setter Property="Background" Value="{DynamicResource PassdownSurfaceBrush}" />
+  </Style>
+  <!-- The most important panel on a page: a stronger neutral outline instead of a blue frame. -->
+  <Style Selector="Border.heroPanel">
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderStrongBrush}" />
+  </Style>
+  <!-- A grouped region inside a panel (one level of nesting at most). -->
+  <Style Selector="Border.inset">
+    <Setter Property="Padding" Value="{DynamicResource PassdownInsetPadding}" />
+    <Setter Property="Margin" Value="0,8,0,0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+    <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
+  </Style>
+  <!-- Category heading strip inside a list (Products, History). -->
+  <Style Selector="Border.categoryBand">
+    <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+    <Setter Property="Padding" Value="10,6" />
+    <Setter Property="Margin" Value="0,0,0,4" />
+  </Style>
+  <Style Selector="Border.categoryBand TextBlock">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+  </Style>
+  <!-- One row of a table-like list, separated by a hairline divider. -->
+  <Style Selector="Border.productRow">
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+    <Setter Property="Padding" Value="{DynamicResource PassdownRowPadding}" />
+  </Style>
+
+  <!-- Chips: compact metadata tags (tag radius, not pills). -->
+  <Style Selector="Border.chip">
+    <Setter Property="Background" Value="{DynamicResource PassdownChipBrush}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+    <Setter Property="Padding" Value="{DynamicResource PassdownChipPadding}" />
+  </Style>
+  <Style Selector="Border.chip TextBlock">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeCaption}" />
+    <Setter Property="FontWeight" Value="Medium" />
+  </Style>
+  <!-- Emphasized chip / badge (Finalized — Read Only, Important, Saved). -->
+  <Style Selector="Border.chipAccent, Border.readOnlyBadge">
+    <Setter Property="Background" Value="{DynamicResource PassdownChipAccentBrush}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+    <Setter Property="Padding" Value="{DynamicResource PassdownChipPadding}" />
+  </Style>
+  <Style Selector="Border.chipAccent TextBlock, Border.readOnlyBadge TextBlock">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeCaption}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownChipAccentForegroundBrush}" />
+  </Style>
+  <!-- Status badges: Border.statusBadge plus one status class; the badge text states the status. -->
+  <Style Selector="Border.statusBadge">
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+    <Setter Property="Padding" Value="{DynamicResource PassdownChipPadding}" />
+    <Setter Property="Background" Value="{DynamicResource PassdownNeutralStatusBackgroundBrush}" />
+  </Style>
+  <Style Selector="Border.statusBadge TextBlock">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeCaption}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+  </Style>
+  <Style Selector="Border.statusBadge.success">
+    <Setter Property="Background" Value="{DynamicResource PassdownSuccessBackgroundBrush}" />
+  </Style>
+  <Style Selector="Border.statusBadge.success TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource PassdownSuccessBrush}" />
+  </Style>
+  <Style Selector="Border.statusBadge.warning">
+    <Setter Property="Background" Value="{DynamicResource PassdownWarningBackgroundBrush}" />
+  </Style>
+  <Style Selector="Border.statusBadge.warning TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource PassdownWarningBrush}" />
+  </Style>
+  <Style Selector="Border.statusBadge.error">
+    <Setter Property="Background" Value="{DynamicResource PassdownErrorBackgroundBrush}" />
+  </Style>
+  <Style Selector="Border.statusBadge.error TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource PassdownErrorBrush}" />
+  </Style>
+  <Style Selector="Border.statusBadge.info">
+    <Setter Property="Background" Value="{DynamicResource PassdownInfoBackgroundBrush}" />
+  </Style>
+  <Style Selector="Border.statusBadge.info TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource PassdownInfoBrush}" />
+  </Style>
+  <Style Selector="Border.statusBadge.stale">
+    <Setter Property="Background" Value="{DynamicResource PassdownStaleBackgroundBrush}" />
+  </Style>
+  <Style Selector="Border.statusBadge.stale TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource PassdownStaleBrush}" />
+  </Style>
+
+  <!-- ===================================================================================
+       Buttons (behavior untouched — color, padding, radius and weight only)
+       =================================================================================== -->
+
+  <!-- Primary: the one obvious action on a screen. Keeps its accent fill on hover/press. -->
+  <Style Selector="Button.primaryAction">
+    <Setter Property="Background" Value="{DynamicResource PassdownAccentBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextOnAccentBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+    <Setter Property="Padding" Value="{DynamicResource PassdownButtonPadding}" />
+  </Style>
+  <Style Selector="Button.primaryAction:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownAccentHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentHoverBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextOnAccentBrush}" />
+  </Style>
+  <Style Selector="Button.primaryAction:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownAccentPressedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentPressedBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextOnAccentBrush}" />
+  </Style>
+
+  <!-- Secondary: neutral outlined button — quieter than primary, clearly a control. -->
+  <Style Selector="Button.secondaryAction">
+    <Setter Property="Background" Value="{DynamicResource PassdownSurfaceBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderStrongBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+    <Setter Property="Padding" Value="{DynamicResource PassdownButtonPadding}" />
+  </Style>
+  <Style Selector="Button.secondaryAction:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderStrongBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.secondaryAction:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownPressedBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderStrongBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+  </Style>
+
+  <!-- One-way / caution action (e.g. Resolve note): warning-toned outline. -->
+  <Style Selector="Button.warningAction">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownWarningBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownWarningBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+    <Setter Property="Padding" Value="{DynamicResource PassdownButtonPadding}" />
+  </Style>
+  <Style Selector="Button.warningAction:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownWarningBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownWarningBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownWarningBrush}" />
+  </Style>
+
+  <!-- Subtle/tertiary link-style actions. textAction is inline (no padding); linkAction is a
+       free-standing link with a hover surface. -->
+  <Style Selector="Button.textAction, Button.linkAction">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+  </Style>
+  <Style Selector="Button.textAction">
+    <Setter Property="Padding" Value="0" />
+  </Style>
+  <Style Selector="Button.linkAction">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+  </Style>
+  <Style Selector="Button.textAction:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.linkAction:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+  </Style>
+  <Style Selector="Button.textAction:pressed /template/ ContentPresenter#PART_ContentPresenter, Button.linkAction:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownPressedBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+  </Style>
+
+  <!-- ===================================================================================
+       Lists, popups and loading feedback
+       =================================================================================== -->
+
+  <!-- Selectable list rows opt in with Classes="selectableRows" on the ListBox. -->
+  <Style Selector="ListBox.selectableRows ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
+  </Style>
+  <Style Selector="ListBox.selectableRows ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownSelectedBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+  </Style>
+
+  <!-- Flyouts, menus, ComboBox drop-downs and tooltips share one popup surface. Their colors come
+       from the Fluent resource overrides in PassdownTokens.axaml; radius stays Fluent's
+       OverlayCornerRadius (8, = PassdownRadiusPopup), so no global popup style is needed here. -->
+
+  <!-- Loading feedback stays Fluent's thin indeterminate ProgressBar (accent-colored, Height 3 at
+       every call site) — no extra styling and no new loading screens. -->
+</Styles>

@@ -9,119 +9,21 @@
              x:Class="Carowinds.Passdown.Desktop.Views.HistoryView"
              x:DataType="vm:PassdownHistoryViewModel">
 
-  <!-- Phase 9D: a read-only History screen. Every style class below is intentionally a small,
-       self-contained subset mirroring AssociateView's own (Avalonia Styles declared inside one
-       UserControl are scoped to that UserControl's visual tree, so this view keeps the same visual
-       language — spec Part V — without pulling AssociateView's edit-oriented styles like railItem's
-       ToggleButton chrome or the TextBox-focused field classes into a screen that has no editable
-       controls at all). -->
+  <!-- Phase 9D: a read-only History screen. Shared typography, surface, button and status styles
+       come from Themes/PassdownStyles.axaml (Phase 22A); only this screen's own deltas live below. -->
   <UserControl.Styles>
-
-    <Style Selector="TextBlock.pageTitle">
-      <Setter Property="FontSize" Value="20" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
-    <Style Selector="TextBlock.sectionTitle">
-      <Setter Property="FontSize" Value="13.5" />
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="LetterSpacing" Value="0.4" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="Margin" Value="0,0,0,8" />
-    </Style>
-    <Style Selector="TextBlock.muted">
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
-      <Setter Property="FontSize" Value="12.5" />
-    </Style>
-    <Style Selector="TextBlock.fieldWarning">
-      <Setter Property="Foreground" Value="{DynamicResource PassdownWarningBrush}" />
-      <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="Margin" Value="0,3,0,0" />
-      <Setter Property="FontWeight" Value="Medium" />
-    </Style>
-    <Style Selector="TextBlock.fieldError">
-      <Setter Property="Foreground" Value="{DynamicResource PassdownErrorBrush}" />
-      <Setter Property="FontSize" Value="12.5" />
-      <Setter Property="FontWeight" Value="Medium" />
-    </Style>
-
-    <Style Selector="Border.panel">
-      <Setter Property="Padding" Value="18" />
-      <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
-      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceTintBrush}" />
-    </Style>
-
-    <Style Selector="Border.chip">
-      <Setter Property="Background" Value="{DynamicResource PassdownChipBrush}" />
-      <Setter Property="CornerRadius" Value="10" />
-      <Setter Property="Padding" Value="9,3" />
-    </Style>
-    <Style Selector="Border.chip TextBlock">
-      <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="FontWeight" Value="Medium" />
-    </Style>
-    <!-- The "Finalized — Read Only" badge (spec Part E): visually distinct from the neutral
-         Scheduled/Recovery/PDF-availability chips so it reads as a status statement, not metadata. -->
-    <Style Selector="Border.readOnlyBadge">
-      <Setter Property="Background" Value="{DynamicResource PassdownChipAccentBrush}" />
-      <Setter Property="CornerRadius" Value="10" />
-      <Setter Property="Padding" Value="9,3" />
-    </Style>
-    <Style Selector="Border.readOnlyBadge TextBlock">
-      <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownChipAccentForegroundBrush}" />
-    </Style>
-
-    <Style Selector="Border.categoryBand">
-      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
-      <Setter Property="CornerRadius" Value="4" />
-      <Setter Property="Padding" Value="10,6" />
-      <Setter Property="Margin" Value="0,0,0,4" />
-    </Style>
-    <Style Selector="Border.categoryBand TextBlock">
-      <Setter Property="FontSize" Value="12" />
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="LetterSpacing" Value="0.4" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-    </Style>
-
-    <Style Selector="Border.productRow">
-      <Setter Property="BorderThickness" Value="0,0,0,1" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
-      <Setter Property="Padding" Value="0,6" />
-    </Style>
-
-    <Style Selector="Button.secondaryAction">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="BorderThickness" Value="1.5" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="CornerRadius" Value="5" />
-      <Setter Property="Padding" Value="14,7" />
-    </Style>
-    <Style Selector="Button.secondaryAction:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
-    </Style>
-
     <!-- History rows (spec Part W: keyboard selectable, visible focus states) — ListBox already
-         provides arrow-key navigation and a focus ring via FluentTheme; only its selected/hover
-         backgrounds are re-themed to match the brand palette instead of the default accent. -->
+         provides arrow-key navigation and a focus ring via FluentTheme; hover/selected backgrounds
+         come from the shared ListBox.selectableRows style. -->
     <Style Selector="ListBoxItem">
       <Setter Property="Padding" Value="14,10" />
       <Setter Property="CornerRadius" Value="0" />
     </Style>
-    <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
-    </Style>
-
   </UserControl.Styles>
 
   <Grid RowDefinitions="Auto,*">
 
-    <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceTintBrush}"
+    <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceBrush}"
             BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
       <StackPanel Spacing="2">
         <TextBlock Text="Passdown History" Classes="pageTitle" />
@@ -133,7 +35,7 @@
     <Grid Grid.Row="1" ColumnDefinitions="280,*">
 
       <!-- List column (spec Part B/L): metadata-only rows; selecting one loads its detail on demand. -->
-      <Border Grid.Column="0" Background="{DynamicResource PassdownSurfaceTintBrush}"
+      <Border Grid.Column="0" Background="{DynamicResource PassdownSurfaceBrush}"
               BorderThickness="0,0,1,0" BorderBrush="{DynamicResource PassdownDividerBrush}">
         <Grid RowDefinitions="Auto,*">
 
@@ -149,7 +51,7 @@
                        Text="Passdowns are automatically finalized after their operating date once the 6:00 AM finalization cutoff has passed." />
           </StackPanel>
 
-          <ListBox Grid.Row="1" ItemsSource="{Binding HistoryItems}" SelectedItem="{Binding SelectedItem}"
+          <ListBox Grid.Row="1" Classes="selectableRows" ItemsSource="{Binding HistoryItems}" SelectedItem="{Binding SelectedItem}"
                    Background="Transparent" BorderThickness="0"
                    IsVisible="{Binding HasHistory}"
                    AutomationProperties.Name="Finalized passdown history">
@@ -314,7 +216,7 @@
                                       <TextBlock Text="{Binding EffectivePriceText}" FontWeight="SemiBold" HorizontalAlignment="Right" />
                                       <TextBlock Text="{Binding ComparisonPriceText, StringFormat='was {0}'}"
                                                  IsVisible="{Binding ComparisonPriceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                                 Foreground="{DynamicResource PassdownComparePriceBrush}" FontSize="12.5"
+                                                 Foreground="{DynamicResource PassdownTextMutedBrush}" FontSize="12.5"
                                                  HorizontalAlignment="Right" />
                                     </StackPanel>
                                   </Grid>

@@ -9,110 +9,22 @@
              x:DataType="vm:OperationsCalendarViewModel">
 
   <!-- Phase 12A: the Operations Calendar foundation — a summary/routing surface ("what dates should I
-       pay attention to, and where do I go next?"), not a second Associate/Notes/History editor. Every
-       style class below is a small, self-contained subset mirroring DashboardView/HistoryView's own
-       visual language (Avalonia Styles declared inside one UserControl are scoped to its own visual
-       tree). -->
+       pay attention to, and where do I go next?"), not a second Associate/Notes/History editor.
+       Shared typography, surface, button and status styles
+       come from Themes/PassdownStyles.axaml (Phase 22A); only this screen's own deltas live below. -->
   <UserControl.Styles>
-
-    <Style Selector="TextBlock.pageTitle">
-      <Setter Property="FontSize" Value="20" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
-    <Style Selector="TextBlock.sectionTitle">
-      <Setter Property="FontSize" Value="13.5" />
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="LetterSpacing" Value="0.4" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="Margin" Value="0,0,0,8" />
-    </Style>
-    <Style Selector="TextBlock.muted">
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
-      <Setter Property="FontSize" Value="12.5" />
-    </Style>
-    <Style Selector="TextBlock.fieldError">
-      <Setter Property="Foreground" Value="{DynamicResource PassdownErrorBrush}" />
-      <Setter Property="FontSize" Value="12.5" />
-      <Setter Property="FontWeight" Value="Medium" />
-    </Style>
     <Style Selector="TextBlock.fieldWarning">
-      <Setter Property="Foreground" Value="{DynamicResource PassdownWarningBrush}" />
-      <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Margin" Value="0" />
+    </Style>
+    <Style Selector="Button.primaryAction, Button.secondaryAction">
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
     </Style>
     <Style Selector="TextBlock.weekdayHeader">
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
       <Setter Property="FontSize" Value="11" />
       <Setter Property="FontWeight" Value="Bold" />
       <Setter Property="LetterSpacing" Value="0.5" />
       <Setter Property="HorizontalAlignment" Value="Center" />
-    </Style>
-    <!-- Phase 12E Part AC: bakes in the "detail section label under a headline" margin every
-         selected-date section (Park Status/Passdown Status/Active Operational Notes) previously
-         repeated as an inline Margin="0,4,0,0" override — one shared modifier instead of three
-         duplicated overrides. -->
-    <Style Selector="TextBlock.sectionTitle.detail">
-      <Setter Property="Margin" Value="0,4,0,0" />
-    </Style>
-    <!-- Phase 12E Part H: the app's one established "Important" convention (Dashboard/Associate/
-         Operational Notes' TextBlock.priorityText.important — bold + PassdownChipAccentForegroundBrush,
-         never a red/alarm color), reused verbatim here instead of the plain "muted" treatment Calendar
-         used before this phase (spec Part Q: visual consistency with the rest of the app). -->
-    <Style Selector="TextBlock.priorityText">
-      <Setter Property="FontSize" Value="12.5" />
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
-    </Style>
-    <Style Selector="TextBlock.priorityText.important">
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownChipAccentForegroundBrush}" />
-    </Style>
-
-    <Style Selector="Border.panel">
-      <Setter Property="Padding" Value="18" />
-      <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
-      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceTintBrush}" />
-    </Style>
-    <!-- Phase 12E Part A/Q: the same "one hero panel gets a 3px accent top rule" recipe
-         DashboardView/AssociateView already use for their own most-prominent panel(s) — reused
-         verbatim (each UserControl.Styles block is scoped to its own visual tree in Avalonia, so this
-         cannot simply be inherited from DashboardView). -->
-    <Style Selector="Border.heroPanel">
-      <Setter Property="BorderThickness" Value="1,3,1,1" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
-    </Style>
-
-    <Style Selector="Border.chip">
-      <Setter Property="Background" Value="{DynamicResource PassdownChipBrush}" />
-      <Setter Property="CornerRadius" Value="10" />
-      <Setter Property="Padding" Value="9,3" />
-    </Style>
-    <Style Selector="Border.chip TextBlock">
-      <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="FontWeight" Value="Medium" />
-    </Style>
-
-    <Style Selector="Button.primaryAction">
-      <Setter Property="Background" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownHeaderForegroundBrush}" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="CornerRadius" Value="5" />
-      <Setter Property="Padding" Value="14,7" />
-      <Setter Property="HorizontalContentAlignment" Value="Center" />
-    </Style>
-    <Style Selector="Button.secondaryAction">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="BorderThickness" Value="1.5" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="CornerRadius" Value="5" />
-      <Setter Property="Padding" Value="14,7" />
-      <Setter Property="HorizontalContentAlignment" Value="Center" />
-    </Style>
-    <Style Selector="Button.secondaryAction:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
     </Style>
 
     <!-- One day cell (spec Part E/I; Phase 12B Part M/V; Phase 13D Part A/B geometry hardening): plain
@@ -140,9 +52,9 @@
          layout (never UniformGrid — see the month grid below), since a Grid's star columns are the
          part that guarantees "the available column width" exists to stretch into in the first place. -->
     <Style Selector="Button.calendarDay">
-      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceBrush}" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderBrush}" />
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="Margin" Value="2" />
       <Setter Property="Padding" Value="8,6" />
@@ -161,14 +73,22 @@
          rather than silently collapsing into whichever rule happens to apply last — never relying on
          color alone, since IsToday/IsSelected are both also always present in the cell's own
          AutomationName. -->
+    <Style Selector="Button.calendarDay:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderStrongBrush}" />
+    </Style>
     <Style Selector="Button.calendarDay.today">
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentForegroundBrush}" />
       <Setter Property="BorderThickness" Value="2" />
     </Style>
     <Style Selector="Button.calendarDay.selected">
-      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="Background" Value="{DynamicResource PassdownSelectedBackgroundBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentForegroundBrush}" />
       <Setter Property="BorderThickness" Value="2" />
+    </Style>
+    <Style Selector="Button.calendarDay.selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PassdownSelectedBackgroundBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentForegroundBrush}" />
     </Style>
     <Style Selector="Button.calendarDay.today.selected">
       <Setter Property="Background" Value="{DynamicResource PassdownChipAccentBrush}" />
@@ -176,7 +96,7 @@
     </Style>
     <Style Selector="TextBlock.dayIndicator">
       <Setter Property="FontSize" Value="10" />
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
       <Setter Property="TextWrapping" Value="NoWrap" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
@@ -186,7 +106,7 @@
       <Setter Property="FontSize" Value="10" />
       <Setter Property="FontWeight" Value="Bold" />
       <Setter Property="LetterSpacing" Value="0.3" />
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
       <Setter Property="TextWrapping" Value="NoWrap" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
@@ -200,11 +120,11 @@
       <Setter Property="TextWrapping" Value="NoWrap" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
-    <!-- Reuses the app's existing amber "warning, not error" convention (spec Part J) — never red. -->
+    <!-- The shared muted-amber Stale status color ("warning, not error", spec Part J) — never red. -->
     <Style Selector="TextBlock.dayStaleLabel">
       <Setter Property="FontSize" Value="9.5" />
       <Setter Property="FontStyle" Value="Italic" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownWarningBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownStaleBrush}" />
       <Setter Property="TextWrapping" Value="NoWrap" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
@@ -213,16 +133,17 @@
          the visually primary line. -->
     <Style Selector="TextBlock.dayWaterparkLine">
       <Setter Property="FontSize" Value="10" />
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
       <Setter Property="TextWrapping" Value="NoWrap" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
+  
   </UserControl.Styles>
 
   <Grid RowDefinitions="Auto,*">
 
-    <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceTintBrush}"
+    <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceBrush}"
             BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
       <Grid ColumnDefinitions="Auto,*,Auto">
         <StackPanel Grid.Column="0" Spacing="2">

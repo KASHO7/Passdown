@@ -1,6 +1,5 @@
 using System.Globalization;
 using Avalonia.Data.Converters;
-using Avalonia.Media;
 using Carowinds.Passdown.Desktop.Presentation;
 
 namespace Carowinds.Passdown.Desktop.Converters;
@@ -9,23 +8,26 @@ namespace Carowinds.Passdown.Desktop.Converters;
 /// Maps a <see cref="ParkHoursBadgeKind"/> to a small supplementary status-dot color. Spec §10.4
 /// "do not communicate status by color alone" — the dot always sits next to the badge's own text
 /// label (see <see cref="ParkHoursPresentation.BadgeText"/>), never replaces it.
+/// Phase 22A: colors are the shared status tokens, resolved for the bound theme variant (second
+/// MultiBinding value) so the dot follows a live light/dark switch.
 /// </summary>
-public sealed class ParkHoursBadgeBrushConverter : IValueConverter
+public sealed class ParkHoursBadgeBrushConverter : IValueConverter, IMultiValueConverter
 {
     public static readonly ParkHoursBadgeBrushConverter Instance = new();
 
-    private static readonly IBrush NotCheckedBrush = new SolidColorBrush(Color.Parse("#9E9E9E"));
-    private static readonly IBrush ClosedBrush = new SolidColorBrush(Color.Parse("#546E7A"));
-    private static readonly IBrush OpenBrush = new SolidColorBrush(Color.Parse("#1E5AA8"));
-    private static readonly IBrush OverrideBrush = new SolidColorBrush(Color.Parse("#B26A00"));
-
-    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value switch
+    internal static string ResourceKeyFor(object? kind) => kind switch
     {
-        ParkHoursBadgeKind.Open => OpenBrush,
-        ParkHoursBadgeKind.Closed => ClosedBrush,
-        ParkHoursBadgeKind.ManualOverride or ParkHoursBadgeKind.PrivateBuyout => OverrideBrush,
-        _ => NotCheckedBrush,
+        ParkHoursBadgeKind.Open => "PassdownSuccessBrush",
+        ParkHoursBadgeKind.Closed => "PassdownUnavailableBrush",
+        ParkHoursBadgeKind.ManualOverride or ParkHoursBadgeKind.PrivateBuyout => "PassdownWarningBrush",
+        _ => "PassdownBorderStrongBrush",
     };
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        ThemeBrushLookup.Find(ResourceKeyFor(value), null);
+
+    public object? Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture) =>
+        ThemeBrushLookup.Find(ResourceKeyFor(values.Count > 0 ? values[0] : null), values.Count > 1 ? values[1] : null);
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();

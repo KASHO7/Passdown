@@ -11,112 +11,10 @@
 
   <!-- Phase 11B: the persistent Operational Notes Manager — a supervisor-facing browse/create/edit/
        resolve screen for notes that may span multiple days (spec Phase 11A), distinct from Associate
-       Passdown's own daily Notes entry. Every style class below is a small, self-contained subset
-       mirroring HistoryView/DashboardView's own visual language (Avalonia Styles declared inside one
-       UserControl are scoped to its own visual tree). Nothing here writes into an Associate draft,
+       Passdown's own daily Notes entry. Shared typography, surface, button and status styles come from Themes/PassdownStyles.axaml (Phase 22A); only this screen's own deltas live below. Nothing here writes into an Associate draft,
        the Dashboard, or finalized History (spec Parts Y/AA/AB) — this screen only calls
        IOperationalNotesService. -->
   <UserControl.Styles>
-
-    <Style Selector="TextBlock.pageTitle">
-      <Setter Property="FontSize" Value="20" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
-    <Style Selector="TextBlock.sectionTitle">
-      <Setter Property="FontSize" Value="13.5" />
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="LetterSpacing" Value="0.4" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="Margin" Value="0,0,0,8" />
-    </Style>
-    <Style Selector="TextBlock.subsectionTitle">
-      <Setter Property="FontSize" Value="11" />
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="LetterSpacing" Value="0.5" />
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
-      <Setter Property="Margin" Value="0,0,0,4" />
-    </Style>
-    <Style Selector="TextBlock.muted">
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
-      <Setter Property="FontSize" Value="12.5" />
-    </Style>
-    <Style Selector="TextBlock.fieldError">
-      <Setter Property="Foreground" Value="{DynamicResource PassdownErrorBrush}" />
-      <Setter Property="FontSize" Value="12.5" />
-      <Setter Property="FontWeight" Value="Medium" />
-    </Style>
-
-    <Style Selector="Border.panel">
-      <Setter Property="Padding" Value="18" />
-      <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
-      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceTintBrush}" />
-    </Style>
-
-    <Style Selector="Border.chip">
-      <Setter Property="Background" Value="{DynamicResource PassdownChipBrush}" />
-      <Setter Property="CornerRadius" Value="10" />
-      <Setter Property="Padding" Value="9,3" />
-    </Style>
-    <Style Selector="Border.chip TextBlock">
-      <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="FontWeight" Value="Medium" />
-    </Style>
-    <Style Selector="Border.chipAccent">
-      <Setter Property="Background" Value="{DynamicResource PassdownChipAccentBrush}" />
-      <Setter Property="CornerRadius" Value="10" />
-      <Setter Property="Padding" Value="9,3" />
-    </Style>
-    <Style Selector="Border.chipAccent TextBlock">
-      <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownChipAccentForegroundBrush}" />
-    </Style>
-
-    <!-- The Priority text on a list row (spec Part R): restrained accent + weight for Important,
-         never alarm-style color — the word "Important" itself is what communicates priority, this is
-         only reinforcement. -->
-    <Style Selector="TextBlock.priorityText">
-      <Setter Property="FontSize" Value="12.5" />
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
-    </Style>
-    <Style Selector="TextBlock.priorityText.important">
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownChipAccentForegroundBrush}" />
-    </Style>
-
-    <Style Selector="Button.primaryAction">
-      <Setter Property="Background" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownHeaderForegroundBrush}" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="CornerRadius" Value="5" />
-      <Setter Property="Padding" Value="14,7" />
-    </Style>
-    <Style Selector="Button.secondaryAction">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="BorderThickness" Value="1.5" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="CornerRadius" Value="5" />
-      <Setter Property="Padding" Value="14,7" />
-    </Style>
-    <Style Selector="Button.secondaryAction:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
-    </Style>
-    <!-- Resolve's own confirmation step (spec Part N) uses a warning-toned button rather than plain
-         accent, so "this is a one-way action" reads even before the inline confirm text is read. -->
-    <Style Selector="Button.warningAction">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownWarningBrush}" />
-      <Setter Property="BorderThickness" Value="1.5" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownWarningBrush}" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="CornerRadius" Value="5" />
-      <Setter Property="Padding" Value="14,7" />
-    </Style>
-
     <!-- Lifecycle filter tabs (spec Part G) — a compact, self-contained variant of MainWindow's own
          appSectionItem strip, scoped to this screen only. -->
     <Style Selector="Button.filterTab">
@@ -127,33 +25,35 @@
       <Setter Property="Padding" Value="10,6" />
       <Setter Property="FontSize" Value="12.5" />
       <Setter Property="FontWeight" Value="Medium" />
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
+    <Style Selector="Button.filterTab:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+    </Style>
     <Style Selector="Button.filterTab.active">
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
     <Style Selector="ListBoxItem">
       <Setter Property="Padding" Value="14,10" />
       <Setter Property="CornerRadius" Value="0" />
     </Style>
-    <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
-    </Style>
 
     <Style Selector="TextBox.fieldInput">
       <Setter Property="Margin" Value="0,0,0,0" />
     </Style>
 
+  
   </UserControl.Styles>
 
   <Grid RowDefinitions="Auto,Auto,*">
 
     <!-- Header (spec Part D) -->
-    <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceTintBrush}"
+    <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceBrush}"
             BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
       <StackPanel Spacing="2">
         <TextBlock Text="Operational Notes" Classes="pageTitle" />
@@ -163,7 +63,7 @@
     </Border>
 
     <!-- Filter tabs + category/priority filters + New Note (spec Part G/J, Phase 11E Part A/B/V) -->
-    <Border Grid.Row="1" Padding="20,10" Background="{DynamicResource PassdownSurfaceTintBrush}"
+    <Border Grid.Row="1" Padding="20,10" Background="{DynamicResource PassdownSurfaceBrush}"
             BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
       <Grid ColumnDefinitions="*,Auto">
         <WrapPanel Grid.Column="0" Orientation="Horizontal">
@@ -228,7 +128,7 @@
     <Grid Grid.Row="2" ColumnDefinitions="340,*">
 
       <!-- List column (spec Part E/F) -->
-      <Border Grid.Column="0" Background="{DynamicResource PassdownSurfaceTintBrush}"
+      <Border Grid.Column="0" Background="{DynamicResource PassdownSurfaceBrush}"
               BorderThickness="0,0,1,0" BorderBrush="{DynamicResource PassdownDividerBrush}">
         <Grid RowDefinitions="Auto,*">
 
@@ -252,7 +152,7 @@
             <TextBlock Text="{Binding FilteredEmptyStateMessage}" Classes="muted" TextWrapping="Wrap" />
           </StackPanel>
 
-          <ListBox Grid.Row="1" ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}"
+          <ListBox Grid.Row="1" Classes="selectableRows" ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}"
                    Background="Transparent" BorderThickness="0"
                    IsVisible="{Binding !ShowEmptyState}"
                    IsEnabled="{Binding !IsEditing}"

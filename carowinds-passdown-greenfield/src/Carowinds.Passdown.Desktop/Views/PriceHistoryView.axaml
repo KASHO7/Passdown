@@ -5,50 +5,6 @@
              x:Class="Carowinds.Passdown.Desktop.Views.PriceHistoryView"
              x:DataType="vm:PriceHistoryViewModel">
 
-  <!-- Same per-view typography/row styles the Associate screen uses (this app keeps styles per view). -->
-  <UserControl.Styles>
-      <Style Selector="TextBlock.sectionTitle">
-        <Setter Property="FontSize" Value="13.5" />
-        <Setter Property="FontWeight" Value="Bold" />
-        <Setter Property="LetterSpacing" Value="0.4" />
-        <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-        <Setter Property="Margin" Value="0,0,0,10" />
-      </Style>
-      <Style Selector="TextBlock.muted">
-        <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
-        <Setter Property="FontSize" Value="12.5" />
-      </Style>
-      <Style Selector="TextBlock.fieldHint">
-        <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
-        <Setter Property="FontSize" Value="11.5" />
-        <Setter Property="Margin" Value="0,3,0,0" />
-      </Style>
-      <Style Selector="Button.secondaryAction">
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
-        <Setter Property="BorderThickness" Value="1.5" />
-        <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-        <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="CornerRadius" Value="5" />
-        <Setter Property="Padding" Value="14,7" />
-      </Style>
-      <Style Selector="Button.secondaryAction:pointerover /template/ ContentPresenter">
-        <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
-      </Style>
-      <Style Selector="TextBlock.columnHeader">
-        <Setter Property="FontSize" Value="10" />
-        <Setter Property="FontWeight" Value="Bold" />
-        <Setter Property="LetterSpacing" Value="0.5" />
-        <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
-        <Setter Property="Margin" Value="0" />
-      </Style>
-      <Style Selector="Border.productRow">
-        <Setter Property="BorderThickness" Value="0,0,0,1" />
-        <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
-        <Setter Property="Padding" Value="0,7" />
-      </Style>
-  </UserControl.Styles>
-
   <!-- Escape closes only while focus is inside this screen (not a window-wide hot key). -->
   <UserControl.KeyBindings>
     <KeyBinding Gesture="Escape" Command="{Binding CloseCommand}" />
@@ -58,7 +14,7 @@
        first, so each row's "Change" reads against the row above it) — no chart, no editing. -->
   <Border MaxWidth="980" MaxHeight="680" Margin="24" Padding="20" CornerRadius="8" BorderThickness="1"
           BorderBrush="{DynamicResource PassdownDividerBrush}"
-          Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+          Background="{DynamicResource PassdownPopupSurfaceBrush}"
           HorizontalAlignment="Center" VerticalAlignment="Center">
     <Grid RowDefinitions="Auto,*">
 
@@ -86,7 +42,7 @@
             <CheckBox Content="Include retired products" IsChecked="{Binding IncludeInactive}"
                       AutomationProperties.Name="Include retired products in the list" />
           </StackPanel>
-          <ListBox x:Name="ProductList" ItemsSource="{Binding Products}" SelectedItem="{Binding SelectedProduct}"
+          <ListBox x:Name="ProductList" Classes="selectableRows" ItemsSource="{Binding Products}" SelectedItem="{Binding SelectedProduct}"
                    AutomationProperties.Name="Tracked products">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:PriceHistoryProductOption">

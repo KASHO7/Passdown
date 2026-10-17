@@ -18,59 +18,28 @@
   </UserControl.Resources>
 
   <UserControl.Styles>
-
-    <!-- Typography -->
-    <Style Selector="TextBlock.pageTitle">
-      <Setter Property="FontSize" Value="20" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
-    <Style Selector="TextBlock.sectionTitle">
-      <Setter Property="FontSize" Value="13.5" />
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="LetterSpacing" Value="0.4" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="Margin" Value="0,0,0,10" />
-    </Style>
+    <!-- Associate deltas on the shared styles (Themes/PassdownStyles.axaml, Phase 22A): compact,
+         single-line labels and slightly smaller inline validation for the dense editor grid. -->
     <Style Selector="TextBlock.subsectionTitle">
-      <Setter Property="FontSize" Value="11" />
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="LetterSpacing" Value="0.5" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
       <Setter Property="Margin" Value="0,0,0,8" />
       <Setter Property="TextWrapping" Value="NoWrap" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
-    <Style Selector="TextBlock.muted">
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
-      <Setter Property="FontSize" Value="12.5" />
-    </Style>
     <Style Selector="TextBlock.fieldLabel">
-      <Setter Property="FontSize" Value="12.5" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Margin" Value="0,0,0,4" />
       <Setter Property="TextWrapping" Value="NoWrap" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
-    <Style Selector="TextBlock.fieldHint">
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
-      <Setter Property="FontSize" Value="11.5" />
+    <Style Selector="TextBlock.fieldError">
+      <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeCaption}" />
       <Setter Property="Margin" Value="0,3,0,0" />
     </Style>
-    <Style Selector="TextBlock.copyError">
-      <Setter Property="Foreground" Value="{DynamicResource PassdownErrorBrush}" />
+    <Style Selector="TextBlock.priorityText">
+      <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeCaption}" />
+      <Setter Property="FontWeight" Value="Medium" />
     </Style>
 
-    <Style Selector="TextBlock.fieldWarning">
-      <Setter Property="Foreground" Value="{DynamicResource PassdownWarningBrush}" />
-      <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="Margin" Value="0,3,0,0" />
-      <Setter Property="FontWeight" Value="Medium" />
-    </Style>
-    <Style Selector="TextBlock.fieldError">
+    <Style Selector="TextBlock.copyError">
       <Setter Property="Foreground" Value="{DynamicResource PassdownErrorBrush}" />
-      <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="Margin" Value="0,3,0,0" />
-      <Setter Property="FontWeight" Value="Medium" />
     </Style>
 
     <!-- Phase 13D Part Z/AA/AT: a conspicuous, persistent warning shown near Create PDF whenever the
@@ -78,10 +47,10 @@
          helper-text style (spec: "do not use a subtle helper-text style"). Text alone states the
          fact (never color-only); the amber border/tint is a supplement. -->
     <Style Selector="Border.multiPageWarning">
-      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
+      <Setter Property="Background" Value="{DynamicResource PassdownWarningBackgroundBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource PassdownWarningBrush}" />
       <Setter Property="BorderThickness" Value="2" />
-      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusCard}" />
       <Setter Property="Padding" Value="14,10" />
     </Style>
     <Style Selector="Border.multiPageWarning TextBlock">
@@ -90,102 +59,38 @@
       <Setter Property="FontSize" Value="13" />
     </Style>
 
-    <!-- Panels: one restrained, brand-tinted container style used everywhere instead of nested cards.
-         Phase 17C §4/§32: tightened from the original 18/12px padding as part of the Associate
-         density pass — a shared style change (deliberately not a per-view override) so Products/
-         Notes/other consumers of the same style stay visually consistent (spec §2's "unless a shared
-         style causes an obvious inconsistency"). -->
-    <Style Selector="Border.panel">
-      <Setter Property="Padding" Value="14" />
-      <Setter Property="CornerRadius" Value="7" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
-      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceTintBrush}" />
-    </Style>
-    <!-- The single strongest panel on the page (Park Hours): same surface, with a brand top rule. -->
-    <Style Selector="Border.heroPanel">
-      <Setter Property="BorderThickness" Value="1,3,1,1" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
-    </Style>
-    <Style Selector="Border.inset">
-      <Setter Property="Padding" Value="10" />
-      <Setter Property="Margin" Value="0,8,0,0" />
-      <Setter Property="CornerRadius" Value="4" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
-      <Setter Property="Background" Value="{DynamicResource PassdownSubtleSurfaceBrush}" />
-    </Style>
-
-    <!-- Compact status chip: text-first, never color-only (spec §10.4/Part G). -->
-    <Style Selector="Border.chip">
-      <Setter Property="Background" Value="{DynamicResource PassdownChipBrush}" />
-      <Setter Property="CornerRadius" Value="10" />
-      <Setter Property="Padding" Value="9,3" />
-    </Style>
-    <Style Selector="Border.chip TextBlock">
-      <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="FontWeight" Value="Medium" />
-    </Style>
-
-    <!-- Phase 11D Part V/AS: the Priority text on an included/available persistent-note row —
-         restrained accent + weight for Important, never alarm-style color, matching
-         OperationalNotesView's/DashboardView's own convention exactly. -->
-    <Style Selector="TextBlock.priorityText">
-      <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="FontWeight" Value="Medium" />
-    </Style>
-    <Style Selector="TextBlock.priorityText.important">
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownChipAccentForegroundBrush}" />
-    </Style>
-
-    <!-- Primary/secondary action buttons: Check Online is the one obvious primary action on the
-         screen; Create PDF stays strong but visually secondary (spec §10.2/Part L). -->
-    <Style Selector="Button.primaryAction">
-      <Setter Property="Background" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownHeaderForegroundBrush}" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="CornerRadius" Value="5" />
-      <Setter Property="Padding" Value="14,7" />
-    </Style>
-    <Style Selector="Button.secondaryAction">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="BorderThickness" Value="1.5" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="CornerRadius" Value="5" />
-      <Setter Property="Padding" Value="14,7" />
-    </Style>
-    <Style Selector="Button.secondaryAction:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
-    </Style>
-
     <!-- Phase 21B: date header + toolbar. Quiet, outlined controls in the app's divider/accent
          colors; one height (34px) for every control on the bar so the row reads as one unit. -->
     <Style Selector="Button.dateNavIcon, Button.dateButton, Button.toolbarButton">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderStrongBrush}" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
       <Setter Property="MinHeight" Value="34" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
     <!-- Phase 21D: the Daily Feature "∑ Math" picker — a small quiet outlined control, same family as the toolbar. -->
     <Style Selector="Button.mathPicker">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderStrongBrush}" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
       <Setter Property="Padding" Value="10,3" />
       <Setter Property="MinHeight" Value="28" />
       <Setter Property="FontSize" Value="12.5" />
       <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
     </Style>
-    <Style Selector="Button.mathPicker:pointerover /template/ ContentPresenter, Button.mathPicker:flyout-open /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
+    <Style Selector="Button.mathPicker:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderStrongBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+    </Style>
+    <Style Selector="Button.mathPicker:flyout-open /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PassdownSelectedBackgroundBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownSelectedForegroundBrush}" />
     </Style>
     <Style Selector="Button.dateNavIcon">
       <Setter Property="Width" Value="34" />
@@ -202,17 +107,24 @@
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <Style Selector="Button.dateNavIcon:pointerover /template/ ContentPresenter, Button.dateButton:pointerover /template/ ContentPresenter, Button.toolbarButton:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderStrongBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+    </Style>
+    <Style Selector="Button.dateNavIcon:pressed /template/ ContentPresenter, Button.dateButton:pressed /template/ ContentPresenter, Button.toolbarButton:pressed /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PassdownPressedBackgroundBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderStrongBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
     </Style>
     <Style Selector="Button.dateButton:flyout-open /template/ ContentPresenter, Button.toolbarButton:flyout-open /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="Background" Value="{DynamicResource PassdownSelectedBackgroundBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
     </Style>
     <Style Selector="Path.navGlyph">
       <Setter Property="Width" Value="16" />
       <Setter Property="Height" Value="16" />
-      <Setter Property="Stroke" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="Stroke" Value="{DynamicResource PassdownAccentForegroundBrush}" />
       <Setter Property="StrokeThickness" Value="1.8" />
       <Setter Property="StrokeLineCap" Value="Round" />
       <Setter Property="StrokeJoin" Value="Round" />
@@ -222,13 +134,13 @@
       <Setter Property="Width" Value="12" />
       <Setter Property="Height" Value="12" />
       <Setter Property="Stretch" Value="Uniform" />
-      <Setter Property="Stroke" Value="{DynamicResource TextControlPlaceholderForeground}" />
+      <Setter Property="Stroke" Value="{DynamicResource PassdownTextSecondaryBrush}" />
       <Setter Property="StrokeThickness" Value="1.5" />
     </Style>
     <Style Selector="Path.calendarGlyph">
       <Setter Property="Width" Value="16" />
       <Setter Property="Height" Value="16" />
-      <Setter Property="Stroke" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="Stroke" Value="{DynamicResource PassdownAccentForegroundBrush}" />
       <Setter Property="StrokeThickness" Value="1.4" />
       <Setter Property="StrokeLineCap" Value="Round" />
       <Setter Property="VerticalAlignment" Value="Center" />
@@ -242,7 +154,7 @@
          gets the accent chip. -->
     <Style Selector="Border.relativeDayChip">
       <Setter Property="Background" Value="{DynamicResource PassdownChipBrush}" />
-      <Setter Property="CornerRadius" Value="9" />
+      <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
       <Setter Property="Padding" Value="8,1" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
@@ -260,24 +172,13 @@
       <Setter Property="FontWeight" Value="Normal" />
       <Setter Property="Opacity" Value="0.8" />
     </Style>
-    <Style Selector="Button.linkAction">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Padding" Value="8,4" />
-    </Style>
-    <Style Selector="Button.linkAction:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-    </Style>
 
     <!-- Calendar popup: compact (Fluent's default day text is 20px), selected day
          as a filled accent tile with bold text, today as an accent ring — so the two never rely on
          the same cue, and a selected today shows both. Adjacent-month days stay muted (Fluent). -->
     <Style Selector="FlyoutPresenter.datePopup">
       <Setter Property="Padding" Value="6" />
-      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusPopup}" />
       <Setter Property="MaxWidth" Value="360" />
     </Style>
     <Style Selector="Calendar.datePopupCalendar">
@@ -306,17 +207,17 @@
       <Setter Property="CornerRadius" Value="5" />
     </Style>
     <Style Selector="Calendar.datePopupCalendar CalendarDayButton:pointerover /template/ Border#Root">
-      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
+      <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
     </Style>
     <!-- Today: accent ring + bold accent text (no fill). -->
     <Style Selector="Calendar.datePopupCalendar CalendarDayButton:today /template/ Border#Root">
       <Setter Property="Background" Value="Transparent" />
     </Style>
     <Style Selector="Calendar.datePopupCalendar CalendarDayButton:today /template/ Border#Border">
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentForegroundBrush}" />
     </Style>
     <Style Selector="Calendar.datePopupCalendar CalendarDayButton:today /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
       <Setter Property="FontWeight" Value="Bold" />
     </Style>
     <!-- Selected: filled accent tile + bold white text. -->
@@ -327,12 +228,12 @@
       <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
     </Style>
     <Style Selector="Calendar.datePopupCalendar CalendarDayButton:selected /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Foreground" Value="{DynamicResource PassdownHeaderForegroundBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextOnAccentBrush}" />
       <Setter Property="FontWeight" Value="Bold" />
     </Style>
     <!-- Selected and today: the fill plus a light inner ring. -->
     <Style Selector="Calendar.datePopupCalendar CalendarDayButton:selected:today /template/ Border#Border">
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownChipAccentBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownFocusBorderBrush}" />
     </Style>
     <Style Selector="Calendar.datePopupCalendar CalendarButton:selected /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="FontWeight" Value="Bold" />
@@ -342,52 +243,6 @@
     <Style Selector="StackPanel#PassdownActions > Button">
       <Setter Property="Height" Value="34" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
-    </Style>
-
-    <!-- Hours headline: large when hours are known, quiet when not (Part D — "Not checked yet" must
-         never be a giant headline). Phase 17C §4: reduced from 30px as part of the density pass —
-         still the single largest text on Overview, just no longer disproportionate to the rest of
-         the merged Day &amp; Operating Hours panel. -->
-    <Style Selector="TextBlock.hoursHeadline">
-      <Setter Property="FontSize" Value="22" />
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="Margin" Value="0,2,0,4" />
-    </Style>
-    <Style Selector="TextBlock.hoursHeadline.subtle">
-      <Setter Property="FontSize" Value="14" />
-      <Setter Property="FontWeight" Value="Normal" />
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
-    </Style>
-
-    <!-- Product category band: a light brand-tinted strip, closer to a rate-sheet section header
-         than a plain bold TextBlock. -->
-    <Style Selector="Border.categoryBand">
-      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
-      <Setter Property="CornerRadius" Value="4" />
-      <Setter Property="Padding" Value="10,6" />
-      <Setter Property="Margin" Value="0,0,0,4" />
-    </Style>
-    <Style Selector="Border.categoryBand TextBlock">
-      <Setter Property="FontSize" Value="12" />
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="LetterSpacing" Value="0.4" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-    </Style>
-
-    <!-- Table-style column headers above each category's product rows (Part 4: denser, more
-         table-like product presentation) — labels only, columns line up with productRow below. -->
-    <Style Selector="TextBlock.columnHeader">
-      <Setter Property="FontSize" Value="10" />
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="LetterSpacing" Value="0.5" />
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
-      <Setter Property="Margin" Value="0" />
-    </Style>
-
-    <Style Selector="Border.productRow">
-      <Setter Property="BorderThickness" Value="0,0,0,1" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
-      <Setter Property="Padding" Value="0,7" />
     </Style>
 
     <!-- Glance-panel column divider (Today at a Glance). -->
@@ -418,19 +273,24 @@
       <Setter Property="HorizontalContentAlignment" Value="Left" />
       <Setter Property="FontSize" Value="13.5" />
       <Setter Property="FontWeight" Value="Medium" />
-      <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Button.railItem.active">
-      <Setter Property="Background" Value="{DynamicResource PassdownBandBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentBrush}" />
-      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Background" Value="{DynamicResource PassdownSelectedBackgroundBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownSelectedForegroundBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <Style Selector="Button.railItem:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PassdownSubtleSurfaceBrush}" />
+      <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
+    </Style>
+    <Style Selector="Button.railItem.active:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PassdownSelectedBackgroundBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownSelectedForegroundBrush}" />
     </Style>
 
+  
   </UserControl.Styles>
 
   <Grid RowDefinitions="Auto,*">
@@ -438,7 +298,7 @@
     <!-- Action bar (spec §10.2/Part B/C): identity, date navigation, primary actions, and save/refresh
          status all live together as one coherent toolbar instead of a separate floating date bar or a
          developer-style footer. -->
-    <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceTintBrush}"
+    <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceBrush}"
             BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
       <StackPanel Spacing="12">
 
@@ -448,8 +308,13 @@
           <!-- The one place save state is shown in the header (the Overview status strip repeats it
                only as part of its own one-line summary). Text-first, never color-only. -->
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-            <Border Classes="chip" AutomationProperties.Name="Save status"
-                    Background="{Binding AutosaveState, Converter={x:Static converters:SaveStatusBrushConverter.Instance}}">
+            <Border x:Name="SaveStatusChip" Classes="chip" AutomationProperties.Name="Save status">
+              <Border.Background>
+                <MultiBinding Converter="{x:Static converters:SaveStatusBrushConverter.Instance}">
+                  <Binding Path="AutosaveState" />
+                  <Binding Path="ActualThemeVariant" ElementName="SaveStatusChip" />
+                </MultiBinding>
+              </Border.Background>
               <TextBlock Text="{Binding SaveStatusText, FallbackValue='Not saved yet'}" />
             </Border>
           </StackPanel>
@@ -672,7 +537,7 @@
          page scroll. -->
     <Grid Grid.Row="1" ColumnDefinitions="152,*">
 
-      <Border Grid.Column="0" Background="{DynamicResource PassdownSurfaceTintBrush}"
+      <Border Grid.Column="0" Background="{DynamicResource PassdownSurfaceBrush}"
               BorderThickness="0,0,1,0" BorderBrush="{DynamicResource PassdownDividerBrush}">
         <StackPanel>
           <Button Classes="railItem" Classes.active="{Binding IsOverviewSectionSelected}"
@@ -705,8 +570,14 @@
                 <!-- Park Hours row. -->
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Park Hours" Classes="fieldLabel" VerticalAlignment="Center" />
                 <StackPanel Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="3" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                  <Ellipse Width="8" Height="8" VerticalAlignment="Center"
-                           Fill="{Binding ParkHours.BadgeKind, Converter={StaticResource BadgeBrushConverter}}" />
+                  <Ellipse x:Name="ParkHoursStatusDot" Width="8" Height="8" VerticalAlignment="Center">
+                    <Ellipse.Fill>
+                      <MultiBinding Converter="{StaticResource BadgeBrushConverter}">
+                        <Binding Path="ParkHours.BadgeKind" />
+                        <Binding Path="ActualThemeVariant" ElementName="ParkHoursStatusDot" />
+                      </MultiBinding>
+                    </Ellipse.Fill>
+                  </Ellipse>
                   <TextBlock Text="{Binding ParkHours.HeadlineText, FallbackValue='Hours not checked yet'}"
                              Classes="hoursHeadline" TextWrapping="Wrap"
                              Classes.subtle="{Binding ParkHours.IsHoursUnknown}" />
@@ -831,7 +702,7 @@
                   <controls:MathSymbolPicker Classes="mathPicker" HorizontalAlignment="Left"
                                              Target="{Binding #DailyFeatureTextBox}" />
                   <controls:DailyFeatureMathPreview Source="{Binding #DailyFeatureTextBox.Text}"
-                                                    Background="{DynamicResource PassdownSubtleSurfaceBrush}" />
+                                                    Background="{DynamicResource PassdownSurfaceSecondaryBrush}" />
                 </StackPanel>
               </Grid>
 
@@ -1161,7 +1032,7 @@
                                     <TextBlock Text="{Binding OfficialPriceText, StringFormat='Official {0}'}" Classes="muted" />
                                     <TextBlock Text="{Binding ComparisonPriceText, StringFormat='Compare at {0}'}"
                                                IsVisible="{Binding ComparisonPriceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                               Foreground="{DynamicResource PassdownComparePriceBrush}" FontSize="12.5" />
+                                               Foreground="{DynamicResource PassdownTextMutedBrush}" FontSize="12.5" />
                                   </StackPanel>
                                   <TextBlock Text="{Binding PriceQualifier}"
                                              IsVisible="{Binding HasPriceQualifier}"
@@ -1298,7 +1169,7 @@
                        AcceptsReturn="True"
                        TextWrapping="Wrap"
                        MinHeight="200"
-                       Background="{DynamicResource PassdownSubtleSurfaceBrush}"
+                       Background="{DynamicResource PassdownSurfaceSecondaryBrush}"
                        PlaceholderText="Important operational notes, one line per note"
                        AutomationProperties.Name="Operational notes" />
             </StackPanel>
