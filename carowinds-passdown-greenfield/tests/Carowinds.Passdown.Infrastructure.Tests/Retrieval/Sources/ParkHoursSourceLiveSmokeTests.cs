@@ -39,4 +39,31 @@ public class ParkHoursSourceLiveSmokeTests
             Assert.NotNull(result.Payload);
         }
     }
+
+    /// <summary>
+    /// Phase 22E.1: the month form answers every month of the twelve-month discovery horizon with one
+    /// request each, and every listed date is a recognized official state (never an unreadable entry).
+    /// 13 plain GETs.
+    /// </summary>
+    [Fact]
+    public async Task RetrieveMonthAsync_EveryMonthOfTheDiscoveryHorizon_AnswersWithReadableDates()
+    {
+        using var httpClient = new HttpClient();
+        var retrievalHttpClient = new RetrievalHttpClient(httpClient, new RetrievalHttpOptions { Timeout = TimeSpan.FromSeconds(15) });
+        var source = new ParkHoursSource(retrievalHttpClient, new SystemClock());
+        var today = DateOnly.FromDateTime(EasternTimeZone.ConvertFromUtc(DateTimeOffset.UtcNow).DateTime);
+
+        var listed = 0;
+        foreach (var monthStart in Carowinds.Passdown.Application.Freshness.ParkHoursCoveragePlanner.MonthsBetween(today.AddDays(1), today.AddMonths(12)))
+        {
+            var month = await source.RetrieveMonthAsync(monthStart.Year, monthStart.Month, CancellationToken.None);
+
+            Assert.Null(month.Failure);
+            Assert.All(month.Dates, r => Assert.NotEqual(RetrievalStatus.Error, r.Evidence.Status));
+            Assert.All(month.Dates, r => Assert.Equal(monthStart.Month, r.Evidence.RequestedDate!.Value.Month));
+            listed += month.Dates.Count;
+        }
+
+        Assert.True(listed >= 300, $"Only {listed} dates were listed across the next twelve months.");
+    }
 }

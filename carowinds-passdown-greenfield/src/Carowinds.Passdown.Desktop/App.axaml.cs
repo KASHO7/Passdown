@@ -715,6 +715,12 @@ public partial class App : global::Avalonia.Application
 
         services.Configure<RefreshOrchestratorOptions>(configuration.GetSection("Refresh"));
         services.AddSingleton(provider => provider.GetRequiredService<IOptions<RefreshOrchestratorOptions>>().Value);
+        // Phase 22E.1: Deep Refresh's forward published-schedule discovery (one official month request
+        // per month through the configured horizon) — the same ParkHoursSource, so the same parsing rules.
+        services.AddSingleton(provider => new ParkHoursScheduleDiscovery(
+            provider.GetRequiredService<ParkHoursSource>(),
+            provider.GetRequiredService<IDatedResultRepository>(),
+            provider.GetRequiredService<RefreshOrchestratorOptions>().ParkHoursDiscoveryMonths));
         services.AddSingleton<IRefreshOrchestrator, RefreshOrchestrator>();
 
         // Phase 6A: the headless --scheduled-refresh entry point's only Application-layer

@@ -21,14 +21,27 @@ namespace Carowinds.Passdown.Infrastructure.Retrieval.Sources;
 /// — the same daily request and parsing, plus a structured "not retained" signal for past dates (see
 /// docs/phase20c-historical-backfill.md). The feed's monthly form is deliberately not used for history:
 /// observed live, it returns only today-forward dates (a past month returns just its last day).
+///
+/// Phase 22E.1: the main gate is the operating entry whose official <c>operatingTypeId</c> is 24 — the id
+/// the official page's own CMS configuration assigns to "Park" and matches entries by. Seasonal days
+/// label that same entry differently ("Winterfest", "New Years Eve"); matching the label "Park" alone
+/// had reported those published days as not published. Also implements <see cref="IParkHoursScheduleSource"/>:
+/// the feed's month form, one request per month, for forward published-schedule discovery
+/// (docs/phase22e1-published-park-schedule-coverage.md).
 /// </summary>
-public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock clock) : IOfficialDataSource<ParkHoursPayload>, IParkHoursHistorySource
+public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock clock) : IOfficialDataSource<ParkHoursPayload>, IParkHoursHistorySource, IParkHoursScheduleSource
 {
     private const int CarowindsParkId = 30;
     private const string ParkOperatingTypeName = "Park";
 
+    /// <summary>Phase 22E.1: the official main-gate operating-type id (the page's CMS maps "Park" to 24).</summary>
+    private const int ParkOperatingTypeId = 24;
+
     /// <summary>Phase 13D Part D: the same "Waterpark" operating-type entry documented (but previously left unread) in docs/retrieval/park-hours-source.md — present in the payload only on dates Carolina Harbor is separately open.</summary>
     private const string WaterparkOperatingTypeName = "Waterpark";
+
+    /// <summary>Phase 22E.1: the official water-park operating-type id (the page's CMS maps "Waterpark" to 70).</summary>
+    private const int WaterparkOperatingTypeId = 70;
 
     /// <summary>
     /// The human-facing official page (spec §5.1) — used as <see cref="SourceEvidence.SourceUrl"/>
@@ -122,9 +135,83 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
                 "We couldn't confirm park hours for the requested date."), false);
         }
 
+        return (EvaluateDay(day, requestedDate, timeChecked), false);
+    }
+
+    /// <summary>
+    /// Phase 22E.1: one request for a whole month (<c>?date=yyyyMM</c>). Each listed entry is evaluated
+    /// by exactly the same rules as a single-date request (<see cref="EvaluateDay"/>). Entries outside
+    /// the requested month, unreadable dates and repeated dates are ignored — never substituted — and a
+    /// date the response does not list is simply absent (never treated as closed). A transport failure,
+    /// HTTP error, unreadable body or an empty <c>dates</c> list fails the whole month, so nothing is
+    /// stored from it.
+    /// </summary>
+    public async Task<PublishedParkHoursMonth> RetrieveMonthAsync(int year, int month, CancellationToken cancellationToken)
+    {
+        var monthStart = new DateOnly(year, month, 1);
+        var endpoint = new Uri(
+            string.Create(CultureInfo.InvariantCulture, $"https://d3ln8b3jj5b2pq.cloudfront.net/operating-hours/park/{CarowindsParkId}?date={monthStart:yyyyMM}"));
+        var timeChecked = EasternTimeZone.ConvertFromUtc(clock.UtcNow);
+        const string monthFailureDetail = "We couldn't check the published park schedule for this month right now.";
+
+        PublishedParkHoursMonth Failed(Exception exception) =>
+            new(year, month, [], Error(timeChecked, monthStart, exception, monthFailureDetail).Evidence);
+
+        RetrievalHttpResponse response;
+        try
+        {
+            response = await httpClient.GetAsync(endpoint, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return Failed(ex);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return Failed(new InvalidOperationException(
+                $"GET {endpoint} returned {(int)response.StatusCode} {response.StatusCode}. Body: {Truncate(response.Body)}"));
+        }
+
+        ParkHoursApiResponse? parsed;
+        try
+        {
+            parsed = JsonSerializer.Deserialize<ParkHoursApiResponse>(response.Body, JsonOptions);
+        }
+        catch (JsonException ex)
+        {
+            return Failed(ex);
+        }
+
+        if (parsed is null || parsed.Error is not null || parsed.Dates is not { Count: > 0 })
+        {
+            var shapeDescription = parsed?.Error is { } apiError ? $"error='{apiError}'" : "no date entries";
+            return Failed(new InvalidOperationException(
+                $"Unexpected response shape from {endpoint}: {shapeDescription}. Body: {Truncate(response.Body)}"));
+        }
+
+        var results = new List<SourceResult<ParkHoursPayload>>();
+        var seen = new HashSet<DateOnly>();
+        foreach (var day in parsed.Dates)
+        {
+            if (!TryParseResponseDate(day.Date, out var date) || date.Year != year || date.Month != month || !seen.Add(date))
+            {
+                continue;
+            }
+
+            results.Add(EvaluateDay(day, date, timeChecked));
+        }
+
+        return new PublishedParkHoursMonth(year, month, results.OrderBy(r => r.Evidence.RequestedDate).ToList(), Failure: null);
+    }
+
+    /// <summary>Classifies one confirmed date entry: Closed, Verified (main-gate hours present), NotPublished (open flag but no main-gate hours), or Error (unparseable hours).</summary>
+    private SourceResult<ParkHoursPayload> EvaluateDay(ParkHoursApiDate day, DateOnly requestedDate, DateTimeOffset timeChecked)
+    {
+        var confirmedDate = requestedDate;
         if (day.IsParkClosed)
         {
-            return (SourceResult<ParkHoursPayload>.WithoutPayload(
+            return SourceResult<ParkHoursPayload>.WithoutPayload(
                 SourceId,
                 new SourceEvidence(
                     "Carowinds Park Hours",
@@ -134,16 +221,14 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
                     $"Carowinds is officially closed on {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}.",
                     RetrievalStrategy.DirectApi,
                     requestedDate: requestedDate,
-                    confirmedDate: confirmedDate)), false);
+                    confirmedDate: confirmedDate));
         }
 
-        var parkItem = day.Operatings?
-            .FirstOrDefault(o => string.Equals(o.OperatingTypeName, ParkOperatingTypeName, StringComparison.OrdinalIgnoreCase))
-            ?.Items?.FirstOrDefault();
+        var parkItem = FindOperating(day, ParkOperatingTypeId, ParkOperatingTypeName)?.Items?.FirstOrDefault();
 
         if (parkItem is null || string.IsNullOrWhiteSpace(parkItem.TimeFrom) || string.IsNullOrWhiteSpace(parkItem.TimeTo))
         {
-            return (SourceResult<ParkHoursPayload>.WithoutPayload(
+            return SourceResult<ParkHoursPayload>.WithoutPayload(
                 SourceId,
                 new SourceEvidence(
                     "Carowinds Park Hours",
@@ -153,21 +238,21 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
                     $"Hours for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)} have not been published yet.",
                     RetrievalStrategy.DirectApi,
                     requestedDate: requestedDate,
-                    confirmedDate: confirmedDate)), false);
+                    confirmedDate: confirmedDate));
         }
 
         if (!TryParseClockTime(parkItem.TimeFrom, out var openingTime) || !TryParseClockTime(parkItem.TimeTo, out var closingTime))
         {
-            return (Error(
+            return Error(
                 timeChecked,
                 requestedDate,
                 new InvalidOperationException(
-                    $"Unparseable Park operating times '{parkItem.TimeFrom}'-'{parkItem.TimeTo}' for {requestedDate:yyyy-MM-dd}.")), false);
+                    $"Unparseable Park operating times '{parkItem.TimeFrom}'-'{parkItem.TimeTo}' for {requestedDate:yyyy-MM-dd}."));
         }
 
         var (waterparkOpening, waterparkClosing) = ReadWaterparkHours(day);
 
-        return (SourceResult<ParkHoursPayload>.Success(
+        return SourceResult<ParkHoursPayload>.Success(
             SourceId,
             new SourceEvidence(
                 "Carowinds Park Hours",
@@ -178,8 +263,17 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
                 RetrievalStrategy.DirectApi,
                 requestedDate: requestedDate,
                 confirmedDate: confirmedDate),
-            new ParkHoursPayload(openingTime, closingTime, waterparkOpening, waterparkClosing)), false);
+            new ParkHoursPayload(openingTime, closingTime, waterparkOpening, waterparkClosing));
     }
+
+    /// <summary>
+    /// Phase 22E.1: the entry with the official operating-type id, as the official page itself selects
+    /// it; an entry without an id falls back to the conventional label, so older shapes still read.
+    /// </summary>
+    private static ParkHoursApiOperating? FindOperating(ParkHoursApiDate day, int operatingTypeId, string operatingTypeName) =>
+        day.Operatings?.FirstOrDefault(o => o.OperatingTypeId == operatingTypeId)
+        ?? day.Operatings?.FirstOrDefault(o => o.OperatingTypeId is null
+            && string.Equals(o.OperatingTypeName, operatingTypeName, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Phase 13D Part D: reads the optional second <c>"Waterpark"</c> operating-type entry the same
@@ -192,9 +286,7 @@ public sealed class ParkHoursSource(IRetrievalHttpClient httpClient, IClock cloc
     /// </summary>
     private static (TimeOnly? Opening, TimeOnly? Closing) ReadWaterparkHours(ParkHoursApiDate day)
     {
-        var waterparkItem = day.Operatings?
-            .FirstOrDefault(o => string.Equals(o.OperatingTypeName, WaterparkOperatingTypeName, StringComparison.OrdinalIgnoreCase))
-            ?.Items?.FirstOrDefault();
+        var waterparkItem = FindOperating(day, WaterparkOperatingTypeId, WaterparkOperatingTypeName)?.Items?.FirstOrDefault();
 
         if (waterparkItem is null
             || !TryParseClockTime(waterparkItem.TimeFrom, out var opening)

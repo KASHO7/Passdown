@@ -1,0 +1,26 @@
+{
+  "parkId": 30,
+  "parkAbbreviation": "CA",
+  "parkName": "Carowinds",
+  "dates": [
+    {
+      "date": "12/05/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Winterfest",
+          "items": [
+            {
+              "assignmentDisplayName": "Winterfest",
+              "assignmentDescription": "",
+              "timeFrom": "12:00",
+              "timeTo": "21:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

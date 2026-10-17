@@ -1153,3 +1153,29 @@ See `docs/phase22e-calendar-notes-history.md`.
   Open Passdown / View Pricing); "View Notes" is unchanged.
 
 Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.
+
+## Phase 22E.1 — Automatic published park schedule coverage
+
+See `docs/phase22e1-published-park-schedule-coverage.md`.
+
+- **Application** — `Retrieval.IParkHoursScheduleSource` / `PublishedParkHoursMonth` (one official month
+  request). `Refresh.ParkHoursScheduleDiscovery` (horizon from `RefreshOrchestratorOptions.ParkHoursDiscoveryMonths`,
+  default 12, clamped 1–18) creates `ParkHoursMonthRegistration` operations. Each one persists per date
+  into the existing `dated_results` rows: only dates after the rolling window; unlisted dates untouched; a
+  failed month writes nothing; a month NotPublished never replaces stored Verified/Closed.
+  `RefreshOrchestrator` takes the discovery as a new optional constructor parameter. With it, Deep Refresh
+  plans the rolling window per date (front ranks, shared with every source) plus one month request per
+  month through `ParkHoursCoveragePlanner.DiscoveryHorizon`. Without it, the Phase 13D plan is kept.
+  `SourceOperationResult.CoveredDates` feeds `CoverageThrough`. `DeepRefreshCoverage.NeedsScheduleDiscovery`
+  and `OfficialRefreshPolicy.IsDailyMaintenanceDue` re-run maintenance when coverage is short of the horizon
+  and the last attempt is ≥ 4 h old. `NeedsDeepRefresh` (the Check Online bootstrap) still uses end of next
+  month. `OfficialDataRefreshCoordinator` also evaluates that due-gated maintenance in its five-minute loop
+  after the four-hour check, at most once per 4 h in-process and only with a persisted status.
+- **Infrastructure** — `ParkHoursSource` selects the main gate by official operating-type id 24 (water park
+  70), as the official page does, so "Winterfest" / "New Years Eve" labelled days read as Verified. It also
+  implements `IParkHoursScheduleSource` (`?date=yyyyMM`), sharing `EvaluateDay` with the single-date path.
+- **Desktop** — DI registers `ParkHoursScheduleDiscovery`. No view or view-model change: the Calendar
+  already re-reads on `OfficialData`.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.
+

@@ -1,0 +1,268 @@
+{
+  "parkId": 30,
+  "parkAbbreviation": "CA",
+  "parkName": "Carowinds",
+  "dates": [
+    {
+      "date": "11/01/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Park",
+          "items": [
+            {
+              "assignmentDisplayName": "Park",
+              "assignmentDescription": "",
+              "timeFrom": "11:00",
+              "timeTo": "23:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "11/02/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "11/03/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "11/04/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "11/05/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "11/06/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Park",
+          "items": [
+            {
+              "assignmentDisplayName": "Park",
+              "assignmentDescription": "",
+              "timeFrom": "18:00",
+              "timeTo": "00:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "11/07/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Park",
+          "items": [
+            {
+              "assignmentDisplayName": "Park",
+              "assignmentDescription": "",
+              "timeFrom": "11:00",
+              "timeTo": "00:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "11/08/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Park",
+          "items": [
+            {
+              "assignmentDisplayName": "Park",
+              "assignmentDescription": "",
+              "timeFrom": "11:00",
+              "timeTo": "18:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "11/09/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "11/10/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "11/11/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "11/12/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "11/13/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "11/17/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "11/18/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "11/19/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "11/20/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "11/21/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Park",
+          "items": [
+            {
+              "assignmentDisplayName": "Park",
+              "assignmentDescription": "",
+              "timeFrom": "11:00",
+              "timeTo": "18:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "11/22/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Park",
+          "items": [
+            {
+              "assignmentDisplayName": "Park",
+              "assignmentDescription": "",
+              "timeFrom": "11:00",
+              "timeTo": "18:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "11/23/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "11/24/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "11/25/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "11/26/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "11/27/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Winterfest",
+          "items": [
+            {
+              "assignmentDisplayName": "Winterfest",
+              "assignmentDescription": "",
+              "timeFrom": "12:00",
+              "timeTo": "20:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "11/28/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Winterfest",
+          "items": [
+            {
+              "assignmentDisplayName": "Winterfest",
+              "assignmentDescription": "",
+              "timeFrom": "12:00",
+              "timeTo": "21:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "11/29/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Winterfest",
+          "items": [
+            {
+              "assignmentDisplayName": "Winterfest",
+              "assignmentDescription": "",
+              "timeFrom": "12:00",
+              "timeTo": "20:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "11/30/2026",
+      "isParkClosed": true,
+      "operatings": []
+    }
+  ]
+}

@@ -1917,3 +1917,25 @@ passdown notes. See `docs/phase22e-calendar-notes-history.md`. RC.6 artifacts ar
 | Release build | 0 warnings, 0 errors |
 | Windows validation | NOT EXECUTED — checklist in the Phase 22E doc §21 |
 | Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
+
+# Unreleased development — Phase 22E.1 (after RC.6)
+
+Automatic published park schedule coverage. Deep Refresh (6 AM task, startup catch-up, background
+maintenance, manual) now discovers the official park schedule about 12 months ahead with one request per
+month, instead of one request per date to the end of next month. WinterFest and New Year's Eve main-gate
+hours (official operating type 24 under a seasonal label) are now read as Verified rather than Not
+Published. The Calendar shows December and later published dates without any date being opened. Show
+schedules, historical backfill and Check Online scope are unchanged. See
+`docs/phase22e1-published-park-schedule-coverage.md`. RC.6 artifacts are unchanged;
+`Directory.Build.props` still says `0.1.0-rc.6`. The next packaged candidate is **`0.1.0-rc.7`**.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| Upgrade implications | First launch ≥ 4 h after the morning Deep Refresh (or the next scheduled task) runs one discovery Deep Refresh (about 20 Park Hours requests) and fills about 366 future dates (about 156 KB). Earlier NotPublished WinterFest dates become Verified. No draft, snapshot or PDF changes. |
+| Deterministic tests | **3885/3885** (baseline 3836 at `458c527`; +19 `ParkHoursPublishedScheduleTests`, +23 `Phase22E1PublishedScheduleTests`, +7 `OfficialDataRefreshCoordinatorTests`) = 221 Domain + 1089 Application + 852 Infrastructure + 451 Documents + 1176 Ui together + 26 `OperationsCalendarViewTests` + 57 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). Known intermittent `DailyFeatureMathPdfTests.FinalizedSnapshot_KeepsTheSourceText_AndItsPdfMatchesTheLiveRender` failed once and passed on rerun |
+| Live smoke (opt-in) | `ParkHoursSourceLiveSmokeTests` 2/2 passed 2026-10-17 (incl. the new 13-month month-form check) |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 22E.1 doc §16 |
+| Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
+

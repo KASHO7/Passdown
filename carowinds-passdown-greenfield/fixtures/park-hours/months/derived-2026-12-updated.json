@@ -1,0 +1,358 @@
+{
+  "parkId": 30,
+  "parkAbbreviation": "CA",
+  "parkName": "Carowinds",
+  "dates": [
+    {
+      "date": "12/01/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "12/02/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "12/03/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "12/04/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "12/05/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Winterfest",
+          "items": [
+            {
+              "assignmentDisplayName": "Winterfest",
+              "assignmentDescription": "",
+              "timeFrom": "12:00",
+              "timeTo": "22:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "12/06/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Winterfest",
+          "items": [
+            {
+              "assignmentDisplayName": "Winterfest",
+              "assignmentDescription": "",
+              "timeFrom": "12:00",
+              "timeTo": "20:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "12/07/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "12/08/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "12/09/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "12/10/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "12/11/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "12/12/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "12/13/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Winterfest",
+          "items": [
+            {
+              "assignmentDisplayName": "Winterfest",
+              "assignmentDescription": "",
+              "timeFrom": "12:00",
+              "timeTo": "20:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "12/14/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "12/15/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "12/16/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "12/17/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "12/18/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Winterfest",
+          "items": [
+            {
+              "assignmentDisplayName": "Winterfest",
+              "assignmentDescription": "",
+              "timeFrom": "12:00",
+              "timeTo": "20:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "12/19/2026",
+      "isParkClosed": false,
+      "operatings": []
+    },
+    {
+      "date": "12/20/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Winterfest",
+          "items": [
+            {
+              "assignmentDisplayName": "Winterfest",
+              "assignmentDescription": "",
+              "timeFrom": "12:00",
+              "timeTo": "20:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "12/21/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Winterfest",
+          "items": [
+            {
+              "assignmentDisplayName": "Winterfest",
+              "assignmentDescription": "",
+              "timeFrom": "12:00",
+              "timeTo": "20:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "12/22/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Winterfest",
+          "items": [
+            {
+              "assignmentDisplayName": "Winterfest",
+              "assignmentDescription": "",
+              "timeFrom": "12:00",
+              "timeTo": "20:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "12/23/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Winterfest",
+          "items": [
+            {
+              "assignmentDisplayName": "Winterfest",
+              "assignmentDescription": "",
+              "timeFrom": "12:00",
+              "timeTo": "20:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "12/24/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "12/25/2026",
+      "isParkClosed": true,
+      "operatings": []
+    },
+    {
+      "date": "12/26/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Winterfest",
+          "items": [
+            {
+              "assignmentDisplayName": "Winterfest",
+              "assignmentDescription": "",
+              "timeFrom": "12:00",
+              "timeTo": "21:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "12/27/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Winterfest",
+          "items": [
+            {
+              "assignmentDisplayName": "Winterfest",
+              "assignmentDescription": "",
+              "timeFrom": "12:00",
+              "timeTo": "20:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "12/28/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Winterfest",
+          "items": [
+            {
+              "assignmentDisplayName": "Winterfest",
+              "assignmentDescription": "",
+              "timeFrom": "12:00",
+              "timeTo": "20:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "12/29/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Winterfest",
+          "items": [
+            {
+              "assignmentDisplayName": "Winterfest",
+              "assignmentDescription": "",
+              "timeFrom": "12:00",
+              "timeTo": "20:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "12/30/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "Winterfest",
+          "items": [
+            {
+              "assignmentDisplayName": "Winterfest",
+              "assignmentDescription": "",
+              "timeFrom": "12:00",
+              "timeTo": "20:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "date": "12/31/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "New Years Eve",
+          "items": [
+            {
+              "assignmentDisplayName": "New Years Eve",
+              "assignmentDescription": "",
+              "timeFrom": "15:00",
+              "timeTo": "01:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
