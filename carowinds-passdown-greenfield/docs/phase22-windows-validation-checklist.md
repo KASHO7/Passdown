@@ -1,6 +1,6 @@
 # Phase 22 — consolidated Windows validation checklist (RC.7 candidate)
 
-One checklist for everything Phases 22A–22F changed. Run it on the packaged **`0.1.0-rc.7`** build on
+One checklist for everything Phases 22A–22F changed. The RC.7 execution record, which includes these items plus the Phase 23 release checks, is `docs/releases/rc7-windows-validation.md`. Run it on the packaged **`0.1.0-rc.7`** build on
 Windows 11 x64. Use a test profile, or back up `%LOCALAPPDATA%\Carowinds Passdown` first.
 
 Status key: PASS · FAIL · NOT EXECUTED. **Nothing below has been run on Windows.** Every development
@@ -41,7 +41,7 @@ build version and path.
 | 3.6 | Math picker opens, symbols insert, preview renders; Escape closes; focus returns to the editor | NOT EXECUTED |
 | 3.7 | Spell check: red underlines only on misspellings, none inside math, underlines clear after navigation | NOT EXECUTED |
 | 3.8 | Season Price History overlay: fits at 960×640, scrolls, Escape and Close dismiss, focus returns | NOT EXECUTED |
-| 3.9 | Save indicator: "Saved on this computer at h:mm AM ET". After a failed save (for example a read-only profile) it shows "Unsaved changes" and retries | NOT EXECUTED |
+| 3.9 | Save indicator: "Saved on this computer at h:mm AM ET". After a failed save (for example a read-only profile) it shows "Save failed — changes not saved" (Phase 23; reason on hover) and retries on the next change. Restore write access before changing dates (known freeze, `docs/releases/rc7-windows-validation.md` §20) | NOT EXECUTED |
 
 ## 4. Calendar (22E, 22E.1, 22F)
 
