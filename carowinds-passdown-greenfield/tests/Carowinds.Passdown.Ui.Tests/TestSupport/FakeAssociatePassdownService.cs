@@ -66,6 +66,14 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
     /// <summary>Phase 22F: when set, every draft save throws it (a failed local write) — the stored draft is left unchanged.</summary>
     public Exception? SaveException { get; set; }
 
+    /// <summary>
+    /// Phase 23A: a hard ceiling on <see cref="SaveDraftAsync"/> calls for loop-detection tests. Once
+    /// exceeded, the call throws <see cref="SaveLoopGuardException"/> — an <see cref="OperationCanceledException"/>,
+    /// which the ViewModel deliberately does not swallow — so a runaway save/retry loop ends the test
+    /// with a clear failure instead of spinning forever. Null (the default) means unlimited.
+    /// </summary>
+    public int? SaveLoopGuardLimit { get; set; }
+
     public async Task<AssociateWorkspace> LoadAssociateDateAsync(DateOnly operatingDate, CancellationToken cancellationToken = default)
     {
         LoadCalls.Add(operatingDate);
@@ -147,6 +155,11 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
     public async Task<AssociateSaveStatus> SaveDraftAsync(DateOnly operatingDate, AssociateDraftPayload draft, CancellationToken cancellationToken = default)
     {
         SaveCalls.Add((operatingDate, draft));
+
+        if (SaveLoopGuardLimit is { } limit && SaveCalls.Count > limit)
+        {
+            throw new SaveLoopGuardException(SaveCalls.Count);
+        }
 
         if (SaveGates.Count > 0)
         {
@@ -321,3 +334,7 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
             SourceOperationResult.Failure("fake-fast-lane", SourceCategory.DatedFastLane, date, RetrievalStatus.Error, "Could not be checked."),
         ]);
 }
+
+/// <summary>Phase 23A: thrown by <see cref="FakeAssociatePassdownService.SaveLoopGuardLimit"/> when a test detects unbounded save retries.</summary>
+internal sealed class SaveLoopGuardException(int attempts)
+    : OperationCanceledException($"Runaway save loop detected: {attempts} save attempts.");

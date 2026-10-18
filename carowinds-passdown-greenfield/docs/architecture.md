@@ -1204,3 +1204,21 @@ See `docs/phase22f-settings-accessibility-final-qa.md` and `docs/phase22-windows
   Ui.Tests fakes).
 
 Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.
+
+
+## Phase 23A — Save-failure freeze fix
+
+See `docs/phase23a-save-failure-freeze-fix.md`.
+
+- **Desktop** — `AssociateViewModel.FlushPendingAutosaveAsync` returns `bool` and makes at most one save
+  attempt after a failure (passes capped at `MaxFlushSavePasses`); the pre-23A `while (dirty) save()` loop
+  spun forever on the UI thread because SQLite writes fail synchronously. `SaveDraftNowAsync` returns
+  `bool` and never retries. Date switch, Check Online, add/remove/replace operational note and Create PDF
+  are refused (with `SaveBlockedMessage`) when the flush fails, so stored data never replaces unsaved
+  edits; a refused date switch restores `SelectedDate`. New `RetrySaveCommand` / `IsSaveFailed`; no
+  automatic retry timer. `App.FlushPendingAutosaveBeforeShutdownAsync` returns `bool`; a failed close
+  flush holds the first close once (`MainViewModel.ShowCloseBlockedBySaveFailure`), the next close exits.
+- Application, Infrastructure, Documents — unchanged. Sync metadata was already written only after commit.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.
+

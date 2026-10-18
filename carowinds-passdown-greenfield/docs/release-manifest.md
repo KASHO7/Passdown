@@ -1965,6 +1965,27 @@ still says `0.1.0-rc.6`. The next packaged candidate is **`0.1.0-rc.7`** (not pa
 | Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
 
 
+# Unreleased development — Phase 23A (after RC.7)
+
+Critical save-failure freeze fix. After a failed local save, changing the date, Check Online, a
+persistent-note change, Create PDF or closing no longer loops forever on the UI thread (RC.1–RC.7
+defect, RC.7 known limitation). Each of those actions now makes at most one save attempt; if it fails
+the action is refused with an explanation, the edits stay on screen and a **Retry Save** button
+appears. No automatic retry timer. Closing after a failure is held back once with an honest warning;
+closing again exits. See `docs/phase23a-save-failure-freeze-fix.md`. RC.7 artifacts and hashes are
+unchanged; `Directory.Build.props` still says `0.1.0-rc.7`. The next packaged candidate is
+**`0.1.0-rc.8`** (not packaged here).
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| Upgrade implications | None for data. New Retry Save button and one feedback line on the Associate screen. |
+| Deterministic tests | **4011/4011** (baseline 3980 at `6dbdce8`/`9c474b8`; +29 `Phase23ASaveFailureLoopTests`, +2 `Phase23ASaveFailureSyncTests`; one `Phase22DAssociateWorkspaceTests` markup expectation updated) = 221 Domain + 1089 Application + 852 Infrastructure + 463 Documents + 1281 Ui together + 26 `OperationsCalendarViewTests` + 66 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). Run-alone set unchanged (five classes) |
+| Release build | 0 warnings, 0 errors |
+| Stress | 300 actions under a persistent failure: 301 save attempts (linear), 0 network/PDF/note calls, 9 ms |
+| Windows validation | NOT EXECUTED — manual sequence in `docs/phase23a-save-failure-freeze-fix.md` §12 |
+| Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
+
 # Release manifest — 0.1.0-rc.7 (Phase 23: Phases 22A–22F combined)
 
 **Built, packaged and artifact-verified on the macOS build host. Windows validation NOT EXECUTED.

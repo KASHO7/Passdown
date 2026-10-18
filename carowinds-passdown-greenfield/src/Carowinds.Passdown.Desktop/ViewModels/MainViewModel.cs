@@ -226,4 +226,18 @@ public partial class MainViewModel : ViewModelBase
 
     /// <summary>Spec Part X: true unless the Operational Notes section is both currently shown and mid-create/edit — in which case a supervisor must Save or Cancel before any other top-level section becomes reachable.</summary>
     private bool CanLeaveOperationalNotesSection() => !(SelectedSection == AppSection.OperationalNotes && Notes.IsEditing);
+
+    /// <summary>
+    /// Phase 23A: closing could not save the Associate edits on screen. Shows the Associate screen with
+    /// the honest "could not be saved" message and Retry Save, instead of closing as if they were safe.
+    /// </summary>
+    internal void ShowCloseBlockedBySaveFailure()
+    {
+        if (CanLeaveOperationalNotesSection())
+        {
+            SelectedSection = AppSection.AssociatePassdown; // never abandons an in-progress note edit.
+        }
+
+        Associate.ShowCloseBlockedBySaveFailure();
+    }
 }

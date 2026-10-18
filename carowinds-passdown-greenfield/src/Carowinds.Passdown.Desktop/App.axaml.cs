@@ -198,10 +198,18 @@ public partial class App : global::Avalonia.Application
     /// already uses — then <see cref="IClassicDesktopStyleApplicationLifetime.Shutdown"/> is called
     /// again to actually close; the <c>flushed</c> guard prevents that second request from looping
     /// back into this handler.
+    ///
+    /// Phase 23A: when the flush could not save (storage failure or timeout), the first close is held
+    /// back once — the window stays open on the Associate screen with an honest "could not be saved"
+    /// message and Retry Save. The next close request flushes once more and then exits regardless, so
+    /// there is never a close-confirmation loop and the app can always be closed. Overlapping close
+    /// requests while a flush is running are ignored rather than starting another flush.
     /// </summary>
     private static void AttachShutdownFlush(IClassicDesktopStyleApplicationLifetime desktop, MainViewModel mainViewModel, IPersonalSyncCoordinator syncCoordinator, IOfficialDataRefreshCoordinator refreshCoordinator, IHistoricalBackfillService historicalBackfill, ILogger logger)
     {
         var flushed = false;
+        var flushRunning = false;
+        var unsavedCloseWarningShown = false;
 
         desktop.ShutdownRequested += (_, e) =>
         {
@@ -211,12 +219,31 @@ public partial class App : global::Avalonia.Application
             }
 
             e.Cancel = true;
+            if (flushRunning)
+            {
+                return;
+            }
+
+            flushRunning = true;
             _ = FlushThenShutdownAsync();
         };
 
         async Task FlushThenShutdownAsync()
         {
-            await FlushPendingAutosaveBeforeShutdownAsync(mainViewModel, logger).ConfigureAwait(true);
+            var saved = await FlushPendingAutosaveBeforeShutdownAsync(mainViewModel, logger).ConfigureAwait(true);
+            if (!saved && !unsavedCloseWarningShown)
+            {
+                unsavedCloseWarningShown = true;
+                flushRunning = false;
+                logger.LogWarning("Close held back once: the Associate draft has unsaved changes that could not be saved.");
+                mainViewModel.ShowCloseBlockedBySaveFailure();
+                return;
+            }
+
+            if (!saved)
+            {
+                logger.LogWarning("Closing with Associate draft changes that could not be saved (closed again after the warning).");
+            }
 
             // Phase 16F §23: stops the periodic loop and any pending debounce/retry timer only — it
             // deliberately does not wait for a sync pass that happens to be mid-flight (file I/O uses
@@ -277,8 +304,13 @@ public partial class App : global::Avalonia.Application
     /// failure that throws directly (rather than timing out) is logged and swallowed the same way.
     /// <paramref name="timeout"/> defaults to <see cref="ShutdownFlushTimeout"/>; the override exists
     /// so a test can prove the timeout path itself without a real 5-second wait.
+    ///
+    /// Phase 23A: returns true only when the edits on screen are confirmed saved. Before 23A a
+    /// persistent failure never even reached the timeout: the flush retried synchronously forever
+    /// inside <see cref="AssociateViewModel.FlushPendingAutosaveAsync"/>, before this method could
+    /// await anything. The flush now makes at most one attempt after a failure and reports it.
     /// </summary>
-    internal static async Task FlushPendingAutosaveBeforeShutdownAsync(MainViewModel mainViewModel, ILogger logger, TimeSpan? timeout = null)
+    internal static async Task<bool> FlushPendingAutosaveBeforeShutdownAsync(MainViewModel mainViewModel, ILogger logger, TimeSpan? timeout = null)
     {
         var effectiveTimeout = timeout ?? ShutdownFlushTimeout;
 
@@ -289,15 +321,22 @@ public partial class App : global::Avalonia.Application
 
             if (completed != flush)
             {
-                logger.LogWarning("Flush-on-shutdown timed out after {TimeoutSeconds}s; closing anyway rather than blocking shutdown indefinitely.", effectiveTimeout.TotalSeconds);
-                return;
+                logger.LogWarning("Flush-on-shutdown timed out after {TimeoutSeconds}s; not waiting any longer.", effectiveTimeout.TotalSeconds);
+                return false;
             }
 
-            await flush.ConfigureAwait(true); // Observe a faulted flush task so it isn't reported as unobserved.
+            var saved = await flush.ConfigureAwait(true); // also observes a faulted flush task.
+            if (!saved)
+            {
+                logger.LogWarning("Flush-on-shutdown could not save the Associate draft.");
+            }
+
+            return saved;
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Flush-on-shutdown failed; closing anyway rather than blocking shutdown indefinitely.");
+            logger.LogWarning(ex, "Flush-on-shutdown failed; not waiting any longer.");
+            return false;
         }
     }
 

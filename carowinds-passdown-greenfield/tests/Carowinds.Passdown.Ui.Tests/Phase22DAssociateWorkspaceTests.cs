@@ -327,12 +327,12 @@ public sealed class Phase22DAssociateWorkspaceTests
         var feedbackEnd = markup.IndexOf("ColumnDefinitions=\"140,*\"", StringComparison.Ordinal);
         var feedback = markup[feedbackStart..feedbackEnd];
 
-        foreach (var binding in new[] { "HasMultiPagePdfWarning", "RefreshStatusMessage", "RefreshResultMessage", "RefreshHadFailures", "PdfExportMessage", "CopyMessage", "LoadErrorMessage", "SyncConflictMessage" })
+        foreach (var binding in new[] { "HasMultiPagePdfWarning", "RefreshStatusMessage", "RefreshResultMessage", "RefreshHadFailures", "PdfExportMessage", "CopyMessage", "LoadErrorMessage", "SyncConflictMessage", "SaveBlockedMessage" })
         {
             Assert.Contains("{Binding " + binding, feedback);
         }
 
-        Assert.Equal(2, Regex.Matches(feedback, "PassdownErrorBrush").Count); // load error + sync conflict keep the error color.
+        Assert.Equal(3, Regex.Matches(feedback, "PassdownErrorBrush").Count); // load error + sync conflict + Phase 23A save-blocked keep the error color.
     }
 
     [Fact]

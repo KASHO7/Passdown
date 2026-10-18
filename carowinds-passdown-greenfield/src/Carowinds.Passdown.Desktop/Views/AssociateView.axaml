@@ -440,6 +440,13 @@
               </Border.Background>
               <TextBlock Text="{Binding SaveStatusText, FallbackValue='Not saved yet'}" />
             </Border>
+            <!-- Phase 23A: one explicit retry per press after a failed save; hidden otherwise. -->
+            <Button x:Name="RetrySaveButton" Content="Retry Save" Classes="secondaryAction" VerticalAlignment="Center"
+                    Command="{Binding RetrySaveCommand}"
+                    IsVisible="{Binding IsSaveFailed}"
+                    AutomationProperties.Name="Retry Save"
+                    AutomationProperties.HelpText="{Binding SaveStatusDetailText}"
+                    ToolTip.Tip="Try saving the changes on screen again" />
           </StackPanel>
         </Grid>
 
@@ -643,6 +650,14 @@
                      Classes.muted="{Binding !CopyMessageIsError}"
                      Classes.copyError="{Binding CopyMessageIsError}"
                      AutomationProperties.LiveSetting="Polite" />
+
+          <!-- Phase 23A: what was held back because the edits on screen could not be saved (date change,
+               Check Online, a note change, PDF, or closing) — cleared by the next successful save. -->
+          <TextBlock x:Name="SaveBlockedMessageText" Text="{Binding SaveBlockedMessage}"
+                     IsVisible="{Binding SaveBlockedMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                     TextWrapping="Wrap"
+                     Foreground="{DynamicResource PassdownErrorBrush}"
+                     AutomationProperties.LiveSetting="Assertive" />
 
           <TextBlock Text="{Binding LoadErrorMessage}"
                      IsVisible="{Binding LoadErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
