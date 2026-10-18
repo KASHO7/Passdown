@@ -1526,4 +1526,509 @@ public class Phase15ERealWindowLayoutTests
         Assert.NotNull(window.Icon); // the window/taskbar icon is a separate asset, unchanged
         window.Close();
     }
+
+    // ==================================================================================
+    // Phase 23C — Appearance preference (System / Light / Dark): live switching through the real
+    // controller and ApplicationThemeVariantTarget on real windows. These set the application-wide
+    // theme, so they live in this run-alone class and always restore it.
+    // ==================================================================================
+
+    private sealed class AppearanceHarness : IDisposable
+    {
+        private readonly ThemeVariant? _original = Avalonia.Application.Current!.RequestedThemeVariant;
+
+        public FakeAppearancePreferenceStore Store { get; }
+        public FakeSystemAppearanceSource Os { get; }
+        public Desktop.Services.AppearanceThemeController Controller { get; }
+
+        public AppearanceHarness(Application.Preferences.AppearancePreference stored = Application.Preferences.AppearancePreference.System,
+            Application.Preferences.EffectiveAppearance os = Application.Preferences.EffectiveAppearance.Light)
+        {
+            Store = new FakeAppearancePreferenceStore { Stored = stored };
+            Os = new FakeSystemAppearanceSource(os);
+            Controller = new Desktop.Services.AppearanceThemeController(Store, Os, new Desktop.Services.ApplicationThemeVariantTarget());
+            Controller.Initialize();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        }
+
+        public void Dispose()
+        {
+            Controller.Dispose();
+            Avalonia.Application.Current!.RequestedThemeVariant = _original;
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        }
+    }
+
+    private static MainViewModel CreateAppearanceMainViewModel(Desktop.Services.AppearanceThemeController controller)
+    {
+        var dashboard = new FakeOperationsDashboardService();
+        Phase23BDashboardShowsFixtures.Apply(dashboard, Phase23BDashboardShowsFixtures.Scheduled(Phase23BDashboardShowsFixtures.Busy));
+        var calendar = new OperationsCalendarViewModel(new FakeOperationsCalendarService(), CreateClock());
+        var associate = new AssociateViewModel(new FakeAssociatePassdownService(), CreateClock());
+        var notes = new OperationalNotesViewModel(new FakeOperationalNotesService(), new SystemClock());
+        var historyService = new FakePassdownHistoryService
+        {
+            Summaries = [new FinalizedPassdownSummary(FixedDate, DateTimeOffset.UtcNow, FinalizationOrigin.Scheduled, true, 100)],
+        };
+        var history = new PassdownHistoryViewModel(historyService, new FakeFinalizedPassdownPdfRetrievalService());
+        var settings = new PersonalSyncSettingsViewModel(new FakePersonalSyncSettingsService(), new FakeSyncFolderPicker(), new FakePersonalSyncConflictResolutionService(), new FakePersonalSyncCoordinator(),
+            appearance: new AppearanceSettingsViewModel(controller));
+        var prices = new FakeSeasonPriceHistoryService().With("gold-pass", "Gold Pass", true, PriceHistoryFamily.SeasonPass,
+            (125m, PriceKind.StandardCatalog, new DateTimeOffset(2026, 3, 1, 12, 0, 0, TimeSpan.Zero)),
+            (110m, PriceKind.StandardCatalog, new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero)));
+        return new MainViewModel(new OperationsDashboardViewModel(dashboard), calendar, associate, notes, history, settings, new PriceHistoryViewModel(prices));
+    }
+
+    private static readonly Lazy<string[]> ThemeTokenKeys = new(() =>
+    {
+        var xaml = File.ReadAllText(MarkupFiles.Find("src/Carowinds.Passdown.Desktop/Themes/PassdownTokens.axaml"));
+        var start = xaml.IndexOf("<ResourceDictionary x:Key=\"Light\">", StringComparison.Ordinal);
+        var end = xaml.IndexOf("</ResourceDictionary>", start, StringComparison.Ordinal);
+        return System.Text.RegularExpressions.Regex.Matches(xaml[start..end], "x:Key=\"([^\"]+)\"").Select(m => m.Groups[1].Value).ToArray();
+    });
+
+    /// <summary>
+    /// Every visible brush in <paramref name="roots"/> that belongs only to the theme NOT shown — a surface,
+    /// text or border that kept the previous palette after a switch. Brushes are compared by instance
+    /// against the Phase 22A theme dictionaries, so no color value is read or hard-coded.
+    /// </summary>
+    private static List<string> WrongThemeBrushes(ThemeVariant shown, params Visual[] roots)
+    {
+        var app = Avalonia.Application.Current!;
+        var other = shown == ThemeVariant.Dark ? ThemeVariant.Light : ThemeVariant.Dark;
+        var otherOnly = new Dictionary<object, string>(ReferenceEqualityComparer.Instance);
+        foreach (var key in ThemeTokenKeys.Value)
+        {
+            if (app.TryGetResource(key, other, out var o) && app.TryGetResource(key, shown, out var s) && o is IBrush && !ReferenceEquals(o, s))
+            {
+                otherOnly[o] = key;
+            }
+        }
+
+        var found = new List<string>();
+        foreach (var visual in roots.SelectMany(r => r.GetVisualDescendants().Prepend(r)).Distinct())
+        {
+            if (!visual.IsEffectivelyVisible)
+            {
+                continue;
+            }
+
+            IEnumerable<IBrush?> brushes = visual switch
+            {
+                Border b => [b.Background, b.BorderBrush],
+                TemplatedControl t => [t.Background, t.Foreground, t.BorderBrush],
+                TextBlock t => [t.Foreground, t.Background],
+                Panel p => [p.Background],
+                Avalonia.Controls.Shapes.Shape sh => [sh.Fill, sh.Stroke],
+                _ => [],
+            };
+            foreach (var brush in brushes)
+            {
+                if (brush is not null && otherOnly.TryGetValue(brush, out var key))
+                {
+                    found.Add($"{visual.GetType().Name}{(visual is Control { Name: { } n } ? "#" + n : string.Empty)} → {key}");
+                }
+            }
+        }
+
+        return found;
+    }
+
+    private static IBrush Token(string key, ThemeVariant variant)
+    {
+        Assert.True(Avalonia.Application.Current!.TryGetResource(key, variant, out var value));
+        return Assert.IsAssignableFrom<IBrush>(value);
+    }
+
+    private static RadioButton AppearanceOption(Window window, string name) =>
+        window.GetVisualDescendants().OfType<RadioButton>().Single(r => AutomationProperties.GetName(r) == name);
+
+    private static int CheckedAppearanceOptions(Window window) =>
+        window.GetVisualDescendants().OfType<RadioButton>().Count(r => r.GroupName == "Appearance" && r.IsChecked == true);
+
+    [Fact]
+    public void Appearance_PickingAnOptionInSettings_RestylesTheOpenWindow_WithoutRestarting()
+    {
+        using var harness = new AppearanceHarness(os: Application.Preferences.EffectiveAppearance.Light);
+        var viewModel = CreateAppearanceMainViewModel(harness.Controller);
+        var window = ShowMainWindow(viewModel, 1280, 860);
+        viewModel.SelectedSection = AppSection.Settings;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var panel = window.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "AppearanceSection");
+
+        Assert.Equal(ThemeVariant.Light, window.ActualThemeVariant);
+        Assert.True(AppearanceOption(window, "Use Windows setting").IsChecked);
+        Assert.Same(Token("PassdownSurfaceBrush", ThemeVariant.Light), panel.Background);
+
+        AppearanceOption(window, "Dark").Focus();
+        window.KeyPressQwerty(PhysicalKey.Space, RawInputModifiers.None);
+        window.KeyReleaseQwerty(PhysicalKey.Space, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(Application.Preferences.AppearancePreference.Dark, harness.Controller.Preference);
+        Assert.Equal(ThemeVariant.Dark, Avalonia.Application.Current!.ActualThemeVariant);
+        Assert.Equal(ThemeVariant.Dark, window.ActualThemeVariant);
+        Assert.Same(Token("PassdownSurfaceBrush", ThemeVariant.Dark), panel.Background);
+        Assert.Equal(1, CheckedAppearanceOptions(window));
+        Assert.True(AppearanceOption(window, "Dark").IsChecked);
+        Assert.Empty(WrongThemeBrushes(ThemeVariant.Dark, window));
+        Assert.Equal([Application.Preferences.AppearancePreference.Dark], harness.Store.Saves);
+
+        AppearanceOption(window, "Light").IsChecked = true; // pointer path: the RadioButton checks itself
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(ThemeVariant.Light, window.ActualThemeVariant);
+        Assert.Equal(1, CheckedAppearanceOptions(window));
+        Assert.Empty(WrongThemeBrushes(ThemeVariant.Light, window));
+
+        window.Close();
+    }
+
+    [Fact]
+    public void Appearance_ArrowKeysMoveTheSelection_AndTabLeavesTheGroup()
+    {
+        using var harness = new AppearanceHarness();
+        var viewModel = CreateAppearanceMainViewModel(harness.Controller);
+        var window = ShowMainWindow(viewModel, 1280, 860);
+        viewModel.SelectedSection = AppSection.Settings;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var system = AppearanceOption(window, "Use Windows setting");
+        system.Focus();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(system.IsFocused);
+        Assert.True(system.IsKeyboardFocusWithin);
+
+        window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var focused = window.FocusManager!.GetFocusedElement() as RadioButton;
+        Assert.NotNull(focused);
+        Assert.Equal("Light", AutomationProperties.GetName(focused));
+        Assert.True(focused.IsChecked); // the arrow selects, like a native radio group
+        Assert.Equal(Application.Preferences.AppearancePreference.Light, harness.Controller.Preference);
+
+        window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(Application.Preferences.AppearancePreference.Dark, harness.Controller.Preference);
+        Assert.Equal(1, CheckedAppearanceOptions(window));
+
+        window.KeyPressQwerty(PhysicalKey.ArrowUp, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(Application.Preferences.AppearancePreference.Light, harness.Controller.Preference);
+
+        window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.IsNotType<RadioButton>(window.FocusManager!.GetFocusedElement()); // one Tab stop for the group
+        Assert.Equal(Application.Preferences.AppearancePreference.Light, harness.Controller.Preference); // Tab never changes it
+
+        window.Close();
+    }
+
+    [Theory]
+    [InlineData(Application.Preferences.AppearancePreference.System, "Use Windows setting")]
+    [InlineData(Application.Preferences.AppearancePreference.Dark, "Dark")]
+    public void Appearance_TabIntoTheGroup_LandsOnTheCheckedOption_AndSpaceKeepsIt(Application.Preferences.AppearancePreference stored, string expected)
+    {
+        using var harness = new AppearanceHarness(stored);
+        var viewModel = CreateAppearanceMainViewModel(harness.Controller);
+        var window = ShowMainWindow(viewModel, 1280, 860);
+        viewModel.SelectedSection = AppSection.Settings;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        // Shift+Tab back from the next control on the page (Enable Personal Sync).
+        window.GetVisualDescendants().OfType<CheckBox>().Single(c => AutomationProperties.GetName(c) == "Enable Personal Sync").Focus();
+        window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.Shift);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var focused = Assert.IsType<RadioButton>(window.FocusManager!.GetFocusedElement());
+        Assert.Equal(expected, AutomationProperties.GetName(focused));
+        Assert.True(focused.IsFocused);
+
+        window.KeyPressQwerty(PhysicalKey.Space, RawInputModifiers.None);
+        window.KeyReleaseQwerty(PhysicalKey.Space, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(stored, harness.Controller.Preference); // Space on the checked option leaves it checked
+        Assert.Equal(1, CheckedAppearanceOptions(window));
+        Assert.Empty(harness.Store.Saves);
+
+        window.Close();
+    }
+
+    [Fact]
+    public void Appearance_EveryPrimaryScreen_RestylesLive_InBothDirections()
+    {
+        using var harness = new AppearanceHarness();
+        var viewModel = CreateAppearanceMainViewModel(harness.Controller);
+        var window = ShowMainWindow(viewModel, 1280, 860);
+
+        var screens = new (string Name, Action Go)[]
+        {
+            ("Dashboard", () => viewModel.SelectedSection = AppSection.Dashboard),
+            ("Calendar", () => viewModel.SelectedSection = AppSection.OperationsCalendar),
+            ("Associate Overview", () => { viewModel.SelectedSection = AppSection.AssociatePassdown; viewModel.Associate.ShowOverviewSectionCommand.Execute(null); }),
+            ("Associate Products", () => { viewModel.SelectedSection = AppSection.AssociatePassdown; viewModel.Associate.ShowProductsSectionCommand.Execute(null); }),
+            ("Associate Notes and Shows", () => { viewModel.SelectedSection = AppSection.AssociatePassdown; viewModel.Associate.ShowNotesSectionCommand.Execute(null); }),
+            ("Operational Notes", () => viewModel.SelectedSection = AppSection.OperationalNotes),
+            ("History", () => viewModel.SelectedSection = AppSection.History),
+            ("Settings", () => viewModel.SelectedSection = AppSection.Settings),
+        };
+
+        foreach (var (name, go) in screens)
+        {
+            go();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            foreach (var preference in new[] { Application.Preferences.AppearancePreference.Dark, Application.Preferences.AppearancePreference.Light })
+            {
+                harness.Controller.SetPreferenceAsync(preference);
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                var shown = preference == Application.Preferences.AppearancePreference.Dark ? ThemeVariant.Dark : ThemeVariant.Light;
+                Assert.Equal(shown, window.ActualThemeVariant);
+                var wrong = WrongThemeBrushes(shown, window);
+                Assert.True(wrong.Count == 0, $"{name} in {shown}: {string.Join("; ", wrong.Take(6))}");
+                AssertNoControlClipsHorizontally(window);
+            }
+        }
+
+        window.Close();
+    }
+
+    [Fact]
+    public async Task Appearance_SeasonPriceHistoryOverlay_DashboardShowtimes_AndCalendarShows_RestyleWhileOpen()
+    {
+        using var harness = new AppearanceHarness();
+        var viewModel = CreateAppearanceMainViewModel(harness.Controller);
+        var window = ShowMainWindow(viewModel, 1280, 860);
+
+        // Dashboard "+N more" showtimes expanded.
+        await viewModel.Dashboard.PendingLoad;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var toggle = window.GetVisualDescendants().OfType<ToggleButton>()
+            .First(t => t.IsEffectivelyVisible && (AutomationProperties.GetName(t) ?? string.Empty).StartsWith("Show all ", StringComparison.Ordinal));
+        toggle.IsChecked = true;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        await harness.Controller.SetPreferenceAsync(Application.Preferences.AppearancePreference.Dark);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(toggle.IsChecked);
+        Assert.Empty(WrongThemeBrushes(ThemeVariant.Dark, window));
+
+        // Calendar Shows expansion.
+        viewModel.SelectedSection = AppSection.OperationsCalendar;
+        viewModel.Calendar.IsShowScheduleExpanded = true;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        await harness.Controller.SetPreferenceAsync(Application.Preferences.AppearancePreference.Light);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Empty(WrongThemeBrushes(ThemeVariant.Light, window));
+
+        // Season Price History overlay, opened over Associate Products.
+        viewModel.SelectedSection = AppSection.AssociatePassdown;
+        viewModel.Associate.ShowProductsSectionCommand.Execute(null);
+        await viewModel.PriceHistory!.OpenAsync("gold-pass");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(viewModel.PriceHistory.IsOpen);
+        await harness.Controller.SetPreferenceAsync(Application.Preferences.AppearancePreference.Dark);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(viewModel.PriceHistory.IsOpen); // not closed by the switch
+        Assert.Empty(WrongThemeBrushes(ThemeVariant.Dark, window));
+
+        window.Close();
+    }
+
+    [Theory]
+    [InlineData("Operating date")]
+    [InlineData("Copy for Teams")]
+    [InlineData("More passdown actions")]
+    [InlineData("Insert math symbol or equation")]
+    public void Appearance_AnOpenPopup_RestylesWhenTheThemeChanges(string buttonName)
+    {
+        using var harness = new AppearanceHarness();
+        var viewModel = CreateAppearanceMainViewModel(harness.Controller);
+        var window = ShowMainWindow(viewModel, 1280, 860);
+        viewModel.SelectedSection = AppSection.AssociatePassdown;
+        viewModel.Associate.ShowOverviewSectionCommand.Execute(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var button = window.GetVisualDescendants().OfType<Button>().First(b => b.IsEffectivelyVisible && AutomationProperties.GetName(b) == buttonName);
+        var flyout = Assert.IsAssignableFrom<FlyoutBase>(button.Flyout);
+        flyout.ShowAt(button);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(flyout.IsOpen);
+
+        foreach (var preference in new[] { Application.Preferences.AppearancePreference.Dark, Application.Preferences.AppearancePreference.Light, Application.Preferences.AppearancePreference.Dark })
+        {
+            harness.Controller.SetPreferenceAsync(preference);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            var shown = preference == Application.Preferences.AppearancePreference.Dark ? ThemeVariant.Dark : ThemeVariant.Light;
+
+            Assert.True(flyout.IsOpen, "the switch does not close the popup");
+            var roots = PopupRoots(flyout);
+            Assert.NotEmpty(roots);
+            Assert.All(roots, r => Assert.Equal(shown, ((Control)r).ActualThemeVariant));
+            var wrong = WrongThemeBrushes(shown, roots);
+            Assert.True(wrong.Count == 0, $"{buttonName} in {shown}: {string.Join("; ", wrong.Take(6))}");
+        }
+
+        flyout.Hide();
+        window.Close();
+    }
+
+    private static Visual[] PopupRoots(FlyoutBase flyout) => flyout switch
+    {
+        MenuFlyout menu => menu.Items.OfType<Visual>().ToArray(),
+        Flyout { Content: Visual content } => [content],
+        _ => [],
+    };
+
+    [Fact]
+    public void Appearance_SystemMode_FollowsASimulatedOsSwitch_AndForcedModesIgnoreIt()
+    {
+        using var harness = new AppearanceHarness(os: Application.Preferences.EffectiveAppearance.Light);
+        var viewModel = CreateAppearanceMainViewModel(harness.Controller);
+        var window = ShowMainWindow(viewModel, 1280, 860);
+        viewModel.SelectedSection = AppSection.Settings;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var hint = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text?.StartsWith("Windows is currently set to", StringComparison.Ordinal) == true);
+
+        harness.Os.Switch(Application.Preferences.EffectiveAppearance.Dark);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(ThemeVariant.Dark, window.ActualThemeVariant);
+        Assert.Equal("Windows is currently set to Dark.", hint.Text);
+        Assert.Empty(WrongThemeBrushes(ThemeVariant.Dark, window));
+
+        AppearanceOption(window, "Light").IsChecked = true;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        harness.Os.Switch(Application.Preferences.EffectiveAppearance.Light);
+        harness.Os.Switch(Application.Preferences.EffectiveAppearance.Dark);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(ThemeVariant.Light, window.ActualThemeVariant); // forced Light ignores the OS
+
+        AppearanceOption(window, "Use Windows setting").IsChecked = true;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(ThemeVariant.Dark, window.ActualThemeVariant); // back to System: the OS's current Dark at once
+        Assert.Equal(1, CheckedAppearanceOptions(window));
+
+        window.Close();
+    }
+
+    [Theory]
+    [InlineData(Application.Preferences.AppearancePreference.Light, "Light")]
+    [InlineData(Application.Preferences.AppearancePreference.Dark, "Dark")]
+    public void Appearance_ASavedForcedChoice_IsTheFirstThemeTheWindowEverShows(Application.Preferences.AppearancePreference stored, string expected)
+    {
+        // The opposite OS appearance proves the saved choice — not the OS — decides the first frame.
+        var os = stored == Application.Preferences.AppearancePreference.Dark ? Application.Preferences.EffectiveAppearance.Light : Application.Preferences.EffectiveAppearance.Dark;
+        using var harness = new AppearanceHarness(stored, os);
+        var viewModel = CreateAppearanceMainViewModel(harness.Controller);
+        var window = new MainWindow { DataContext = viewModel, Width = 1280, Height = 860 };
+        var first = new List<ThemeVariant>();
+        window.Opened += (_, _) => first.Add(window.ActualThemeVariant);
+        window.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal([expected == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light], first);
+        viewModel.SelectedSection = AppSection.Settings;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(AppearanceOption(window, expected).IsChecked);
+        Assert.Equal(1, CheckedAppearanceOptions(window));
+        window.Close();
+    }
+
+    [Fact]
+    public void Appearance_FuryBanner_IsIdenticalInBothThemes()
+    {
+        using var harness = new AppearanceHarness();
+        var window = ShowMainWindow(CreateAppearanceMainViewModel(harness.Controller), 1280, 860);
+        var banner = (Border)Named(window, "BrandBanner");
+        var image = (Image)Named(window, "BrandBannerImage");
+        var wordmark = (TextBlock)Named(window, "BrandWordmark");
+        var overlay = banner.GetVisualDescendants().OfType<Border>().Single(b => b != banner && b.Background is not null);
+
+        (object? Source, IBrush? Overlay, IBrush? Text, double Height, Stretch Stretch) Snapshot() =>
+            (image.Source, overlay.Background, wordmark.Foreground, banner.Bounds.Height, image.Stretch);
+
+        var light = Snapshot();
+        harness.Controller.SetPreferenceAsync(Application.Preferences.AppearancePreference.Dark);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var dark = Snapshot();
+
+        Assert.Equal(ThemeVariant.Dark, window.ActualThemeVariant);
+        Assert.Same(light.Source, dark.Source);
+        Assert.Same(light.Overlay, dark.Overlay);
+        Assert.Same(light.Text, dark.Text);
+        Assert.Equal(72, dark.Height, 1);
+        Assert.Equal(light.Stretch, dark.Stretch);
+        Assert.Empty(banner.GetVisualDescendants().OfType<PathIcon>()); // title-only (Phase 23B)
+        window.Close();
+    }
+
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public void Appearance_CheckedOption_IsDistinguishable_WithoutColorAlone_AndMeetsNonTextContrast(string theme)
+    {
+        using var harness = new AppearanceHarness(theme == "Dark" ? Application.Preferences.AppearancePreference.Dark : Application.Preferences.AppearancePreference.Light);
+        var viewModel = CreateAppearanceMainViewModel(harness.Controller);
+        var window = ShowMainWindow(viewModel, 1280, 860);
+        viewModel.SelectedSection = AppSection.Settings;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var checkedOption = AppearanceOption(window, theme);
+        var uncheckedOption = AppearanceOption(window, "Use Windows setting");
+        var panel = window.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "AppearanceSection");
+        var surface = ((ISolidColorBrush)panel.Background!).Color;
+
+        // Fluent draws the checked state as an extra inner dot (shape, not only color) on an accent ring.
+        int VisibleDots(RadioButton r) => r.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Ellipse>().Count(e => e.IsEffectivelyVisible && e.Opacity > 0);
+        Assert.True(VisibleDots(checkedOption) > VisibleDots(uncheckedOption), "the checked option shows its dot");
+
+        var accent = checkedOption.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Ellipse>()
+            .Where(e => e.IsEffectivelyVisible && e.Fill is ISolidColorBrush { Color.A: > 200 })
+            .Select(e => ((ISolidColorBrush)e.Fill!).Color)
+            .OrderByDescending(c => ContrastRatio(c, surface))
+            .First();
+        Assert.True(ContrastRatio(accent, surface) >= 3.0, $"{theme}: checked indicator {accent} on {surface} is {ContrastRatio(accent, surface):F2}:1");
+
+        window.Close();
+    }
+
+    private static double ContrastRatio(Color a, Color b)
+    {
+        static double Channel(byte c) { var s = c / 255.0; return s <= 0.03928 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4); }
+        static double Luminance(Color c) => 0.2126 * Channel(c.R) + 0.7152 * Channel(c.G) + 0.0722 * Channel(c.B);
+        var (la, lb) = (Luminance(a), Luminance(b));
+        return (Math.Max(la, lb) + 0.05) / (Math.Min(la, lb) + 0.05);
+    }
+
+    [Theory]
+    [InlineData(960d, 640d, "Light")]
+    [InlineData(960d, 640d, "Dark")]
+    [InlineData(1280d, 690d, "Dark")]
+    [InlineData(1280d, 860d, "Light")]
+    [InlineData(1920d, 1000d, "Dark")]
+    public void Appearance_Selector_FitsEveryWindowSize_WithoutClippingOrHorizontalScroll(double width, double height, string theme)
+    {
+        using var harness = new AppearanceHarness(theme == "Dark" ? Application.Preferences.AppearancePreference.Dark : Application.Preferences.AppearancePreference.Light);
+        var viewModel = CreateAppearanceMainViewModel(harness.Controller);
+        var window = ShowMainWindow(viewModel, width, height);
+        viewModel.SelectedSection = AppSection.Settings;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var panel = window.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "AppearanceSection");
+        var options = new[] { "Use Windows setting", "Light", "Dark" }.Select(n => AppearanceOption(window, n)).ToList();
+        foreach (var option in options)
+        {
+            var bounds = AbsoluteBounds(option, window);
+            Assert.True(option.IsEffectivelyVisible);
+            Assert.True(bounds.Width > 0 && bounds.Height >= 20, $"'{option.Content}' is {bounds.Width}×{bounds.Height}");
+            Assert.True(bounds.Right <= AbsoluteBounds(panel, window).Right + 1);
+        }
+
+        // Stacked top to bottom in the stated order, never overlapping.
+        Assert.True(AbsoluteBounds(options[0], window).Bottom <= AbsoluteBounds(options[1], window).Top + 0.5);
+        Assert.True(AbsoluteBounds(options[1], window).Bottom <= AbsoluteBounds(options[2], window).Top + 0.5);
+
+        var scroll = window.GetVisualDescendants().OfType<ScrollViewer>().Single(s => s.Name == "SettingsScroll");
+        Assert.True(scroll.Extent.Width <= scroll.Viewport.Width + 1, $"horizontal overflow {scroll.Extent.Width - scroll.Viewport.Width:F0}px");
+        AssertNoControlClipsHorizontally(window);
+        Assert.Empty(WrongThemeBrushes(theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light, window));
+        window.Close();
+    }
 }

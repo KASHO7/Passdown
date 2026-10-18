@@ -59,17 +59,18 @@ public class Phase22FSettingsAccessibilityTests
     }
 
     [Fact]
-    public void AppearanceAndRefresh_AreInformationOnly_AndNeverImplyControlsTheAppDoesNotHave()
+    public void Refresh_IsInformationOnly_AndNeverImpliesControlsTheAppDoesNotHave()
     {
+        // Phase 23C made Appearance a real System/Light/Dark choice (Phase23CAppearancePreferenceTests);
+        // Data Refresh is still information only.
         var markup = Markup("PersonalSyncSettingsView");
-        var info = markup[markup.IndexOf("x:Name=\"AppearanceSection\"", StringComparison.Ordinal)..markup.IndexOf("x:Name=\"PersonalSyncSection\"", StringComparison.Ordinal)];
+        var info = markup[markup.IndexOf("x:Name=\"DataRefreshSection\"", StringComparison.Ordinal)..markup.IndexOf("x:Name=\"PersonalSyncSection\"", StringComparison.Ordinal)];
 
         foreach (var control in new[] { "<ComboBox", "<RadioButton", "<CheckBox", "<ToggleSwitch", "<Button", "<TextBox", "Command=" })
         {
             Assert.DoesNotContain(control, info);
         }
 
-        Assert.Contains("Follows Windows", info);
         Assert.Contains("every four hours", info);
         Assert.Contains("Daily at 6 AM", info);
         Assert.Contains("not from this screen", info); // the scheduled task is set up outside Settings

@@ -2007,6 +2007,27 @@ packaged here).
 | Windows validation | NOT EXECUTED — checklist in `docs/phase23b-dashboard-shows-branding.md` §19 |
 | Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
 
+# Unreleased development — Phase 23C (after RC.7, after Phases 23A and 23B)
+
+Settings → **Appearance** is now a real choice: **Use Windows setting** (default, the RC.7 behavior),
+**Light** or **Dark**. It applies immediately without restarting, is saved in
+`%LOCALAPPDATA%\Carowinds Passdown\appearance.json` on this computer only (never synced, no database
+change), and a saved Light or Dark is applied before the window opens. A missing or unreadable setting
+falls back to Use Windows setting. Uses the existing Phase 22A palettes; Fury banner unchanged. See
+`docs/phase23c-appearance-preferences.md`. RC.7 artifacts and hashes are unchanged;
+`Directory.Build.props` still says `0.1.0-rc.7`. The next packaged candidate is **`0.1.0-rc.8`** (not
+packaged here).
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| Upgrade implications | None for data. Upgraded installs have no `appearance.json` and keep following Windows. One new local file once the user picks an option. |
+| Deterministic tests | **4173/4173** (baseline 4069 at `00f8b3e`, re-verified; +11 `AppearanceResolverTests`, +22 `FileAppearancePreferenceStoreTests`, +50 `Phase23CAppearancePreferenceTests`, +21 `Phase15ERealWindowLayoutTests`; one `Phase22FSettingsAccessibilityTests` expectation replaced) = 221 Domain + 1100 Application + 874 Infrastructure + 463 Documents + 1371 Ui together + 26 `OperationsCalendarViewTests` + 105 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). Run-alone set unchanged (five classes) |
+| Release build | 0 warnings, 0 errors |
+| Visual QA | 526 synthetic captures (forced Light/Dark at four sizes, System under simulated OS Light/Dark); 0 overflow, 0 clipped buttons; live switches with popups/overlays open. Not DPI validation |
+| Windows validation | NOT EXECUTED — checklist in `docs/phase23c-appearance-preferences.md` §16 |
+| Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
+
 # Release manifest — 0.1.0-rc.7 (Phase 23: Phases 22A–22F combined)
 
 **Built, packaged and artifact-verified on the macOS build host. Windows validation NOT EXECUTED.

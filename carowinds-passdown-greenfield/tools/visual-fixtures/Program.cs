@@ -8,6 +8,7 @@ using Avalonia.VisualTree;
 using Carowinds.Passdown.Application.Diagnostics;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.PersonalSync;
+using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Desktop;
 using Carowinds.Passdown.Desktop.Services;
 using Carowinds.Passdown.Desktop.ViewModels;
@@ -15,8 +16,17 @@ using Carowinds.Passdown.Desktop.Views;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
 
 // Phase 22F synthetic-fixture screenshot harness. Usage: README.md.
-// args: <outDir> [label] [scenario substring filter] [sizes: all|main]
+// args: <outDir> [label] [scenario substring filter] [sizes: all|main] [appearance: forced|system|all]
 AppBuilder.Configure<App>().UseSkia().UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
+
+// Phase 23C: every theme goes through the real AppearanceThemeController and ApplicationThemeVariantTarget,
+// with an in-memory preference store and a simulated operating-system appearance — never the real
+// profile's appearance.json and never the test machine's own light/dark setting.
+var appearanceStore = new FakeAppearancePreferenceStore();
+var simulatedOs = new FakeSystemAppearanceSource();
+var appearance = new AppearanceThemeController(appearanceStore, simulatedOs, new ApplicationThemeVariantTarget());
+appearance.Initialize();
+Fixture.Appearance = appearance;
 
 var outDir = args.Length > 0 ? args[0] : "visual-fixtures-out";
 var label = args.Length > 1 ? args[1] : "shot";
@@ -24,6 +34,17 @@ var filter = args.Length > 2 && args[2] != "*" ? args[2] : null;
 var sizes = args.Length > 3 && args[3] == "main"
     ? new (int W, int H)[] { (1280, 860) }
     : new (int W, int H)[] { (960, 640), (1280, 690), (1280, 860), (1920, 1000) };
+// Forced modes run against the opposite simulated OS, proving the preference (not the OS) decides.
+var appearanceModes = (args.Length > 4 ? args[4] : "forced") switch
+{
+    "system" => new[] { ("SystemOsLight", AppearancePreference.System, EffectiveAppearance.Light), ("SystemOsDark", AppearancePreference.System, EffectiveAppearance.Dark) },
+    "all" => new[]
+    {
+        ("Light", AppearancePreference.Light, EffectiveAppearance.Dark), ("Dark", AppearancePreference.Dark, EffectiveAppearance.Light),
+        ("SystemOsLight", AppearancePreference.System, EffectiveAppearance.Light), ("SystemOsDark", AppearancePreference.System, EffectiveAppearance.Dark),
+    },
+    _ => new[] { ("Light", AppearancePreference.Light, EffectiveAppearance.Dark), ("Dark", AppearancePreference.Dark, EffectiveAppearance.Light) },
+};
 Directory.CreateDirectory(outDir);
 var report = new List<string>();
 
@@ -110,19 +131,75 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
         f.Vm.Settings.Diagnostics.ExportDiagnosticsCommand.ExecuteAsync(null).Wait(2000); Pump(6);
         ScrollToEnd(f.Window);
     }),
+    // Phase 23C: the Appearance selector itself, and live theme switches with screens and popups already open.
+    // Each LiveSwitch-* capture is taken AFTER flipping to the opposite theme of its file-name mode.
+    ("Appearance-Settings", () => new Fixture(), f => Go(f, AppSection.Settings)),
+    ("LiveSwitch-Settings", () => new Fixture(), f => { Go(f, AppSection.Settings); CheckAppearance(f.Window, Opposite()); }),
+    ("Appearance-SaveFailed", () => new Fixture(), f =>
+    {
+        Go(f, AppSection.Settings);
+        appearanceStore.SaveException = new IOException("synthetic read-only profile");
+        CheckAppearance(f.Window, Opposite()); Pump(6);
+    }),
+    ("LiveSwitch-Dashboard", () => new Fixture(dashboardShows: Phase23BDashboardShowsFixtures.Scheduled(Phase23BDashboardShowsFixtures.Busy)), f =>
+    {
+        Go(f, AppSection.Dashboard); ExpandFirstShowTimes(f.Window); ScrollToName(f.Window, "Today's shows"); Flip();
+    }),
+    ("LiveSwitch-Calendar", () => new Fixture(), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Busy); f.Vm.Calendar.IsShowScheduleExpanded = true; Pump(6); Flip(); }),
+    ("LiveSwitch-Products", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8); Flip(); }),
+    ("LiveSwitch-PriceHistory", () => new Fixture(), f =>
+    {
+        Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8);
+        f.Vm.PriceHistory!.OpenAsync(Fixtures.GoldPassKey).Wait(2000); Pump(10); Flip();
+    }),
+    ("LiveSwitch-DatePicker", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "Operating date"); Flip(); }),
+    ("LiveSwitch-Copy", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "Copy for Teams"); Flip(); }),
+    ("LiveSwitch-More", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "More passdown actions"); Flip(); }),
+    ("LiveSwitch-Math", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowOverviewSectionCommand.Execute(null); Pump(6); OpenFlyout(f.Window, "Insert math symbol or equation"); Flip(); }),
+    ("LiveSwitch-SystemOs", () => new Fixture(), f =>
+    {
+        // System mode following a simulated OS switch while Settings is open (forced modes: no change expected).
+        Go(f, AppSection.Settings);
+        simulatedOs.Switch(simulatedOs.Current == EffectiveAppearance.Dark ? EffectiveAppearance.Light : EffectiveAppearance.Dark); Pump(8);
+    }),
 };
+
+// Phase 23C helpers: the forced option opposite to what is shown now, applied through the controller
+// (Flip) or by checking that radio button in Settings, exactly as a user would (CheckAppearance).
+string Opposite() => appearance.EffectiveAppearance == EffectiveAppearance.Dark ? "Light" : "Dark";
+
+void Flip()
+{
+    _ = appearance.SetPreferenceAsync(appearance.EffectiveAppearance == EffectiveAppearance.Dark ? AppearancePreference.Light : AppearancePreference.Dark);
+    Pump(10);
+}
+
+static void CheckAppearance(Window window, string option)
+{
+    var radio = window.GetVisualDescendants().OfType<RadioButton>().FirstOrDefault(r => AutomationProperties.GetName(r) == option);
+    if (radio is not null)
+    {
+        radio.IsChecked = true;
+        Pump(10);
+    }
+}
 
 foreach (var (w, h) in sizes)
 {
-    foreach (var theme in new[] { "Light", "Dark" })
+    foreach (var (theme, preference, os) in appearanceModes)
     {
-        Avalonia.Application.Current!.RequestedThemeVariant = theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
         foreach (var (name, create, arrange) in scenarios)
         {
             if (filter is not null && !name.Contains(filter, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
+
+            // Reset before every scenario: LiveSwitch-* scenarios change the appearance mid-arrange.
+            appearanceStore.SaveException = null;
+            simulatedOs.Switch(os);
+            _ = appearance.SetPreferenceAsync(preference);
+            Pump(2);
 
             var fixture = create();
             fixture.Window.Width = w;
@@ -286,6 +363,9 @@ internal enum SyncFixture { Off, UpToDate, Conflict, Error }
 /// <summary>One isolated app shell over fakes — no database, no network, no real profile.</summary>
 internal sealed class Fixture
 {
+    /// <summary>Phase 23C: the harness-wide appearance controller (in-memory store, simulated OS).</summary>
+    public static AppearanceThemeController? Appearance { get; set; }
+
     public FakeOperationsCalendarService CalendarService { get; } = new();
     public FakeAssociatePassdownService AssociateService { get; } = new();
     public MainViewModel Vm { get; }
@@ -317,7 +397,8 @@ internal sealed class Fixture
             new AssociateViewModel(AssociateService, clock, autosaveDelay: (_, _) => Task.CompletedTask),
             new OperationalNotesViewModel(notes, clock),
             new PassdownHistoryViewModel(history, new FakeFinalizedPassdownPdfRetrievalService()),
-            new PersonalSyncSettingsViewModel(settingsService, new FakeSyncFolderPicker(), conflicts, coordinator, buildIdentity: build, diagnostics: diagnostics),
+            new PersonalSyncSettingsViewModel(settingsService, new FakeSyncFolderPicker(), conflicts, coordinator, buildIdentity: build, diagnostics: diagnostics,
+                appearance: new AppearanceSettingsViewModel(Appearance)),
             new PriceHistoryViewModel(priceHistory));
         Window = new MainWindow { DataContext = Vm };
     }

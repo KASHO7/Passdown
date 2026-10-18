@@ -104,6 +104,11 @@ public partial class App : global::Avalonia.Application
                 "Carowinds Operations starting (version {Version}, executable {ExecutablePath}, OS {OS}, 64-bit {Is64Bit}).",
                 build.FullVersion, build.ExecutablePath ?? "unknown", Environment.OSVersion.VersionString, Environment.Is64BitProcess);
 
+            // Phase 23C: the saved appearance (System/Light/Dark) is applied before anything else that
+            // could create a window — and before migrations, which it does not depend on — so a saved
+            // Light or Dark is the first theme ever drawn. One tiny local file read; never throws.
+            ApplySavedAppearance(services, logger);
+
             // Storage must be ready (spec §17 Phase 1: "establish ... storage
             // migrations before building the production UI") before any
             // view model touches the database.
@@ -187,6 +192,25 @@ public partial class App : global::Avalonia.Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// Phase 23C: loads the local appearance preference and shows the matching palette. A failure here
+    /// (which the store itself already guards against) leaves the XAML default — follow the operating
+    /// system — and never blocks startup.
+    /// </summary>
+    private static void ApplySavedAppearance(IServiceProvider services, ILogger logger)
+    {
+        try
+        {
+            var appearance = services.GetRequiredService<AppearanceThemeController>();
+            appearance.Initialize();
+            logger.LogInformation("Appearance: {Preference} (showing {Effective}).", appearance.Preference, appearance.EffectiveAppearance);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning("Appearance preference could not be applied ({ExceptionType}); following the system theme.", ex.GetType().Name);
+        }
     }
 
     /// <summary>
@@ -631,6 +655,17 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<OfficialDataStatusViewModel>();
 
         services.AddTransient<DiagnosticsExportViewModel>();
+
+        // Phase 23C: the local appearance preference (System/Light/Dark) — one flat JSON file beside the
+        // template preference, never synced, no database table. The controller is one instance for the
+        // interactive session; only OnFrameworkInitializationCompleted initializes it, so the headless
+        // --scheduled-refresh host never reads the file or touches a theme.
+        services.AddSingleton<IAppearancePreferenceStore>(provider => new FileAppearancePreferenceStore(
+            FileAppearancePreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FileAppearancePreferenceStore>>()));
+        services.AddSingleton<ISystemAppearanceSource>(_ => new AvaloniaSystemAppearanceSource());
+        services.AddSingleton<IThemeVariantTarget, ApplicationThemeVariantTarget>();
+        services.AddSingleton<AppearanceThemeController>();
+        services.AddTransient<AppearanceSettingsViewModel>();
         services.AddTransient<PersonalSyncSettingsViewModel>();
         services.AddTransient<PriceHistoryViewModel>();
 

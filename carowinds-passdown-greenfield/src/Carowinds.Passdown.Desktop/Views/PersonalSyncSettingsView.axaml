@@ -48,23 +48,52 @@
 
     <!-- Phase 22F: one scannable page in five groups — Appearance, Data Refresh, Personal Sync,
          Diagnostics, About. Each group is a section heading over one panel (no nested cards); label /
-         value rows share one Grid.settingsRows layout. Appearance and Data Refresh are information
-         only: the theme follows Windows and refresh is automatic, so neither offers a control this app
-         does not actually have. Every Personal Sync, Diagnostics and About binding, command and
+         value rows share one Grid.settingsRows layout. Data Refresh is information only: refresh is
+         automatic, so it offers no control this app does not actually have. Appearance (Phase 23C) is
+         the one real choice: System, Light or Dark. Every Personal Sync, Diagnostics and About binding, command and
          accessible name is unchanged. -->
     <ScrollViewer x:Name="SettingsScroll" Grid.Row="1" Padding="24,20,24,24">
       <StackPanel Spacing="8" MaxWidth="720" HorizontalAlignment="Left">
 
-        <!-- 1. Appearance (information only). -->
+        <!-- 1. Appearance (Phase 23C): System / Light / Dark. One radio group — exactly one option is
+             checked, Tab reaches the group, arrow keys move between options, Space checks. Picking an
+             option applies it immediately (no Apply button) and saves it on this computer only. The
+             palettes are the existing Phase 22A tokens; Fluent's RadioButton already draws its checked
+             dot from them, so nothing here sets a color. -->
         <TextBlock Text="Appearance" Classes="sectionTitle" Margin="0" />
         <Border x:Name="AppearanceSection" Classes="panel" AutomationProperties.Name="Appearance">
-          <Grid Classes="settingsRows" ColumnDefinitions="140,*" RowDefinitions="Auto,Auto">
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="Theme" Classes="fieldLabel" />
-            <TextBlock Grid.Row="0" Grid.Column="1" Text="Follows Windows — Light or Dark" FontWeight="Medium"
-                       AutomationProperties.Name="Theme: follows Windows, light or dark" />
-            <TextBlock Grid.Row="1" Grid.Column="1" Classes="muted" TextWrapping="Wrap"
-                       Text="Change it in Windows Settings › Personalization › Colors." />
-          </Grid>
+          <StackPanel Spacing="8">
+            <TextBlock x:Name="AppearanceIntro" Classes="muted" TextWrapping="Wrap"
+                       Text="Choose how Carowinds Operations looks. Saved on this computer only." />
+            <StackPanel x:Name="AppearanceOptions" Spacing="2"
+                        KeyboardNavigation.TabNavigation="Once"
+                        XYFocus.NavigationModes="Keyboard"
+                        GotFocus="OnAppearanceOptionGotFocus"
+                        AutomationProperties.Name="Appearance"
+                        AutomationProperties.HelpText="Choose how Carowinds Operations looks">
+              <RadioButton x:Name="AppearanceSystemOption" GroupName="Appearance"
+                           Content="Use Windows setting"
+                           IsChecked="{Binding Appearance.IsSystemSelected}"
+                           IsCheckedChanged="OnAppearanceOptionCheckedChanged"
+                           AutomationProperties.Name="Use Windows setting" />
+              <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,4"
+                         Text="{Binding Appearance.SystemAppearanceText}" />
+              <RadioButton x:Name="AppearanceLightOption" GroupName="Appearance"
+                           Content="Light"
+                           IsChecked="{Binding Appearance.IsLightSelected}"
+                           IsCheckedChanged="OnAppearanceOptionCheckedChanged"
+                           AutomationProperties.Name="Light" />
+              <RadioButton x:Name="AppearanceDarkOption" GroupName="Appearance"
+                           Content="Dark"
+                           IsChecked="{Binding Appearance.IsDarkSelected}"
+                           IsCheckedChanged="OnAppearanceOptionCheckedChanged"
+                           AutomationProperties.Name="Dark" />
+            </StackPanel>
+            <TextBlock Classes="statusError" TextWrapping="Wrap"
+                       Text="{Binding Appearance.SaveMessage}"
+                       IsVisible="{Binding Appearance.SaveMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       AutomationProperties.LiveSetting="Polite" />
+          </StackPanel>
         </Border>
 
         <!-- 2. Data Refresh (information only — the schedule is automatic and the 6 AM task is set up

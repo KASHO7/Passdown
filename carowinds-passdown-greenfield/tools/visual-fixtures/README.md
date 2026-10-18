@@ -13,7 +13,7 @@ platform, using the `Carowinds.Passdown.Ui.Tests` fakes and the synthetic data i
 ## Run
 
 ```bash
-dotnet run -c Release --project tools/visual-fixtures -- <outDir> [label] [scenarioFilter|*] [all|main]
+dotnet run -c Release --project tools/visual-fixtures -- <outDir> [label] [scenarioFilter|*] [all|main] [forced|system|all]
 ```
 
 - `outDir`: where PNGs and `<label>-geometry.txt` are written. Use a scratch folder, not the repository.
@@ -22,6 +22,11 @@ dotnet run -c Release --project tools/visual-fixtures -- <outDir> [label] [scena
   Use `*` for all scenarios.
 - `all` (default) renders 960×640, 1280×690, 1280×860 and 1920×1000. `main` renders only 1280×860.
   Every size is rendered in both Light and Dark.
+- Appearance (Phase 23C): `forced` (default) renders the Light and Dark preferences, each against the
+  opposite simulated OS appearance, and keeps the `Light`/`Dark` file names. `system` renders the System
+  preference under a simulated OS Light and OS Dark (`SystemOsLight`/`SystemOsDark`). `all` does both.
+  Themes go through the real `AppearanceThemeController` with an in-memory preference store; the test
+  machine's own appearance and the real `appearance.json` are never used.
 
 `<label>-geometry.txt` records, for each capture, the page's vertical scroll, any horizontal overflow,
 and any button pushed past the window's right edge. When Today's Shows is present it also records the panel's
@@ -39,6 +44,7 @@ or button rectangles inside the panel overlap.
 | Popups | date picker, Copy menu, More menu, Math picker |
 | Notes / History | populated and empty |
 | Settings | sync off, syncing and up to date, conflict review, folder unavailable with sync error and a Diagnostics export failure |
+| Appearance (Phase 23C) | `Appearance-Settings`, `Appearance-SaveFailed`; `LiveSwitch-*`: the theme flipped with Settings, Dashboard Shows expanded, Calendar Shows expanded, Products, Season Price History, date picker, Copy, More or Math picker already open (captured after the switch), and a simulated OS switch |
 
 To compare against an earlier commit, export that commit with `git archive` into a scratch folder,
 copy this folder into it, and run it there. This changes nothing in the repository.

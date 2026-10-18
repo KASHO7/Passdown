@@ -1243,3 +1243,33 @@ See `docs/phase23b-dashboard-shows-branding.md`.
 
 Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.
 
+
+
+## Phase 23C — Appearance preferences (System / Light / Dark)
+
+See `docs/phase23c-appearance-preferences.md`.
+
+- **Application** — `Preferences/AppearancePreference.cs`: `AppearancePreference` (`System` = 0, `Light`,
+  `Dark`), `EffectiveAppearance`, `AppearanceResolver` (Light/Dark override, System follows the OS;
+  `Sanitize` maps undefined values to System) and `IAppearancePreferenceStore` (synchronous `Load` so the
+  theme is applied before the first window).
+- **Infrastructure** — `Preferences/FileAppearancePreferenceStore`: `appearance.json` beside the template
+  preference under `AppPaths.LocalApplicationDataDirectory`, string enum names only (integers rejected),
+  `AtomicFileWriter`; missing/corrupt/unknown → System with one non-sensitive warning. Not synced; no table.
+- **Desktop** — `Services/AppearanceThemeController` (singleton; loads once, applies, follows
+  `ISystemAppearanceSource` only in System mode, serializes saves, latest choice wins);
+  `Services/AvaloniaAppearance.cs` (`AvaloniaSystemAppearanceSource` over Avalonia's `IPlatformSettings`
+  and `ColorValuesChanged`, no polling; `ApplicationThemeVariantTarget` sets
+  `Application.RequestedThemeVariant` to Light or Dark). `App.OnFrameworkInitializationCompleted` calls
+  `ApplySavedAppearance` before migrations and before `MainWindow` is resolved; the `--scheduled-refresh`
+  host never initializes it. `ViewModels/AppearanceSettingsViewModel` is
+  `PersonalSyncSettingsViewModel.Appearance` (optional constructor argument; detached in-memory default
+  for tests/fixtures). Settings' Appearance panel is a three-option radio group (one Tab stop, arrow
+  keys select; view code-behind handles only focus/selection-follows-focus). No palette added:
+  `PassdownTokens.axaml` / `PassdownStyles.axaml` unchanged.
+- Domain, Documents — unchanged.
+- **tools/visual-fixtures** — themes go through the real controller with an in-memory store and a
+  simulated OS; 5th argument `forced|system|all`; `Appearance-*` and `LiveSwitch-*` scenarios. Test fakes
+  in `Ui.Tests/TestSupport/FakeAppearance.cs`.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.
