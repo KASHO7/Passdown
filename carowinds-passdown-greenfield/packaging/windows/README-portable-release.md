@@ -87,7 +87,17 @@ Before upgrading from an older version
   selecting any Shows. An older version that edits and saves a passdown drops its
   show selections.
 - Settings → About this build shows the version and the folder the app is running
-  from, so you can confirm you opened the copy you meant to.
+  from, so you can confirm you opened the copy you meant to. Its "What's New"
+  button shows this version's notes, even offline.
+
+Updates
+--------
+From version 0.1.0-rc.8 on, Settings → Application Updates can check for newer
+approved versions. Nothing is downloaded or installed until you choose "Install
+Update" and then "Restart and Install"; each update's signature is checked first.
+Versions before rc.8 cannot update themselves, so rc.8 is installed by extracting
+this ZIP by hand. In-app updating needs this extracted folder (not the single
+.exe) in a place you can write to, such as Documents or Desktop.
 
 Passdown History
 -----------------

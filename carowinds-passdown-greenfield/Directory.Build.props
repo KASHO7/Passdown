@@ -27,8 +27,8 @@
     with <Version> (guarded by ReleaseVersionTests). AssemblyVersion intentionally stays 0.1.0.0.
   -->
   <PropertyGroup>
-    <Version>0.1.0-rc.7</Version>
-    <FileVersion>0.1.0.7</FileVersion>
+    <Version>0.1.0-rc.8</Version>
+    <FileVersion>0.1.0.8</FileVersion>
     <Product>Carowinds Operations</Product>
   </PropertyGroup>
 

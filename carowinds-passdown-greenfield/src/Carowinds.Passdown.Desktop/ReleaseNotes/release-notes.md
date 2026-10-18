@@ -1,22 +1,30 @@
-Version: 0.1.0-rc.7
-Title: Redesigned look, clearer Dashboard and safer saving
+Version: 0.1.0-rc.8
+Title: Safer saving, tidier Shows, your choice of appearance and in-app updates
 Date: 2026-10-18
 ---
-## Highlights
+## Reliability
 
-- A refreshed light and dark design across every screen, with the Fury 325 banner and shorter navigation: Dashboard, Calendar, Passdown, Notes and History, plus Settings.
-- Settings is one organized page: Appearance, Data Refresh, Personal Sync, Diagnostics and About this build.
-- The Dashboard shows one Operations Overview with park hours, the official daily ticket reference, and attendance and pre-solds.
+- If a draft can't be saved, the app no longer freezes or keeps retrying in the background.
+- A Retry Save button appears so you can try again when you're ready.
+- The Draft status clearly says the save failed, and your unsaved changes stay on screen.
+- Changing the date, Check Online and note changes wait until your changes are safely saved, so nothing is lost by accident.
 
-## Associate Passdown
+## Dashboard
 
-- A refined date bar and toolbar: Check Online, Create PDF, Copy and More.
-- Attendance and pre-sold numbers are grouped with commas on screen, in PDFs and in Teams Copy.
-- When a save genuinely fails, the draft status now says "Save failed — changes not saved" instead of looking like an ordinary pending edit.
+- Today's Shows no longer lets long lists of times run into the venue.
+- Shows with many times list the first few, with a "+N more" button that shows all of them.
+- The Fury 325 banner shows just the title, without the small chart icon.
 
-## Calendar, Notes and History
+## Appearance
 
-- Calendar shows collapse to a one-line summary; "View schedule" shows the full list.
-- Notes and History rows are denser and easier to scan.
+- Settings → Appearance now offers Use Windows setting, Light or Dark.
+- Your choice applies immediately and is remembered on this computer.
+
+## Updates
+
+- Settings → Application Updates can check for new approved versions.
+- Nothing is downloaded or installed until you choose Install Update and then Restart and Install.
+- Every update is checked for a valid signature before it is installed. If something goes wrong, the previous version is put back.
+- After a successful update, What's New opens once. You can reopen it any time from Settings → About this build.
 
 Your drafts, notes, prices, History and settings are unchanged by this version.

@@ -1,4 +1,4 @@
-Carowinds Operations 0.1.0-rc.7 — Tester Guide
+Carowinds Operations 0.1.0-rc.8 — Tester Guide
 ================================================
 
 Thanks for testing this app. You do not need any technical background. Follow the
@@ -48,7 +48,7 @@ If more than one computer uses Personal Sync with the same shared folder:
 
 3. Extract the ZIP
 -------------------
-Right-click Carowinds-Operations-0.1.0-rc.7-win-x64.zip and choose
+Right-click Carowinds-Operations-0.1.0-rc.8-win-x64.zip and choose
 "Extract All...". Pick a NEW, empty folder you can write to (Desktop, Documents).
 Do NOT run the app from inside the ZIP without extracting it first.
 
@@ -70,7 +70,7 @@ then "Run anyway" only if you got the ZIP from the person who asked you to test.
 Click the gear icon (Settings) at the right end of the navigation strip, scroll to
 "About this build". It should say:
 
-    Version 0.1.0-rc.7 (followed by a short code in brackets)
+    Version 0.1.0-rc.8 (followed by a short code in brackets)
     Running from  <the folder you just extracted>
 
 If it shows an older number, or a different folder, you opened an older copy (for
@@ -78,14 +78,23 @@ example through Windows Search or the Start menu). Close it and start
 Carowinds.Passdown.Desktop.exe from the folder you just extracted.
 
 About the single .exe file: you may also see
-Carowinds-Operations-0.1.0-rc.7-win-x64-singlefile.exe. It is EXPERIMENTAL.
+Carowinds-Operations-0.1.0-rc.8-win-x64-singlefile.exe. It is EXPERIMENTAL.
 Please test with the ZIP. The single .exe does not carry the license notices or
-the automatic-refresh helpers, so it must not be handed out on its own.
+the automatic-refresh helpers, so it must not be handed out on its own. It also
+cannot update itself: its Settings › Application Updates says "Manual update
+required".
+
+This is the first version that can update itself later. Because the version
+before it (rc.7) has no updater, rc.8 itself must be installed by hand from the
+ZIP, as described above. Starting the new version for the first time does NOT
+open "What's New" — that only happens after an update installed from inside the
+app.
 
 
 6. Look around the main screens
 --------------------------------
-At the top you should see the Fury 325 banner with "CAROWINDS OPERATIONS", and
+At the top you should see the Fury 325 banner with just the words "CAROWINDS
+OPERATIONS" (no small chart icon in front of them), and
 the navigation:  Dashboard · Calendar · Passdown · Notes · History  plus the
 Settings gear. The current screen is underlined.
 
@@ -95,7 +104,10 @@ Dashboard (opens first)
     pre-solds with commas (for example 38,500).
   - Data Status: click to expand and collapse the source details. Problems stay
     visible even when it is collapsed.
-  - Today's Shows: upcoming official show times.
+  - Today's Shows: upcoming official show times. Each show lists its name, then
+    its times, then its venue — text should never overlap. A show with many
+    times lists a few plus a "+N more" button; clicking it shows every time,
+    and clicking again collapses the list.
   - "Open Passdown" goes to today's passdown; "Open Notes" goes to its notes.
 
 Calendar
@@ -171,7 +183,11 @@ Note anything that looks wrong, with the scale value and a screenshot
 (Windows+Shift+S).
 
 Also try Light and Dark: Windows Settings › Personalization › Colors ›
-"Choose your mode". The app should follow while it is open.
+"Choose your mode". With the app's Appearance set to "Use Windows setting" (the
+default) the app should follow while it is open. Then in the app's Settings ›
+Appearance choose "Light" while Windows is Dark, and "Dark" while Windows is
+Light: the app should switch at once and stay on your choice. Close and reopen
+the app: your choice should still apply, with no flash of the other theme.
 
 
 11. Keyboard and Narrator (optional, but very helpful)
@@ -186,11 +202,18 @@ Also try Light and Dark: Windows Settings › Personalization › Colors ›
 
 12. Settings
 -------------
-  - Appearance and Data Refresh only explain how the app behaves.
+  - Appearance: Use Windows setting, Light or Dark (see step 10). The choice is
+    saved on this computer only; it is not shared through Personal Sync.
+  - Data Refresh only explains how the app behaves.
+  - Application Updates: "Check for Updates" looks for newer approved versions.
+    It is fine if it says you are up to date or that it could not check. Do
+    NOT install anything from here unless whoever asked you to test gave you
+    a special test update.
   - Diagnostics: "Export Diagnostics…" saves one ZIP with version and health
     information and recent logs. It does NOT contain your drafts, notes, PDFs or
     database.
-  - About this build: version and folder (see step 5).
+  - About this build: version and folder (see step 5), and a "What's New"
+    button that shows this version's notes, even without internet.
 
 
 13. Personal Sync (only on test folders)
@@ -224,15 +247,20 @@ the new location.
 
 15. Save-failure check (testers asked to do this only)
 -------------------------------------------------------
+Only use a test copy of your data for this (back up first, step 1).
 This version shows "Save failed — changes not saved" in the Draft chip when the
-app genuinely cannot save (hover over it to see why). If you are asked to test
-this by making the data folder read-only:
-  - Make the change, check the chip text, then make the folder writable again
-    BEFORE you change the date, click Check Online, or add a note.
-  - Known problem in this version: while saving keeps failing, changing the date,
-    Check Online or adding a note can make the app freeze. If it freezes, close
-    it with Task Manager, make the folder writable again, and reopen it. This is
-    planned to be fixed in the next version.
+app genuinely cannot save (hover over it to see why), and a "Retry Save" button.
+If you are asked to test this by making the data folder read-only:
+  - Make a change and check the chip text and the Retry Save button.
+  - Try changing the date, Check Online, and adding a note. Each should be
+    refused with an explanation. The app must NOT freeze, and Task Manager
+    should not show it using lots of CPU.
+  - Make the folder writable again and click Retry Save. The chip should say
+    the changes were saved, and your edits should still be there.
+  - Closing the app while the save is failing shows a warning the first time.
+    Closing a second time closes the app and your unsaved changes are lost.
+  - A save can occasionally take up to about five seconds if the data file is
+    busy; that is expected.
 
 
 16. If something goes wrong
