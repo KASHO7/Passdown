@@ -23,12 +23,14 @@ using Carowinds.Passdown.Application.Retrieval.Browser;
 using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Application.SpellCheck;
 using Carowinds.Passdown.Application.Time;
+using Carowinds.Passdown.Application.Updates;
 using Carowinds.Passdown.Desktop.Services;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
 using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Retrieval;
+using Carowinds.Passdown.Domain.Updates;
 using Carowinds.Passdown.Infrastructure;
 using Carowinds.Passdown.Infrastructure.Concurrency;
 using Carowinds.Passdown.Infrastructure.Diagnostics;
@@ -40,6 +42,8 @@ using Carowinds.Passdown.Infrastructure.Retrieval.Browser;
 using Carowinds.Passdown.Infrastructure.Retrieval.Http;
 using Carowinds.Passdown.Infrastructure.Retrieval.Sources;
 using Carowinds.Passdown.Infrastructure.SpellCheck;
+using Carowinds.Passdown.Infrastructure.Updates;
+using Carowinds.Passdown.Infrastructure.Updates.Installation;
 using Carowinds.Passdown.Infrastructure.Storage;
 using Carowinds.Passdown.Infrastructure.Storage.Migrations;
 using Carowinds.Passdown.Infrastructure.Storage.Repositories;
@@ -148,7 +152,14 @@ public partial class App : global::Avalonia.Application
             var syncCoordinator = services.GetRequiredService<IPersonalSyncCoordinator>();
             var refreshCoordinator = services.GetRequiredService<IOfficialDataRefreshCoordinator>();
             var historicalBackfill = services.GetRequiredService<IHistoricalBackfillService>();
-            AttachShutdownFlush(desktop, mainViewModel, syncCoordinator, refreshCoordinator, historicalBackfill, logger);
+            var updateCoordinator = services.GetRequiredService<IApplicationUpdateCoordinator>();
+            AttachShutdownFlush(desktop, mainViewModel, syncCoordinator, refreshCoordinator, historicalBackfill, logger, updateCoordinator);
+
+            // Phase 23D: Install Update saves through the same Phase 23A flush as closing the window, then closes
+            // through the normal shutdown path once the external updater is running.
+            var restartHost = services.GetRequiredService<DesktopUpdateRestartHost>();
+            restartHost.SaveWork = () => FlushPendingAutosaveBeforeShutdownAsync(mainViewModel, logger);
+            restartHost.Close = () => desktop.Shutdown();
 
             // Phase 15D: the closest available cross-platform proxy for "the shell became visible" —
             // Window.Opened fires once the platform has actually shown the window, well after
@@ -157,6 +168,10 @@ public partial class App : global::Avalonia.Application
             // investigating a slow launch can temporarily raise Logging:LogLevel:Default to see it.
             mainWindow.Opened += (_, _) => logger.LogDebug(
                 "Startup: MainWindow.Opened fired at {ElapsedMs:F1}ms since process start", ElapsedSinceProcessStartMs());
+
+            // Phase 23D: once the window is actually showing, confirm an in-app update's launch to the waiting
+            // updater and open What's New if (and only if) the update is recorded as a confirmed success.
+            mainWindow.Opened += (_, _) => StartPostUpdateLaunch(services, mainViewModel, updateCoordinator, logger);
 
             desktop.MainWindow = mainWindow;
             var mainWindowAssignedMs = ElapsedSinceProcessStartMs();
@@ -187,6 +202,11 @@ public partial class App : global::Avalonia.Application
             // work above to finish (today, the next days, month-ahead coverage) and yields to every other
             // refresh. Interactive only; the headless --scheduled-refresh host never starts it.
             historicalBackfill.Start();
+
+            // Phase 23D: update checks start 90 s after launch on a background task (never blocking the window,
+            // never sharing anything with official-data retrieval); nothing happens when updates are not set up.
+            updateCoordinator.Start();
+            StartUpdateCleanup(services, logger);
 
             StartTempPdfCleanup(logger);
         }
@@ -229,7 +249,7 @@ public partial class App : global::Avalonia.Application
     /// there is never a close-confirmation loop and the app can always be closed. Overlapping close
     /// requests while a flush is running are ignored rather than starting another flush.
     /// </summary>
-    private static void AttachShutdownFlush(IClassicDesktopStyleApplicationLifetime desktop, MainViewModel mainViewModel, IPersonalSyncCoordinator syncCoordinator, IOfficialDataRefreshCoordinator refreshCoordinator, IHistoricalBackfillService historicalBackfill, ILogger logger)
+    private static void AttachShutdownFlush(IClassicDesktopStyleApplicationLifetime desktop, MainViewModel mainViewModel, IPersonalSyncCoordinator syncCoordinator, IOfficialDataRefreshCoordinator refreshCoordinator, IHistoricalBackfillService historicalBackfill, ILogger logger, IApplicationUpdateCoordinator? updateCoordinator = null)
     {
         var flushed = false;
         var flushRunning = false;
@@ -291,7 +311,10 @@ public partial class App : global::Avalonia.Application
             // the remaining dates resume next start), within the same bound.
             try
             {
-                var stop = Task.WhenAll(refreshCoordinator.StopAsync(), historicalBackfill.StopAsync());
+                // Phase 23D: an update check or download in progress is cancelled too (a partial download is
+                // deleted by the next attempt; nothing installed is touched).
+                mainViewModel.Settings.Updates.CancelBackgroundWork();
+                var stop = Task.WhenAll(refreshCoordinator.StopAsync(), historicalBackfill.StopAsync(), updateCoordinator?.StopAsync() ?? Task.CompletedTask);
                 await Task.WhenAny(stop, Task.Delay(RefreshStopTimeout)).ConfigureAwait(true);
             }
             catch (Exception ex)
@@ -381,6 +404,44 @@ public partial class App : global::Avalonia.Application
         TaskScheduler.UnobservedTaskException += (_, e) =>
             logger.LogError(e.Exception, "Unobserved task exception.");
     }
+
+    /// <summary>
+    /// Phase 23D: confirms a just-installed update and decides whether What's New opens. Runs in the background;
+    /// the dialog is opened on the UI thread. Never throws.
+    /// </summary>
+    private static void StartPostUpdateLaunch(IServiceProvider services, MainViewModel mainViewModel, IApplicationUpdateCoordinator coordinator, ILogger logger) =>
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var postUpdate = services.GetRequiredService<PostUpdateLaunch>();
+                var outcome = await postUpdate.ConfirmAsync().ConfigureAwait(false);
+                if (postUpdate.ShouldShowWhatsNew(outcome, coordinator.LastAcknowledgedReleaseNotesVersion))
+                {
+                    logger.LogInformation("Showing What's New after a successful update.");
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() => mainViewModel.WhatsNew.OpenCurrent(mainViewModel.Settings.Updates.InstalledVersionText));
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning("Post-update startup check failed ({ExceptionType}).", ex.GetType().Name);
+            }
+        });
+
+    /// <summary>Phase 23D: removes obsolete update downloads/staged versions and old install records. Best-effort, off the UI thread.</summary>
+    private static void StartUpdateCleanup(IServiceProvider services, ILogger logger) =>
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                services.GetRequiredService<IUpdatePackageStager>().CleanObsolete();
+                services.GetRequiredService<UpdateInstallRecordStore>().Prune();
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug("Update cleanup skipped ({ExceptionType}).", ex.GetType().Name);
+            }
+        });
 
     /// <summary>
     /// Phase 18B PRIV-002: removes "Open Final PDF" temp copies left by earlier sessions (older than
@@ -669,6 +730,8 @@ public partial class App : global::Avalonia.Application
         services.AddTransient<PersonalSyncSettingsViewModel>();
         services.AddTransient<PriceHistoryViewModel>();
 
+        AddApplicationUpdates(services, configuration);
+
         // Phase 20A: local/offline spell checking (Windows' own spell checker on Windows; none
         // elsewhere). The backend creates its COM objects lazily, on first use, never at startup.
         services.AddSingleton<ISpellingBackend>(_ => SpellingBackendFactory.Create());
@@ -681,6 +744,90 @@ public partial class App : global::Avalonia.Application
         services.AddTransient<MainViewModel>();
 
         return services.BuildServiceProvider();
+    }
+
+    /// <summary>
+    /// Phase 23D: application updates from GitHub Releases (docs/phase23d-github-updater.md). The release source
+    /// (repository), channel and trusted public keys come from appsettings.json "Updates"; with no trusted key the
+    /// coordinator never contacts GitHub and Settings says "Manual update required". The updater has its own
+    /// HttpClient (no automatic redirects) — nothing is shared with official-data retrieval. Every singleton here
+    /// is lazy: the headless --scheduled-refresh host resolves none of them.
+    /// </summary>
+    private static void AddApplicationUpdates(IServiceCollection services, IConfiguration configuration)
+    {
+        var section = configuration.GetSection("Updates");
+        var updateConfiguration = UpdateConfigurationParser.Parse(
+            section["Repository"],
+            section["Channel"],
+            section.GetSection("TrustedSigningKeys").GetChildren().Select(key => (key["KeyId"], key["PublicKey"])));
+        var build = BuildIdentity.FromAssembly(typeof(App).Assembly, Environment.ProcessPath);
+        var installedVersion = SemanticVersion.TryParse(build.Version, out var parsedVersion) ? parsedVersion : null;
+        var configured = updateConfiguration.IsConfigured && installedVersion is not null;
+
+        services.AddSingleton(updateConfiguration);
+        services.AddSingleton(UpdatePaths.Default);
+        services.AddSingleton<IUpdateManifestVerifier>(_ => new EcdsaUpdateManifestVerifier(updateConfiguration.TrustedKeys));
+        services.AddSingleton<IUpdateReleaseSource>(provider => updateConfiguration.Repository is { } repository
+            ? new GitHubReleaseSource(GitHubReleaseSource.CreateHttpClient(), repository, build.Version, logger: provider.GetRequiredService<ILogger<GitHubReleaseSource>>())
+            : new UnconfiguredReleaseSource());
+        services.AddSingleton(provider => new UpdateDiscoveryService(
+            provider.GetRequiredService<IUpdateReleaseSource>(),
+            provider.GetRequiredService<IUpdateManifestVerifier>(),
+            updateConfiguration,
+            provider.GetRequiredService<ILogger<UpdateDiscoveryService>>()));
+        services.AddSingleton<IUpdateStateStore>(provider => new FileUpdateStateStore(
+            FileUpdateStateStore.DefaultPath, provider.GetRequiredService<ILogger<FileUpdateStateStore>>()));
+        services.AddSingleton<IApplicationUpdateCoordinator>(provider => new ApplicationUpdateCoordinator(
+            provider.GetRequiredService<UpdateDiscoveryService>(),
+            provider.GetRequiredService<IUpdateStateStore>(),
+            provider.GetRequiredService<IClock>(),
+            installedVersion ?? SemanticVersion.Parse("0.0.0"),
+            configured,
+            logger: provider.GetRequiredService<ILogger<ApplicationUpdateCoordinator>>()));
+        services.AddSingleton<IUpdatePackageStager>(provider => new UpdatePackageStager(
+            provider.GetRequiredService<IUpdateReleaseSource>(),
+            provider.GetRequiredService<UpdatePaths>(),
+            logger: provider.GetRequiredService<ILogger<UpdatePackageStager>>()));
+        services.AddSingleton<IInstallationInspector>(_ => new InstallationInspector());
+        services.AddSingleton<IUpdateInstallLauncher>(provider => new UpdaterProcessLauncher(
+            provider.GetRequiredService<UpdatePaths>(),
+            logger: provider.GetRequiredService<ILogger<UpdaterProcessLauncher>>()));
+        services.AddSingleton<UpdateInstallRecordStore>(provider => new UpdateInstallRecordStore(provider.GetRequiredService<UpdatePaths>()));
+        services.AddSingleton<IUpdateOutcomeStore>(provider => provider.GetRequiredService<UpdateInstallRecordStore>());
+        services.AddSingleton<IBundledReleaseNotesSource, EmbeddedReleaseNotesSource>();
+        services.AddSingleton<DesktopUpdateRestartHost>();
+        services.AddSingleton<IUpdateRestartHost>(provider => provider.GetRequiredService<DesktopUpdateRestartHost>());
+        services.AddSingleton(provider => new WhatsNewViewModel(
+            provider.GetRequiredService<IBundledReleaseNotesSource>(),
+            provider.GetRequiredService<IApplicationUpdateCoordinator>()));
+        services.AddSingleton(provider => new ApplicationUpdatesViewModel(
+            provider.GetRequiredService<IApplicationUpdateCoordinator>(),
+            provider.GetRequiredService<IUpdatePackageStager>(),
+            provider.GetRequiredService<IInstallationInspector>(),
+            provider.GetRequiredService<IUpdateInstallLauncher>(),
+            provider.GetRequiredService<IUpdateRestartHost>(),
+            provider.GetRequiredService<IUpdateOutcomeStore>(),
+            provider.GetRequiredService<WhatsNewViewModel>(),
+            provider.GetRequiredService<IUiDispatcher>(),
+            build.Version,
+            provider.GetRequiredService<ILogger<ApplicationUpdatesViewModel>>()));
+        services.AddSingleton(provider => new PostUpdateLaunch(
+            provider.GetRequiredService<IUpdateOutcomeStore>(),
+            installedVersion ?? SemanticVersion.Parse("0.0.0"),
+            logger: provider.GetRequiredService<ILogger<PostUpdateLaunch>>()));
+    }
+
+    /// <summary>Phase 23D: stands in when no repository is configured; never contacts anything.</summary>
+    private sealed class UnconfiguredReleaseSource : IUpdateReleaseSource
+    {
+        public Task<IReadOnlyList<ReleaseCandidate>> ListReleasesAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ReleaseCandidate>>([]);
+
+        public Task<byte[]> DownloadSmallAssetAsync(ReleaseCandidate release, string assetName, int maximumBytes, CancellationToken cancellationToken = default) =>
+            throw new UpdateSourceException(UpdateSourceFailureKind.InvalidResponse, "No release source is configured.");
+
+        public Task DownloadPackageAsync(ReleaseCandidate release, string assetName, Stream destination, long expectedBytes, IProgress<long>? progress, CancellationToken cancellationToken = default) =>
+            throw new UpdateSourceException(UpdateSourceFailureKind.InvalidResponse, "No release source is configured.");
     }
 
     /// <summary>

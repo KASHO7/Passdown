@@ -1,6 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
+             xmlns:updates="using:Carowinds.Passdown.Application.Updates"
+             xmlns:converters="using:Carowinds.Passdown.Desktop.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="860"
@@ -9,7 +11,7 @@
 
   <!-- Phase 16B: the configuration surface for the local sync foundation (§4/§14); 16C–16F added Sync
        Now, automatic-sync status and conflict review; Phase 22F organized the page into Appearance, Data
-       Refresh, Personal Sync, Diagnostics and About. Shared typography, surface, button and status styles
+       Refresh, Personal Sync, Diagnostics and About; Phase 23D added Application Updates before About. Shared typography, surface, button and status styles
        come from Themes/PassdownStyles.axaml (Phase 22A); only this screen's own deltas live below. -->
   <UserControl.Styles>
     <Style Selector="Border.conflictRow">
@@ -303,12 +305,114 @@
           </StackPanel>
         </Border>
 
-        <!-- 5. About. Phase 18D: identifies the exact running build (docs/support-troubleshooting.md
+        <!-- 5. Application Updates (Phase 23D). Approved updates come from GitHub Releases, verified against the
+             signing key bundled in this build. Nothing downloads or installs without a button press; Restart and
+             Install saves the Passdown draft first (Phase 23A) and never closes the app if that save fails. In a
+             build without a trusted signing key this says "Manual update required" and never contacts GitHub. -->
+        <TextBlock Text="Application Updates" Classes="sectionTitle" Margin="0,12,0,0" />
+        <Border x:Name="ApplicationUpdatesSection" Classes="panel" AutomationProperties.Name="Application Updates">
+          <StackPanel Spacing="10">
+            <Grid Classes="settingsRows" ColumnDefinitions="140,*" RowDefinitions="Auto,Auto">
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="Installed version" Classes="fieldLabel" />
+              <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Updates.InstalledVersionText}" FontWeight="Medium"
+                         AutomationProperties.Name="{Binding Updates.InstalledVersionText, StringFormat='Installed version: {0}'}" />
+              <TextBlock Grid.Row="1" Grid.Column="0" Text="Status" Classes="fieldLabel" />
+              <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
+                <TextBlock x:Name="UpdateStatusTitle" Text="{Binding Updates.StatusTitle}" FontWeight="SemiBold" TextWrapping="Wrap"
+                           AutomationProperties.LiveSetting="Polite" />
+                <TextBlock Text="{Binding Updates.StatusDetail}" Classes="muted" TextWrapping="Wrap"
+                           IsVisible="{Binding Updates.StatusDetail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <TextBlock Text="{Binding Updates.LastCheckedText}" Classes="muted"
+                           IsVisible="{Binding !Updates.IsManualUpdateRequired}" />
+              </StackPanel>
+            </Grid>
+
+            <!-- Update available / downloading / ready: the signed release's own details and notes. -->
+            <Border x:Name="UpdateOfferPanel" Classes="inset"
+                    IsVisible="{Binding Updates.AvailableVersionText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                    AutomationProperties.Name="Available update">
+              <StackPanel Spacing="6">
+                <TextBlock Text="{Binding Updates.ReleaseTitle}" Classes="subsectionTitle" TextWrapping="Wrap" />
+                <WrapPanel Orientation="Horizontal">
+                  <TextBlock Text="{Binding Updates.ReleasedText}" Classes="muted" Margin="0,0,16,0"
+                             IsVisible="{Binding Updates.ReleasedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  <TextBlock Text="{Binding Updates.DownloadSizeText}" Classes="muted" />
+                </WrapPanel>
+                <!-- No nested ScrollViewer: the Settings page is the one scroll region (Phase 22F). Notes are bounded
+                     (ReleaseNotesDocument limits) and scroll with the page. -->
+                <ItemsControl ItemsSource="{Binding Updates.ReleaseNotesBlocks}"
+                              AutomationProperties.Name="Release notes for the available update">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="updates:ReleaseNotesBlock">
+                        <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                          <TextBlock Grid.Column="0" Text="•" Margin="4,0,8,0" IsVisible="{Binding IsBullet}" />
+                          <TextBlock Grid.Column="1" Text="{Binding Text}" TextWrapping="Wrap"
+                                     FontWeight="{Binding IsHeading, Converter={x:Static converters:ReleaseNotesConverters.HeadingWeight}}" />
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+
+            <TextBlock x:Name="UpdateReadinessText" Classes="fieldWarning" TextWrapping="Wrap"
+                       Text="{Binding Updates.ReadinessText}"
+                       IsVisible="{Binding Updates.ReadinessText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+            <!-- Downloading: progress announced politely to screen readers through the text below the bar. -->
+            <StackPanel Spacing="4" IsVisible="{Binding Updates.IsDownloading}">
+              <ProgressBar Minimum="0" Maximum="100" Value="{Binding Updates.DownloadPercent}" Height="6"
+                           AutomationProperties.Name="Update download progress" />
+              <TextBlock Text="{Binding Updates.ProgressText}" Classes="muted" TextWrapping="Wrap"
+                         AutomationProperties.LiveSetting="Polite" />
+            </StackPanel>
+
+            <TextBlock Text="{Binding Updates.ErrorText}" Classes="statusError" TextWrapping="Wrap"
+                       IsVisible="{Binding Updates.ErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       AutomationProperties.LiveSetting="Assertive" />
+            <TextBlock Text="{Binding Updates.InfoText}" Classes="muted" TextWrapping="Wrap"
+                       IsVisible="{Binding Updates.InfoText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       AutomationProperties.LiveSetting="Polite" />
+            <TextBlock Text="{Binding Updates.PreviousAttemptText}" Classes="fieldWarning" TextWrapping="Wrap"
+                       IsVisible="{Binding Updates.PreviousAttemptText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+            <WrapPanel Orientation="Horizontal">
+              <Button Content="Check for Updates" Classes="secondaryAction" Margin="0,0,10,4"
+                      Command="{Binding Updates.CheckForUpdatesCommand}"
+                      IsVisible="{Binding Updates.ShowCheckButton}"
+                      AutomationProperties.Name="Check for Updates" />
+              <Button Content="Install Update" Classes="primaryAction" Margin="0,0,10,4"
+                      Command="{Binding Updates.InstallUpdateCommand}"
+                      IsVisible="{Binding Updates.IsUpdateAvailable}"
+                      AutomationProperties.Name="Install Update"
+                      AutomationProperties.HelpText="Downloads and verifies the update. Nothing is installed until you choose Restart and Install." />
+              <Button Content="Remind Me Later" Classes="textAction" Margin="0,0,10,4"
+                      Command="{Binding Updates.RemindMeLaterCommand}"
+                      IsVisible="{Binding Updates.IsUpdateAvailable}"
+                      AutomationProperties.Name="Remind Me Later" />
+              <Button Content="Cancel Download" Classes="secondaryAction" Margin="0,0,10,4"
+                      Command="{Binding Updates.CancelDownloadCommand}"
+                      IsVisible="{Binding Updates.IsDownloading}"
+                      AutomationProperties.Name="Cancel Download" />
+              <Button Content="Restart and Install" Classes="primaryAction" Margin="0,0,10,4"
+                      Command="{Binding Updates.RestartAndInstallCommand}"
+                      IsVisible="{Binding Updates.IsReadyToInstall}"
+                      AutomationProperties.Name="Restart and Install"
+                      AutomationProperties.HelpText="Saves your work, closes Carowinds Operations, installs the update and opens the app again." />
+              <Button Content="Not Now" Classes="textAction" Margin="0,0,10,4"
+                      Command="{Binding Updates.NotNowCommand}"
+                      IsVisible="{Binding Updates.IsReadyToInstall}"
+                      AutomationProperties.Name="Not now, install later" />
+            </WrapPanel>
+          </StackPanel>
+        </Border>
+
+        <!-- 6. About. Phase 18D: identifies the exact running build (docs/support-troubleshooting.md
              "Which copy is running?") — compare the folder with the current release folder to spot a
              stale copy. The device ID (Phase 16B) moved here from its own section. -->
         <TextBlock Text="About this build" Classes="sectionTitle" Margin="0,12,0,0" />
         <Border x:Name="AboutSection" Classes="panel" AutomationProperties.Name="About this build">
-          <Grid Classes="settingsRows" ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+          <Grid Classes="settingsRows" ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
             <TextBlock Grid.Row="0" Grid.Column="0" Text="App" Classes="fieldLabel" />
             <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding BuildProductName}" FontWeight="Medium"
                        AutomationProperties.Name="{Binding BuildProductName, StringFormat='App: {0}'}" />
@@ -326,6 +430,11 @@
                                  AutomationProperties.Name="{Binding DeviceId, StringFormat='Device ID: {0}'}" />
             <TextBlock Grid.Row="5" Grid.Column="1" Classes="muted" TextWrapping="Wrap"
                        Text="Used only to tell your own computers' changes apart during Personal Sync. Never shown to anyone else and never based on your name, email, or computer." />
+            <!-- Phase 23D: the running version's release notes, bundled in the app (works offline). -->
+            <TextBlock Grid.Row="6" Grid.Column="0" Text="Release notes" Classes="fieldLabel" />
+            <Button x:Name="WhatsNewButton" Grid.Row="6" Grid.Column="1" Content="What's New" Classes="secondaryAction"
+                    HorizontalAlignment="Left" Command="{Binding Updates.ShowWhatsNewCommand}"
+                    AutomationProperties.Name="What's New in this version" />
           </Grid>
         </Border>
 

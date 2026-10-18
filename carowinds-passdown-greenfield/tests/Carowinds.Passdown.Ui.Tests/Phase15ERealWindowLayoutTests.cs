@@ -2031,4 +2031,76 @@ public class Phase15ERealWindowLayoutTests
         Assert.Empty(WrongThemeBrushes(theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light, window));
         window.Close();
     }
+
+    // ==================================================================================
+    // Phase 23D — Application Updates and What's New in System / Light / Dark. Uses the Phase 23C harness
+    // (application-wide theme), so it lives in this run-alone class; the stored appearance is never changed.
+    // ==================================================================================
+
+    [Theory]
+    [InlineData("System-Light")]
+    [InlineData("System-Dark")]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public void Updates_SettingsPanelAndWhatsNew_FollowEveryAppearance_WithoutClipping_AndNeverChangeTheTheme(string mode)
+    {
+        var (stored, os, shown) = mode switch
+        {
+            "System-Light" => (Application.Preferences.AppearancePreference.System, Application.Preferences.EffectiveAppearance.Light, ThemeVariant.Light),
+            "System-Dark" => (Application.Preferences.AppearancePreference.System, Application.Preferences.EffectiveAppearance.Dark, ThemeVariant.Dark),
+            "Light" => (Application.Preferences.AppearancePreference.Light, Application.Preferences.EffectiveAppearance.Dark, ThemeVariant.Light),
+            _ => (Application.Preferences.AppearancePreference.Dark, Application.Preferences.EffectiveAppearance.Light, ThemeVariant.Dark),
+        };
+        using var harness = new AppearanceHarness(stored, os);
+
+        var coordinator = new FakeApplicationUpdateCoordinator();
+        var notes = new UpdateNotesSource(new Application.Updates.ReleaseNotesContent("0.1.0-rc.7", "Redesigned look", new DateOnly(2026, 10, 17),
+            Application.Updates.ReleaseNotesDocument.Parse("## Highlights\n- A refreshed light and dark design.\n- Settings is one organized page.")));
+        var whatsNew = new WhatsNewViewModel(notes, coordinator);
+        var updates = new ApplicationUpdatesViewModel(coordinator, whatsNew: whatsNew, dispatcher: new ImmediateUiDispatcher(), installedVersion: "0.1.0-rc.7");
+        var baseline = CreateAppearanceMainViewModel(harness.Controller);
+        var settings = new PersonalSyncSettingsViewModel(new FakePersonalSyncSettingsService(), new FakeSyncFolderPicker(), new FakePersonalSyncConflictResolutionService(), new FakePersonalSyncCoordinator(),
+            appearance: new AppearanceSettingsViewModel(harness.Controller), updates: updates);
+        var viewModel = new MainViewModel(baseline.Dashboard, baseline.Calendar, baseline.Associate, baseline.Notes, baseline.History, settings, baseline.PriceHistory);
+        var window = ShowMainWindow(viewModel, 960, 640);
+
+        coordinator.Publish(new Application.Updates.UpdateAvailabilitySnapshot(Application.Updates.UpdateAvailabilityStatus.UpdateAvailable,
+            FakeApplicationUpdateCoordinator.Offer(), DateTimeOffset.UnixEpoch, null, null, false));
+        viewModel.SelectedSection = AppSection.Settings;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(shown, window.ActualThemeVariant);
+        var panel = window.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "ApplicationUpdatesSection");
+        Assert.True(panel.IsEffectivelyVisible);
+        var dot = window.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Ellipse>().Single(e => e.Name == "UpdateIndicatorDot");
+        Assert.True(dot.IsEffectivelyVisible);
+        var scroll = window.GetVisualDescendants().OfType<ScrollViewer>().Single(s => s.Name == "SettingsScroll");
+        Assert.True(scroll.Extent.Width <= scroll.Viewport.Width + 1, $"horizontal overflow {scroll.Extent.Width - scroll.Viewport.Width:F0}px");
+        AssertNoControlClipsHorizontally(window);
+        Assert.Empty(WrongThemeBrushes(shown, window));
+
+        updates.ShowWhatsNewCommand.Execute(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var card = window.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "WhatsNewCard");
+        Assert.True(card.IsEffectivelyVisible);
+        Assert.Empty(WrongThemeBrushes(shown, window));
+        var continueButton = window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "WhatsNewContinue");
+        Assert.True(continueButton.IsEffectivelyVisible && continueButton.Bounds.Width > 0);
+
+        whatsNew.CloseCommand.Execute(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.False(card.IsEffectivelyVisible);
+        Assert.Equal("0.1.0-rc.7", coordinator.LastAcknowledgedReleaseNotesVersion);
+
+        // Updates never touch the appearance preference.
+        Assert.Equal(stored, harness.Store.Stored);
+        Assert.Empty(harness.Store.Saves);
+        Assert.Equal(shown, window.ActualThemeVariant);
+        window.Close();
+    }
+
+    private sealed class UpdateNotesSource(Application.Updates.ReleaseNotesContent content) : Application.Updates.IBundledReleaseNotesSource
+    {
+        public Application.Updates.ReleaseNotesContent? LoadCurrent() => content;
+    }
 }

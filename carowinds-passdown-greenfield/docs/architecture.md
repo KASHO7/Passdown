@@ -1273,3 +1273,47 @@ See `docs/phase23c-appearance-preferences.md`.
   in `Ui.Tests/TestSupport/FakeAppearance.cs`.
 
 Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.
+
+## Phase 23D — GitHub Releases updater & post-update What's New
+
+See `docs/phase23d-github-updater.md`. Unreleased; intended for RC.8.
+
+- **Domain** — `Updates/SemanticVersion` (SemVer 2.0 parsing and precedence) and `Updates/UpdateChannel` +
+  `UpdateChannelPolicy` (Release Candidate accepts `rc.N` and stable; Stable accepts stable only; never
+  downgrade or reinstall). Pure; no I/O.
+- **Application** — `Updates/`: `IUpdateReleaseSource` is the provider boundary (list / small download /
+  package download; GitHub today, SharePoint possible later). `UpdateDiscoveryService` applies the approval
+  rules (non-draft, exact `v<semver>` tag, exact asset names, verified signature, manifest bound to tag,
+  package and channel). `ApplicationUpdateCoordinator` owns check timing (90 s after start, every 6 h,
+  coalesced manual checks, persisted back-off/rate limit), Remind Me Later and acknowledged release notes
+  through `IUpdateStateStore`. Abstractions for staging (`IUpdatePackageStager`), readiness
+  (`IInstallationInspector`), launching the updater (`IUpdateInstallLauncher`) and install outcomes
+  (`IUpdateOutcomeStore`). `ReleaseNotesDocument` (safe Markdown subset → plain blocks),
+  `BundledReleaseNotesParser`, `WhatsNewPolicy`, `PostUpdateLaunch`.
+- **Infrastructure** — `Updates/`: `GitHubReleaseSource` (public REST API, no credentials, ETag, constructed
+  download URLs, manual HTTPS redirect allow-list, size caps), `EcdsaUpdateManifestVerifier` (P-256/SHA-256,
+  keys from configuration), `UpdateManifestJson` (strict format v1 reader/writer), `SafeZipExtractor`,
+  `UpdatePackageStager`, `InstallationInspector` (real write probe), `FileUpdateStateStore`
+  (`updates.json`, local only), `UpdatePaths` (`%LOCALAPPDATA%\Carowinds Operations Updates`, a sibling of
+  the data folder). `Updates/Installation/`: request/record JSON contracts, `UpdateInstaller` (wait →
+  re-verify → in-use/permission/space checks → incoming copy → journaled swap with backup → launch →
+  confirmation → success or rollback/recovery), `IUpdaterEnvironment` (+ `SystemUpdaterEnvironment`),
+  `UpdaterProcessLauncher`, `UpdateInstallRecordStore`.
+- **Updater** (new) — `src/Carowinds.Passdown.Updater`: windowless entry point (`--request <path>` only),
+  `asInvoker` manifest, references Infrastructure. Published by `Publish-Windows.ps1` into the release
+  folder (only its own `Carowinds.Passdown.Updater.*` files); always run from the staged new version.
+- **Desktop** — `ApplicationUpdatesViewModel` (`PersonalSyncSettingsViewModel.Updates`; optional, defaults
+  to Manual update required), `WhatsNewViewModel` + `Views/WhatsNewView` overlay (`MainViewModel.WhatsNew`),
+  `Presentation/ApplicationUpdatePresentation` (all wording), `Services/UpdateRestartHost`
+  (`DesktopUpdateRestartHost` wires the Phase 23A flush and `desktop.Shutdown()`;
+  `EmbeddedReleaseNotesSource`), `ReleaseNotes/release-notes.md` (embedded). `App` registers everything in
+  `AddApplicationUpdates` from `appsettings.json` "Updates"; starts the coordinator after the window,
+  confirms a post-update launch on `MainWindow.Opened`, cleans obsolete update folders, and stops checks /
+  cancels downloads on shutdown. Settings gains "Application Updates" (before About) and About →
+  "What's New"; the gear gets a decorative update dot.
+- **tools/update-signing** (new, in the slnx, never shipped) — key generation, manifest creation, signing
+  and verification, sharing the app's manifest reader and verifier.
+- Documents — unchanged.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration. Update state and
+packages are outside the SQLite data and never synced.

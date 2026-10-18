@@ -9,6 +9,10 @@
     "Carowinds.Passdown.Application.dll",
     "Carowinds.Passdown.Infrastructure.dll",
     "Carowinds.Passdown.Documents.dll",
+    "Carowinds.Passdown.Updater.exe",
+    "Carowinds.Passdown.Updater.dll",
+    "Carowinds.Passdown.Updater.runtimeconfig.json",
+    "Carowinds.Passdown.Updater.deps.json",
     "hostfxr.dll",
     "hostpolicy.dll",
     "coreclr.dll",
@@ -63,7 +67,7 @@
     "*.log",
     "*.zip",
     "*.pdf",
-    "sync-config.json", "device-id.txt", "associate-passdown-template.json", "manifest.json", "*.tmp-*", ".sync-probe-*",
+    "sync-config.json", "device-id.txt", "associate-passdown-template.json", "appearance.json", "updates.json", "manifest.json", "*.update.json", "*.update.json.sig", "*.partial", "UPDATE-RECOVERY.txt", "installed-files.json", "*.tmp-*", ".sync-probe-*",
     "gs*.dll", "gswin*.exe", "gsdll*", "*.ps", "*.eps",
     ".DS_Store", "._*", "Thumbs.db", "desktop.ini",
     "*.so", "*.so.*", "*.dylib", "*.a",
@@ -72,7 +76,7 @@
   ],
   "forbiddenDirectoryNames": [
     ".git", ".claude", ".vs", ".idea", "obj", "bin", "src", "tests", "docs", "artifacts",
-    "logs", "fixtures", "testdata", "Carowinds Operations Sync", "Carowinds Passdown", "__MACOSX"
+    "logs", "fixtures", "testdata", ".carowinds-update", "Carowinds Operations Updates", "Carowinds Operations Sync", "Carowinds Passdown", "__MACOSX"
   ],
   "forbiddenRuntimeIdentifierPrefixes": [
     "osx", "linux", "unix", "maccatalyst", "ios", "tvos", "android", "freebsd", "illumos", "solaris", "browser", "wasi", "win-arm", "win-x86"

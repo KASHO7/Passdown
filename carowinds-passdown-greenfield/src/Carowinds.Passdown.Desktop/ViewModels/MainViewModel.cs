@@ -37,6 +37,12 @@ public enum AppSection
 public partial class MainViewModel : ViewModelBase
 {
     public MainViewModel(OperationsDashboardViewModel dashboard, OperationsCalendarViewModel calendar, AssociateViewModel associate, OperationalNotesViewModel notes, PassdownHistoryViewModel history, PersonalSyncSettingsViewModel settings, PriceHistoryViewModel? priceHistory = null)
+        : this(dashboard, calendar, associate, notes, history, settings, priceHistory, whatsNew: null)
+    {
+    }
+
+    /// <summary>Phase 23D: <paramref name="whatsNew"/> is the What's New overlay (defaults to the Settings updates panel's own).</summary>
+    public MainViewModel(OperationsDashboardViewModel dashboard, OperationsCalendarViewModel calendar, AssociateViewModel associate, OperationalNotesViewModel notes, PassdownHistoryViewModel history, PersonalSyncSettingsViewModel settings, PriceHistoryViewModel? priceHistory, WhatsNewViewModel? whatsNew)
     {
         ArgumentNullException.ThrowIfNull(dashboard);
         ArgumentNullException.ThrowIfNull(calendar);
@@ -52,6 +58,24 @@ public partial class MainViewModel : ViewModelBase
         History = history;
         Settings = settings;
         PriceHistory = priceHistory;
+        WhatsNew = whatsNew ?? settings.Updates.WhatsNew;
+
+        // Phase 23D: the What's New overlay and the subtle Settings-gear update indicator.
+        WhatsNew.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(WhatsNewViewModel.IsOpen))
+            {
+                OnPropertyChanged(nameof(IsWhatsNewOpen));
+            }
+        };
+        Settings.Updates.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ApplicationUpdatesViewModel.HasUpdateNotification))
+            {
+                OnPropertyChanged(nameof(HasUpdateNotification));
+                OnPropertyChanged(nameof(SettingsNavigationHelpText));
+            }
+        };
 
         // Phase 20A: Associate → Products asks for the Season Price History screen; it opens as an
         // overlay on top of whatever section is showing, so no Associate state is touched.
@@ -179,6 +203,17 @@ public partial class MainViewModel : ViewModelBase
     public PriceHistoryViewModel? PriceHistory { get; }
 
     public bool IsPriceHistoryOpen => PriceHistory?.IsOpen == true;
+
+    /// <summary>Phase 23D: "What's New in Carowinds Operations" — after a confirmed update, or from Settings → About this build.</summary>
+    public WhatsNewViewModel WhatsNew { get; }
+
+    public bool IsWhatsNewOpen => WhatsNew.IsOpen;
+
+    /// <summary>Phase 23D: an approved update is available and was not snoozed — a small dot on the Settings gear, never a popup.</summary>
+    public bool HasUpdateNotification => Settings.Updates.HasUpdateNotification;
+
+    /// <summary>The gear's help text, so Narrator announces the indicator too (its name stays "Settings").</summary>
+    public string? SettingsNavigationHelpText => HasUpdateNotification ? "Update available" : null;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDashboardSectionSelected))]

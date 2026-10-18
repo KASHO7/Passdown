@@ -83,9 +83,18 @@
                 <Button x:Name="SettingsNavigationItem" Grid.Column="1" VerticalAlignment="Top"
                         Classes="appSectionItem iconItem" Classes.active="{Binding IsSettingsSectionSelected}"
                         Command="{Binding ShowSettingsSectionCommand}"
-                        AutomationProperties.Name="Settings" ToolTip.Tip="Settings">
+                        AutomationProperties.Name="Settings" ToolTip.Tip="Settings"
+                        AutomationProperties.HelpText="{Binding SettingsNavigationHelpText}">
                     <PathIcon Data="{StaticResource PassdownSettingsIconGeometry}" AutomationProperties.AccessibilityView="Raw" />
                 </Button>
+                <!-- Phase 23D: a small accent dot over the gear when an approved update is waiting (and not snoozed) —
+                     the only update notice outside Settings; never a popup. Decorative: the gear's help text says
+                     "Update available" for Narrator, so the dot is hidden from assistive technology and hit testing. -->
+                <Ellipse x:Name="UpdateIndicatorDot" Grid.Column="1" Width="8" Height="8"
+                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0"
+                         Fill="{DynamicResource PassdownAccentBrush}"
+                         IsVisible="{Binding HasUpdateNotification}" IsHitTestVisible="False"
+                         AutomationProperties.AccessibilityView="Raw" />
             </Grid>
         </Border>
 
@@ -125,6 +134,11 @@
          with no Associate state touched. -->
     <Border IsVisible="{Binding IsPriceHistoryOpen}" Background="{DynamicResource PassdownOverlayScrimBrush}">
         <views:PriceHistoryView DataContext="{Binding PriceHistory}" />
+    </Border>
+
+    <!-- Phase 23D: What's New — opened once after a confirmed in-app update, or from Settings → About this build. -->
+    <Border IsVisible="{Binding IsWhatsNewOpen}" Background="{DynamicResource PassdownOverlayScrimBrush}">
+        <views:WhatsNewView DataContext="{Binding WhatsNew}" />
     </Border>
     </Grid>
 

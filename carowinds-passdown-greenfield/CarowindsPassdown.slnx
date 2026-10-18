@@ -5,6 +5,7 @@
     <Project Path="src/Carowinds.Passdown.Documents/Carowinds.Passdown.Documents.csproj" />
     <Project Path="src/Carowinds.Passdown.Domain/Carowinds.Passdown.Domain.csproj" />
     <Project Path="src/Carowinds.Passdown.Infrastructure/Carowinds.Passdown.Infrastructure.csproj" />
+    <Project Path="src/Carowinds.Passdown.Updater/Carowinds.Passdown.Updater.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Carowinds.Passdown.Application.Tests/Carowinds.Passdown.Application.Tests.csproj" />
@@ -12,5 +13,8 @@
     <Project Path="tests/Carowinds.Passdown.Domain.Tests/Carowinds.Passdown.Domain.Tests.csproj" />
     <Project Path="tests/Carowinds.Passdown.Infrastructure.Tests/Carowinds.Passdown.Infrastructure.Tests.csproj" />
     <Project Path="tests/Carowinds.Passdown.Ui.Tests/Carowinds.Passdown.Ui.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/update-signing/Carowinds.Passdown.UpdateSigning.csproj" />
   </Folder>
 </Solution>

@@ -72,6 +72,12 @@
     <EmbeddedResource Include="appsettings.json" />
   </ItemGroup>
 
+  <!-- Phase 23D: this build's own release notes (What's New), embedded so they are available offline and
+       always match the running version (guarded by Phase23DReleaseNotesTests). -->
+  <ItemGroup>
+    <EmbeddedResource Include="ReleaseNotes\release-notes.md" LogicalName="Carowinds.Passdown.Desktop.ReleaseNotes.release-notes.md" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.1" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />

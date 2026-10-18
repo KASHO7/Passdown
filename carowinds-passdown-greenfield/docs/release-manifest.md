@@ -2028,6 +2028,31 @@ packaged here).
 | Windows validation | NOT EXECUTED — checklist in `docs/phase23c-appearance-preferences.md` §16 |
 | Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
 
+# Unreleased development — Phase 23D (after RC.7, after Phases 23A–23C)
+
+GitHub Releases updater and post-update What's New. Settings → **Application Updates** checks the
+configured repository (`KASHO7/Passdown`, from the git remote) for approved releases — signed with an
+offline ECDSA P-256 key whose public half is bundled in the app — and, only after **Install Update** and
+**Restart and Install**, downloads, verifies (signature, ZIP SHA-256, every file's SHA-256), stages and
+installs through the new external `Carowinds.Passdown.Updater.exe` with journaled rollback. A failed draft
+save postpones the update (Phase 23A). What's New opens once after a confirmed successful update and is
+always available from Settings → About this build. See `docs/phase23d-github-updater.md`.
+**This build trusts no signing key yet, so installation is disabled (Manual update required)** until the
+owner provisions one before packaging RC.8. RC.6/RC.7 artifacts and hashes are unchanged;
+`Directory.Build.props` still says `0.1.0-rc.7`. Next packaged candidate: **`0.1.0-rc.8`** (not packaged).
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| New release content | `Carowinds.Passdown.Updater.exe/.dll/.runtimeconfig.json/.deps.json` (required by `release-content-rules.json`); new release assets per version: `…-win-x64.update.json` + `.sig` beside the ZIP |
+| New local files | `%LOCALAPPDATA%\Carowinds Passdown\updates.json` (local only); `%LOCALAPPDATA%\Carowinds Operations Updates\` (downloads, staging, requests, records); `.carowinds-update\` inside the app folder only during an install |
+| Upgrade implications | RC.7 → RC.8 must be a manual ZIP install (RC.7 has no updater). From RC.8 on, in-app updates once a key is configured. No data change |
+| Deterministic tests | **4437/4437** (baseline 4173 at `707864e`, re-verified; +49 Domain, +67 Application, +102 Infrastructure, +42 Ui mixed, +4 `Phase15ERealWindowLayoutTests`) = 270 Domain + 1167 Application + 976 Infrastructure + 463 Documents + 1413 Ui together + 26 `OperationsCalendarViewTests` + 109 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). Run-alone set unchanged (five classes). No test contacts GitHub |
+| Release build | 0 warnings, 0 errors |
+| Build-host packaging | Updater cross-publishes as PE32+ GUI x64 with `asInvoker`; `Publish-Windows.ps1`/`Build-PortableRelease.ps1` not run (no PowerShell on host) |
+| Windows validation | NOT EXECUTED — checklist in `docs/phase23d-github-updater.md` §12 |
+| Licensing / distribution | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** **Organisation approval for public GitHub distribution pending.** No release created or uploaded |
+
 # Release manifest — 0.1.0-rc.7 (Phase 23: Phases 22A–22F combined)
 
 **Built, packaged and artifact-verified on the macOS build host. Windows validation NOT EXECUTED.

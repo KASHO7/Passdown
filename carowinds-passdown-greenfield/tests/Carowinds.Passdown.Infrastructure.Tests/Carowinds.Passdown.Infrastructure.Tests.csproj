@@ -32,6 +32,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Carowinds.Passdown.Infrastructure\Carowinds.Passdown.Infrastructure.csproj" />
+    <!-- Phase 23D: release signing tool (create/sign/verify with disposable test keys). -->
+    <ProjectReference Include="..\..\tools\update-signing\Carowinds.Passdown.UpdateSigning.csproj" />
   </ItemGroup>
 
 </Project>
