@@ -429,7 +429,9 @@
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
             <Rectangle Classes="toolbarDivider" Height="18" Margin="0,0,4,0" />
             <TextBlock Text="Draft" Classes="muted" VerticalAlignment="Center" />
-            <Border x:Name="SaveStatusChip" Classes="chip" AutomationProperties.Name="Save status">
+            <Border x:Name="SaveStatusChip" Classes="chip" AutomationProperties.Name="Save status"
+                    AutomationProperties.HelpText="{Binding SaveStatusDetailText}"
+                    ToolTip.Tip="{Binding SaveStatusDetailText}">
               <Border.Background>
                 <MultiBinding Converter="{x:Static converters:SaveStatusBrushConverter.Instance}">
                   <Binding Path="AutosaveState" />

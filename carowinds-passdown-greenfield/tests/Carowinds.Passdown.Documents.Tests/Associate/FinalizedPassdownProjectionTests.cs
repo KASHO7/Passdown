@@ -34,7 +34,7 @@ public class FinalizedPassdownProjectionTests
         var projection = Builder.BuildProjection(workspace, AsOf);
 
         Assert.Equal(AssociatePassdownPdfStatus.Generated, expectedPdf.Status);
-        Assert.Equal(expectedPdf.PdfBytes, projection.PdfBytes);
+        Assert.Equal(PdfInspector.WithoutGenerationTimestamps(expectedPdf.PdfBytes!), PdfInspector.WithoutGenerationTimestamps(projection.PdfBytes));
     }
 
     [Fact]

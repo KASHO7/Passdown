@@ -180,7 +180,7 @@ public class Phase22FSettingsAccessibilityTests
     // ---------------------------------------------------------------- Associate save failure (fixture)
 
     [Fact]
-    public async Task AFailedAutosave_StaysVisibleAsUnsaved_AndLeavesTheStoredDraftUntouched()
+    public async Task AFailedAutosave_StaysVisibleAsAFailure_AndLeavesTheStoredDraftUntouched()
     {
         var service = new FakeAssociatePassdownService();
         var scheduler = new ManualDebounceScheduler();
@@ -192,7 +192,8 @@ public class Phase22FSettingsAccessibilityTests
         scheduler.ElapseLatest();
         await viewModel.PendingAutosave;
 
-        Assert.Equal("Unsaved changes", viewModel.SaveStatusText);
+        // Phase 23: a real persistence failure reads as a failure, not as an ordinary pending edit.
+        Assert.Equal("Save failed — changes not saved", viewModel.SaveStatusText);
         Assert.Null(service.StoredDraft(viewModel.SelectedDate));
     }
 

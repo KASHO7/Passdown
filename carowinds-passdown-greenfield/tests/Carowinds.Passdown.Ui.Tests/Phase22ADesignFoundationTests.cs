@@ -327,6 +327,8 @@ public sealed partial class Phase22ADesignFoundationTests
             converter.Convert([AssociateAutosaveState.Saved, variant], typeof(IBrush), null, CultureInfo.InvariantCulture));
         Assert.Same(Resolve<IBrush>("PassdownChipBrush", variant),
             converter.Convert([AssociateAutosaveState.Saving, variant], typeof(IBrush), null, CultureInfo.InvariantCulture));
+        Assert.Same(Resolve<IBrush>("PassdownErrorBackgroundBrush", variant),
+            converter.Convert([AssociateAutosaveState.SaveFailed, variant], typeof(IBrush), null, CultureInfo.InvariantCulture));
         Assert.Same(AvaloniaProperty.UnsetValue,
             converter.Convert([null, variant], typeof(IBrush), null, CultureInfo.InvariantCulture));
     }

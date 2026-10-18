@@ -266,7 +266,21 @@ public partial class AssociateViewModel : ViewModelBase
     /// <summary>Presentation-only save lifecycle (spec §8.3's "unsaved -> saving -> saved"); see <see cref="AssociateAutosaveState"/>.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SaveStatusText))]
+    [NotifyPropertyChangedFor(nameof(SaveStatusDetailText))]
     public partial AssociateAutosaveState AutosaveState { get; set; } = AssociateAutosaveState.Saved;
+
+    /// <summary>
+    /// Phase 23: the reason the most recent save attempt failed (the exception message), or null once a
+    /// save succeeds or another date is loaded. Kept so the failure is explained, not only flagged.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SaveStatusDetailText))]
+    public partial string? SaveFailureReason { get; set; }
+
+    /// <summary>Tooltip / Narrator help text for the save chip: the failure reason after a failed save, otherwise null.</summary>
+    public string? SaveStatusDetailText => AutosaveState == AssociateAutosaveState.SaveFailed
+        ? $"The last save on this computer failed: {SaveFailureReason ?? "unknown error"} Your edits are still on screen and are saved again on your next change."
+        : null;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ParkHours))]
@@ -1072,6 +1086,7 @@ public partial class AssociateViewModel : ViewModelBase
     {
         AssociateAutosaveState.Saving => "Saving…",
         AssociateAutosaveState.Unsaved => "Unsaved changes",
+        AssociateAutosaveState.SaveFailed => "Save failed — changes not saved",
         _ => SaveStatus?.Text ?? "Not saved yet",
     };
 
@@ -1949,6 +1964,7 @@ public partial class AssociateViewModel : ViewModelBase
             _draftDateInEdit = workspace.OperatingDate;
             _draftBaseHash = workspace.DraftContentHash;
             _isDirty = false;
+            SaveFailureReason = null;
             AutosaveState = AssociateAutosaveState.Saved;
         }
         finally
@@ -2082,7 +2098,10 @@ public partial class AssociateViewModel : ViewModelBase
         }
 
         _isDirty = true;
-        AutosaveState = AssociateAutosaveState.Unsaved;
+        if (AutosaveState != AssociateAutosaveState.SaveFailed)
+        {
+            AutosaveState = AssociateAutosaveState.Unsaved; // Phase 23: a failure stays visible until a save succeeds.
+        }
 
         if (_draftDateInEdit is not { } date)
         {
@@ -2124,6 +2143,7 @@ public partial class AssociateViewModel : ViewModelBase
     {
         await _saveSemaphore.WaitAsync().ConfigureAwait(true);
         _saveInFlight = true;
+        var saveFailed = false;
         try
         {
             _isDirty = false;
@@ -2153,11 +2173,20 @@ public partial class AssociateViewModel : ViewModelBase
         {
             _logger?.LogError(ex, "Failed to autosave the Associate draft for {OperatingDate}.", date);
             _isDirty = true; // the edit is still only local; the next scheduled/flushed save retries it.
+            saveFailed = true;
+            SaveFailureReason = ex.Message;
         }
         finally
         {
             _saveInFlight = false;
-            AutosaveState = _isDirty ? AssociateAutosaveState.Unsaved : AssociateAutosaveState.Saved;
+            if (!saveFailed)
+            {
+                SaveFailureReason = null;
+            }
+
+            AutosaveState = saveFailed ? AssociateAutosaveState.SaveFailed
+                : _isDirty ? AssociateAutosaveState.Unsaved
+                : AssociateAutosaveState.Saved;
             _saveSemaphore.Release();
         }
 
