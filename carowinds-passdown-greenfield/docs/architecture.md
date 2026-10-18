@@ -1222,3 +1222,24 @@ See `docs/phase23a-save-failure-freeze-fix.md`.
 
 Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.
 
+
+## Phase 23B — Dashboard Shows layout and Fury banner branding
+
+See `docs/phase23b-dashboard-shows-branding.md`.
+
+- **Desktop** — `ShowRowPresentation` gained `Key` (official show id, name fallback) and `Times` (one
+  formatted entry per time); `TimesText` and all Phase 21C ordering/status semantics are unchanged.
+  `ShowTimesDisclosure` holds the compact rule (≤ 5 times shown whole; otherwise 4 + "+N more").
+  `DashboardShowRowViewModel` wraps each row with presentation-only `IsExpanded`;
+  `OperationsDashboardViewModel.ShowRows` rebuilds them on every `ShowsPresentation` change, keeping
+  expanded show keys in memory (pruned when a show disappears, cleared on a new operating date; never
+  persisted or synced). `Controls/ShowColumnsPanel` lays entries out in up to three ≥ 340 px columns, row
+  by row. The Dashboard row template is now stacked (name → times + inline toggle → venue) — the old
+  horizontal StackPanel measured times unconstrained, so they never wrapped. `MainWindow` banner is
+  title-only (track mark removed); the window icon is unchanged.
+- Domain, Application, Infrastructure, Documents — unchanged.
+- **tools/visual-fixtures** — `DashboardShows-*` scenarios and per-capture Shows panel geometry (height,
+  columns, overlap count); fixtures shared from `Ui.Tests/TestSupport/Phase23BDashboardShowsFixtures.cs`.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.
+

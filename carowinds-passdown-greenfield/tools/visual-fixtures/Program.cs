@@ -30,6 +30,23 @@ var report = new List<string>();
 var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arrange)>
 {
     ("Dashboard", () => new Fixture(), f => Go(f, AppSection.Dashboard)),
+    // Phase 23B: Today's Shows density/overlap. "-Top" keeps the page at the top (above-the-fold view);
+    // the others scroll the Shows panel into view.
+    ("DashboardShows-TypicalTop", () => new Fixture(dashboardShows: Phase23BDashboardShowsFixtures.Scheduled(Phase23BDashboardShowsFixtures.Typical)), f => Go(f, AppSection.Dashboard)),
+    ("DashboardShows-BusyTop", () => new Fixture(dashboardShows: Phase23BDashboardShowsFixtures.Scheduled(Phase23BDashboardShowsFixtures.Busy)), f => Go(f, AppSection.Dashboard)),
+    ("DashboardShows-Typical", () => new Fixture(dashboardShows: Phase23BDashboardShowsFixtures.Scheduled(Phase23BDashboardShowsFixtures.Typical)), f => { Go(f, AppSection.Dashboard); ScrollToName(f.Window, "Today's shows"); }),
+    ("DashboardShows-Busy", () => new Fixture(dashboardShows: Phase23BDashboardShowsFixtures.Scheduled(Phase23BDashboardShowsFixtures.Busy)), f => { Go(f, AppSection.Dashboard); ScrollToName(f.Window, "Today's shows"); }),
+    ("DashboardShows-BusyExpanded", () => new Fixture(dashboardShows: Phase23BDashboardShowsFixtures.Scheduled(Phase23BDashboardShowsFixtures.Busy)), f =>
+    {
+        Go(f, AppSection.Dashboard);
+        ExpandFirstShowTimes(f.Window);
+        ScrollToName(f.Window, "Today's shows");
+    }),
+    ("DashboardShows-One", () => new Fixture(dashboardShows: Phase23BDashboardShowsFixtures.Scheduled(Phase23BDashboardShowsFixtures.Busy[0])), f => { Go(f, AppSection.Dashboard); ScrollToName(f.Window, "Today's shows"); }),
+    ("DashboardShows-NoShows", () => new Fixture(dashboardShows: Phase23BDashboardShowsFixtures.Empty(Carowinds.Passdown.Application.Shows.ShowScheduleState.NoShows)), f => { Go(f, AppSection.Dashboard); ScrollToName(f.Window, "Today's shows"); }),
+    ("DashboardShows-NotPublished", () => new Fixture(dashboardShows: Phase23BDashboardShowsFixtures.Empty(Carowinds.Passdown.Application.Shows.ShowScheduleState.NotPublished)), f => { Go(f, AppSection.Dashboard); ScrollToName(f.Window, "Today's shows"); }),
+    ("DashboardShows-Stale", () => new Fixture(dashboardShows: Phase23BDashboardShowsFixtures.Stale()), f => { Go(f, AppSection.Dashboard); ScrollToName(f.Window, "Today's shows"); }),
+    ("DashboardShows-FailedLkg", () => new Fixture(dashboardShows: Phase23BDashboardShowsFixtures.FailedWithLastKnownGood()), f => { Go(f, AppSection.Dashboard); ScrollToName(f.Window, "Today's shows"); }),
     ("Calendar-Busy", () => new Fixture(), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Busy); }),
     ("Calendar-BusyExpanded", () => new Fixture(), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Busy); f.Vm.Calendar.IsShowScheduleExpanded = true; Pump(6); }),
     ("Calendar-WinterFest", () => new Fixture(), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.WinterFest); }),
@@ -161,6 +178,18 @@ static void ScrollToName(Window window, string automationName)
     Pump(8);
 }
 
+// Phase 23B: activates the first "+N more" performance-times toggle in Today's Shows (a no-op on layouts without one).
+static void ExpandFirstShowTimes(Window window)
+{
+    var toggle = window.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>()
+        .FirstOrDefault(t => t.IsEffectivelyVisible && (AutomationProperties.GetName(t) ?? string.Empty).StartsWith("Show all ", StringComparison.Ordinal));
+    if (toggle is not null)
+    {
+        toggle.IsChecked = true;
+        Pump(8);
+    }
+}
+
 static void ScrollToEnd(Window window)
 {
     var scroll = window.GetVisualDescendants().OfType<ScrollViewer>().Where(s => s.IsEffectivelyVisible).OrderByDescending(s => s.Extent.Height).FirstOrDefault();
@@ -182,7 +211,65 @@ static string Geometry(Window window)
         .Where(b => b.IsEffectivelyVisible && b.Bounds.Width > 0)
         .Where(b => b.TranslatePoint(new Point(b.Bounds.Width, 0), window) is { } right && right.X > window.Bounds.Width + 0.5)
         .Select(b => AutomationProperties.GetName(b) ?? b.Content?.ToString() ?? "?").ToList();
-    return $"pageScroll={vertical:F0} horizontalOverflow=[{string.Join(",", horizontal)}] buttonsPastRightEdge=[{string.Join(",", clipped)}]";
+    return $"pageScroll={vertical:F0} horizontalOverflow=[{string.Join(",", horizontal)}] buttonsPastRightEdge=[{string.Join(",", clipped)}]{ShowsGeometry(window)}";
+}
+
+// Phase 23B: measured Today's Shows layout — panel top/height (page coordinates, independent of scroll), where
+// "Today at a Glance" starts, the space each row gives names/times/venues, and how many text/button rectangles
+// inside the panel intersect (the reported defect: times running under the venue).
+static string ShowsGeometry(Window window)
+{
+    var panel = window.GetVisualDescendants().OfType<Border>().FirstOrDefault(b => b.IsEffectivelyVisible && AutomationProperties.GetName(b) == "Today's shows");
+    if (panel is null)
+    {
+        return string.Empty;
+    }
+
+    var glance = window.GetVisualDescendants().OfType<Border>().FirstOrDefault(b => b.IsEffectivelyVisible && AutomationProperties.GetName(b) == "Today at a Glance");
+    var scroll = panel.GetVisualAncestors().OfType<ScrollViewer>().FirstOrDefault();
+    var offset = scroll?.Offset.Y ?? 0;
+    double PageY(Visual v) => (v.TranslatePoint(new Point(0, 0), window)?.Y ?? 0) + offset;
+
+    var rects = panel.GetVisualDescendants().OfType<Control>()
+        .Where(c => c.IsEffectivelyVisible && c.Bounds.Width > 0 && (c is TextBlock || c is Button || c is Avalonia.Controls.Primitives.ToggleButton))
+        .Where(c => c is not TextBlock || c.GetVisualAncestors().OfType<Button>().FirstOrDefault() is null)
+        .Select(c => (Control: c, Rect: new Rect(c.TranslatePoint(new Point(0, 0), window) ?? default, c.Bounds.Size)))
+        .ToList();
+    var overlaps = new List<string>();
+    for (var i = 0; i < rects.Count; i++)
+    {
+        for (var j = i + 1; j < rects.Count; j++)
+        {
+            if (rects[i].Control.GetVisualAncestors().Contains(rects[j].Control) || rects[j].Control.GetVisualAncestors().Contains(rects[i].Control))
+            {
+                continue;
+            }
+
+            var hit = rects[i].Rect.Intersect(rects[j].Rect);
+            if (hit.Width > 1 && hit.Height > 1)
+            {
+                overlaps.Add($"{Label(rects[i].Control)}|{Label(rects[j].Control)}");
+            }
+        }
+    }
+
+    var rowGrid = panel.GetVisualDescendants().OfType<Grid>().FirstOrDefault(g => g.ColumnDefinitions.Count == 3);
+    var columns = rowGrid is null ? string.Empty : $" rowColumns=[{string.Join(",", rowGrid.ColumnDefinitions.Select(c => c.ActualWidth.ToString("F0")))}]";
+    var widest = rects.Where(r => r.Control is TextBlock).Select(r => r.Rect.Right).DefaultIfEmpty(0).Max();
+    var panelRight = panel.TranslatePoint(new Point(panel.Bounds.Width, 0), window)?.X ?? 0;
+    var cells = panel.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("dashboardShowRow") && b.IsEffectivelyVisible).ToList();
+    var cellInfo = cells.Count == 0 ? string.Empty : $" showCells={cells.Count} cellWidth={cells[0].Bounds.Width:F0} columns={cells.Select(c => Math.Round(c.TranslatePoint(new Point(0, 0), window)?.X ?? 0)).Distinct().Count()}";
+    return $" | showsTop={PageY(panel):F0} showsHeight={panel.Bounds.Height:F0} glanceTop={(glance is null ? "-" : PageY(glance).ToString("F0"))} viewport={scroll?.Viewport.Height ?? 0:F0}"
+        + $" panelContentWidth={panel.Bounds.Width - panel.Padding.Left - panel.Padding.Right:F0}{columns}{cellInfo} textPastPanel={(widest > panelRight + 0.5 ? "yes" : "no")}"
+        + $" overlaps={overlaps.Count}{(overlaps.Count > 0 ? " [" + string.Join("; ", overlaps.Take(4)) + "]" : string.Empty)}";
+
+    static string Label(Control c) => c switch
+    {
+        TextBlock t => $"\"{Shorten(t.Text)}\"",
+        _ => AutomationProperties.GetName(c) ?? c.GetType().Name,
+    };
+
+    static string Shorten(string? text) => text is null ? "" : text.Length <= 24 ? text : text[..24] + "…";
 }
 
 static void Pump(int n)
@@ -204,11 +291,12 @@ internal sealed class Fixture
     public MainViewModel Vm { get; }
     public MainWindow Window { get; }
 
-    public Fixture(bool emptyNotes = false, bool emptyHistory = false, SyncFixture sync = SyncFixture.Off)
+    public Fixture(bool emptyNotes = false, bool emptyHistory = false, SyncFixture sync = SyncFixture.Off, Carowinds.Passdown.Application.Shows.ShowScheduleView? dashboardShows = null)
     {
         var clock = new FakeClock(Fixtures.Now);
         var dashboard = new FakeOperationsDashboardService();
         BusyDayFixtures.ApplyBusyDay(dashboard);
+        if (dashboardShows is not null) Phase23BDashboardShowsFixtures.Apply(dashboard, dashboardShows);
         BusyDayFixtures.ApplyBusyAssociate(AssociateService, partialFailure: true);
         Fixtures.ApplyCalendar(CalendarService);
         var notes = new FakeOperationalNotesService { UtcNowFactory = () => Fixtures.Now };

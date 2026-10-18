@@ -8,11 +8,37 @@ namespace Carowinds.Passdown.Desktop.Presentation;
 /// <summary>One show line: name, its times, and its venue when published.</summary>
 /// <param name="TimesText">For today: the performances that have not started yet; otherwise every performance.</param>
 /// <param name="EarlierText">For today only: "+2 earlier" when some performances have already started; never a claim that a show is still running.</param>
-public sealed record ShowRowPresentation(string Name, string TimesText, string? Venue, string? EarlierText)
+/// <param name="Key">Phase 23B: the official show id (the name when the feed gives none) — what Dashboard expansion state is keyed on, never a list index.</param>
+/// <param name="Times">Phase 23B: the same start times as <see cref="TimesText"/>, one formatted entry each, in operating-day order.</param>
+public sealed record ShowRowPresentation(string Name, string TimesText, string? Venue, string? EarlierText, string Key, IReadOnlyList<string> Times)
 {
     public bool HasVenue => Venue is not null;
 
     public bool HasEarlierText => EarlierText is not null;
+}
+
+/// <summary>
+/// Phase 23B: the Dashboard's compact performance-times rule. A show with at most <see cref="CollapsedLimit"/>
+/// times lists them all with no control; a longer list starts collapsed to its first
+/// <see cref="CollapsedVisibleCount"/> times plus "+N more" (so N is always at least 2 — a "+1 more" control
+/// would take the space of the time it hides). Expanding lists every time. Nothing is ever dropped silently.
+/// </summary>
+public static class ShowTimesDisclosure
+{
+    public const int CollapsedLimit = 5;
+
+    public const int CollapsedVisibleCount = 4;
+
+    public static bool CanCollapse(int timeCount) => timeCount > CollapsedLimit;
+
+    public static int VisibleCount(int timeCount, bool isExpanded) =>
+        isExpanded || !CanCollapse(timeCount) ? timeCount : CollapsedVisibleCount;
+
+    public static int HiddenCount(int timeCount, bool isExpanded) => timeCount - VisibleCount(timeCount, isExpanded);
+
+    /// <summary>"11:15 AM · 11:30 AM" with a no-break space inside each time, so a wrapped line never splits "11:15" from "AM".</summary>
+    public static string Join(IEnumerable<string> times) =>
+        string.Join(" · ", times.Select(time => time.Replace(' ', '\u00A0')));
 }
 
 /// <summary>
@@ -83,7 +109,9 @@ public sealed record ShowSchedulePresentation(
                             entry.Show.Name,
                             ShowTimes.FormatList(entry.Remaining, " · "),
                             entry.Show.Venue,
-                            earlier > 0 ? $"+{earlier} earlier" : null);
+                            earlier > 0 ? $"+{earlier} earlier" : null,
+                            KeyOf(entry.Show),
+                            FormatEach(entry.Remaining));
                     }));
 
                 var finished = upcoming.Where(entry => entry.Remaining.Count == 0).Select(entry => entry.Show.Name).ToList();
@@ -99,7 +127,7 @@ public sealed record ShowSchedulePresentation(
             }
             else
             {
-                rows.AddRange(view.Shows.Select(show => new ShowRowPresentation(show.Name, ShowTimes.FormatList(show.Times, " · "), show.Venue, null)));
+                rows.AddRange(view.Shows.Select(show => new ShowRowPresentation(show.Name, ShowTimes.FormatList(show.Times, " · "), show.Venue, null, KeyOf(show), FormatEach(show.Times))));
             }
         }
 
@@ -111,6 +139,14 @@ public sealed record ShowSchedulePresentation(
             BuildFreshnessText(view, nowUtc),
             view.State == ShowScheduleState.CouldNotCheck || view.LastCheckFailed);
     }
+
+    /// <summary>Phase 23B: the official show id, or the trimmed name when the feed gives none (the same identity rule as <see cref="CalendarShowsPresentation"/>).</summary>
+    internal static string KeyOf(Application.Retrieval.ScheduledShow show) =>
+        string.IsNullOrWhiteSpace(show.ShowId) ? show.Name.Trim() : show.ShowId;
+
+    /// <summary>Exactly the times <see cref="ShowTimes.FormatList"/> joins, one entry each (distinct, operating-day order).</summary>
+    private static IReadOnlyList<string> FormatEach(IEnumerable<TimeOnly> times) =>
+        ShowTimes.Normalize(times).Select(ShowTimes.Format).ToList();
 
     /// <summary>"Official schedule checked 10:32 AM ET" — plus "latest check failed" when older verified data is being kept.</summary>
     /// <remarks>Phase 22E: shared with <see cref="CalendarShowsPresentation"/> so both surfaces word freshness identically.</remarks>

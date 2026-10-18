@@ -51,6 +51,17 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     [ObservableProperty]
     public partial ShowSchedulePresentation? ShowsPresentation { get; set; }
 
+    /// <summary>
+    /// Phase 23B: the Dashboard's show rows, rebuilt from <see cref="ShowsPresentation"/> each time it changes
+    /// (snapshot reload or minute tick). Which long time lists are expanded is kept here in memory only,
+    /// keyed by official show id and reset when the operating date changes — never persisted, never synced.
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<DashboardShowRowViewModel> ShowRows { get; set; } = [];
+
+    private readonly HashSet<string> _expandedShowKeys = new(StringComparer.OrdinalIgnoreCase);
+    private DateOnly? _expandedShowsDate;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmptyOrErrorState))]
     [NotifyCanExecuteChangedFor(nameof(CheckOnlineCommand))]
@@ -246,6 +257,32 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     }
 
     public bool HasSnapshot => Snapshot is not null;
+
+    partial void OnShowsPresentationChanged(ShowSchedulePresentation? value)
+    {
+        var date = Snapshot?.TodayShows.Date;
+        if (date != _expandedShowsDate)
+        {
+            _expandedShowKeys.Clear();
+            _expandedShowsDate = date;
+        }
+
+        var rows = value?.Rows ?? [];
+        _expandedShowKeys.IntersectWith(rows.Select(row => row.Key));
+        ShowRows = rows.Select(row => new DashboardShowRowViewModel(row, _expandedShowKeys.Contains(row.Key), OnShowExpansionChanged)).ToList();
+    }
+
+    private void OnShowExpansionChanged(string key, bool isExpanded)
+    {
+        if (isExpanded)
+        {
+            _expandedShowKeys.Add(key);
+        }
+        else
+        {
+            _expandedShowKeys.Remove(key);
+        }
+    }
 
     partial void OnSnapshotChanged(OperationsDashboardSnapshot? value) =>
         ShowsPresentation = value is null ? null : ShowSchedulePresentation.Build(value.TodayShows, value.GeneratedAt, isDashboard: true);

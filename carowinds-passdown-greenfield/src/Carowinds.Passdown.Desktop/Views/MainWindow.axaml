@@ -20,7 +20,7 @@
 
         <!-- Brand banner (Phase 22B, "Option A — Minimal Fury Banner"; replaces the Phase 13G navy
              band): a compact, theme-invariant panoramic crop of Fury 325 under a charcoal-navy
-             left-to-right scrim, with one "CAROWINDS OPERATIONS" wordmark. The photo is a bundled
+             left-to-right scrim, with one "CAROWINDS OPERATIONS" wordmark (title only since Phase 23B). The photo is a bundled
              avares resource (offline, no network fetch) cropped UniformToFill around the camelback
              crest; it is decorative, so it is hidden from assistive technology and hit testing.
              Associate Passdown is the only workflow this release — no Manager entry point is added
@@ -33,17 +33,13 @@
                        IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw" />
                 <Border Background="{DynamicResource PassdownBannerOverlayBrush}" IsHitTestVisible="False" />
 
-                <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" Margin="24,0">
-                    <!-- The small original ascending-track mark (spec §10.1), kept from the Phase 13G band. -->
-                    <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center" Height="18"
-                                AutomationProperties.AccessibilityView="Raw">
-                        <Rectangle Width="5" Height="8" Fill="{DynamicResource PassdownHeaderForegroundBrush}" VerticalAlignment="Bottom" />
-                        <Rectangle Width="5" Height="13" Fill="{DynamicResource PassdownHeaderForegroundBrush}" VerticalAlignment="Bottom" />
-                        <Rectangle Width="5" Height="18" Fill="{DynamicResource PassdownHeaderForegroundBrush}" VerticalAlignment="Bottom" />
-                    </StackPanel>
-                    <TextBlock x:Name="BrandWordmark" Classes="brandWordmark" Text="CAROWINDS OPERATIONS"
-                               AutomationProperties.Name="Carowinds Operations" />
-                </StackPanel>
+                <!-- Phase 23B: title-only branding. The small bar-chart "ascending-track" mark that sat before the
+                     title was removed; nothing replaces it. The wordmark starts at the page content's 24 px left
+                     margin (PassdownPagePadding), the same edge as the page titles below. The window/taskbar icon
+                     is the separate Icon="/Assets/logo.ico" above and is unchanged. -->
+                <TextBlock x:Name="BrandWordmark" Classes="brandWordmark" Text="CAROWINDS OPERATIONS"
+                           Margin="24,0" HorizontalAlignment="Left"
+                           AutomationProperties.Name="Carowinds Operations" />
             </Panel>
         </Border>
 

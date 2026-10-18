@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
              xmlns:presentation="using:Carowinds.Passdown.Desktop.Presentation"
+             xmlns:controls="using:Carowinds.Passdown.Desktop.Controls"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="860"
@@ -23,6 +24,36 @@
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
       <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <!-- Phase 23B: one Today's Shows entry — a thin top rule, tight padding, no card. -->
+    <Style Selector="Border.dashboardShowRow">
+      <Setter Property="BorderThickness" Value="0,1,0,0" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="Padding" Value="0,6,0,7" />
+    </Style>
+    <Style Selector="TextBlock.showName">
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.showTimes">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.showVenue">
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.showEarlier">
+      <Setter Property="Margin" Value="8,0,0,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <!-- The shared disclosure toggle (accent, SemiBold, Fluent focus ring), sized to sit inline after the times. -->
+    <Style Selector="ToggleButton.showTimesToggle">
+      <Setter Property="Padding" Value="4,0" />
+      <Setter Property="Margin" Value="2,0,0,0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <!-- "Price not available" must never look like a price. -->
     <Style Selector="TextBlock.statValue.unavailable">
@@ -307,29 +338,46 @@
             </Grid>
           </Border>
 
-          <!-- Phase 21C: Today's Shows — the official schedule's upcoming performances as compact rows
-               (name · times · venue), a secondary section under the overview. Empty/unpublished/failed
-               states are one quiet line; only a confirmed empty schedule says "No shows scheduled". -->
+          <!-- Phase 21C: Today's Shows — the official schedule's upcoming performances. Empty/unpublished/failed
+               states are one quiet line; only a confirmed empty schedule says "No shows scheduled".
+               Phase 23B: each show is a stacked entry — name, then its times, then its venue — so times can
+               never run under the venue (the old name · times · venue row put the times in a horizontal
+               StackPanel, which measured them unconstrained, so they never wrapped). Entries flow into as many
+               columns as fit (ShowColumnsPanel, row by row in schedule order). A long time list starts with its
+               first four times and "+N more"; the toggle expands it in place (in-memory state only). -->
           <Border Classes="panel" Padding="20,14" AutomationProperties.Name="Today's shows" IsVisible="{Binding ShowsPresentation, Converter={x:Static ObjectConverters.IsNotNull}}">
             <StackPanel Spacing="4">
-              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
                 <TextBlock Grid.Column="0" Text="{Binding ShowsPresentation.Heading}" Classes="sectionTitle" Margin="0,0,0,4" />
-                <TextBlock Grid.Column="1" Text="{Binding ShowsPresentation.FreshnessText}" Classes="muted" FontSize="12" VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis" IsVisible="{Binding ShowsPresentation.HasFreshnessText}" />
+                <TextBlock Grid.Column="1" Text="{Binding ShowsPresentation.FreshnessText}" Classes="muted" VerticalAlignment="Center"
+                           HorizontalAlignment="Right" TextAlignment="Right" TextWrapping="Wrap"
+                           IsVisible="{Binding ShowsPresentation.HasFreshnessText}" />
               </Grid>
               <TextBlock Text="{Binding ShowsPresentation.StatusText}" Classes="muted" TextWrapping="Wrap"
                          IsVisible="{Binding ShowsPresentation.HasStatusText}" />
-              <ItemsControl ItemsSource="{Binding ShowsPresentation.Rows}" IsVisible="{Binding ShowsPresentation.HasRows}">
+              <ItemsControl x:Name="DashboardShowRows" ItemsSource="{Binding ShowRows}" IsVisible="{Binding ShowsPresentation.HasRows}"
+                            AutomationProperties.Name="Today's upcoming shows">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <controls:ShowColumnsPanel MinColumnWidth="340" MaxColumns="3" ColumnSpacing="24" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="presentation:ShowRowPresentation">
-                    <Grid ColumnDefinitions="2*,3*,1.5*" ColumnSpacing="16" Margin="0,2">
-                      <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                        <TextBlock Text="{Binding TimesText}" TextWrapping="Wrap" />
-                        <TextBlock Text="{Binding EarlierText}" Classes="muted" IsVisible="{Binding HasEarlierText}" />
+                  <DataTemplate x:DataType="vm:DashboardShowRowViewModel">
+                    <Border Classes="dashboardShowRow" AutomationProperties.Name="{Binding Name}">
+                      <StackPanel Spacing="1">
+                        <TextBlock Classes="showName" Text="{Binding Name}" />
+                        <WrapPanel Orientation="Horizontal">
+                          <TextBlock Classes="showTimes" Text="{Binding VisibleTimesText}"
+                                     AutomationProperties.Name="{Binding TimesAccessibleName}" />
+                          <ToggleButton Classes="disclosureHeader showTimesToggle" Content="{Binding ToggleText}"
+                                        IsChecked="{Binding IsExpanded}" IsVisible="{Binding CanExpand}"
+                                        AutomationProperties.Name="{Binding ToggleAccessibleName}" />
+                          <TextBlock Classes="muted showEarlier" Text="{Binding EarlierText}" IsVisible="{Binding HasEarlierText}" />
+                        </WrapPanel>
+                        <TextBlock Classes="muted showVenue" Text="{Binding Venue}" IsVisible="{Binding HasVenue}" />
                       </StackPanel>
-                      <TextBlock Grid.Column="2" Text="{Binding Venue}" Classes="muted" TextWrapping="Wrap" IsVisible="{Binding HasVenue}" />
-                    </Grid>
+                    </Border>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>

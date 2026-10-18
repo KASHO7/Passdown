@@ -1281,4 +1281,249 @@ public class Phase15ERealWindowLayoutTests
 
         window.Close();
     }
+
+    // ==================================================================================
+    // Phase 23B — Dashboard Today's Shows (stacked entries, "+N more" disclosure) and the
+    // title-only Fury banner: real rendered bounds, mouse and keyboard activation.
+    // ==================================================================================
+
+    private static (Window Window, OperationsDashboardViewModel ViewModel, FakeOperationsDashboardService Service) RealizeShowsDashboard(double width, double height, ThemeVariant theme)
+    {
+        var service = new FakeOperationsDashboardService { SnapshotFactory = Phase22CDashboardFixtures.BusyDayWithPartialFailure };
+        Phase23BDashboardShowsFixtures.Apply(service, Phase23BDashboardShowsFixtures.Scheduled(Phase23BDashboardShowsFixtures.Busy));
+        var viewModel = new OperationsDashboardViewModel(service);
+        var window = RealizeInWindow(new DashboardView { DataContext = viewModel }, width, height);
+        viewModel.PendingLoad.GetAwaiter().GetResult();
+        window.RequestedThemeVariant = theme;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        return (window, viewModel, service);
+    }
+
+    private static Border ShowsPanel(Window window) =>
+        window.GetVisualDescendants().OfType<Border>().Single(b => AutomationProperties.GetName(b) == "Today's shows");
+
+    private static List<Border> ShowCells(Window window) =>
+        ShowsPanel(window).GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("dashboardShowRow") && b.IsEffectivelyVisible).ToList();
+
+    private static ToggleButton TimesToggle(Window window, string showName) =>
+        ShowsPanel(window).GetVisualDescendants().OfType<ToggleButton>()
+            .Single(t => (AutomationProperties.GetName(t) ?? string.Empty).EndsWith($"performance times for {showName}", StringComparison.Ordinal));
+
+    /// <summary>
+    /// Every visible text block and toggle in Today's Shows: inside its own entry, inside the panel, and
+    /// intersecting nothing else — the reported defect was the times line running under the venue column.
+    /// </summary>
+    private static void AssertShowsDoNotOverlap(Window window)
+    {
+        var panel = AbsoluteBounds(ShowsPanel(window), window);
+        foreach (var cell in ShowCells(window))
+        {
+            var cellBounds = AbsoluteBounds(cell, window);
+            Assert.True(cellBounds.Right <= panel.Right + 1.0, $"show entry right edge {cellBounds.Right} exceeds the panel's {panel.Right}");
+            var parts = cell.GetVisualDescendants().OfType<Control>()
+                .Where(c => c.IsEffectivelyVisible && c.Bounds.Width > 0 && (c is TextBlock || c is ToggleButton))
+                .Where(c => c is not TextBlock || !c.GetVisualAncestors().OfType<ToggleButton>().Any())
+                .Select(c => (Control: c, Bounds: AbsoluteBounds(c, window)))
+                .ToList();
+            foreach (var part in parts)
+            {
+                Assert.True(part.Bounds.Right <= cellBounds.Right + 1.0, $"'{(part.Control as TextBlock)?.Text}' right edge {part.Bounds.Right} exceeds its entry's {cellBounds.Right}");
+                Assert.True(part.Bounds.Bottom <= cellBounds.Bottom + 1.0, $"'{(part.Control as TextBlock)?.Text}' runs below its entry");
+            }
+
+            for (var i = 0; i < parts.Count; i++)
+            {
+                for (var j = i + 1; j < parts.Count; j++)
+                {
+                    var overlap = parts[i].Bounds.Intersect(parts[j].Bounds);
+                    Assert.False(overlap.Width > 1 && overlap.Height > 1,
+                        $"'{(parts[i].Control as TextBlock)?.Text ?? AutomationProperties.GetName(parts[i].Control)}' overlaps '{(parts[j].Control as TextBlock)?.Text ?? AutomationProperties.GetName(parts[j].Control)}'");
+                }
+            }
+        }
+
+        var cells = ShowCells(window).Select(c => AbsoluteBounds(c, window)).ToList();
+        for (var i = 0; i < cells.Count; i++)
+        {
+            for (var j = i + 1; j < cells.Count; j++)
+            {
+                var overlap = cells[i].Intersect(cells[j]);
+                Assert.False(overlap.Width > 1 && overlap.Height > 1, $"show entries {i} and {j} overlap");
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(960d, 640d, "Light")]
+    [InlineData(960d, 640d, "Dark")]
+    [InlineData(1280d, 690d, "Light")]
+    [InlineData(1280d, 860d, "Dark")]
+    [InlineData(1920d, 1000d, "Light")]
+    [InlineData(1920d, 1000d, "Dark")]
+    public void DashboardView_Shows_NeverOverlap_CollapsedOrFullyExpanded(double width, double height, string theme)
+    {
+        var (window, viewModel, _) = RealizeShowsDashboard(width, height, theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light);
+
+        Assert.Equal(viewModel.ShowRows.Count, ShowCells(window).Count);
+        AssertShowsDoNotOverlap(window);
+        AssertNoControlClipsHorizontally(window);
+        var collapsedHeight = ShowsPanel(window).Bounds.Height;
+
+        foreach (var row in viewModel.ShowRows.Where(r => r.CanExpand))
+        {
+            row.IsExpanded = true;
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        AssertShowsDoNotOverlap(window);
+        AssertNoControlClipsHorizontally(window);
+        Assert.True(ShowsPanel(window).Bounds.Height >= collapsedHeight, "expanding never shrinks the panel");
+
+        var scroll = window.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.IsEffectivelyVisible);
+        Assert.True(scroll.Extent.Width <= scroll.Viewport.Width + 1.0, "no horizontal scrolling");
+        window.Close();
+    }
+
+    [Theory]
+    [InlineData(960d, 640d)]
+    [InlineData(1920d, 1000d)]
+    public void DashboardView_ShowEntry_ReadsNameThenTimesThenVenue_TopToBottom(double width, double height)
+    {
+        var (window, _, _) = RealizeShowsDashboard(width, height, ThemeVariant.Light);
+
+        foreach (var cell in ShowCells(window))
+        {
+            var texts = cell.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible && !t.GetVisualAncestors().OfType<ToggleButton>().Any()).ToList();
+            var name = AbsoluteBounds(texts.Single(t => t.Classes.Contains("showName")), window);
+            var times = AbsoluteBounds(texts.Single(t => t.Classes.Contains("showTimes")), window);
+            Assert.True(times.Top >= name.Bottom - 0.5, "times start under the name");
+            if (texts.SingleOrDefault(t => t.Classes.Contains("showVenue")) is { } venue)
+            {
+                Assert.True(AbsoluteBounds(venue, window).Top >= times.Bottom - 0.5, "venue starts under the times — never beside them");
+            }
+        }
+
+        window.Close();
+    }
+
+    [Theory]
+    [InlineData(960d, 640d, 2)]
+    [InlineData(1280d, 860d, 3)]
+    [InlineData(1920d, 1000d, 3)]
+    public void DashboardView_Shows_FillColumnsRowByRow_InScheduleOrder(double width, double height, int columns)
+    {
+        var (window, viewModel, _) = RealizeShowsDashboard(width, height, ThemeVariant.Light);
+        var cells = ShowCells(window).Select(c => AbsoluteBounds(c, window)).ToList();
+
+        Assert.Equal(columns, cells.Select(c => Math.Round(c.Left)).Distinct().Count());
+        for (var i = 1; i < cells.Count; i++)
+        {
+            var sameLine = i % columns != 0;
+            Assert.True(sameLine ? Math.Abs(cells[i].Top - cells[i - 1].Top) < 0.5 && cells[i].Left > cells[i - 1].Right : cells[i].Top >= cells[i - 1].Bottom - 0.5,
+                $"entry {i} ({viewModel.ShowRows[i].Name}) is out of row-by-row order");
+        }
+
+        window.Close();
+    }
+
+    [Fact]
+    public void DashboardView_ExpandedTimes_WrapInsideTheirColumn()
+    {
+        var (window, _, _) = RealizeShowsDashboard(960, 640, ThemeVariant.Light);
+        var toggle = TimesToggle(window, "Synthetic Camp Meet and Greet");
+        var cell = toggle.GetVisualAncestors().OfType<Border>().First(b => b.Classes.Contains("dashboardShowRow"));
+        var times = cell.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("showTimes"));
+        var collapsedLines = times.TextLayout.TextLines.Count;
+
+        toggle.IsChecked = true;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.True(times.TextLayout.TextLines.Count > collapsedLines, "fourteen times need more than one line at this width");
+        Assert.True(AbsoluteBounds(times, window).Right <= AbsoluteBounds(cell, window).Right + 1.0);
+        Assert.Equal(14, times.Text!.Split(" · ").Length);
+        AssertShowsDoNotOverlap(window);
+        window.Close();
+    }
+
+    [Fact]
+    public void DashboardView_ShowsToggle_WorksWithTheMouse_ReportsItsState_AndNeverLoads()
+    {
+        var (window, viewModel, service) = RealizeShowsDashboard(1280, 860, ThemeVariant.Light);
+        var loads = service.LoadCalls.Count;
+        var toggle = TimesToggle(window, "Synthetic Camp Meet and Greet");
+        var peer = Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(toggle);
+        var state = Assert.IsAssignableFrom<Avalonia.Automation.Provider.IToggleProvider>(peer);
+        Assert.Equal(Avalonia.Automation.Provider.ToggleState.Off, state.ToggleState);
+        Assert.Equal("Show all 14 performance times for Synthetic Camp Meet and Greet", AutomationProperties.GetName(toggle));
+
+        var center = AbsoluteBounds(toggle, window).Center;
+        window.MouseDown(center, MouseButton.Left);
+        window.MouseUp(center, MouseButton.Left);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var row = viewModel.ShowRows.Single(r => r.Key == "syn-10");
+        Assert.True(row.IsExpanded);
+        Assert.Equal(Avalonia.Automation.Provider.ToggleState.On, state.ToggleState);
+        Assert.Equal("Show fewer performance times for Synthetic Camp Meet and Greet", AutomationProperties.GetName(toggle));
+        Assert.Equal(loads, service.LoadCalls.Count);
+        Assert.Equal(0, service.CheckOnlineCallCount);
+        window.Close();
+    }
+
+    [Fact]
+    public void DashboardView_ShowsToggle_WorksWithEnterAndSpace_AndKeepsFocus()
+    {
+        var (window, viewModel, service) = RealizeShowsDashboard(1280, 860, ThemeVariant.Dark);
+        var loads = service.LoadCalls.Count;
+        var toggle = TimesToggle(window, "Synthetic Character Dance Party");
+        Assert.True(toggle.Focusable && toggle.IsTabStop);
+
+        Assert.True(toggle.Focus(NavigationMethod.Tab));
+        window.KeyPressQwerty(PhysicalKey.Space, RawInputModifiers.None);
+        window.KeyReleaseQwerty(PhysicalKey.Space, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(viewModel.ShowRows.Single(r => r.Key == "syn-12").IsExpanded);
+        Assert.True(toggle.IsFocused, "toggling must keep keyboard focus on the control");
+
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        window.KeyReleaseQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.False(viewModel.ShowRows.Single(r => r.Key == "syn-12").IsExpanded);
+        Assert.True(toggle.IsFocused);
+        Assert.Equal(loads, service.LoadCalls.Count);
+        window.Close();
+    }
+
+    [Fact]
+    public void DashboardView_ShortTimeLists_HaveNoToggle()
+    {
+        var (window, viewModel, _) = RealizeShowsDashboard(1280, 860, ThemeVariant.Light);
+
+        var toggles = ShowsPanel(window).GetVisualDescendants().OfType<ToggleButton>().Where(t => t.IsEffectivelyVisible).ToList();
+        Assert.Equal(viewModel.ShowRows.Count(r => r.CanExpand), toggles.Count);
+        Assert.Equal(4, toggles.Count);
+        window.Close();
+    }
+
+    [Theory]
+    [InlineData(960d, 640d)]
+    [InlineData(1280d, 690d)]
+    [InlineData(1920d, 1000d)]
+    public void MainWindow_Banner_IsTitleOnly_AlignedToTheContentMargin_OnOneLine(double width, double height)
+    {
+        var window = ShowMainWindow(CreateMainViewModel(), width, height);
+        var banner = Named(window, "BrandBanner");
+        var wordmark = (TextBlock)Named(window, "BrandWordmark");
+        var bounds = AbsoluteBounds(wordmark, window);
+
+        Assert.Equal(24, bounds.Left, 1);
+        Assert.Single(wordmark.TextLayout.TextLines);
+        Assert.Empty(banner.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Shape>());
+        Assert.Empty(banner.GetVisualDescendants().OfType<PathIcon>());
+        Assert.Equal(72, banner.Bounds.Height, 1);
+        Assert.True(bounds.Top >= 0 && bounds.Bottom <= banner.Bounds.Height);
+        Assert.Equal(banner.Bounds.Height / 2, (bounds.Top + bounds.Bottom) / 2, 2); // vertically centered
+        Assert.NotNull(window.Icon); // the window/taskbar icon is a separate asset, unchanged
+        window.Close();
+    }
 }

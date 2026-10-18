@@ -1986,6 +1986,27 @@ unchanged; `Directory.Build.props` still says `0.1.0-rc.7`. The next packaged ca
 | Windows validation | NOT EXECUTED — manual sequence in `docs/phase23a-save-failure-freeze-fix.md` §12 |
 | Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
 
+# Unreleased development — Phase 23B (after RC.7, after Phase 23A)
+
+Dashboard **Today's Shows** no longer lets long performance-time lists run into the venue column: each
+show is a compact stacked entry (name, times, venue) in responsive columns, and a list of more than five
+times shows four plus a keyboard-accessible **+N more** toggle that expands in place (in-memory state
+only). The bar-chart mark before **CAROWINDS OPERATIONS** in the Fury banner was removed (title only,
+aligned to the 24 px content margin); the window/taskbar icon is unchanged. Presentation only. See
+`docs/phase23b-dashboard-shows-branding.md`. RC.7 artifacts and hashes are unchanged;
+`Directory.Build.props` still says `0.1.0-rc.7`. The next packaged candidate is **`0.1.0-rc.8`** (not
+packaged here).
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| Upgrade implications | None for data. Dashboard Shows layout and banner only. |
+| Deterministic tests | **4069/4069** (baseline 4011 at `55e718f`, re-verified; +40 `Phase23BDashboardShowsTests`, +18 `Phase15ERealWindowLayoutTests`; one `Phase21CShowsMarkupTests` binding expectation updated) = 221 Domain + 1089 Application + 852 Infrastructure + 463 Documents + 1321 Ui together + 26 `OperationsCalendarViewTests` + 84 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). Run-alone set unchanged (five classes) |
+| Release build | 0 warnings, 0 errors |
+| Visual QA | 80 before + 80 after synthetic `DashboardShows-*` captures (10 scenarios × Light/Dark × 4 sizes); overlapping text in the panel 3 → 0 (busy, ≤ 1280 px), 1 → 0 (1920 px); whole-app sweep at 1280×860 clean. Not DPI validation |
+| Windows validation | NOT EXECUTED — checklist in `docs/phase23b-dashboard-shows-branding.md` §19 |
+| Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
+
 # Release manifest — 0.1.0-rc.7 (Phase 23: Phases 22A–22F combined)
 
 **Built, packaged and artifact-verified on the macOS build host. Windows validation NOT EXECUTED.
