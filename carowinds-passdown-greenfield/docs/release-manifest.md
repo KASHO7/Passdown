@@ -2037,8 +2037,9 @@ offline ECDSA P-256 key whose public half is bundled in the app — and, only af
 installs through the new external `Carowinds.Passdown.Updater.exe` with journaled rollback. A failed draft
 save postpones the update (Phase 23A). What's New opens once after a confirmed successful update and is
 always available from Settings → About this build. See `docs/phase23d-github-updater.md`.
-**This build trusts no signing key yet, so installation is disabled (Manual update required)** until the
-owner provisions one before packaging RC.8. RC.6/RC.7 artifacts and hashes are unchanged;
+**Installation is enabled:** the production signing key `carowinds-release-1` is trusted since commit
+`392d125` (public-key SHA-256 `8e0e1086…c969d3`; private key kept outside the repository on the build
+Mac — back it up). Builds before that commit trust no key. RC.6/RC.7 artifacts and hashes are unchanged;
 `Directory.Build.props` still says `0.1.0-rc.7`. Next packaged candidate: **`0.1.0-rc.8`** (not packaged).
 
 | | |

@@ -6,8 +6,8 @@ from GitHub Releases, an external Windows updater with rollback, and a one-time 
 successful update.
 
 > **Status in one line:** implemented and tested with synthetic data on the macOS build host.
-> **Installation is disabled in this build** because no production signing key has been provisioned
-> (by design — see §4 and §15). Nothing has been executed on Windows.
+> **Installation is enabled:** the production signing key `carowinds-release-1` is configured (commit
+> `392d125`, see §4). Nothing has been executed on Windows.
 
 ## 1. Starting state
 
@@ -116,9 +116,14 @@ Not implemented.
 - **Fail closed:** no trusted key → the app never contacts GitHub and Settings says *Manual update
   required*. Invalid/unknown-key signature, tampered manifest, wrong product/architecture/channel,
   unsupported format, unsafe paths, duplicate paths or a missing main executable/updater → rejected.
-- **This build ships with `TrustedSigningKeys: []`**, so installation is disabled until the owner
-  provisions a key (§9). This is intentional: a key must not be generated and trusted on the owner's
-  behalf.
+- **Configured key:** `carowinds-release-1` (ECDSA P-256), trusted since commit `392d125` at the owner's
+  request. SHA-256 of its SubjectPublicKeyInfo:
+  `8e0e108689653f027f92b0e91122cf3e49dda206636378723dc7941ed2c969d3`. The private key was generated on
+  the build Mac at `~/.carowinds-signing/carowinds-release-1.pem` (folder `700`, file `600`; outside the
+  repository and outside iCloud/OneDrive) and has never been committed, printed or uploaded. **Back it up
+  to a second offline place** — without it, the next update must be distributed manually. Builds made
+  before `392d125` (including the `6c10788` feature commit) trust no key and show "Manual update
+  required".
 - **Rotation:** ship a build that trusts old *and* new key → start signing with the new key → later ship a
   build that trusts only the new key. **Revocation:** ship (by manual ZIP if necessary) a build that no
   longer lists the compromised key; installations that still trust it remain exposed until updated, so
@@ -269,15 +274,14 @@ the first release.
 
 **B. Signing**
 
-3. **Once:** create the signing key *outside* the repository and outside OneDrive, e.g. on a USB drive:
-   `dotnet run --project tools/update-signing -- generate-key --private-key-out /Volumes/KEYS/carowinds-release.pem`.
-   It prints a public key. Put it in `appsettings.json`:
-   `"TrustedSigningKeys": [ { "KeyId": "carowinds-release-1", "PublicKey": "<printed value>" } ]`,
-   then rebuild (step 2) — the build that will receive updates must contain the public key. Back up the
-   `.pem` file in a second safe place. Never email, commit or upload it.
+3. **Done (2026-10-18):** the signing key `carowinds-release-1` exists at
+   `~/.carowinds-signing/carowinds-release-1.pem` and its public key is already in `appsettings.json`, so
+   every build from now on can receive updates. Keep a backup of the `.pem` file in a second safe place;
+   never email, commit or upload it. (For a future key rotation, `generate-key --private-key-out <file
+   outside the repository>` creates a new pair; see §4.)
 4. Write the notes users should see before installing into a text file (e.g. `notes.md`).
 5. `dotnet run --project tools/update-signing -- create-manifest --zip artifacts/releases/Carowinds-Operations-0.1.0-rc.8-win-x64.zip --version 0.1.0-rc.8 --channel release-candidate --title "…" --notes notes.md`
-6. `dotnet run --project tools/update-signing -- sign --manifest artifacts/releases/Carowinds-Operations-0.1.0-rc.8-win-x64.update.json --key-id carowinds-release-1 --private-key /Volumes/KEYS/carowinds-release.pem`
+6. `dotnet run --project tools/update-signing -- sign --manifest artifacts/releases/Carowinds-Operations-0.1.0-rc.8-win-x64.update.json --key-id carowinds-release-1 --private-key ~/.carowinds-signing/carowinds-release-1.pem`
 7. `dotnet run --project tools/update-signing -- verify --manifest … .update.json --signature … .update.json.sig --appsettings src/Carowinds.Passdown.Desktop/appsettings.json`
    must print `VERIFIED`.
 
@@ -376,8 +380,10 @@ deployment.
 
 ## 15. Known limitations
 
-- **No production key:** installation stays disabled (Manual update required) until §10 step 3 is done
-  *before* building RC.8. RC.7 and earlier have no updater; RC.8 must be installed manually once.
+- **One manual install:** RC.7 and earlier have no updater, so RC.8 (the first build that trusts
+  `carowinds-release-1`) must be installed from its ZIP once; later versions can update in-app.
+- **Single key, single location:** the private key currently exists only on the build Mac until the owner
+  backs it up; losing it means distributing the next version manually and rotating keys (§4).
 - Executables are not Authenticode-signed; SmartScreen/Defender behaviour unverified (§12 #25).
 - The updater has no window of its own; during an update the user sees the app close and reopen
   (seconds to ~1 minute). A failure is reported when the previous version reopens.
