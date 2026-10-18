@@ -2232,3 +2232,198 @@ EXE).
 - **WINDOWS VALIDATION PENDING.** **TWO-PC SYNC VALIDATION PENDING.**
 - **DISTRIBUTION NOT APPROVED**: QuestPDF distribution approval pending; Fury photograph
   redistribution rights pending. Controlled technical testing only; not uploaded or published.
+
+# Release manifest — 0.1.0-rc.8 (Phase 24: Phases 23A–23D combined)
+
+**Built, packaged, hash-verified and manifest-signed on the macOS build host. Windows validation NOT
+EXECUTED. Distribution NOT approved. Nothing pushed, uploaded or published.** Run
+`docs/releases/rc8-windows-validation.md` (backup first). Release notes:
+`docs/releases/rc8-release-notes.md`. Installation: `docs/releases/rc8-installation-guide.md`.
+
+| | |
+|---|---|
+| Product (visible) | Carowinds Operations |
+| Version | **`0.1.0-rc.8`**, file version `0.1.0.8`, informational `0.1.0-rc.8+a651e26582b2bf35aaf671890b7018cb58ab6f2e` (read from the packaged `Desktop`/`Application`/`Infrastructure`/`Domain`/`Documents`/`Updater` DLLs and the single-file EXE; no packaged file contains `0.1.0-rc.7` or `0.1.0.7`) |
+| Starting HEAD | `633a431` (Phase 23D docs), branch `feature/passdown-redesign`; version `0.1.0-rc.7` |
+| RC.8 source / version commit | **`a651e26`**: `Directory.Build.props` 0.1.0-rc.8 / 0.1.0.8, bundled What's New notes (`src/Carowinds.Passdown.Desktop/ReleaseNotes/release-notes.md`), shipped `TESTER-GUIDE.txt` and `README.txt`. **All RC.8 artifacts were built from this commit** after a full `bin`/`obj` clean (tree otherwise clean apart from the unrelated pre-staged `.DS_Store`/`.claude` files, which are not build inputs) |
+| About this build | `0.1.0-rc.8 (a651e26)` + running executable path |
+| Target | Windows 11 x64 (`win-x64`), self-contained, ReadyToRun, not trimmed; primary is multi-file (not single-file) |
+| Build host | macOS 27.0.1 (26A434), Apple Silicon arm64; .NET SDK 10.0.400; PowerShell 7.6.7 as a local `dotnet tool` in the session scratchpad (nothing installed system-wide) |
+| DB / Draft / Snapshot / SyncSchemaVersion | **16** / 4 / 2 / 1, unchanged from RC.7 (latest migration `Migration0016…`, `AssociateDraftPayload.CurrentSchemaVersion = 4`, `FinalizedPassdownSnapshot.CurrentSchemaVersion = 2`, `SyncEnvelopeSerializer.CurrentSyncSchemaVersion = 1`). No migration |
+| Storage identity | Unchanged: `Carowinds.Passdown.Desktop.exe`, `%LOCALAPPDATA%\Carowinds Passdown`, `carowinds-passdown.db`, `appearance.json` location, `Carowinds Passdown Daily Refresh`, `Carowinds Passdown Personal Sync`, AssemblyVersion `0.1.0.0`. Updater-only local folders as introduced in Phase 23D |
+| Deterministic tests | Baseline (Phase 23D): **4437**; measured with the RC.8 version applied (the bump changes no test): **4437/4437** = 270 Domain + 1167 Application + 976 Infrastructure + 463 Documents + 1413 Ui together + 26 `OperationsCalendarViewTests` + 109 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release --filter "Category!=LiveSmoke"`). Phase 24 adds +2 `Phase24ReleaseCompatibilityTests` (Application): final **4439/4439** (Application 1169). Run-alone set unchanged (five classes). No test contacts GitHub; live tests not run or counted |
+| Release build | `dotnet build CarowindsPassdown.slnx -c Release`: 0 warnings, 0 errors (before packaging, after a full clean, and at the documentation commit). `tools/update-signing` Release build: 0/0 |
+| Superseded | RC.7/RC.6/older artifacts untouched in `artifacts/releases/`; RC.6 and RC.7 SHA-256 re-verified unchanged after the RC.8 build. Do not distribute superseded versions |
+
+## Primary release: multi-file portable ZIP (RECOMMENDED)
+
+| | |
+|---|---|
+| Artifact | `/Users/kashyap/Documents/Passdown/carowinds-passdown-greenfield/artifacts/releases/Carowinds-Operations-0.1.0-rc.8-win-x64.zip` |
+| Bytes | **75,714,287** (RC.7: 75,149,722) |
+| SHA-256 | **`6d753211ec0cca7393aac162b15d01220f3ae12a05e489a5316c71489c7f83ea`** |
+| Architecture / runtime | win-x64, self-contained (`coreclr.dll`, `hostfxr.dll` included); `Carowinds.Passdown.Desktop.exe` and `Carowinds.Passdown.Updater.exe` are `PE32+ (GUI) x86-64` |
+| Extracted folder | `Carowinds-Operations-0.1.0-rc.8-win-x64\` |
+| Content | 287 files / 287 entries (no directory entries), 166,324,828 bytes uncompressed (RC.7: 283 files, 165,015,237). Relative to RC.7: **+4** `Carowinds.Passdown.Updater.exe` (365,056 B, SHA-256 `ca2662b1…406f`), `.dll` (207,360 B), `.runtimeconfig.json`, `.deps.json`; changed: `Desktop.dll`, `Application.dll`, `Infrastructure.dll`, `Domain.dll`, `README.txt`, `TESTER-GUIDE.txt`; nothing removed |
+| Produced by | `packaging/windows/Build-PortableRelease.ps1` (real script, via `Publish-Windows.ps1`, which deletes `artifacts/publish/win-x64` and publishes the updater from source into a fresh temporary folder). Staging `artifacts/release-staging/Carowinds-Operations-0.1.0-rc.8-win-x64` freshly created |
+| Frozen | Read-only on the build host |
+
+- **Packaging validator (`Test-ReleasePackage.ps1`): PASS** on staging and on the final ZIP (287 files),
+  run by the build script. C# mirror (`CAROWINDS_RELEASE_ZIP=… --filter RealReleaseZip`): PASS.
+- **ZIP structure: PASS.** `unzip -t` clean; one top-level folder; no backslash names; fresh extraction
+  `diff -rq`-identical to staging.
+- **Required content present:** main exe/dll/runtimeconfig/deps; the four updater files; QuestPDF
+  (`QuestPDF.dll`, `QuestPdfSkia.dll`, `qpdf.dll`), Skia/HarfBuzz/ANGLE natives, `e_sqlite3.dll`;
+  `README.txt`, `TESTER-GUIDE.txt`, `THIRD-PARTY-NOTICES.txt`, `licenses\` (incl. `QuestPDF-LICENSE.txt`,
+  `STIXTwoMath-OFL.txt`, `Inter-OFL.txt`), `LatoFont\OFL.txt`, `Enable/Disable Automatic Refresh.cmd`,
+  `tools\Install-/Uninstall-ScheduledRefresh.ps1`.
+- **Embedded (not loose):** Fury banner (`fury325-banner.jpg`, 135,816 B) exactly once in
+  `Desktop.dll`; fonts embedded as before (no loose `.ttf`/`.otf`); `appsettings.json` embedded with
+  `Updates:Repository = KASHO7/Passdown`, channel `ReleaseCandidate`, trusted key `carowinds-release-1`
+  (public key only); bundled What's New notes `Version: 0.1.0-rc.8`.
+- **Forbidden content: PASS.** No `.pem`/private-key material (byte-window scan against the production
+  private key: 0 matches in the extracted ZIP, the EXE and `src/`), no git credentials or GitHub tokens
+  (`ghp_`, `github_pat_`), no `.git*`, `.DS_Store`, `__MACOSX`, `.pdb`, `.db`/`-wal`/`-shm`, logs, PDFs,
+  test assemblies, fixtures, research/monitoring snapshots, `appearance.json`/`updates.json`/sync data,
+  `.update.json`/`.sig`, or source files. The only "PRIVATE KEY" bytes are PEM label constants inside the
+  .NET runtime's `System.Security.Cryptography.dll`.
+- **Developer-path scan: PASS.** Build user name and checkout folder name appear in no packaged file.
+
+## Single-file release (EXPERIMENTAL)
+
+| | |
+|---|---|
+| Artifact | `/Users/kashyap/Documents/Passdown/carowinds-passdown-greenfield/artifacts/releases/Carowinds-Operations-0.1.0-rc.8-win-x64-singlefile.exe` |
+| Bytes | **191,886,156** (RC.7 EXE: 191,013,708) |
+| SHA-256 | **`9026dc93944b0a9a0476858bb71acd9d997696ef2eb00a0ee6d741401753c654`** |
+| Checks | Phase 15F single-file command into a freshly deleted `artifacts/publish/win-x64-singlefile`; output = exe + `LatoFont/OFL.txt` (`.pdb` removed). `PE32+ (GUI) x86-64`; carries `0.1.0-rc.8+a651e26…`; Fury image embedded once; no rc.7 strings, no developer paths, no private-key bytes. Frozen read-only |
+| Updates | **In-app installation is not available for this form.** It has no `Carowinds.Passdown.Updater.exe` or `Carowinds.Passdown.Desktop.dll` beside it, so `InstallationInspector` reports *NotPortableInstallation* and Settings shows *Manual update required* (Phase 23D design, no change needed). Update it manually by replacing the file with a newer one |
+| Status | EXPERIMENTAL. No notices when distributed alone. Do **not** hand it out independently. Launch NOT EXECUTED |
+
+## Update manifest (GitHub Releases metadata, Phase 23D format 1)
+
+| | |
+|---|---|
+| Manifest | `artifacts/releases/Carowinds-Operations-0.1.0-rc.8-win-x64.update.json` — 49,119 B, SHA-256 `8940cff5baa1d927cf5dfc28eae7826da9a9ce868325a1e2d4878b88f1a8d8df` |
+| Signature | `artifacts/releases/Carowinds-Operations-0.1.0-rc.8-win-x64.update.json.sig` — 206 B, SHA-256 `e8f1698ec7c3d999024db0cc438d46809de5a9cec5ed115033d10fe0e42f8aaa`; `ECDSA-P256-SHA256`, key ID `carowinds-release-1` |
+| Contents | product `carowinds-operations`, version `0.1.0-rc.8`, channel `release-candidate`, `win-x64`, `publishedAtUtc 2026-10-18T12:18:47Z` (signing time; **not** published), package `Carowinds-Operations-0.1.0-rc.8-win-x64.zip` / 75,714,287 B / `6d753211…83ea` / root `Carowinds-Operations-0.1.0-rc.8-win-x64`, 287 file entries incl. the six required files |
+| Produced by | `tools/update-signing` `create-manifest` (from the frozen ZIP) → `sign --key-id carowinds-release-1 --private-key ~/.carowinds-signing/carowinds-release-1.pem` → `verify --appsettings src/Carowinds.Passdown.Desktop/appsettings.json` = **VERIFIED** |
+| Signing authorisation | Owner confirmed in this session (2026-10-18) that a second offline protected backup of the private key exists and authorised **local** signing only |
+| Status | **SIGNED, NOT PUBLISHED.** Not uploaded, no tag, no GitHub Release. Only meaningful for a future in-app update *to* RC.8 from an updater-enabled build, which does not exist yet (RC.8 is the first); kept so the published asset set, if RC.8 is ever approved for GitHub, is exactly these frozen files |
+
+**Negative checks (synthetic copies in the session scratchpad, CLI `verify`):** manifest text changed →
+`InvalidSignature`; package SHA-256 changed → `InvalidSignature`; signed with a disposable key claiming
+`carowinds-release-1` → `InvalidSignature`; disposable key with key ID `synthetic-unknown-key` →
+`UnknownKey`; the production pair still `VERIFIED`. The disposable key was deleted afterwards. No command
+printed key material.
+
+## Signing identity
+
+| | |
+|---|---|
+| Configured key | `carowinds-release-1`, ECDSA P-256, in `src/Carowinds.Passdown.Desktop/appsettings.json` → `Updates:TrustedSigningKeys` (trusted since `392d125`) |
+| Public-key fingerprint | SHA-256(SubjectPublicKeyInfo) **`8e0e108689653f027f92b0e91122cf3e49dda206636378723dc7941ed2c969d3`** — computed independently from the bundled Base64 and from the private key's derived public half; identical |
+| Private key | `~/.carowinds-signing/carowinds-release-1.pem` (folder `700`, file `600`), outside the repository, outside the publish/staging folders, never printed or copied |
+| Backup | Owner-confirmed second offline protected copy (2026-10-18). Not verified by the build session |
+
+## Updater security regression (automated, build host)
+
+Covered by the passing suites (no bypass switch exists in `src/` — searched for skip/bypass/environment
+overrides in the updater code paths):
+
+| Rejection | Tests |
+|---|---|
+| Unsigned release / missing signature asset | `UnsignedOrInvalidlySignedRelease_IsNotApproved_AndOlderValidOneIsOffered`, `MissingRequiredAsset_IsIgnored` |
+| Invalid signature / tampered manifest | `TamperedManifest_IsRejected`, `MalformedSignatureFile_IsRejected` |
+| Wrong / unknown key | `SignatureFromAnUntrustedKey_IsRejected`, `NoTrustedKeys_RejectsEverything`, `InvalidConfiguredKeys_AreIgnored_NotTrusted` |
+| Hash mismatch | `CorruptDownload_FailsHashCheck_AndLeavesNothingStaged`, `ModifiedFileContent_IsRejected`, `StagedFileTamperedAfterVerification_IsRejected` |
+| ZIP path traversal / symlinks / duplicates | `HostileOrUnexpectedEntries_AreRejected_AndNothingIsLeftBehind`, `SymbolicLinkEntry_IsRejected`, `DuplicateEntry_IsRejected`, `SignedManifestWithUnsafeOrDuplicatePath_IsRejected` |
+| Wrong architecture / product / channel | `SignedManifestForAnotherArchitecture_IsRejected`, `SignedManifestForAnotherProduct_IsRejected`, `ReleaseCandidateVersionClaimingStable_IsRejected` |
+| Downgrade / same version | `OlderOrSameVersion_IsNeverOffered`, `IsInstallable_NeverDowngradesOrReinstalls`, `DowngradeWrongProductOrUnsafePathInRequest_IsRefused`, `Phase24ReleaseCompatibilityTests` (installed RC.8 ignores RC.7/RC.8, is offered RC.9; built version never offered itself) |
+| Missing required files | `ManifestWithoutTheUpdater_IsRejected`, `MissingFile_IsRejected` |
+| Unauthorised / protected location | `PermissionDenied_ChangesNothing`, `FolderThatBecameUnwritable_StopsBeforeTheUpdaterStarts`, `RequestOutsideTheRequestsFolder_IsIgnoredEntirely`, `UpdaterRunningFromAnotherFolderThanTheStagedOne_RefusesTheRequest` |
+
+These are **TESTED WITH SYNTHETIC DATA** on macOS (fake process environment, POSIX permissions). Windows
+file locking, ACLs, process restart and rollback are not exercised.
+
+## Phase 23A–23D scope in RC.8 (build-host evidence only)
+
+- **23A save-failure freeze:** at most one save attempt per action; failed state persists with Retry
+  Save; date change / Check Online / note operations refused during persistent failure, edits retained;
+  Personal Sync not marked successful; close warns once; no retry timer. ~5 s SQLite lock wait and
+  "second close discards" limitations preserved. (`Phase23ASaveFailureLoopTests`, `…SyncTests`)
+- **23B Dashboard Shows:** stacked name/times/venue, "+N more" in-memory expansion, wrapping, honest
+  missing venue and source states, title-only Fury banner, unchanged window icon; FIMS retrieval
+  untouched. (`Phase23BDashboardShowsTests`, real-window layout tests)
+- **23C Appearance:** Use Windows setting (default) / Light / Dark, immediate, local `appearance.json`
+  (unchanged location), never synced, applied before the first window. (`AppearanceResolverTests`,
+  `FileAppearancePreferenceStoreTests`, `Phase23CAppearancePreferenceTests`)
+- **23D updater:** public GitHub Releases discovery (`KASHO7/Passdown`, unauthenticated, prereleases
+  included, SemVer ordering), signed manifest + SHA-256 verification, safe extraction, external updater,
+  staging, restart, journaled rollback, data preservation, offline bundled notes, What's New once after a
+  confirmed successful update only (clean/manual install never). No silent install, no auto-publishing,
+  no SharePoint.
+
+## Upgrade compatibility (RC.7 → RC.8)
+
+- **Manual ZIP install required** — RC.7 has no updater and cannot upgrade itself.
+- RC.8 is the first build that can later receive an approved, signed in-app update.
+- A manual RC.8 install writes no install record, so What's New does not open automatically
+  (`WhatsNewPolicy`); notes are available from Settings → About this build.
+- No schema, serializer, sync-payload or app-path change (schemas 16/4/2/1). New local files only when
+  used: `appearance.json`, `updates.json`, `%LOCALAPPDATA%\Carowinds Operations Updates\`.
+- Not executed: opening a real or synthetic RC.7 profile with the RC.8 binary on Windows
+  (`rc8-windows-validation.md` §8).
+
+## QuestPDF licence
+
+QuestPDF **2026.7.3**, `LicenseType.Community` in `AssociatePassdownPdfGenerator`; licence text shipped as
+`licenses\QuestPDF-LICENSE.txt`. Its Community License Eligibility limits use to qualifying individuals,
+learning/evaluation, certain non-profits/academia and organisations under USD 1M annual revenue, and
+excludes publicly traded companies and public-sector entities. Whether the intended organisational
+deployment qualifies has not been determined, and no organisational approval is recorded. No legal
+conclusion is drawn. **Distribution approval pending.**
+
+## Fury photograph rights
+
+Unchanged from RC.7 (`fury325-banner.jpg`, 135,816 B, cropped from the owner-supplied image; photographer,
+licence and redistribution permission undocumented). **Photograph redistribution rights pending.** Not
+replaced.
+
+## Public GitHub
+
+`KASHO7/Passdown` is public. Nothing was pushed, tagged, uploaded or attached. A public release is a
+separate action requiring explicit owner approval and resolution of the licensing, photograph and
+organisation-policy gates (`docs/phase23d-github-updater.md` §14).
+
+## Windows validation
+
+Record: `docs/releases/rc8-windows-validation.md`. **Every item NOT EXECUTED** (first launch, save
+failure, Dashboard Shows, appearance, updater, restart/rollback, RC.7 profile upgrade, operational
+features, scaling, Narrator, experimental EXE). The real Windows updater test harness (test-configured
+builds + signed synthetic releases in a separate private test repository) is **not prepared**.
+
+## Frozen artifacts
+
+The RC.8 ZIP, EXE, manifest and signature are frozen (read-only) as recorded above. They must not be
+modified, rebuilt over or repacked under these names. A defect needing a new binary ships as
+**`0.1.0-rc.9`**.
+
+## Outstanding issues
+
+1. Windows validation of everything (§ above).
+2. Updater Windows harness: owner to choose a private test repository for synthetic signed releases.
+3. QuestPDF Community-licence eligibility / organisational approval.
+4. Fury photograph redistribution rights.
+5. Organisation policy on distributing via a personal public GitHub repository.
+6. Executables not Authenticode-signed; SmartScreen/Defender behaviour unknown.
+
+## Release status
+
+- **BUILT**: Release 0/0; 4437/4437 at the version commit, 4439/4439 with the Phase 24 tests.
+- **PACKAGED**: ZIP + experimental EXE from `a651e26`; frozen.
+- **HASH VERIFIED**: sizes and SHA-256 above; RC.6/RC.7 unchanged.
+- **SIGNED**: update manifest, locally, `carowinds-release-1`; **NOT PUBLISHED**.
+- **TESTED WITH SYNTHETIC DATA**: updater, signing, discovery, rollback (macOS).
+- **WINDOWS VALIDATED: NO (NOT EXECUTED).**
+- **DISTRIBUTION APPROVED: NO (PENDING)** — QuestPDF, photograph rights, organisation policy.
