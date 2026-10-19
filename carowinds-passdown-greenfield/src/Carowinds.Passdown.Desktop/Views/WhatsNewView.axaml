@@ -1,0 +1,54 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
+             xmlns:updates="using:Carowinds.Passdown.Application.Updates"
+             xmlns:converters="using:Carowinds.Passdown.Desktop.Converters"
+             x:Class="Carowinds.Passdown.Desktop.Views.WhatsNewView"
+             x:DataType="vm:WhatsNewViewModel">
+
+  <!-- Escape closes only while focus is inside this overlay. -->
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="Escape" Command="{Binding CloseCommand}" />
+  </UserControl.KeyBindings>
+
+  <!-- Phase 23D: "What's New in Carowinds Operations". The bundled notes of the running version as plain
+       text blocks (no HTML, links or scripts), scrollable, with one Continue action. Same overlay surface as
+       Season Price History, so it follows the Phase 22A light/dark tokens. -->
+  <Border x:Name="WhatsNewCard" MaxWidth="640" MaxHeight="620" Margin="24" Padding="20" CornerRadius="8" BorderThickness="1"
+          BorderBrush="{DynamicResource PassdownDividerBrush}"
+          Background="{DynamicResource PassdownPopupSurfaceBrush}"
+          HorizontalAlignment="Center" VerticalAlignment="Center"
+          AutomationProperties.Name="What's New in Carowinds Operations">
+    <Grid RowDefinitions="Auto,*,Auto">
+      <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,12">
+        <TextBlock Text="What's New in Carowinds Operations" Classes="sectionTitle" FontSize="18" Margin="0" />
+        <TextBlock Text="{Binding VersionText}" FontWeight="Medium" />
+        <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
+        <TextBlock Text="{Binding PublishedText}" Classes="muted"
+                   IsVisible="{Binding PublishedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      </StackPanel>
+
+      <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Release notes">
+        <StackPanel>
+          <TextBlock Text="{x:Static vm:WhatsNewViewModel.MissingNotesText}" Classes="muted" TextWrapping="Wrap"
+                     IsVisible="{Binding !HasNotes}" />
+          <ItemsControl ItemsSource="{Binding Blocks}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="updates:ReleaseNotesBlock">
+                <Grid ColumnDefinitions="Auto,*" Margin="0,3">
+                  <TextBlock Grid.Column="0" Text="•" Margin="4,0,8,0" IsVisible="{Binding IsBullet}" />
+                  <TextBlock Grid.Column="1" Text="{Binding Text}" TextWrapping="Wrap"
+                             FontWeight="{Binding IsHeading, Converter={x:Static converters:ReleaseNotesConverters.HeadingWeight}}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </ScrollViewer>
+
+      <Button x:Name="WhatsNewContinue" Grid.Row="2" Content="Continue" Classes="primaryAction" HorizontalAlignment="Right" Margin="0,12,0,0"
+              Command="{Binding CloseCommand}"
+              AutomationProperties.Name="Close What's New and continue" />
+    </Grid>
+  </Border>
+</UserControl>

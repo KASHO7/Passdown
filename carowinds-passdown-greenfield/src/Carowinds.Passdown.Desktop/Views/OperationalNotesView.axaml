@@ -38,9 +38,22 @@
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
-    <Style Selector="ListBoxItem">
-      <Setter Property="Padding" Value="14,10" />
+    <!-- Phase 22E: divided rows instead of tall stacked blocks — a hairline under each row, 8px vertical
+         padding, and the left 3px reserved for the Important rule below. -->
+    <Style Selector="ListBox.notesList ListBoxItem">
+      <Setter Property="Padding" Value="0" />
       <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+    </Style>
+    <!-- Important (a supervisor's explicit priority, never inferred from text): a thin accent rule at the
+         row's left edge plus the word "Important" in the metadata line — never a warning box, never color alone. -->
+    <Style Selector="Border.importanceRule">
+      <Setter Property="Width" Value="3" />
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.importanceRule.important">
+      <Setter Property="Background" Value="{DynamicResource PassdownAccentForegroundBrush}" />
     </Style>
 
     <Style Selector="TextBox.fieldInput">
@@ -132,7 +145,7 @@
               BorderThickness="0,0,1,0" BorderBrush="{DynamicResource PassdownDividerBrush}">
         <Grid RowDefinitions="Auto,*">
 
-          <ProgressBar Grid.Row="0" IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoading}" />
+          <ProgressBar Grid.Row="0" IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoading}" AutomationProperties.Name="Loading operational notes" />
 
           <TextBlock Grid.Row="1" Text="{Binding ListErrorMessage}" Classes="fieldError"
                      Margin="16" TextWrapping="Wrap" VerticalAlignment="Top"
@@ -152,27 +165,28 @@
             <TextBlock Text="{Binding FilteredEmptyStateMessage}" Classes="muted" TextWrapping="Wrap" />
           </StackPanel>
 
-          <ListBox Grid.Row="1" Classes="selectableRows" ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}"
+          <ListBox Grid.Row="1" Classes="selectableRows notesList" ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}"
                    Background="Transparent" BorderThickness="0"
                    IsVisible="{Binding !ShowEmptyState}"
                    IsEnabled="{Binding !IsEditing}"
                    AutomationProperties.Name="Operational notes list">
             <ListBox.ItemTemplate>
+              <!-- Phase 22E: three lines — title; category · priority; lifecycle · range (· relative). Every
+                   pre-22E fact is still on the row (the lifecycle chip became the first word of the schedule
+                   line; the carry-forward line is kept when it adds a relative fact). -->
               <DataTemplate x:DataType="presentation:OperationalNoteRowPresentation">
-                <StackPanel Spacing="4" AutomationProperties.Name="{Binding Title}">
-                  <TextBlock Text="{Binding Title}" FontWeight="Bold" FontSize="13.5" TextWrapping="Wrap" />
-                  <StackPanel Orientation="Horizontal" Spacing="4">
-                    <TextBlock Classes="muted" Text="{Binding CategoryLabel}" />
-                    <TextBlock Classes="muted" Text="·" />
-                    <TextBlock Classes="priorityText" Classes.important="{Binding IsImportant}" Text="{Binding PriorityLabel}" />
+                <Grid ColumnDefinitions="Auto,*" AutomationProperties.Name="{Binding AccessibleSummary}">
+                  <Border Grid.Column="0" Classes="importanceRule" Classes.important="{Binding IsImportant}" />
+                  <StackPanel Grid.Column="1" Spacing="2" Margin="11,8,12,8">
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13.5" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Classes="muted" Text="{Binding CategoryLabel}" />
+                      <TextBlock Classes="muted" Text="·" />
+                      <TextBlock Classes="priorityText" Classes.important="{Binding IsImportant}" Text="{Binding PriorityLabel}" />
+                    </StackPanel>
+                    <TextBlock Classes="muted" Text="{Binding ScheduleText}" TextWrapping="Wrap" />
                   </StackPanel>
-                  <TextBlock Classes="muted" Text="{Binding DateRangeText}" />
-                  <TextBlock Classes="muted" Text="{Binding CarryForwardText}"
-                             IsVisible="{Binding CarryForwardText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                  <Border Classes="chip" HorizontalAlignment="Left">
-                    <TextBlock Text="{Binding LifecycleLabel}" />
-                  </Border>
-                </StackPanel>
+                </Grid>
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
@@ -226,6 +240,10 @@
                 <TextBlock Text="{Binding SelectedDetail.EffectiveThroughText}" />
               </StackPanel>
             </Grid>
+
+            <!-- Phase 22E: stored created/updated times (display only; the stored values never change). -->
+            <TextBlock Text="{Binding SelectedDetail.RecordTimesText}" Classes="muted" TextWrapping="Wrap"
+                       IsVisible="{Binding SelectedDetail.RecordTimesText, Converter={x:Static StringConverters.IsNotNullOrEmpty}, FallbackValue=False}" />
 
             <!-- Carry-forward relevance (Phase 11E Part E/F) — derived only, never a separate record. -->
             <TextBlock Text="{Binding SelectedDetail.CarryForwardText}" Classes="muted"

@@ -257,12 +257,15 @@ public partial class OperationalNotesViewModel : ViewModelBase
     {
         get
         {
+            // Phase 22E: with the Important priority filter, say "important" rather than implying no notes at all.
+            var noun = PriorityFilter.Value == OperationalNotePriority.Important ? "important operational notes" : "operational notes";
             var lifecycleMessage = LifecycleFilter switch
             {
-                OperationalNoteLifecycleFilter.Active => "No active operational notes.",
-                OperationalNoteLifecycleFilter.Upcoming => "No upcoming operational notes.",
-                OperationalNoteLifecycleFilter.Expired => "No expired operational notes.",
-                OperationalNoteLifecycleFilter.Resolved => "No resolved operational notes.",
+                OperationalNoteLifecycleFilter.Active => $"No active {noun}.",
+                OperationalNoteLifecycleFilter.Upcoming => $"No upcoming {noun}.",
+                OperationalNoteLifecycleFilter.Expired => $"No expired {noun}.",
+                OperationalNoteLifecycleFilter.Resolved => $"No resolved {noun}.",
+                _ when PriorityFilter.Value == OperationalNotePriority.Important => "No important operational notes.",
                 _ => "No operational notes match this filter.",
             };
 

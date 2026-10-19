@@ -25,4 +25,21 @@ public static class DeepRefreshCoverage
         var horizon = ParkHoursCoveragePlanner.TargetHorizon(today);
         return coverageThrough < horizon.AddDays(-CoverageSlackDays);
     }
+
+    /// <summary>
+    /// Phase 22E.1: true when stored coverage has not yet reached the published-schedule discovery
+    /// horizon (<see cref="ParkHoursCoveragePlanner.DiscoveryHorizon"/>). Deliberately separate from
+    /// <see cref="NeedsDeepRefresh"/>: a short official feed must never turn every Check Online into a
+    /// bootstrap Deep Refresh — this only makes the (rate-limited) daily maintenance run again.
+    /// </summary>
+    public static bool NeedsScheduleDiscovery(DeepRefreshStatusRecord? status, DateOnly today, int months = ParkHoursCoveragePlanner.DefaultDiscoveryMonths)
+    {
+        if (status?.CoverageThrough is not { } coverageThrough)
+        {
+            return true;
+        }
+
+        var horizon = ParkHoursCoveragePlanner.DiscoveryHorizon(today, months);
+        return coverageThrough < horizon.AddDays(-CoverageSlackDays);
+    }
 }

@@ -148,6 +148,7 @@ public sealed class OperationsDashboardService(
             clock.UtcNow)
         {
             TodayShows = workspace.ShowSchedule,
+            Admission = DashboardAdmissionSelector.Select(workspace),
         };
     }
 

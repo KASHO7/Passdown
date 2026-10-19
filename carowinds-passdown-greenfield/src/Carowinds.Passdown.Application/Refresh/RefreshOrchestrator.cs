@@ -37,7 +37,8 @@ public sealed class RefreshOrchestrator(
     IJobBrowserSessionFactory browserSessionFactory,
     IClock clock,
     RefreshOrchestratorOptions options,
-    IDeepRefreshStatusRepository? deepRefreshStatusRepository = null) : IRefreshOrchestrator
+    IDeepRefreshStatusRepository? deepRefreshStatusRepository = null,
+    ParkHoursScheduleDiscovery? scheduleDiscovery = null) : IRefreshOrchestrator
 {
     public async Task<RefreshSummary> RunScheduledRefreshAsync(IProgress<RefreshProgress>? progress = null, CancellationToken cancellationToken = default)
     {
@@ -115,20 +116,24 @@ public sealed class RefreshOrchestrator(
                 : DeepRefreshOutcome.Failed;
 
         var today = DateOnly.FromDateTime(EasternTimeZone.ConvertFromUtc(clock.UtcNow).DateTime);
-        var parkHoursResults = summary.Results
-            .Where(r => r.Category == SourceCategory.ParkHours && r.RequestedDate is not null)
-            .OrderBy(r => r.RequestedDate)
-            .ToList();
+        // Phase 22E.1: a date is covered by a successful single-date request, or by being listed (and
+        // stored) in a published-schedule month response — even when another date of that month failed.
+        var coveredDates = new HashSet<DateOnly>();
+        foreach (var result in summary.Results.Where(r => r.Category == SourceCategory.ParkHours))
+        {
+            if (result.CoveredDates is { } monthDates)
+            {
+                coveredDates.UnionWith(monthDates);
+            }
+            else if (result is { Outcome: SourceOperationOutcomeKind.Success, RequestedDate: { } date })
+            {
+                coveredDates.Add(date);
+            }
+        }
 
         DateOnly? coverageThrough = null;
-        for (var date = today; ; date = date.AddDays(1))
+        for (var date = today; coveredDates.Contains(date); date = date.AddDays(1))
         {
-            var result = parkHoursResults.FirstOrDefault(r => r.RequestedDate == date);
-            if (result is not { Outcome: SourceOperationOutcomeKind.Success })
-            {
-                break;
-            }
-
             coverageThrough = date;
         }
 
@@ -187,14 +192,56 @@ public sealed class RefreshOrchestrator(
         }
 
         var today = DateOnly.FromDateTime(EasternTimeZone.ConvertFromUtc(clock.UtcNow).DateTime);
-        var parkHoursWindow = ParkHoursCoveragePlanner.BuildCoverageWindow(today);
         var parkHoursRegistration = registrations.Single(r => r.Category == SourceCategory.ParkHours);
+        if (scheduleDiscovery is not null)
+        {
+            return PlanPublishedScheduleDiscovery(scheduleDiscovery, parkHoursRegistration, normalWindow, otherPlanned, focusDate, today);
+        }
+
+        var parkHoursWindow = ParkHoursCoveragePlanner.BuildCoverageWindow(today);
         var parkHoursPlanned = parkHoursWindow
             .Select((date, rank) => new PlannedOperation(parkHoursRegistration, date, rank))
             .ToList();
 
         var rebasedOther = otherPlanned.Select(p => p with { Rank = p.Rank + parkHoursWindow.Count });
         return parkHoursPlanned.Concat(rebasedOther).OrderBy(p => p.Rank).ToList();
+    }
+
+    /// <summary>
+    /// Phase 22E.1: Park Hours for Deep Refresh with published-schedule discovery. The rolling window
+    /// (today first) is read one date at a time and shares the front ranks with every other source's
+    /// near-term dates, so today and the next days keep priority. Every later date through the
+    /// discovery horizon is read with one official month request per month, ranked after all of that —
+    /// about 13 requests for a year instead of one per date. A focus date beyond the horizon still gets
+    /// its own single-date request.
+    /// </summary>
+    private static IReadOnlyList<PlannedOperation> PlanPublishedScheduleDiscovery(
+        ParkHoursScheduleDiscovery discovery,
+        SourceRegistration parkHoursRegistration,
+        IReadOnlyList<DateOnly> normalWindow,
+        IReadOnlyList<PlannedOperation> otherPlanned,
+        DateOnly? focusDate,
+        DateOnly today)
+    {
+        var dailyDates = normalWindow.Count > 0 ? normalWindow.ToList() : [today];
+        var horizon = ParkHoursCoveragePlanner.DiscoveryHorizon(today, discovery.MonthsAhead);
+        var discoveryStart = dailyDates.Max().AddDays(1);
+
+        var planned = dailyDates
+            .Select((date, rank) => new PlannedOperation(parkHoursRegistration, date, rank))
+            .Concat(otherPlanned)
+            .ToList();
+
+        if (focusDate is { } focus && focus > horizon && !dailyDates.Contains(focus))
+        {
+            planned.Add(new PlannedOperation(parkHoursRegistration, focus, dailyDates.Count));
+        }
+
+        var monthRankBase = planned.Count == 0 ? 0 : planned.Max(p => p.Rank) + 1;
+        planned.AddRange(discovery.PlanMonths(discoveryStart, horizon)
+            .Select((month, index) => new PlannedOperation(month.Registration, month.MonthStart, monthRankBase + index)));
+
+        return planned.OrderBy(p => p.Rank).ToList();
     }
 
     private static IEnumerable<PlannedOperation> BuildDatedWindowWithFocusDate(

@@ -66,7 +66,10 @@ public class PortablePackagingDataSafetyTests
         AssertRemoveItemCallsTargetOnlyKnownVariables(
             PublishWindowsScriptText,
             "Publish-Windows.ps1",
-            ["$OutputDirectory", "$removedPdbs"]);
+            ["$OutputDirectory", "$removedPdbs", "$updaterOutput"]);
+
+        // Phase 23D: the updater's temporary publish folder is repo-relative under artifacts/, like every other target.
+        Assert.Contains("$updaterOutput = Join-Path $repoRoot 'artifacts' 'publish' 'win-x64-updater'", PublishWindowsScriptText);
 
         AssertRemoveItemCallsTargetOnlyKnownVariables(
             BuildPortableReleaseScriptText,

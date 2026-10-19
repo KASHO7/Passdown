@@ -57,5 +57,5 @@ public sealed record DeepRefreshStatusPresentation(
         return new DeepRefreshStatusPresentation(headline, wasSuccessful, detail, coverageText, string.Join(". ", automationParts));
     }
 
-    private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d 'at' h:mm tt", PresentationCulture.UnitedStates);
+    private static string FormatTimestamp(DateTimeOffset value) => EasternTimestampFormat.DateAndTime(value);
 }

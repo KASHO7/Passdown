@@ -1,0 +1,4 @@
+# Research observations, reports and user notes are local study data — never committed.
+output/
+__pycache__/
+*.pyc

@@ -44,16 +44,22 @@ public class Phase21CShowsMarkupTests
         Assert.DoesNotContain(copyCommands, command => command.Contains("Show", StringComparison.OrdinalIgnoreCase));
     }
 
+    // Phase 22E: the Calendar moved to its own compact CalendarShowsPresentation (summary + disclosure,
+    // covered by Phase22ECalendarShowsTests); the Dashboard keeps the shared Phase 21C presentation
+    // (Phase 23B wraps its rows in DashboardShowRowViewModel).
     [Fact]
-    public void DashboardAndCalendar_BindTheSharedShowsPresentation()
+    public void Dashboard_BindsTheSharedShowsPresentation_AndCalendarItsCompactSummary()
     {
-        foreach (var path in new[] { "src/Carowinds.Passdown.Desktop/Views/DashboardView.axaml", "src/Carowinds.Passdown.Desktop/Views/OperationsCalendarView.axaml" })
-        {
-            var markup = Markup(path);
-            Assert.Contains("{Binding ShowsPresentation.Heading}", markup);
-            Assert.Contains("{Binding ShowsPresentation.StatusText}", markup);
-            Assert.Contains("ItemsSource=\"{Binding ShowsPresentation.Rows}\"", markup);
-        }
+        var dashboard = Markup("src/Carowinds.Passdown.Desktop/Views/DashboardView.axaml");
+        Assert.Contains("{Binding ShowsPresentation.Heading}", dashboard);
+        Assert.Contains("{Binding ShowsPresentation.StatusText}", dashboard);
+        // Phase 23B: the Dashboard rows are view models over ShowsPresentation.Rows (in-memory expansion state).
+        Assert.Contains("ItemsSource=\"{Binding ShowRows}\"", dashboard);
+        Assert.Contains("IsVisible=\"{Binding ShowsPresentation.HasRows}\"", dashboard);
+
+        var calendar = Markup("src/Carowinds.Passdown.Desktop/Views/OperationsCalendarView.axaml");
+        Assert.Contains("{Binding CalendarShows.StatusText}", calendar);
+        Assert.Contains("ItemsSource=\"{Binding CalendarShows.Rows}\"", calendar);
     }
 
     [Fact]

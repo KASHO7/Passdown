@@ -29,6 +29,13 @@ public sealed record SourceOperationResult(
     RetrievalStatus? Status,
     string Detail)
 {
+    /// <summary>
+    /// Phase 22E.1: for a published-schedule month operation (<see cref="ParkHoursMonthRegistration"/>),
+    /// the dates the official response answered for and that now hold a stored official result — what
+    /// Deep Refresh coverage is computed from. Null for every ordinary single-date or catalog operation.
+    /// </summary>
+    public IReadOnlyList<DateOnly>? CoveredDates { get; init; }
+
     public static SourceOperationResult Success(string sourceId, SourceCategory category, DateOnly? requestedDate, RetrievalStatus status, string detail) =>
         new(sourceId, category, requestedDate, SourceOperationOutcomeKind.Success, status, detail);
 

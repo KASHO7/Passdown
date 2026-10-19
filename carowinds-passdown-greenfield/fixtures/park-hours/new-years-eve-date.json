@@ -1,0 +1,26 @@
+{
+  "parkId": 30,
+  "parkAbbreviation": "CA",
+  "parkName": "Carowinds",
+  "dates": [
+    {
+      "date": "12/31/2026",
+      "isParkClosed": false,
+      "operatings": [
+        {
+          "operatingTypeId": 24,
+          "operatingTypeName": "New Years Eve",
+          "items": [
+            {
+              "assignmentDisplayName": "New Years Eve",
+              "assignmentDescription": "",
+              "timeFrom": "15:00",
+              "timeTo": "01:00",
+              "isBuyout": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

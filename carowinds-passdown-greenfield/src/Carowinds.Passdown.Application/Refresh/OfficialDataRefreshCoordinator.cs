@@ -84,6 +84,8 @@ public sealed class OfficialDataRefreshCoordinator : IOfficialDataRefreshCoordin
     private readonly IDeepRefreshStatusRepository? _deepRefreshStatusRepository;
     private readonly IPersonalSyncCoordinator? _personalSyncCoordinator;
     private readonly Func<TimeSpan, CancellationToken, Task> _delayAsync;
+    private readonly int _discoveryMonths;
+    private DateTimeOffset? _lastBackgroundMaintenanceAt;
 
     private readonly Lock _lock = new();
     private readonly Dictionary<DateOnly, DateTimeOffset> _dateCheckCompletedAt = [];
@@ -107,7 +109,8 @@ public sealed class OfficialDataRefreshCoordinator : IOfficialDataRefreshCoordin
         IScheduledRefreshRunner? maintenanceRunner = null,
         IDeepRefreshStatusRepository? deepRefreshStatusRepository = null,
         IPersonalSyncCoordinator? personalSyncCoordinator = null,
-        Func<TimeSpan, CancellationToken, Task>? delayAsync = null)
+        Func<TimeSpan, CancellationToken, Task>? delayAsync = null,
+        RefreshOrchestratorOptions? refreshOptions = null)
     {
         _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
         _registrations = registrations ?? throw new ArgumentNullException(nameof(registrations));
@@ -123,6 +126,7 @@ public sealed class OfficialDataRefreshCoordinator : IOfficialDataRefreshCoordin
         _deepRefreshStatusRepository = deepRefreshStatusRepository;
         _personalSyncCoordinator = personalSyncCoordinator;
         _delayAsync = delayAsync ?? Task.Delay;
+        _discoveryMonths = refreshOptions?.ParkHoursDiscoveryMonths ?? Freshness.ParkHoursCoveragePlanner.DefaultDiscoveryMonths;
 
         _lastObservedEasternDate = TodayEastern();
 
@@ -329,7 +333,7 @@ public sealed class OfficialDataRefreshCoordinator : IOfficialDataRefreshCoordin
         var deepRefreshStatus = _deepRefreshStatusRepository is null
             ? null
             : await _deepRefreshStatusRepository.GetAsync(cancellationToken).ConfigureAwait(false);
-        if (!OfficialRefreshPolicy.IsDailyMaintenanceDue(deepRefreshStatus, _policies[SourceCategory.ParkHours], _clock.UtcNow))
+        if (!OfficialRefreshPolicy.IsDailyMaintenanceDue(deepRefreshStatus, _policies[SourceCategory.ParkHours], _clock.UtcNow, _discoveryMonths))
         {
             _logger?.LogInformation(
                 "Startup catch-up maintenance skipped: today's scheduled maintenance already ran at {LastAttemptAtUtc:O}.",
@@ -337,9 +341,61 @@ public sealed class OfficialDataRefreshCoordinator : IOfficialDataRefreshCoordin
             return true;
         }
 
-        _logger?.LogInformation("Startup catch-up maintenance needed: today's scheduled maintenance has not run yet.");
+        _logger?.LogInformation(
+            "Startup catch-up maintenance needed: today's scheduled maintenance has not run yet, or published park schedule coverage (through {CoverageThrough}) is incomplete.",
+            deepRefreshStatus?.CoverageThrough?.ToString("yyyy-MM-dd") ?? "none");
         await _maintenanceRunner.RunAsync(RefreshMode.StartupCatchUp, cancellationToken).ConfigureAwait(false);
         return true;
+    }
+
+    /// <summary>
+    /// Phase 22E.1: while the app stays open, the same due-gated maintenance (Deep Refresh, including
+    /// published-schedule discovery) runs when a new daily boundary passes or coverage is incomplete —
+    /// so newly published months appear without a restart even when the scheduled task is not
+    /// installed. Evaluated after the four-hour check (near-term data first); never runs while another
+    /// process holds the refresh lock. Requires a persisted Deep Refresh status (a first-ever run is
+    /// startup's job), and runs at most once per <see cref="OfficialRefreshPolicy.ScheduleDiscoveryRetryInterval"/>
+    /// in this process even if that status could not be saved.
+    /// </summary>
+    private async Task RunMaintenanceIfDueAsync(CancellationToken cancellationToken)
+    {
+        if (_maintenanceRunner is null || _deepRefreshStatusRepository is null)
+        {
+            return;
+        }
+
+        var now = _clock.UtcNow;
+        if (_lastBackgroundMaintenanceAt is { } last && now - last < OfficialRefreshPolicy.ScheduleDiscoveryRetryInterval && now >= last)
+        {
+            return;
+        }
+
+        var status = await _deepRefreshStatusRepository.GetAsync(cancellationToken).ConfigureAwait(false);
+        if (status is null || !OfficialRefreshPolicy.IsDailyMaintenanceDue(status, _policies[SourceCategory.ParkHours], now, _discoveryMonths))
+        {
+            return;
+        }
+
+        using var entry = await _gate.TryEnterAsync(new OfficialRefreshActivity(OfficialRefreshKind.StartupMaintenance), waitForInProcessWork: true, cancellationToken).ConfigureAwait(false);
+        if (entry is null)
+        {
+            _logger?.LogInformation("Background maintenance skipped: a scheduled refresh is already running.");
+            return;
+        }
+
+        // Re-read: the scheduled task or a manual Deep Refresh may have run while this waited.
+        status = await _deepRefreshStatusRepository.GetAsync(cancellationToken).ConfigureAwait(false);
+        if (!OfficialRefreshPolicy.IsDailyMaintenanceDue(status, _policies[SourceCategory.ParkHours], _clock.UtcNow, _discoveryMonths))
+        {
+            return;
+        }
+
+        _lastBackgroundMaintenanceAt = _clock.UtcNow;
+
+        _logger?.LogInformation(
+            "Background maintenance started (published park schedule coverage through {CoverageThrough}).",
+            status?.CoverageThrough?.ToString("yyyy-MM-dd") ?? "none");
+        await _maintenanceRunner.RunAsync(RefreshMode.StartupCatchUp, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -362,6 +418,8 @@ public sealed class OfficialDataRefreshCoordinator : IOfficialDataRefreshCoordin
                 await RunComprehensiveAsync(isStartup: false, cancellationToken).ConfigureAwait(false);
             }
         }
+
+        await RunMaintenanceIfDueAsync(cancellationToken).ConfigureAwait(false);
 
         now = _clock.UtcNow;
         var next = OfficialRefreshPolicy.NextAutomaticCheckAt(CurrentStatus, now);

@@ -992,4 +992,99 @@ public sealed class OfficialDataRefreshCoordinatorTests
             await Task.Delay(5);
         }
     }
+
+    // ------------------------------------------------- Phase 22E.1 published park schedule discovery
+
+    /// <summary>Maintenance ran at 6:05 AM with Phase 13D's end-of-next-month coverage — the state an upgraded install starts in.</summary>
+    private static Task MarkOldCoverageMaintenanceAsync(Harness h, DateTimeOffset at) =>
+        h.Deep.SaveAsync(new DeepRefreshStatusRecord(at, at, DeepRefreshOutcome.Success, ParkHoursCoveragePlanner.TargetHorizon(Today), 10, 0));
+
+    [Fact]
+    public async Task Phase22E1_Startup_OldCoverageFromTheEarlyMorningTask_RunsDiscoveryMaintenance()
+    {
+        var h = CreateHarness(now: T0.AddHours(3)); // 11:00 AM
+        await MarkOldCoverageMaintenanceAsync(h, T0.AddHours(-2).AddMinutes(5)); // 6:05 AM
+
+        await h.Coordinator.RunStartupAsync();
+
+        Assert.Equal([RefreshMode.StartupCatchUp], h.Runner.Modes);
+    }
+
+    [Fact]
+    public async Task Phase22E1_Startup_OldCoverageButRecentAttempt_DoesNotRepeatWithinFourHours()
+    {
+        var h = CreateHarness();
+        await MarkOldCoverageMaintenanceAsync(h, T0.AddHours(-1));
+
+        await h.Coordinator.RunStartupAsync();
+
+        Assert.Empty(h.Runner.Modes);
+    }
+
+    [Fact]
+    public async Task Phase22E1_FourHourLoop_RunsDiscoveryOnce_AndInvalidatesTheCalendar()
+    {
+        var h = CreateHarness();
+        await h.WriteSourceStateAsync(T0);
+        await MarkOldCoverageMaintenanceAsync(h, T0.AddHours(-2).AddMinutes(5));
+        h.Clock.UtcNow = T0.AddHours(3);
+        h.Changes.Clear();
+
+        await h.Coordinator.RunDueCheckAsync();
+        await h.Coordinator.RunDueCheckAsync(); // status unchanged by the stub: the in-process spacing still holds
+
+        Assert.Equal([RefreshMode.StartupCatchUp], h.Runner.Modes);
+        await WaitUntilAsync(() => h.Changes.Any(c => c.Kind == DataChangeKind.OfficialData));
+    }
+
+    [Fact]
+    public async Task Phase22E1_FourHourLoop_FullCoverage_NoMaintenance()
+    {
+        var h = CreateHarness();
+        await h.WriteSourceStateAsync(T0);
+        await h.Deep.SaveAsync(new DeepRefreshStatusRecord(T0, T0, DeepRefreshOutcome.Success, ParkHoursCoveragePlanner.DiscoveryHorizon(Today), 20, 0));
+        h.Clock.UtcNow = T0.AddHours(5);
+
+        await h.Coordinator.RunDueCheckAsync();
+
+        Assert.Empty(h.Runner.Modes);
+        Assert.Equal(1, h.Orchestrator.ComprehensiveRefreshCallCount); // the normal four-hour check still ran
+    }
+
+    [Fact]
+    public async Task Phase22E1_FourHourLoop_NoDeepRefreshStatusYet_LeavesItToStartup()
+    {
+        var h = CreateHarness();
+        await h.WriteSourceStateAsync(T0);
+
+        await h.Coordinator.RunDueCheckAsync();
+
+        Assert.Empty(h.Runner.Modes);
+    }
+
+    [Fact]
+    public async Task Phase22E1_FourHourLoop_NextDayBoundary_RunsDailyMaintenance()
+    {
+        var h = CreateHarness();
+        await h.WriteSourceStateAsync(T0);
+        await h.Deep.SaveAsync(new DeepRefreshStatusRecord(T0, T0, DeepRefreshOutcome.Success, ParkHoursCoveragePlanner.DiscoveryHorizon(Today), 20, 0));
+        h.Clock.UtcNow = T0.AddDays(1); // 8:00 AM the next day, the scheduled task did not run
+
+        await h.Coordinator.RunDueCheckAsync();
+
+        Assert.Equal([RefreshMode.StartupCatchUp], h.Runner.Modes);
+    }
+
+    [Fact]
+    public async Task Phase22E1_FourHourLoop_OtherProcessHoldsTheLock_SkipsMaintenance()
+    {
+        var h = CreateHarness();
+        await h.WriteSourceStateAsync(T0);
+        await MarkOldCoverageMaintenanceAsync(h, T0.AddHours(-5));
+        h.CrossProcessLock.AcquireSucceeds = false;
+
+        await h.Coordinator.RunDueCheckAsync();
+
+        Assert.Empty(h.Runner.Modes);
+    }
 }

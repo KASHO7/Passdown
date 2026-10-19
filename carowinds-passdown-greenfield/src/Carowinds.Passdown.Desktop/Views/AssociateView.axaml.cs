@@ -109,4 +109,16 @@ public partial class AssociateView : UserControl
         TopLevel.GetTopLevel(textBox)?.FocusManager?.Focus(null, NavigationMethod.Unspecified, KeyModifiers.None);
         e.Handled = true;
     }
+
+    /// <summary>
+    /// Phase 22D: attendance / pre-solds show thousands separators once the field loses focus. View
+    /// glue only — the view model decides what (if anything) to regroup; typing is never rewritten.
+    /// </summary>
+    internal void CountTextBox_OnLostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is AssociateViewModel viewModel)
+        {
+            viewModel.RegroupCountFields();
+        }
+    }
 }

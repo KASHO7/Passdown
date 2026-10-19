@@ -8,7 +8,8 @@ namespace Carowinds.Passdown.Desktop.Converters;
 /// <summary>
 /// Gives the save-status chip a brand-tinted fill once a save has actually completed, and a neutral
 /// fill while unsaved/saving — purely decorative, since the chip's bound text (spec §10.4 "do not
-/// communicate status by color alone") already states the real state in words.
+/// communicate status by color alone") already states the real state in words. Phase 23: a failed
+/// save uses the shared error background.
 /// Phase 22A: resolved for the bound theme variant (second MultiBinding value) so the chip follows a
 /// live light/dark switch.
 /// </summary>
@@ -19,6 +20,7 @@ public sealed class SaveStatusBrushConverter : IValueConverter, IMultiValueConve
     internal static string? ResourceKeyFor(object? state) => state switch
     {
         AssociateAutosaveState.Saved => "PassdownChipAccentBrush",
+        AssociateAutosaveState.SaveFailed => "PassdownErrorBackgroundBrush",
         AssociateAutosaveState => "PassdownChipBrush",
         _ => null,
     };

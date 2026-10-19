@@ -4,6 +4,7 @@ using Carowinds.Passdown.Application.Calendar;
 using Carowinds.Passdown.Application.Dashboard;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Persistence;
+using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Hours;
@@ -67,7 +68,7 @@ public class UsPresentationCultureTests
         Assert.Equal("$55.00", presentation.DailyAdmissionPriceText);
         Assert.Contains("10:30 AM", presentation.EffectiveHoursText);
         Assert.Contains("6:00 PM", presentation.EffectiveHoursText);
-        Assert.Equal("Finalized Sep 20, 2026 at 6:05 AM", presentation.PassdownDetailNoteText); // Eastern (EDT), unchanged semantics
+        Assert.Equal("Finalized Sep 20, 2026 at 6:05 AM ET", presentation.PassdownDetailNoteText); // Eastern (EDT), unchanged semantics
     }
 
     [Theory]
@@ -104,10 +105,10 @@ public class UsPresentationCultureTests
 
         Assert.Equal(expectedDay, presentation.OperatingDayLabel);
         Assert.Matches(@"^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), (January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, 20\d\d$", presentation.OperatingDayLabel);
-        Assert.Equal("32500", presentation.AttendanceText);
-        Assert.Equal("4210", presentation.PreSoldsText);
+        Assert.Equal("32,500", presentation.AttendanceText); // Phase 22D: en-US grouping on every host culture
+        Assert.Equal("4,210", presentation.PreSoldsText);
         Assert.Equal("September 19, 2026", presentation.LatestFinalized!.PassdownDateText);
-        Assert.Equal("Finalized Sep 20, 2026 at 3:25 PM", presentation.LatestFinalized.FinalizedText);
+        Assert.Equal("Finalized Sep 20, 2026 at 3:25 PM ET", presentation.LatestFinalized.FinalizedText);
     }
 
     [Theory]
@@ -124,7 +125,7 @@ public class UsPresentationCultureTests
         var presentation = Under(culture, () => PassdownHistorySummaryPresentation.Build(summary));
 
         Assert.Equal("September 19, 2026", presentation.PassdownDateText);
-        Assert.Equal("Finalized Sep 19, 2026 at 10:30 AM", presentation.FinalizedText);
+        Assert.Equal("Finalized Sep 19, 2026 at 10:30 AM ET", presentation.FinalizedText);
     }
 
     [Theory]
@@ -137,9 +138,10 @@ public class UsPresentationCultureTests
     public void LocalWallClockTimes_UseAmPm_AndEnglishMonthNames(string culture)
     {
         var instant = new DateTimeOffset(2026, 9, 15, 19, 25, 0, TimeSpan.Zero);
-        var local = instant.ToLocalTime();
-        var expectedTime = local.ToString("h:mm tt", PresentationCulture.UnitedStates);
-        var expectedStamp = local.ToString("MMM d 'at' h:mm tt", PresentationCulture.UnitedStates);
+        // Phase 22F: operational timestamps are the Eastern wall clock with an "ET" label (was the host's local zone).
+        var eastern = EasternTimeZone.ConvertFromUtc(instant);
+        var expectedTime = eastern.ToString("h:mm tt", PresentationCulture.UnitedStates) + " ET";
+        var expectedStamp = eastern.ToString("MMM d 'at' h:mm tt", PresentationCulture.UnitedStates) + " ET";
 
         var save = Under(culture, () => SaveStatusPresentation.Build(new AssociateSaveStatus(AssociateSaveState.Saved, instant)).Text);
         var lastSynced = Under(culture, () => PersonalSyncAutomationStatusPresentation.BuildLastSyncedText(instant));
@@ -148,7 +150,7 @@ public class UsPresentationCultureTests
 
         Assert.Contains(expectedTime, save);
         Assert.Matches(@"\d{1,2}:\d\d (AM|PM)", save);
-        Assert.Equal($"Last synced: {expectedTime}", lastSynced);
+        Assert.Equal($"Last synced: {expectedStamp}", lastSynced);
         Assert.Contains("Park hours available through Oct 31", deepRefresh.CoverageText);
         Assert.Equal($"✓ {expectedStamp}", deepRefresh.HeadlineText);
         Assert.Matches(@"^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ", expectedStamp);

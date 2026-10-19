@@ -88,8 +88,18 @@ public static class OfficialRefreshPolicy
     /// source), or future Park Hours coverage has fallen behind (<see cref="DeepRefreshCoverage"/>).
     /// When the scheduled task already ran today this is false, so startup never repeats its whole
     /// Park Hours coverage sweep.
+    ///
+    /// Phase 22E.1: also due when stored coverage has not reached the published-schedule discovery
+    /// horizon (<see cref="DeepRefreshCoverage.NeedsScheduleDiscovery"/>) and the last attempt is at least
+    /// <see cref="ScheduleDiscoveryRetryInterval"/> old — so an upgrade or a failed month is picked up
+    /// without waiting for the next 6:00 AM boundary, while a feed that publishes less than the horizon
+    /// costs at most one bounded run per interval.
     /// </summary>
-    public static bool IsDailyMaintenanceDue(DeepRefreshStatusRecord? deepRefreshStatus, FreshnessPolicy dailyPolicy, DateTimeOffset nowUtc)
+    public static bool IsDailyMaintenanceDue(
+        DeepRefreshStatusRecord? deepRefreshStatus,
+        FreshnessPolicy dailyPolicy,
+        DateTimeOffset nowUtc,
+        int discoveryMonths = ParkHoursCoveragePlanner.DefaultDiscoveryMonths)
     {
         ArgumentNullException.ThrowIfNull(dailyPolicy);
         if (deepRefreshStatus is null)
@@ -99,7 +109,17 @@ public static class OfficialRefreshPolicy
 
         var nowEastern = EasternTimeZone.ConvertFromUtc(nowUtc);
         var today = DateOnly.FromDateTime(nowEastern.DateTime);
-        return dailyPolicy.IsDue(deepRefreshStatus.LastAttemptAtUtc, nowEastern)
-            || DeepRefreshCoverage.NeedsDeepRefresh(deepRefreshStatus, today);
+        if (dailyPolicy.IsDue(deepRefreshStatus.LastAttemptAtUtc, nowEastern)
+            || DeepRefreshCoverage.NeedsDeepRefresh(deepRefreshStatus, today))
+        {
+            return true;
+        }
+
+        var sinceLastAttempt = nowUtc - deepRefreshStatus.LastAttemptAtUtc;
+        return sinceLastAttempt >= ScheduleDiscoveryRetryInterval
+            && DeepRefreshCoverage.NeedsScheduleDiscovery(deepRefreshStatus, today, discoveryMonths);
     }
+
+    /// <summary>Phase 22E.1: the minimum spacing between maintenance runs triggered only by incomplete published-schedule coverage (the same four hours as the automatic check).</summary>
+    public static readonly TimeSpan ScheduleDiscoveryRetryInterval = AutomaticInterval;
 }

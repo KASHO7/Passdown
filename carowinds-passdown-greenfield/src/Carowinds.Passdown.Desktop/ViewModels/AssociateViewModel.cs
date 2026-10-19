@@ -85,6 +85,7 @@ public partial class AssociateViewModel : ViewModelBase
     private Task _pendingTemplatePreferenceLoad = Task.CompletedTask;
     private Task _pendingTemplatePreferenceSave = Task.CompletedTask;
     private bool _isLoadingTemplatePreference;
+    private bool _isRegroupingCountText;
     private CancellationTokenSource? _debounceCts;
 
     // Phase 19A: the quiet automatic check of the selected date (cancelled/superseded whenever the date
@@ -100,6 +101,32 @@ public partial class AssociateViewModel : ViewModelBase
     private bool _isApplyingWorkspace;
     private bool _isDirty;
     private bool _saveInFlight;
+
+    // Phase 23A: set while a blocked date switch puts SelectedDate back on the date still in edit, so
+    // that restore is not itself treated as a new date change (no flush, no load).
+    private bool _isRestoringSelectedDate;
+
+    /// <summary>
+    /// Phase 23A: the most save passes one flush makes. A pass only repeats when the associate kept
+    /// typing while the previous pass was writing; a failed pass always ends the flush immediately, so
+    /// a persistent storage failure costs exactly one attempt per flush — never a retry loop.
+    /// </summary>
+    internal const int MaxFlushSavePasses = 3;
+
+    internal const string DateSwitchBlockedMessage =
+        "Your changes could not be saved on this computer, so the date was not changed. Select Retry Save, then try again.";
+
+    internal const string CheckOnlineBlockedMessage =
+        "Not checked online: your changes could not be saved on this computer. Select Retry Save, then check again.";
+
+    internal const string NoteChangeBlockedMessage =
+        "The note was not changed because your other changes could not be saved on this computer. Select Retry Save, then try again.";
+
+    internal const string PdfBlockedMessage =
+        "The PDF was not created because your changes could not be saved on this computer. Select Retry Save, then try again.";
+
+    internal const string CloseBlockedMessage =
+        "Your latest changes could not be saved on this computer. Select Retry Save, or close the app again to exit without them.";
 
     // Phase 18B REL-004: the content hash of each persisted record this editor last loaded or saved —
     // the expected base of its next save, so a version Personal Sync changed underneath the editor is
@@ -265,7 +292,34 @@ public partial class AssociateViewModel : ViewModelBase
     /// <summary>Presentation-only save lifecycle (spec §8.3's "unsaved -> saving -> saved"); see <see cref="AssociateAutosaveState"/>.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SaveStatusText))]
+    [NotifyPropertyChangedFor(nameof(SaveStatusDetailText))]
+    [NotifyPropertyChangedFor(nameof(IsSaveFailed))]
+    [NotifyCanExecuteChangedFor(nameof(RetrySaveCommand))]
     public partial AssociateAutosaveState AutosaveState { get; set; } = AssociateAutosaveState.Saved;
+
+    /// <summary>Phase 23A: true while the most recent save attempt failed — shows the Retry Save action.</summary>
+    public bool IsSaveFailed => AutosaveState == AssociateAutosaveState.SaveFailed;
+
+    /// <summary>
+    /// Phase 23A: what was held back because the unsaved edits could not be written (a date switch,
+    /// Check Online, a note change, a PDF, or closing the app). Null when nothing is blocked; cleared by
+    /// the next successful save or date load.
+    /// </summary>
+    [ObservableProperty]
+    public partial string? SaveBlockedMessage { get; set; }
+
+    /// <summary>
+    /// Phase 23: the reason the most recent save attempt failed (the exception message), or null once a
+    /// save succeeds or another date is loaded. Kept so the failure is explained, not only flagged.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SaveStatusDetailText))]
+    public partial string? SaveFailureReason { get; set; }
+
+    /// <summary>Tooltip / Narrator help text for the save chip: the failure reason after a failed save, otherwise null.</summary>
+    public string? SaveStatusDetailText => AutosaveState == AssociateAutosaveState.SaveFailed
+        ? $"The last save on this computer failed: {SaveFailureReason ?? "unknown error"} Your edits are still on screen; select Retry Save or make another change to try again."
+        : null;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ParkHours))]
@@ -389,6 +443,7 @@ public partial class AssociateViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OperationalNotesCount))]
+    [NotifyPropertyChangedFor(nameof(HasOperationalNotesCount))]
     public partial string? OperationalNotesText { get; set; }
 
     /// <summary>
@@ -401,6 +456,7 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedOperationalNotes))]
     [NotifyPropertyChangedFor(nameof(OperationalNotesCount))]
+    [NotifyPropertyChangedFor(nameof(HasOperationalNotesCount))]
     public partial IReadOnlyList<AssociateSelectedOperationalNoteRowViewModel> SelectedOperationalNotes { get; set; } = [];
 
     /// <summary>
@@ -415,11 +471,14 @@ public partial class AssociateViewModel : ViewModelBase
     public bool HasSelectedOperationalNotes => SelectedOperationalNotes.Count > 0;
 
     /// <summary>
-    /// The compact "Notes: N" count on the status strip (Phase 17D §5) — the selected persistent
-    /// notes plus one for the manual notes entry when it carries any text, giving the associate a
-    /// single at-a-glance total without a dedicated card.
+    /// The compact notes count (Phase 17D §5; Phase 22D: shown beside "Notes" on the section rail) —
+    /// the selected persistent notes plus one for the manual notes entry when it carries any text,
+    /// giving the associate a single at-a-glance total without a dedicated card.
     /// </summary>
     public int OperationalNotesCount => SelectedOperationalNotes.Count + (string.IsNullOrWhiteSpace(OperationalNotesText) ? 0 : 1);
+
+    /// <summary>Phase 22D: the rail shows the count only when there is something to count (never a bare "0").</summary>
+    public bool HasOperationalNotesCount => OperationalNotesCount > 0;
 
     public bool HasAvailableOperationalNoteSuggestions => AvailableOperationalNoteSuggestions.Count > 0;
 
@@ -1066,6 +1125,7 @@ public partial class AssociateViewModel : ViewModelBase
     {
         AssociateAutosaveState.Saving => "Saving…",
         AssociateAutosaveState.Unsaved => "Unsaved changes",
+        AssociateAutosaveState.SaveFailed => "Save failed — changes not saved",
         _ => SaveStatus?.Text ?? "Not saved yet",
     };
 
@@ -1126,6 +1186,11 @@ public partial class AssociateViewModel : ViewModelBase
 
     partial void OnSelectedDateChanged(DateOnly value)
     {
+        if (_isRestoringSelectedDate)
+        {
+            return; // Phase 23A: a blocked switch putting the date back — the editor never left it.
+        }
+
         CopyMessage = null; // a "copied" confirmation belongs to the date it was copied from.
         CancelAutomaticDateCheck(); // Phase 19A: an automatic check of the previous date is superseded.
         _pendingLoad = SwitchDateAsync(value);
@@ -1133,7 +1198,30 @@ public partial class AssociateViewModel : ViewModelBase
 
     private async Task SwitchDateAsync(DateOnly newDate)
     {
-        await FlushPendingAutosaveAsync().ConfigureAwait(true);
+        var dateInEdit = _draftDateInEdit;
+        if (!await FlushPendingAutosaveAsync().ConfigureAwait(true))
+        {
+            // Phase 23A: loading newDate would replace the unsaved edits on screen with newDate's stored
+            // draft, so the switch is refused instead: the editor stays on the date it was editing, with
+            // every edit intact, until a save succeeds. Only restored when no newer switch superseded
+            // this one meanwhile.
+            if (dateInEdit is { } previous && SelectedDate == newDate && previous != newDate)
+            {
+                _isRestoringSelectedDate = true;
+                try
+                {
+                    SelectedDate = previous;
+                }
+                finally
+                {
+                    _isRestoringSelectedDate = false;
+                }
+            }
+
+            SaveBlockedMessage = DateSwitchBlockedMessage;
+            return;
+        }
+
         await LoadDateAsync(newDate).ConfigureAwait(true);
     }
 
@@ -1208,7 +1296,13 @@ public partial class AssociateViewModel : ViewModelBase
             // Part I: persist whatever is currently only sitting in the editable fields first, so
             // the recompose below (which re-reads the saved draft record) reflects it instead of
             // discarding it in favor of stale on-disk state.
-            await FlushPendingAutosaveAsync().ConfigureAwait(true);
+            if (!await FlushPendingAutosaveAsync().ConfigureAwait(true))
+            {
+                // Phase 23A: the recompose below re-reads the stored draft, which would replace the
+                // unsaved edits on screen — so nothing is checked (no network request) until they save.
+                SaveBlockedMessage = CheckOnlineBlockedMessage;
+                return;
+            }
 
             var result = await _service.CheckAssociateDateOnlineAsync(date, progress);
             ApplyWorkspaceToFields(result.Workspace);
@@ -1246,7 +1340,13 @@ public partial class AssociateViewModel : ViewModelBase
         PdfExportMessage = null;
         try
         {
-            await FlushPendingAutosaveAsync().ConfigureAwait(true);
+            if (!await FlushPendingAutosaveAsync().ConfigureAwait(true))
+            {
+                // Phase 23A: the PDF is built from the saved workspace, which does not hold the edits on
+                // screen — never hand out a PDF that silently omits them.
+                SaveBlockedMessage = PdfBlockedMessage;
+                return;
+            }
 
             if (Workspace is not { } workspace)
             {
@@ -1395,7 +1495,12 @@ public partial class AssociateViewModel : ViewModelBase
     /// </summary>
     private async Task AddOperationalNoteAsync(Guid operationalNoteId)
     {
-        await FlushPendingAutosaveAsync().ConfigureAwait(true);
+        if (!await FlushPendingAutosaveAsync().ConfigureAwait(true))
+        {
+            SaveBlockedMessage = NoteChangeBlockedMessage; // Phase 23A: the call below would reload over the unsaved edits.
+            return;
+        }
+
         var date = SelectedDate;
         try
         {
@@ -1417,7 +1522,12 @@ public partial class AssociateViewModel : ViewModelBase
     /// <summary>Removes a previously selected persistent note from the date currently in edit (Phase 11D Part AH) — mirrors <see cref="AddOperationalNoteAsync"/>.</summary>
     private async Task RemoveOperationalNoteAsync(Guid operationalNoteId)
     {
-        await FlushPendingAutosaveAsync().ConfigureAwait(true);
+        if (!await FlushPendingAutosaveAsync().ConfigureAwait(true))
+        {
+            SaveBlockedMessage = NoteChangeBlockedMessage; // Phase 23A: the call below would reload over the unsaved edits.
+            return;
+        }
+
         var date = SelectedDate;
         try
         {
@@ -1444,7 +1554,12 @@ public partial class AssociateViewModel : ViewModelBase
     /// </summary>
     private async Task ReplaceOperationalNoteAsync(Guid operationalNoteId)
     {
-        await FlushPendingAutosaveAsync().ConfigureAwait(true);
+        if (!await FlushPendingAutosaveAsync().ConfigureAwait(true))
+        {
+            SaveBlockedMessage = NoteChangeBlockedMessage; // Phase 23A: the call below would reload over the unsaved edits.
+            return;
+        }
+
         var date = SelectedDate;
         try
         {
@@ -1815,7 +1930,10 @@ public partial class AssociateViewModel : ViewModelBase
         {
             ProjectedAttendanceError = null;
             _projectedAttendance = parsed;
-            ScheduleAutosave();
+            if (!_isRegroupingCountText)
+            {
+                ScheduleAutosave();
+            }
         }
         else
         {
@@ -1829,7 +1947,10 @@ public partial class AssociateViewModel : ViewModelBase
         {
             PreSoldsError = null;
             _preSolds = parsed;
-            ScheduleAutosave();
+            if (!_isRegroupingCountText)
+            {
+                ScheduleAutosave();
+            }
         }
         else
         {
@@ -1893,11 +2014,11 @@ public partial class AssociateViewModel : ViewModelBase
             NotifyGateOverrideDependents();
 
             _projectedAttendance = draft.ProjectedAttendance;
-            ProjectedAttendanceText = draft.ProjectedAttendance?.ToString(CultureInfo.InvariantCulture);
+            ProjectedAttendanceText = CountEditorTextFor(ProjectedAttendanceText, draft.ProjectedAttendance);
             ProjectedAttendanceError = null;
 
             _preSolds = draft.PreSolds;
-            PreSoldsText = draft.PreSolds?.ToString(CultureInfo.InvariantCulture);
+            PreSoldsText = CountEditorTextFor(PreSoldsText, draft.PreSolds);
             PreSoldsError = null;
 
             // Phase 17B: Early Ride Time is no longer part of the draft — nothing to populate here.
@@ -1937,6 +2058,8 @@ public partial class AssociateViewModel : ViewModelBase
             _draftDateInEdit = workspace.OperatingDate;
             _draftBaseHash = workspace.DraftContentHash;
             _isDirty = false;
+            SaveFailureReason = null;
+            SaveBlockedMessage = null;
             AutosaveState = AssociateAutosaveState.Saved;
         }
         finally
@@ -2070,7 +2193,10 @@ public partial class AssociateViewModel : ViewModelBase
         }
 
         _isDirty = true;
-        AutosaveState = AssociateAutosaveState.Unsaved;
+        if (AutosaveState != AssociateAutosaveState.SaveFailed)
+        {
+            AutosaveState = AssociateAutosaveState.Unsaved; // Phase 23: a failure stays visible until a save succeeds.
+        }
 
         if (_draftDateInEdit is not { } date)
         {
@@ -2108,10 +2234,15 @@ public partial class AssociateViewModel : ViewModelBase
     /// flush is already saving, or vice versa) can never race — a second caller simply waits, then
     /// saves whatever the editable fields hold at that later point, never a stale snapshot.
     /// </summary>
-    private async Task SaveDraftNowAsync(DateOnly date)
+    /// <remarks>
+    /// Phase 23A: returns whether this attempt persisted. A failure leaves the edits dirty and on screen
+    /// and is reported once — the caller decides whether anything is retried; this method never retries.
+    /// </remarks>
+    private async Task<bool> SaveDraftNowAsync(DateOnly date)
     {
         await _saveSemaphore.WaitAsync().ConfigureAwait(true);
         _saveInFlight = true;
+        var saveFailed = false;
         try
         {
             _isDirty = false;
@@ -2140,12 +2271,22 @@ public partial class AssociateViewModel : ViewModelBase
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger?.LogError(ex, "Failed to autosave the Associate draft for {OperatingDate}.", date);
-            _isDirty = true; // the edit is still only local; the next scheduled/flushed save retries it.
+            _isDirty = true; // the edit is still only local; a later edit, Retry Save, or flush tries again (once).
+            saveFailed = true;
+            SaveFailureReason = ex.Message;
         }
         finally
         {
             _saveInFlight = false;
-            AutosaveState = _isDirty ? AssociateAutosaveState.Unsaved : AssociateAutosaveState.Saved;
+            if (!saveFailed)
+            {
+                SaveFailureReason = null;
+                SaveBlockedMessage = null;
+            }
+
+            AutosaveState = saveFailed ? AssociateAutosaveState.SaveFailed
+                : _isDirty ? AssociateAutosaveState.Unsaved
+                : AssociateAutosaveState.Saved;
             _saveSemaphore.Release();
         }
 
@@ -2155,6 +2296,8 @@ public partial class AssociateViewModel : ViewModelBase
         {
             _pendingOfficialDataReload = HandleOfficialDataChangedAsync(new DataChange(DataChangeKind.OfficialData, date));
         }
+
+        return !saveFailed;
     }
 
     /// <summary>
@@ -2215,21 +2358,93 @@ public partial class AssociateViewModel : ViewModelBase
     /// Phase 15D: also called from App.axaml.cs's shutdown handler, so an edit made shortly before
     /// the window closes is never silently lost waiting on the 800ms debounce — internal (not
     /// private) purely for that cross-class call within this assembly.
+    ///
+    /// Phase 23A: returns true only when nothing on screen is left unsaved. The pre-23A version looped
+    /// <c>while (_isDirty || _saveInFlight)</c>; a failed save leaves the edit dirty, and SQLite fails
+    /// synchronously, so one persistent failure turned any flush (date change, Check Online, a note
+    /// change, PDF, close) into an endless synchronous save loop on the UI thread — the RC.1–RC.7
+    /// freeze. Now a failed attempt ends the flush at once (one attempt per flush, never a loop), and
+    /// the pass count is capped even when every pass succeeds but the associate keeps typing.
     /// </summary>
-    internal async Task FlushPendingAutosaveAsync()
+    internal async Task<bool> FlushPendingAutosaveAsync()
     {
         _debounceCts?.Cancel();
 
         if (_draftDateInEdit is not { } date)
         {
-            return;
+            return true; // nothing loaded to attach edits to (a failed load clears the editor).
         }
 
-        while (_isDirty || _saveInFlight)
+        for (var pass = 0; _isDirty || _saveInFlight; pass++)
+        {
+            if (pass >= MaxFlushSavePasses || !await SaveDraftNowAsync(date).ConfigureAwait(true))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Phase 23A: the explicit "Retry Save" action shown beside "Save failed — changes not saved". One
+    /// attempt per press (the button is disabled while that attempt runs), saving whatever is on screen
+    /// now; the failure, and anything it blocked, clears only once the write is confirmed.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanRetrySave))]
+    private async Task RetrySaveAsync()
+    {
+        _debounceCts?.Cancel();
+        if (_draftDateInEdit is { } date)
         {
             await SaveDraftNowAsync(date).ConfigureAwait(true);
         }
     }
+
+    private bool CanRetrySave() => AutosaveState == AssociateAutosaveState.SaveFailed;
+
+    /// <summary>Phase 23A: shown once when closing could not save the edits on screen (see <c>App.AttachShutdownFlush</c>).</summary>
+    internal void ShowCloseBlockedBySaveFailure() => SaveBlockedMessage = CloseBlockedMessage;
+
+    /// <summary>
+    /// Phase 22D: when a count field loses focus, shows its valid value with thousands separators
+    /// ("38500" → "38,500"). Never runs while typing (no caret jumps), leaves invalid text untouched
+    /// so its error stays visible, and is display-only: the parsed value is unchanged, so no autosave
+    /// is scheduled and nothing stored differs.
+    /// </summary>
+    public void RegroupCountFields()
+    {
+        _isRegroupingCountText = true;
+        try
+        {
+            if (ProjectedAttendanceError is null && FormatCountForEditor(_projectedAttendance) is var attendance && ProjectedAttendanceText != attendance)
+            {
+                ProjectedAttendanceText = attendance;
+            }
+
+            if (PreSoldsError is null && FormatCountForEditor(_preSolds) is var preSolds && PreSoldsText != preSolds)
+            {
+                PreSoldsText = preSolds;
+            }
+        }
+        finally
+        {
+            _isRegroupingCountText = false;
+        }
+    }
+
+    /// <summary>
+    /// The text a count field shows after a (re)load: the grouped value — except when the field already
+    /// holds that same number (e.g. an official-data reload right after the associate's own autosave),
+    /// where the text is left exactly as typed so a focused editor's caret never jumps.
+    /// </summary>
+    private static string? CountEditorTextFor(string? currentText, int? value) =>
+        currentText is not null && TryParseNonNegativeInt(currentText, out var current, out _) && current == value
+            ? currentText
+            : FormatCountForEditor(value);
+
+    /// <summary>A count field's display text: grouped, or empty when nothing was entered (never "0").</summary>
+    private static string? FormatCountForEditor(int? count) => count is { } value ? OperationalCount.Format(value) : null;
 
     private static bool TryParseNonNegativeInt(string? text, out int? value, out string? error)
     {
@@ -2240,7 +2455,7 @@ public partial class AssociateViewModel : ViewModelBase
             return true;
         }
 
-        if (!int.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+        if (!OperationalCount.TryParseEntry(text, out var parsed))
         {
             value = null;
             error = "Enter a whole number.";

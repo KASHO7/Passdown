@@ -36,6 +36,12 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
     /// <summary>Phase 21B: Settings → Diagnostics (Export Diagnostics moved here from the Associate toolbar).</summary>
     public DiagnosticsExportViewModel Diagnostics { get; }
 
+    /// <summary>Phase 23C: Settings → Appearance (System / Light / Dark, local to this computer).</summary>
+    public AppearanceSettingsViewModel Appearance { get; }
+
+    /// <summary>Phase 23D: Settings → Application Updates, and About this build → What's New.</summary>
+    public ApplicationUpdatesViewModel Updates { get; }
+
     public string BuildProductName => Build.ProductName;
 
     /// <summary>"0.1.0-rc.1 (096bc4a)" — the release version plus the source commit it was built from.</summary>
@@ -121,7 +127,9 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         IPersonalSyncCoordinator coordinator,
         ILogger<PersonalSyncSettingsViewModel>? logger = null,
         BuildIdentity? buildIdentity = null,
-        DiagnosticsExportViewModel? diagnostics = null)
+        DiagnosticsExportViewModel? diagnostics = null,
+        AppearanceSettingsViewModel? appearance = null,
+        ApplicationUpdatesViewModel? updates = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(folderPicker);
@@ -135,6 +143,8 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         _logger = logger;
         Build = buildIdentity ?? BuildIdentity.Current();
         Diagnostics = diagnostics ?? new DiagnosticsExportViewModel();
+        Appearance = appearance ?? new AppearanceSettingsViewModel();
+        Updates = updates ?? new ApplicationUpdatesViewModel(installedVersion: Build.Version);
 
         AutomationStatus = coordinator.CurrentStatus;
         // This ViewModel is resolved exactly once for the app's session (MainViewModel's own

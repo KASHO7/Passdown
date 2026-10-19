@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Desktop.Presentation;
+using Carowinds.Passdown.Domain.Catalog;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -27,13 +28,32 @@ public partial class ProductRowViewModel : ObservableObject
 
     public string DisplayName { get; }
 
+    /// <summary>
+    /// Phase 22E: "$59.00" for an exact/catalog price, "From $40.00" for an advertised starting price —
+    /// the same <see cref="AdvertisedPriceText"/> rule the PDFs and Teams Copy print, decided by the
+    /// row's <see cref="PriceKind"/> evidence only (never by the mere presence of an amount).
+    /// </summary>
     public string OfficialPriceText { get; }
+
+    /// <summary>Phase 22E: the official evidence for this row's amount (exact/dated, starting-from, catalog, sale, bundle).</summary>
+    public PriceKind PriceKind { get; }
+
+    /// <summary>Phase 22E: the official amount is an advertised minimum ("From $x"), not an exact price for the date.</summary>
+    public bool IsStartingPrice => PriceKind == PriceKind.StartingFrom;
 
     public string? ComparisonPriceText { get; }
 
     public string? PriceQualifier { get; }
 
-    public bool HasPriceQualifier => !string.IsNullOrWhiteSpace(PriceQualifier);
+    /// <summary>
+    /// The qualifier line under the name. Phase 22E: a "Starting From" qualifier on a starting-price row is
+    /// now carried by the price itself ("From $40.00", as on the PDFs), so it is not repeated; every
+    /// other qualifier ("Valid ID required", "Sale Price", …) still shows.
+    /// </summary>
+    public bool HasPriceQualifier => !string.IsNullOrWhiteSpace(PriceQualifier)
+        && !(IsStartingPrice && string.Equals(PriceQualifier.Trim(), StartingFromQualifier, StringComparison.OrdinalIgnoreCase));
+
+    private const string StartingFromQualifier = "Starting From";
 
     /// <summary>Phase 13C Part W: a source-described bundle's per-person breakdown (e.g. "2 for $50.00 — $25.00 per person"), derived and clearly labeled — never replacing <see cref="OfficialPriceText"/> (the bundle total).</summary>
     public string? BundleNoteText { get; }
@@ -65,7 +85,17 @@ public partial class ProductRowViewModel : ObservableObject
 
     public bool HasOverride => _displayPriceOverride is not null;
 
-    public string EffectivePriceText => PriceFormatting.FormatOrNull(_displayPriceOverride) ?? OfficialPriceText;
+    /// <summary>
+    /// The price the passdown prints: the override when present, else the official price — with the same
+    /// evidence label the PDF gives it (a starting-price row prints "From $x" even with an override,
+    /// because the document model keeps the row's <see cref="PriceKind"/>).
+    /// </summary>
+    public string EffectivePriceText => AdvertisedPriceText.FormatOrNull(_displayPriceOverride, PriceKind) ?? OfficialPriceText;
+
+    /// <summary>Phase 22E: under an override on a starting-price row, says how it prints ("Prints as From $35.00"); null otherwise.</summary>
+    public string? OverridePrintNoteText => IsStartingPrice && HasOverride ? $"Prints as {EffectivePriceText}" : null;
+
+    public bool HasOverridePrintNote => OverridePrintNoteText is not null;
 
     public ProductRowViewModel(AssociateProduct product, Action notifyChanged, Action<string>? openPriceHistory = null)
     {
@@ -77,7 +107,8 @@ public partial class ProductRowViewModel : ObservableObject
 
         ProductIdentity = product.ProductIdentity;
         DisplayName = product.DisplayName;
-        OfficialPriceText = PriceFormatting.FormatOrNull(product.OfficialPriceAmount) ?? product.OfficialDisplayPrice ?? "Not priced";
+        PriceKind = product.PriceKind;
+        OfficialPriceText = AdvertisedPriceText.FormatOrNull(product.OfficialPriceAmount, product.PriceKind) ?? product.OfficialDisplayPrice ?? "Not priced";
         ComparisonPriceText = PriceFormatting.FormatOrNull(product.ComparisonPriceAmount);
         PriceQualifier = product.PriceQualifier;
         BundleNoteText = product is { BundleQuantity: { } quantity, PerPersonPriceAmount: { } perPerson }
@@ -105,6 +136,8 @@ public partial class ProductRowViewModel : ObservableObject
         _displayPriceOverride = parsed;
         OnPropertyChanged(nameof(EffectivePriceText));
         OnPropertyChanged(nameof(HasOverride));
+        OnPropertyChanged(nameof(OverridePrintNoteText));
+        OnPropertyChanged(nameof(HasOverridePrintNote));
         _notifyChanged();
     }
 

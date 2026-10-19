@@ -1,16 +1,17 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
+             xmlns:updates="using:Carowinds.Passdown.Application.Updates"
+             xmlns:converters="using:Carowinds.Passdown.Desktop.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="860"
              x:Class="Carowinds.Passdown.Desktop.Views.PersonalSyncSettingsView"
              x:DataType="vm:PersonalSyncSettingsViewModel">
 
-  <!-- Phase 16B: the smallest configuration surface for the local sync foundation (§4/§14). Phase
-       16C adds the one manual "Sync Now" action and a simple result line (§25/§26) — still no
-       last-sync-time, automatic cadence, or conflict-resolution controls; those belong to 16D/16F.
-       Shared typography, surface, button and status styles
+  <!-- Phase 16B: the configuration surface for the local sync foundation (§4/§14); 16C–16F added Sync
+       Now, automatic-sync status and conflict review; Phase 22F organized the page into Appearance, Data
+       Refresh, Personal Sync, Diagnostics and About; Phase 23D added Application Updates before About. Shared typography, surface, button and status styles
        come from Themes/PassdownStyles.axaml (Phase 22A); only this screen's own deltas live below. -->
   <UserControl.Styles>
     <Style Selector="Border.conflictRow">
@@ -20,12 +21,20 @@
       <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderBrush}" />
     </Style>
 
+    <!-- Phase 22F: label / value rows (Appearance, Data Refresh, Personal Sync, About). -->
+    <Style Selector="Grid.settingsRows">
+      <Setter Property="ColumnSpacing" Value="16" />
+      <Setter Property="RowSpacing" Value="8" />
+    </Style>
+    <Style Selector="Grid.settingsRows > TextBlock.fieldLabel">
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="0,1,0,0" />
+    </Style>
+
     <Style Selector="Grid.fieldComparisonRow > TextBlock">
       <Setter Property="Padding" Value="0,4" />
       <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
-
-  
   </UserControl.Styles>
 
   <Grid x:Name="PersonalSyncRoot" RowDefinitions="Auto,*">
@@ -34,90 +43,171 @@
             BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
       <StackPanel Spacing="2">
         <TextBlock Text="Settings" Classes="pageTitle" />
-        <TextBlock Text="Local app settings. Personal Sync is optional and off by default."
-                   Classes="muted" />
+        <TextBlock Text="Settings for this computer. Nothing here changes official park data."
+                   Classes="muted" TextWrapping="Wrap" />
       </StackPanel>
     </Border>
 
-    <ScrollViewer Grid.Row="1" Padding="24,20,24,24">
-      <StackPanel Spacing="16" MaxWidth="640" HorizontalAlignment="Left">
+    <!-- Phase 22F: one scannable page in five groups — Appearance, Data Refresh, Personal Sync,
+         Diagnostics, About. Each group is a section heading over one panel (no nested cards); label /
+         value rows share one Grid.settingsRows layout. Data Refresh is information only: refresh is
+         automatic, so it offers no control this app does not actually have. Appearance (Phase 23C) is
+         the one real choice: System, Light or Dark. Every Personal Sync, Diagnostics and About binding, command and
+         accessible name is unchanged. -->
+    <ScrollViewer x:Name="SettingsScroll" Grid.Row="1" Padding="24,20,24,24">
+      <StackPanel Spacing="8" MaxWidth="720" HorizontalAlignment="Left">
 
-        <TextBlock Text="Personal Sync" Classes="sectionTitle" Margin="0" />
+        <!-- 1. Appearance (Phase 23C): System / Light / Dark. One radio group — exactly one option is
+             checked, Tab reaches the group, arrow keys move between options, Space checks. Picking an
+             option applies it immediately (no Apply button) and saves it on this computer only. The
+             palettes are the existing Phase 22A tokens; Fluent's RadioButton already draws its checked
+             dot from them, so nothing here sets a color. -->
+        <TextBlock Text="Appearance" Classes="sectionTitle" Margin="0" />
+        <Border x:Name="AppearanceSection" Classes="panel" AutomationProperties.Name="Appearance">
+          <StackPanel Spacing="8">
+            <TextBlock x:Name="AppearanceIntro" Classes="muted" TextWrapping="Wrap"
+                       Text="Choose how Carowinds Operations looks. Saved on this computer only." />
+            <StackPanel x:Name="AppearanceOptions" Spacing="2"
+                        KeyboardNavigation.TabNavigation="Once"
+                        XYFocus.NavigationModes="Keyboard"
+                        GotFocus="OnAppearanceOptionGotFocus"
+                        AutomationProperties.Name="Appearance"
+                        AutomationProperties.HelpText="Choose how Carowinds Operations looks">
+              <RadioButton x:Name="AppearanceSystemOption" GroupName="Appearance"
+                           Content="Use Windows setting"
+                           IsChecked="{Binding Appearance.IsSystemSelected}"
+                           IsCheckedChanged="OnAppearanceOptionCheckedChanged"
+                           AutomationProperties.Name="Use Windows setting" />
+              <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,4"
+                         Text="{Binding Appearance.SystemAppearanceText}" />
+              <RadioButton x:Name="AppearanceLightOption" GroupName="Appearance"
+                           Content="Light"
+                           IsChecked="{Binding Appearance.IsLightSelected}"
+                           IsCheckedChanged="OnAppearanceOptionCheckedChanged"
+                           AutomationProperties.Name="Light" />
+              <RadioButton x:Name="AppearanceDarkOption" GroupName="Appearance"
+                           Content="Dark"
+                           IsChecked="{Binding Appearance.IsDarkSelected}"
+                           IsCheckedChanged="OnAppearanceOptionCheckedChanged"
+                           AutomationProperties.Name="Dark" />
+            </StackPanel>
+            <TextBlock Classes="statusError" TextWrapping="Wrap"
+                       Text="{Binding Appearance.SaveMessage}"
+                       IsVisible="{Binding Appearance.SaveMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       AutomationProperties.LiveSetting="Polite" />
+          </StackPanel>
+        </Border>
 
-        <Border Classes="panel">
-          <StackPanel Spacing="14">
+        <!-- 2. Data Refresh (information only — the schedule is automatic and the 6 AM task is set up
+             outside this screen, so nothing here implies it can be changed). -->
+        <TextBlock Text="Data Refresh" Classes="sectionTitle" Margin="0,12,0,0" />
+        <Border x:Name="DataRefreshSection" Classes="panel" AutomationProperties.Name="Data refresh">
+          <StackPanel Spacing="10">
+            <TextBlock Classes="muted" TextWrapping="Wrap"
+                       Text="Official Carowinds data refreshes automatically. There is nothing to set here." />
+            <Grid Classes="settingsRows" ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto">
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="When the app opens" Classes="fieldLabel" />
+              <TextBlock Grid.Row="0" Grid.Column="1" TextWrapping="Wrap"
+                         Text="Checks official data, unless it was checked within the last hour." />
+              <TextBlock Grid.Row="1" Grid.Column="0" Text="While it is open" Classes="fieldLabel" />
+              <TextBlock Grid.Row="1" Grid.Column="1" TextWrapping="Wrap" Text="Checks again every four hours." />
+              <TextBlock Grid.Row="2" Grid.Column="0" Text="Daily at 6 AM" Classes="fieldLabel" />
+              <TextBlock Grid.Row="2" Grid.Column="1" TextWrapping="Wrap"
+                         Text="A Windows scheduled task runs full maintenance, including park hours about 12 months ahead. It is set up with the app's installation scripts, not from this screen." />
+              <TextBlock Grid.Row="3" Grid.Column="0" Text="Past dates" Classes="fieldLabel" />
+              <TextBlock Grid.Row="3" Grid.Column="1" TextWrapping="Wrap"
+                         Text="Missing park hours from earlier this season are filled in while Carowinds still publishes them." />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- 3. Personal Sync (Phase 16B–16F). -->
+        <TextBlock Text="Personal Sync" Classes="sectionTitle" Margin="0,12,0,0" />
+        <Border x:Name="PersonalSyncSection" Classes="panel" AutomationProperties.Name="Personal Sync">
+          <StackPanel Spacing="12">
 
             <TextBlock TextWrapping="Wrap" Classes="muted"
-                       Text="Keep your own Associate drafts, Operational Notes, and finalized History in sync between your own Windows machines, using a folder you choose (typically inside your personal OneDrive). This app never requires OneDrive, and no other user's data is ever involved." />
+                       Text="Optional and off by default. Keeps your own Associate drafts, Operational Notes, and finalized History in sync between your own Windows computers through a folder you choose (typically in your personal OneDrive). Work is always saved on this computer first; OneDrive is never required." />
 
             <CheckBox Content="Enable Personal Sync" IsChecked="{Binding PersonalSyncEnabled}"
                        IsEnabled="{Binding !IsBusy}"
                        AutomationProperties.Name="Enable Personal Sync" />
 
-            <StackPanel Spacing="4">
-              <TextBlock Text="Folder" FontWeight="SemiBold" />
-              <TextBlock Text="{Binding SyncRootPath}" TextWrapping="Wrap"
-                         IsVisible="{Binding SyncRootPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-              <TextBlock Text="No folder chosen yet." Classes="muted"
-                         IsVisible="{Binding SyncRootPath, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
-              <TextBlock Classes="muted" TextWrapping="Wrap"
-                         Text="{Binding FirstSuggestedRoot, StringFormat='Detected OneDrive folder: {0}'}"
-                         IsVisible="{Binding HasSuggestedRoots}" />
-            </StackPanel>
+            <Grid Classes="settingsRows" ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto">
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="Folder" Classes="fieldLabel" />
+              <StackPanel Grid.Row="0" Grid.Column="1" Spacing="6">
+                <SelectableTextBlock Text="{Binding SyncRootPath}" TextWrapping="Wrap"
+                                     IsVisible="{Binding SyncRootPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                     AutomationProperties.Name="{Binding SyncRootPath, StringFormat='Sync folder: {0}'}" />
+                <TextBlock Text="No folder chosen yet." Classes="muted"
+                           IsVisible="{Binding SyncRootPath, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
+                <TextBlock Classes="muted" TextWrapping="Wrap"
+                           Text="{Binding FirstSuggestedRoot, StringFormat='Detected OneDrive folder: {0}'}"
+                           IsVisible="{Binding HasSuggestedRoots}" />
+                <Button Content="Choose Folder…" Classes="secondaryAction" HorizontalAlignment="Left"
+                        Command="{Binding ChooseFolderCommand}"
+                        AutomationProperties.Name="Choose Personal Sync Folder" />
+              </StackPanel>
 
-            <Button Content="Choose Folder…" Classes="secondaryAction" HorizontalAlignment="Left"
-                    Command="{Binding ChooseFolderCommand}"
-                    AutomationProperties.Name="Choose Personal Sync Folder" />
+              <TextBlock Grid.Row="1" Grid.Column="0" Text="Folder status" Classes="fieldLabel" />
+              <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
+                <Border Classes="statusBadge" Classes.error="{Binding StatusPresentation.IsProblem}" HorizontalAlignment="Left">
+                  <TextBlock Text="{Binding StatusPresentation.Text}"
+                             AutomationProperties.Name="{Binding StatusPresentation.Text, StringFormat='Folder status: {0}'}" />
+                </Border>
+                <TextBlock Text="{Binding StatusDetail}" Classes="muted" TextWrapping="Wrap"
+                           IsVisible="{Binding StatusDetail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              </StackPanel>
 
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Text="Status" FontWeight="SemiBold" VerticalAlignment="Center" />
-              <Border Classes="chip">
-                <TextBlock Text="{Binding StatusPresentation.Text}" />
-              </Border>
-            </StackPanel>
-            <TextBlock Text="{Binding StatusDetail}" Classes="muted" TextWrapping="Wrap"
-                       IsVisible="{Binding StatusDetail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <!-- Phase 16F §12/§13/§17: the automatic-sync status, layered on top of (never replacing)
+                   the folder readiness above. -->
+              <TextBlock Grid.Row="2" Grid.Column="0" Text="Automatic sync" Classes="fieldLabel" />
+              <StackPanel Grid.Row="2" Grid.Column="1" Spacing="4">
+                <Border Classes="statusBadge" Classes.error="{Binding AutomationStatusPresentation.IsProblem}" HorizontalAlignment="Left">
+                  <TextBlock Text="{Binding AutomationStatusPresentation.Text}"
+                             AutomationProperties.Name="{Binding AutomationStatusPresentation.Text, StringFormat='Automatic sync: {0}'}" />
+                </Border>
+                <TextBlock Text="{Binding AutomationStatusPresentation.DetailText}" TextWrapping="Wrap"
+                           Classes="muted" Classes.statusError="{Binding AutomationStatusPresentation.IsProblem}"
+                           IsVisible="{Binding AutomationStatusPresentation.DetailText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <TextBlock Text="{Binding LastSyncedText}" Classes="muted"
+                           IsVisible="{Binding LastSyncedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              </StackPanel>
 
-            <!-- Phase 16F §12/§13/§17: the automatic-sync status this phase adds — layered on top of
-                 the readiness chip above, never replacing it. Compact by design (§17): one chip, an
-                 optional one-line detail, and a "Last synced" line. -->
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Text="Sync" FontWeight="SemiBold" VerticalAlignment="Center" />
-              <Border Classes="chip">
-                <TextBlock Text="{Binding AutomationStatusPresentation.Text}" />
-              </Border>
-            </StackPanel>
-            <TextBlock Text="{Binding AutomationStatusPresentation.DetailText}" Classes="muted" TextWrapping="Wrap"
-                       IsVisible="{Binding AutomationStatusPresentation.DetailText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-            <TextBlock Text="{Binding LastSyncedText}" Classes="muted"
-                       IsVisible="{Binding LastSyncedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <StackPanel Grid.Row="3" Grid.Column="1" Spacing="6">
+                <Button Content="Sync Now" Classes="secondaryAction" HorizontalAlignment="Left"
+                        Command="{Binding SyncNowCommand}"
+                        AutomationProperties.Name="Sync Now" />
+                <TextBlock Text="{Binding SyncResultSummary}" TextWrapping="Wrap"
+                           IsVisible="{Binding SyncResultSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           AutomationProperties.LiveSetting="Polite" />
+              </StackPanel>
+            </Grid>
 
-            <Button Content="Sync Now" Classes="secondaryAction" HorizontalAlignment="Left"
-                    Command="{Binding SyncNowCommand}"
-                    AutomationProperties.Name="Sync Now" />
-            <TextBlock Text="{Binding SyncResultSummary}" TextWrapping="Wrap"
-                       IsVisible="{Binding SyncResultSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-
-            <!-- Phase 16D §4/§27: a minimal conflict callout — never shown when there is nothing to review. -->
-            <StackPanel Spacing="8" IsVisible="{Binding HasConflicts}">
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <TextBlock Text="Status" FontWeight="SemiBold" VerticalAlignment="Center" />
-                <Border Classes="chip">
+            <!-- Phase 16D §4/§27: the conflict callout — never shown when there is nothing to review. -->
+            <Border x:Name="ConflictCallout" Classes="inset" IsVisible="{Binding HasConflicts}"
+                    AutomationProperties.Name="Sync conflicts">
+              <StackPanel Spacing="8">
+                <Border Classes="statusBadge warning" HorizontalAlignment="Left">
                   <TextBlock Text="Conflict attention needed" />
                 </Border>
+                <TextBlock Text="{Binding ConflictStatusText}" TextWrapping="Wrap" />
+                <Button Content="Review Conflicts" Classes="secondaryAction" HorizontalAlignment="Left"
+                        Command="{Binding ReviewConflictsCommand}"
+                        AutomationProperties.Name="Review Conflicts" />
               </StackPanel>
-              <TextBlock Text="{Binding ConflictStatusText}" />
-              <Button Content="Review Conflicts" Classes="secondaryAction" HorizontalAlignment="Left"
-                      Command="{Binding ReviewConflictsCommand}"
-                      AutomationProperties.Name="Review Conflicts" />
-            </StackPanel>
+            </Border>
 
+            <!-- Phase 22F: the Phase 21C mixed-version caution, made visible. Information only — the app
+                 has no automatic protection against an older build re-saving a synced draft. -->
+            <TextBlock x:Name="MixedVersionNote" Classes="fieldWarning" TextWrapping="Wrap"
+                       Text="Use the same app version on every computer that shares this folder. An older version can drop show selections when it re-saves a synced passdown draft." />
           </StackPanel>
         </Border>
 
         <!-- Phase 16D §4/§5/§6: the conflict list. Selecting a row loads its detail below. -->
-        <StackPanel Spacing="16" IsVisible="{Binding IsReviewingConflicts}">
-          <TextBlock Text="Conflicts" Classes="sectionTitle" Margin="0" />
+        <StackPanel Spacing="8" IsVisible="{Binding IsReviewingConflicts}">
+          <TextBlock Text="Conflicts" Classes="sectionTitle" Margin="0,12,0,0" />
           <Border Classes="panel">
             <StackPanel Spacing="10">
               <ItemsControl ItemsSource="{Binding Conflicts}">
@@ -125,37 +215,39 @@
                   <DataTemplate>
                     <Border Classes="conflictRow" Margin="0,0,0,8">
                       <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Grid.Column="0" Text="{Binding DisplayLabel}" VerticalAlignment="Center" FontWeight="Medium" />
-                        <Button Grid.Column="1" Content="Review"
+                        <TextBlock Grid.Column="0" Text="{Binding DisplayLabel}" VerticalAlignment="Center" FontWeight="Medium" TextWrapping="Wrap" />
+                        <Button Grid.Column="1" Content="Review" Margin="12,0,0,0"
                                 Command="{Binding #PersonalSyncRoot.((vm:PersonalSyncSettingsViewModel)DataContext).OpenConflictCommand}"
                                 CommandParameter="{Binding}"
-                                Classes="secondaryAction" />
+                                Classes="secondaryAction"
+                                AutomationProperties.Name="{Binding DisplayLabel, StringFormat='Review conflict: {0}'}" />
                       </Grid>
                     </Border>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
               <Button Content="Close" Classes="textAction" HorizontalAlignment="Left"
-                      Command="{Binding CloseConflictsCommand}" />
+                      Command="{Binding CloseConflictsCommand}"
+                      AutomationProperties.Name="Close conflict list" />
             </StackPanel>
           </Border>
         </StackPanel>
 
         <!-- Phase 16D §5/§6/§7/§8/§15: the focused local-vs-remote comparison and explicit resolution actions. -->
-        <StackPanel Spacing="16" IsVisible="{Binding SelectedConflictDetail, Converter={x:Static ObjectConverters.IsNotNull}}">
-          <TextBlock Text="Conflict Detail" Classes="sectionTitle" Margin="0" />
+        <StackPanel Spacing="8" IsVisible="{Binding SelectedConflictDetail, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <TextBlock Text="Conflict Detail" Classes="sectionTitle" Margin="0,12,0,0" />
           <Border Classes="panel">
-            <StackPanel Spacing="14">
-              <TextBlock Text="{Binding SelectedConflictDetail.Title}" FontWeight="SemiBold" FontSize="15" />
+            <StackPanel Spacing="12">
+              <TextBlock Text="{Binding SelectedConflictDetail.Title}" FontWeight="SemiBold" FontSize="{DynamicResource PassdownFontSizeSubsection}" TextWrapping="Wrap" />
               <TextBlock Text="{Binding SelectedConflictDetail.Explanation}" Classes="muted" TextWrapping="Wrap" />
               <TextBlock Text="{Binding SelectedConflictDetail.RemoteActivityLabel}" Classes="muted" TextWrapping="Wrap" />
               <TextBlock Text="{Binding SelectedConflictDetail.NewerActivityNote}" Classes="muted" TextWrapping="Wrap"
                          IsVisible="{Binding SelectedConflictDetail.NewerActivityNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
               <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto">
-                <TextBlock Grid.Column="0" Text="Field" FontWeight="SemiBold" />
-                <TextBlock Grid.Column="1" Text="This Device" FontWeight="SemiBold" />
-                <TextBlock Grid.Column="2" Text="Other Device" FontWeight="SemiBold" />
+                <TextBlock Grid.Column="0" Text="Field" Classes="columnHeader" />
+                <TextBlock Grid.Column="1" Text="This Device" Classes="columnHeader" />
+                <TextBlock Grid.Column="2" Text="Other Device" Classes="columnHeader" />
               </Grid>
               <ItemsControl ItemsSource="{Binding SelectedConflictDetail.Fields}">
                 <ItemsControl.ItemTemplate>
@@ -170,73 +262,180 @@
               </ItemsControl>
 
               <TextBlock Text="{Binding ConflictActionMessage}" Classes="muted" TextWrapping="Wrap"
-                         IsVisible="{Binding ConflictActionMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                         IsVisible="{Binding ConflictActionMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                         AutomationProperties.LiveSetting="Polite" />
 
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <Button Content="Keep This Device" Classes="secondaryAction"
+              <WrapPanel Orientation="Horizontal">
+                <Button Content="Keep This Device" Classes="secondaryAction" Margin="0,0,10,4"
                         Command="{Binding KeepLocalCommand}"
                         AutomationProperties.Name="Keep This Device" />
-                <Button Content="Use Other Device" Classes="secondaryAction"
+                <Button Content="Use Other Device" Classes="secondaryAction" Margin="0,0,10,4"
                         Command="{Binding UseRemoteCommand}"
                         IsVisible="{Binding !SelectedConflictDetail.IsRemoteDeletion}"
                         AutomationProperties.Name="Use Other Device" />
-                <Button Content="Accept Deletion" Classes="secondaryAction"
+                <Button Content="Accept Deletion" Classes="secondaryAction" Margin="0,0,10,4"
                         Command="{Binding AcceptDeletionCommand}"
                         IsVisible="{Binding SelectedConflictDetail.IsRemoteDeletion}"
                         AutomationProperties.Name="Accept Deletion" />
-                <Button Content="Cancel" Classes="textAction"
-                        Command="{Binding CloseConflictDetailCommand}" />
-              </StackPanel>
+                <Button Content="Cancel" Classes="textAction" Margin="0,0,0,4"
+                        Command="{Binding CloseConflictDetailCommand}"
+                        AutomationProperties.Name="Cancel conflict review" />
+              </WrapPanel>
             </StackPanel>
           </Border>
         </StackPanel>
 
-        <TextBlock Text="Device" Classes="sectionTitle" Margin="0" />
-        <Border Classes="panel">
-          <StackPanel Spacing="4">
-            <TextBlock Text="This installation's device ID (used only to tell your own devices' changes apart during sync — never shown to anyone else and never derived from your name, email, or computer)." Classes="muted" TextWrapping="Wrap" />
-            <TextBlock Text="{Binding DeviceId}" FontFamily="Consolas,Menlo,monospace" FontSize="12.5" />
+        <!-- 4. Diagnostics. Phase 21B: Export Diagnostics lives here (moved from the Associate toolbar —
+             an administrative/support action). Same export service, privacy filtering, ZIP format and
+             save picker as before. -->
+        <TextBlock Text="Diagnostics" Classes="sectionTitle" Margin="0,12,0,0" />
+        <Border x:Name="DiagnosticsSection" Classes="panel" AutomationProperties.Name="Diagnostics">
+          <StackPanel Spacing="10">
+            <TextBlock Classes="muted" TextWrapping="Wrap"
+                       Text="Creates a support file with the app version, data-source status, and recent log information. It never includes notes, the Daily Feature, drafts, sync data, PDFs, or the database." />
+            <Button Content="Export Diagnostics…" Classes="secondaryAction" HorizontalAlignment="Left"
+                    Command="{Binding Diagnostics.ExportDiagnosticsCommand}"
+                    AutomationProperties.Name="Export Diagnostics"
+                    AutomationProperties.HelpText="Saves a support diagnostic ZIP with version, source status, and recent log information. Contains no drafts or personal data." />
+            <TextBlock Text="{Binding Diagnostics.DiagnosticsExportMessage}" TextWrapping="Wrap"
+                       Classes.statusSuccess="{Binding !Diagnostics.IsDiagnosticsExportProblem}"
+                       Classes.statusError="{Binding Diagnostics.IsDiagnosticsExportProblem}"
+                       IsVisible="{Binding Diagnostics.DiagnosticsExportMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       AutomationProperties.LiveSetting="Polite" />
           </StackPanel>
         </Border>
 
-        <!-- Phase 18D: identifies the exact running build (docs/support-troubleshooting.md "Which copy
-             is running?") — compare the folder with the current release folder to spot a stale copy. -->
-        <TextBlock Text="About this build" Classes="sectionTitle" Margin="0" />
-        <Border Classes="panel">
-          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="14" RowSpacing="4">
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="App" Classes="muted" />
+        <!-- 5. Application Updates (Phase 23D). Approved updates come from GitHub Releases, verified against the
+             signing key bundled in this build. Nothing downloads or installs without a button press; Restart and
+             Install saves the Passdown draft first (Phase 23A) and never closes the app if that save fails. In a
+             build without a trusted signing key this says "Manual update required" and never contacts GitHub. -->
+        <TextBlock Text="Application Updates" Classes="sectionTitle" Margin="0,12,0,0" />
+        <Border x:Name="ApplicationUpdatesSection" Classes="panel" AutomationProperties.Name="Application Updates">
+          <StackPanel Spacing="10">
+            <Grid Classes="settingsRows" ColumnDefinitions="140,*" RowDefinitions="Auto,Auto">
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="Installed version" Classes="fieldLabel" />
+              <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Updates.InstalledVersionText}" FontWeight="Medium"
+                         AutomationProperties.Name="{Binding Updates.InstalledVersionText, StringFormat='Installed version: {0}'}" />
+              <TextBlock Grid.Row="1" Grid.Column="0" Text="Status" Classes="fieldLabel" />
+              <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
+                <TextBlock x:Name="UpdateStatusTitle" Text="{Binding Updates.StatusTitle}" FontWeight="SemiBold" TextWrapping="Wrap"
+                           AutomationProperties.LiveSetting="Polite" />
+                <TextBlock Text="{Binding Updates.StatusDetail}" Classes="muted" TextWrapping="Wrap"
+                           IsVisible="{Binding Updates.StatusDetail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <TextBlock Text="{Binding Updates.LastCheckedText}" Classes="muted"
+                           IsVisible="{Binding !Updates.IsManualUpdateRequired}" />
+              </StackPanel>
+            </Grid>
+
+            <!-- Update available / downloading / ready: the signed release's own details and notes. -->
+            <Border x:Name="UpdateOfferPanel" Classes="inset"
+                    IsVisible="{Binding Updates.AvailableVersionText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                    AutomationProperties.Name="Available update">
+              <StackPanel Spacing="6">
+                <TextBlock Text="{Binding Updates.ReleaseTitle}" Classes="subsectionTitle" TextWrapping="Wrap" />
+                <WrapPanel Orientation="Horizontal">
+                  <TextBlock Text="{Binding Updates.ReleasedText}" Classes="muted" Margin="0,0,16,0"
+                             IsVisible="{Binding Updates.ReleasedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  <TextBlock Text="{Binding Updates.DownloadSizeText}" Classes="muted" />
+                </WrapPanel>
+                <!-- No nested ScrollViewer: the Settings page is the one scroll region (Phase 22F). Notes are bounded
+                     (ReleaseNotesDocument limits) and scroll with the page. -->
+                <ItemsControl ItemsSource="{Binding Updates.ReleaseNotesBlocks}"
+                              AutomationProperties.Name="Release notes for the available update">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="updates:ReleaseNotesBlock">
+                        <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                          <TextBlock Grid.Column="0" Text="•" Margin="4,0,8,0" IsVisible="{Binding IsBullet}" />
+                          <TextBlock Grid.Column="1" Text="{Binding Text}" TextWrapping="Wrap"
+                                     FontWeight="{Binding IsHeading, Converter={x:Static converters:ReleaseNotesConverters.HeadingWeight}}" />
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+
+            <TextBlock x:Name="UpdateReadinessText" Classes="fieldWarning" TextWrapping="Wrap"
+                       Text="{Binding Updates.ReadinessText}"
+                       IsVisible="{Binding Updates.ReadinessText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+            <!-- Downloading: progress announced politely to screen readers through the text below the bar. -->
+            <StackPanel Spacing="4" IsVisible="{Binding Updates.IsDownloading}">
+              <ProgressBar Minimum="0" Maximum="100" Value="{Binding Updates.DownloadPercent}" Height="6"
+                           AutomationProperties.Name="Update download progress" />
+              <TextBlock Text="{Binding Updates.ProgressText}" Classes="muted" TextWrapping="Wrap"
+                         AutomationProperties.LiveSetting="Polite" />
+            </StackPanel>
+
+            <TextBlock Text="{Binding Updates.ErrorText}" Classes="statusError" TextWrapping="Wrap"
+                       IsVisible="{Binding Updates.ErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       AutomationProperties.LiveSetting="Assertive" />
+            <TextBlock Text="{Binding Updates.InfoText}" Classes="muted" TextWrapping="Wrap"
+                       IsVisible="{Binding Updates.InfoText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       AutomationProperties.LiveSetting="Polite" />
+            <TextBlock Text="{Binding Updates.PreviousAttemptText}" Classes="fieldWarning" TextWrapping="Wrap"
+                       IsVisible="{Binding Updates.PreviousAttemptText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+            <WrapPanel Orientation="Horizontal">
+              <Button Content="Check for Updates" Classes="secondaryAction" Margin="0,0,10,4"
+                      Command="{Binding Updates.CheckForUpdatesCommand}"
+                      IsVisible="{Binding Updates.ShowCheckButton}"
+                      AutomationProperties.Name="Check for Updates" />
+              <Button Content="Install Update" Classes="primaryAction" Margin="0,0,10,4"
+                      Command="{Binding Updates.InstallUpdateCommand}"
+                      IsVisible="{Binding Updates.IsUpdateAvailable}"
+                      AutomationProperties.Name="Install Update"
+                      AutomationProperties.HelpText="Downloads and verifies the update. Nothing is installed until you choose Restart and Install." />
+              <Button Content="Remind Me Later" Classes="textAction" Margin="0,0,10,4"
+                      Command="{Binding Updates.RemindMeLaterCommand}"
+                      IsVisible="{Binding Updates.IsUpdateAvailable}"
+                      AutomationProperties.Name="Remind Me Later" />
+              <Button Content="Cancel Download" Classes="secondaryAction" Margin="0,0,10,4"
+                      Command="{Binding Updates.CancelDownloadCommand}"
+                      IsVisible="{Binding Updates.IsDownloading}"
+                      AutomationProperties.Name="Cancel Download" />
+              <Button Content="Restart and Install" Classes="primaryAction" Margin="0,0,10,4"
+                      Command="{Binding Updates.RestartAndInstallCommand}"
+                      IsVisible="{Binding Updates.IsReadyToInstall}"
+                      AutomationProperties.Name="Restart and Install"
+                      AutomationProperties.HelpText="Saves your work, closes Carowinds Operations, installs the update and opens the app again." />
+              <Button Content="Not Now" Classes="textAction" Margin="0,0,10,4"
+                      Command="{Binding Updates.NotNowCommand}"
+                      IsVisible="{Binding Updates.IsReadyToInstall}"
+                      AutomationProperties.Name="Not now, install later" />
+            </WrapPanel>
+          </StackPanel>
+        </Border>
+
+        <!-- 6. About. Phase 18D: identifies the exact running build (docs/support-troubleshooting.md
+             "Which copy is running?") — compare the folder with the current release folder to spot a
+             stale copy. The device ID (Phase 16B) moved here from its own section. -->
+        <TextBlock Text="About this build" Classes="sectionTitle" Margin="0,12,0,0" />
+        <Border x:Name="AboutSection" Classes="panel" AutomationProperties.Name="About this build">
+          <Grid Classes="settingsRows" ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="App" Classes="fieldLabel" />
             <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding BuildProductName}" FontWeight="Medium"
                        AutomationProperties.Name="{Binding BuildProductName, StringFormat='App: {0}'}" />
-            <TextBlock Grid.Row="1" Grid.Column="0" Text="Version" Classes="muted" />
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Version" Classes="fieldLabel" />
             <SelectableTextBlock Grid.Row="1" Grid.Column="1" Text="{Binding BuildVersionText}" FontWeight="Medium"
                                  AutomationProperties.Name="{Binding BuildVersionText, StringFormat='Version: {0}'}" />
-            <TextBlock Grid.Row="2" Grid.Column="0" Text="Running from" Classes="muted" />
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Running from" Classes="fieldLabel" />
             <SelectableTextBlock Grid.Row="2" Grid.Column="1" Text="{Binding BuildExecutablePathText}" TextWrapping="Wrap"
                                  FontFamily="Consolas,Menlo,monospace" FontSize="12.5"
                                  AutomationProperties.Name="{Binding BuildExecutablePathText, StringFormat='Running from: {0}'}" />
-            <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Classes="muted" TextWrapping="Wrap" Margin="0,4,0,0"
+            <TextBlock Grid.Row="3" Grid.Column="1" Classes="muted" TextWrapping="Wrap"
                        Text="If this folder is not the release folder you extracted most recently, Windows opened an older copy." />
+            <TextBlock Grid.Row="4" Grid.Column="0" Text="Device ID" Classes="fieldLabel" />
+            <SelectableTextBlock Grid.Row="4" Grid.Column="1" Text="{Binding DeviceId}" FontFamily="Consolas,Menlo,monospace" FontSize="12.5"
+                                 AutomationProperties.Name="{Binding DeviceId, StringFormat='Device ID: {0}'}" />
+            <TextBlock Grid.Row="5" Grid.Column="1" Classes="muted" TextWrapping="Wrap"
+                       Text="Used only to tell your own computers' changes apart during Personal Sync. Never shown to anyone else and never based on your name, email, or computer." />
+            <!-- Phase 23D: the running version's release notes, bundled in the app (works offline). -->
+            <TextBlock Grid.Row="6" Grid.Column="0" Text="Release notes" Classes="fieldLabel" />
+            <Button x:Name="WhatsNewButton" Grid.Row="6" Grid.Column="1" Content="What's New" Classes="secondaryAction"
+                    HorizontalAlignment="Left" Command="{Binding Updates.ShowWhatsNewCommand}"
+                    AutomationProperties.Name="What's New in this version" />
           </Grid>
-        </Border>
-
-        <!-- Phase 21B: Export Diagnostics lives here (moved from the Associate toolbar — an
-             administrative/support action, not part of preparing the passdown). Same export service,
-             privacy filtering, ZIP format and save picker as before. -->
-        <TextBlock Text="Diagnostics" Classes="sectionTitle" Margin="0" />
-        <Border Classes="panel">
-          <StackPanel Spacing="10">
-            <TextBlock Classes="muted" TextWrapping="Wrap"
-                       Text="Creates a support bundle with version, data-source status, and recent log information. It never includes notes, the Daily Feature, drafts, sync data, PDFs, or the database." />
-            <StackPanel Orientation="Horizontal" Spacing="12">
-              <Button Content="Export Diagnostics…" Classes="secondaryAction"
-                      Command="{Binding Diagnostics.ExportDiagnosticsCommand}"
-                      AutomationProperties.Name="Export Diagnostics"
-                      AutomationProperties.HelpText="Saves a support diagnostic ZIP with version, source status, and recent log information. Contains no drafts or personal data." />
-              <TextBlock Text="{Binding Diagnostics.DiagnosticsExportMessage}" VerticalAlignment="Center" TextWrapping="Wrap"
-                         IsVisible="{Binding Diagnostics.DiagnosticsExportMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                         AutomationProperties.LiveSetting="Polite" />
-            </StackPanel>
-          </StackPanel>
         </Border>
 
       </StackPanel>

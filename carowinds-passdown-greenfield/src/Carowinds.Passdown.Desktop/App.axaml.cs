@@ -23,12 +23,14 @@ using Carowinds.Passdown.Application.Retrieval.Browser;
 using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Application.SpellCheck;
 using Carowinds.Passdown.Application.Time;
+using Carowinds.Passdown.Application.Updates;
 using Carowinds.Passdown.Desktop.Services;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
 using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Retrieval;
+using Carowinds.Passdown.Domain.Updates;
 using Carowinds.Passdown.Infrastructure;
 using Carowinds.Passdown.Infrastructure.Concurrency;
 using Carowinds.Passdown.Infrastructure.Diagnostics;
@@ -40,6 +42,8 @@ using Carowinds.Passdown.Infrastructure.Retrieval.Browser;
 using Carowinds.Passdown.Infrastructure.Retrieval.Http;
 using Carowinds.Passdown.Infrastructure.Retrieval.Sources;
 using Carowinds.Passdown.Infrastructure.SpellCheck;
+using Carowinds.Passdown.Infrastructure.Updates;
+using Carowinds.Passdown.Infrastructure.Updates.Installation;
 using Carowinds.Passdown.Infrastructure.Storage;
 using Carowinds.Passdown.Infrastructure.Storage.Migrations;
 using Carowinds.Passdown.Infrastructure.Storage.Repositories;
@@ -104,6 +108,11 @@ public partial class App : global::Avalonia.Application
                 "Carowinds Operations starting (version {Version}, executable {ExecutablePath}, OS {OS}, 64-bit {Is64Bit}).",
                 build.FullVersion, build.ExecutablePath ?? "unknown", Environment.OSVersion.VersionString, Environment.Is64BitProcess);
 
+            // Phase 23C: the saved appearance (System/Light/Dark) is applied before anything else that
+            // could create a window — and before migrations, which it does not depend on — so a saved
+            // Light or Dark is the first theme ever drawn. One tiny local file read; never throws.
+            ApplySavedAppearance(services, logger);
+
             // Storage must be ready (spec §17 Phase 1: "establish ... storage
             // migrations before building the production UI") before any
             // view model touches the database.
@@ -143,7 +152,14 @@ public partial class App : global::Avalonia.Application
             var syncCoordinator = services.GetRequiredService<IPersonalSyncCoordinator>();
             var refreshCoordinator = services.GetRequiredService<IOfficialDataRefreshCoordinator>();
             var historicalBackfill = services.GetRequiredService<IHistoricalBackfillService>();
-            AttachShutdownFlush(desktop, mainViewModel, syncCoordinator, refreshCoordinator, historicalBackfill, logger);
+            var updateCoordinator = services.GetRequiredService<IApplicationUpdateCoordinator>();
+            AttachShutdownFlush(desktop, mainViewModel, syncCoordinator, refreshCoordinator, historicalBackfill, logger, updateCoordinator);
+
+            // Phase 23D: Install Update saves through the same Phase 23A flush as closing the window, then closes
+            // through the normal shutdown path once the external updater is running.
+            var restartHost = services.GetRequiredService<DesktopUpdateRestartHost>();
+            restartHost.SaveWork = () => FlushPendingAutosaveBeforeShutdownAsync(mainViewModel, logger);
+            restartHost.Close = () => desktop.Shutdown();
 
             // Phase 15D: the closest available cross-platform proxy for "the shell became visible" —
             // Window.Opened fires once the platform has actually shown the window, well after
@@ -152,6 +168,10 @@ public partial class App : global::Avalonia.Application
             // investigating a slow launch can temporarily raise Logging:LogLevel:Default to see it.
             mainWindow.Opened += (_, _) => logger.LogDebug(
                 "Startup: MainWindow.Opened fired at {ElapsedMs:F1}ms since process start", ElapsedSinceProcessStartMs());
+
+            // Phase 23D: once the window is actually showing, confirm an in-app update's launch to the waiting
+            // updater and open What's New if (and only if) the update is recorded as a confirmed success.
+            mainWindow.Opened += (_, _) => StartPostUpdateLaunch(services, mainViewModel, updateCoordinator, logger);
 
             desktop.MainWindow = mainWindow;
             var mainWindowAssignedMs = ElapsedSinceProcessStartMs();
@@ -183,10 +203,34 @@ public partial class App : global::Avalonia.Application
             // refresh. Interactive only; the headless --scheduled-refresh host never starts it.
             historicalBackfill.Start();
 
+            // Phase 23D: update checks start 90 s after launch on a background task (never blocking the window,
+            // never sharing anything with official-data retrieval); nothing happens when updates are not set up.
+            updateCoordinator.Start();
+            StartUpdateCleanup(services, logger);
+
             StartTempPdfCleanup(logger);
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// Phase 23C: loads the local appearance preference and shows the matching palette. A failure here
+    /// (which the store itself already guards against) leaves the XAML default — follow the operating
+    /// system — and never blocks startup.
+    /// </summary>
+    private static void ApplySavedAppearance(IServiceProvider services, ILogger logger)
+    {
+        try
+        {
+            var appearance = services.GetRequiredService<AppearanceThemeController>();
+            appearance.Initialize();
+            logger.LogInformation("Appearance: {Preference} (showing {Effective}).", appearance.Preference, appearance.EffectiveAppearance);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning("Appearance preference could not be applied ({ExceptionType}); following the system theme.", ex.GetType().Name);
+        }
     }
 
     /// <summary>
@@ -198,10 +242,18 @@ public partial class App : global::Avalonia.Application
     /// already uses — then <see cref="IClassicDesktopStyleApplicationLifetime.Shutdown"/> is called
     /// again to actually close; the <c>flushed</c> guard prevents that second request from looping
     /// back into this handler.
+    ///
+    /// Phase 23A: when the flush could not save (storage failure or timeout), the first close is held
+    /// back once — the window stays open on the Associate screen with an honest "could not be saved"
+    /// message and Retry Save. The next close request flushes once more and then exits regardless, so
+    /// there is never a close-confirmation loop and the app can always be closed. Overlapping close
+    /// requests while a flush is running are ignored rather than starting another flush.
     /// </summary>
-    private static void AttachShutdownFlush(IClassicDesktopStyleApplicationLifetime desktop, MainViewModel mainViewModel, IPersonalSyncCoordinator syncCoordinator, IOfficialDataRefreshCoordinator refreshCoordinator, IHistoricalBackfillService historicalBackfill, ILogger logger)
+    private static void AttachShutdownFlush(IClassicDesktopStyleApplicationLifetime desktop, MainViewModel mainViewModel, IPersonalSyncCoordinator syncCoordinator, IOfficialDataRefreshCoordinator refreshCoordinator, IHistoricalBackfillService historicalBackfill, ILogger logger, IApplicationUpdateCoordinator? updateCoordinator = null)
     {
         var flushed = false;
+        var flushRunning = false;
+        var unsavedCloseWarningShown = false;
 
         desktop.ShutdownRequested += (_, e) =>
         {
@@ -211,12 +263,31 @@ public partial class App : global::Avalonia.Application
             }
 
             e.Cancel = true;
+            if (flushRunning)
+            {
+                return;
+            }
+
+            flushRunning = true;
             _ = FlushThenShutdownAsync();
         };
 
         async Task FlushThenShutdownAsync()
         {
-            await FlushPendingAutosaveBeforeShutdownAsync(mainViewModel, logger).ConfigureAwait(true);
+            var saved = await FlushPendingAutosaveBeforeShutdownAsync(mainViewModel, logger).ConfigureAwait(true);
+            if (!saved && !unsavedCloseWarningShown)
+            {
+                unsavedCloseWarningShown = true;
+                flushRunning = false;
+                logger.LogWarning("Close held back once: the Associate draft has unsaved changes that could not be saved.");
+                mainViewModel.ShowCloseBlockedBySaveFailure();
+                return;
+            }
+
+            if (!saved)
+            {
+                logger.LogWarning("Closing with Associate draft changes that could not be saved (closed again after the warning).");
+            }
 
             // Phase 16F §23: stops the periodic loop and any pending debounce/retry timer only — it
             // deliberately does not wait for a sync pass that happens to be mid-flight (file I/O uses
@@ -240,7 +311,10 @@ public partial class App : global::Avalonia.Application
             // the remaining dates resume next start), within the same bound.
             try
             {
-                var stop = Task.WhenAll(refreshCoordinator.StopAsync(), historicalBackfill.StopAsync());
+                // Phase 23D: an update check or download in progress is cancelled too (a partial download is
+                // deleted by the next attempt; nothing installed is touched).
+                mainViewModel.Settings.Updates.CancelBackgroundWork();
+                var stop = Task.WhenAll(refreshCoordinator.StopAsync(), historicalBackfill.StopAsync(), updateCoordinator?.StopAsync() ?? Task.CompletedTask);
                 await Task.WhenAny(stop, Task.Delay(RefreshStopTimeout)).ConfigureAwait(true);
             }
             catch (Exception ex)
@@ -277,8 +351,13 @@ public partial class App : global::Avalonia.Application
     /// failure that throws directly (rather than timing out) is logged and swallowed the same way.
     /// <paramref name="timeout"/> defaults to <see cref="ShutdownFlushTimeout"/>; the override exists
     /// so a test can prove the timeout path itself without a real 5-second wait.
+    ///
+    /// Phase 23A: returns true only when the edits on screen are confirmed saved. Before 23A a
+    /// persistent failure never even reached the timeout: the flush retried synchronously forever
+    /// inside <see cref="AssociateViewModel.FlushPendingAutosaveAsync"/>, before this method could
+    /// await anything. The flush now makes at most one attempt after a failure and reports it.
     /// </summary>
-    internal static async Task FlushPendingAutosaveBeforeShutdownAsync(MainViewModel mainViewModel, ILogger logger, TimeSpan? timeout = null)
+    internal static async Task<bool> FlushPendingAutosaveBeforeShutdownAsync(MainViewModel mainViewModel, ILogger logger, TimeSpan? timeout = null)
     {
         var effectiveTimeout = timeout ?? ShutdownFlushTimeout;
 
@@ -289,15 +368,22 @@ public partial class App : global::Avalonia.Application
 
             if (completed != flush)
             {
-                logger.LogWarning("Flush-on-shutdown timed out after {TimeoutSeconds}s; closing anyway rather than blocking shutdown indefinitely.", effectiveTimeout.TotalSeconds);
-                return;
+                logger.LogWarning("Flush-on-shutdown timed out after {TimeoutSeconds}s; not waiting any longer.", effectiveTimeout.TotalSeconds);
+                return false;
             }
 
-            await flush.ConfigureAwait(true); // Observe a faulted flush task so it isn't reported as unobserved.
+            var saved = await flush.ConfigureAwait(true); // also observes a faulted flush task.
+            if (!saved)
+            {
+                logger.LogWarning("Flush-on-shutdown could not save the Associate draft.");
+            }
+
+            return saved;
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Flush-on-shutdown failed; closing anyway rather than blocking shutdown indefinitely.");
+            logger.LogWarning(ex, "Flush-on-shutdown failed; not waiting any longer.");
+            return false;
         }
     }
 
@@ -318,6 +404,44 @@ public partial class App : global::Avalonia.Application
         TaskScheduler.UnobservedTaskException += (_, e) =>
             logger.LogError(e.Exception, "Unobserved task exception.");
     }
+
+    /// <summary>
+    /// Phase 23D: confirms a just-installed update and decides whether What's New opens. Runs in the background;
+    /// the dialog is opened on the UI thread. Never throws.
+    /// </summary>
+    private static void StartPostUpdateLaunch(IServiceProvider services, MainViewModel mainViewModel, IApplicationUpdateCoordinator coordinator, ILogger logger) =>
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var postUpdate = services.GetRequiredService<PostUpdateLaunch>();
+                var outcome = await postUpdate.ConfirmAsync().ConfigureAwait(false);
+                if (postUpdate.ShouldShowWhatsNew(outcome, coordinator.LastAcknowledgedReleaseNotesVersion))
+                {
+                    logger.LogInformation("Showing What's New after a successful update.");
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() => mainViewModel.WhatsNew.OpenCurrent(mainViewModel.Settings.Updates.InstalledVersionText));
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning("Post-update startup check failed ({ExceptionType}).", ex.GetType().Name);
+            }
+        });
+
+    /// <summary>Phase 23D: removes obsolete update downloads/staged versions and old install records. Best-effort, off the UI thread.</summary>
+    private static void StartUpdateCleanup(IServiceProvider services, ILogger logger) =>
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                services.GetRequiredService<IUpdatePackageStager>().CleanObsolete();
+                services.GetRequiredService<UpdateInstallRecordStore>().Prune();
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug("Update cleanup skipped ({ExceptionType}).", ex.GetType().Name);
+            }
+        });
 
     /// <summary>
     /// Phase 18B PRIV-002: removes "Open Final PDF" temp copies left by earlier sessions (older than
@@ -592,8 +716,21 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<OfficialDataStatusViewModel>();
 
         services.AddTransient<DiagnosticsExportViewModel>();
+
+        // Phase 23C: the local appearance preference (System/Light/Dark) — one flat JSON file beside the
+        // template preference, never synced, no database table. The controller is one instance for the
+        // interactive session; only OnFrameworkInitializationCompleted initializes it, so the headless
+        // --scheduled-refresh host never reads the file or touches a theme.
+        services.AddSingleton<IAppearancePreferenceStore>(provider => new FileAppearancePreferenceStore(
+            FileAppearancePreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FileAppearancePreferenceStore>>()));
+        services.AddSingleton<ISystemAppearanceSource>(_ => new AvaloniaSystemAppearanceSource());
+        services.AddSingleton<IThemeVariantTarget, ApplicationThemeVariantTarget>();
+        services.AddSingleton<AppearanceThemeController>();
+        services.AddTransient<AppearanceSettingsViewModel>();
         services.AddTransient<PersonalSyncSettingsViewModel>();
         services.AddTransient<PriceHistoryViewModel>();
+
+        AddApplicationUpdates(services, configuration);
 
         // Phase 20A: local/offline spell checking (Windows' own spell checker on Windows; none
         // elsewhere). The backend creates its COM objects lazily, on first use, never at startup.
@@ -607,6 +744,90 @@ public partial class App : global::Avalonia.Application
         services.AddTransient<MainViewModel>();
 
         return services.BuildServiceProvider();
+    }
+
+    /// <summary>
+    /// Phase 23D: application updates from GitHub Releases (docs/phase23d-github-updater.md). The release source
+    /// (repository), channel and trusted public keys come from appsettings.json "Updates"; with no trusted key the
+    /// coordinator never contacts GitHub and Settings says "Manual update required". The updater has its own
+    /// HttpClient (no automatic redirects) — nothing is shared with official-data retrieval. Every singleton here
+    /// is lazy: the headless --scheduled-refresh host resolves none of them.
+    /// </summary>
+    private static void AddApplicationUpdates(IServiceCollection services, IConfiguration configuration)
+    {
+        var section = configuration.GetSection("Updates");
+        var updateConfiguration = UpdateConfigurationParser.Parse(
+            section["Repository"],
+            section["Channel"],
+            section.GetSection("TrustedSigningKeys").GetChildren().Select(key => (key["KeyId"], key["PublicKey"])));
+        var build = BuildIdentity.FromAssembly(typeof(App).Assembly, Environment.ProcessPath);
+        var installedVersion = SemanticVersion.TryParse(build.Version, out var parsedVersion) ? parsedVersion : null;
+        var configured = updateConfiguration.IsConfigured && installedVersion is not null;
+
+        services.AddSingleton(updateConfiguration);
+        services.AddSingleton(UpdatePaths.Default);
+        services.AddSingleton<IUpdateManifestVerifier>(_ => new EcdsaUpdateManifestVerifier(updateConfiguration.TrustedKeys));
+        services.AddSingleton<IUpdateReleaseSource>(provider => updateConfiguration.Repository is { } repository
+            ? new GitHubReleaseSource(GitHubReleaseSource.CreateHttpClient(), repository, build.Version, logger: provider.GetRequiredService<ILogger<GitHubReleaseSource>>())
+            : new UnconfiguredReleaseSource());
+        services.AddSingleton(provider => new UpdateDiscoveryService(
+            provider.GetRequiredService<IUpdateReleaseSource>(),
+            provider.GetRequiredService<IUpdateManifestVerifier>(),
+            updateConfiguration,
+            provider.GetRequiredService<ILogger<UpdateDiscoveryService>>()));
+        services.AddSingleton<IUpdateStateStore>(provider => new FileUpdateStateStore(
+            FileUpdateStateStore.DefaultPath, provider.GetRequiredService<ILogger<FileUpdateStateStore>>()));
+        services.AddSingleton<IApplicationUpdateCoordinator>(provider => new ApplicationUpdateCoordinator(
+            provider.GetRequiredService<UpdateDiscoveryService>(),
+            provider.GetRequiredService<IUpdateStateStore>(),
+            provider.GetRequiredService<IClock>(),
+            installedVersion ?? SemanticVersion.Parse("0.0.0"),
+            configured,
+            logger: provider.GetRequiredService<ILogger<ApplicationUpdateCoordinator>>()));
+        services.AddSingleton<IUpdatePackageStager>(provider => new UpdatePackageStager(
+            provider.GetRequiredService<IUpdateReleaseSource>(),
+            provider.GetRequiredService<UpdatePaths>(),
+            logger: provider.GetRequiredService<ILogger<UpdatePackageStager>>()));
+        services.AddSingleton<IInstallationInspector>(_ => new InstallationInspector());
+        services.AddSingleton<IUpdateInstallLauncher>(provider => new UpdaterProcessLauncher(
+            provider.GetRequiredService<UpdatePaths>(),
+            logger: provider.GetRequiredService<ILogger<UpdaterProcessLauncher>>()));
+        services.AddSingleton<UpdateInstallRecordStore>(provider => new UpdateInstallRecordStore(provider.GetRequiredService<UpdatePaths>()));
+        services.AddSingleton<IUpdateOutcomeStore>(provider => provider.GetRequiredService<UpdateInstallRecordStore>());
+        services.AddSingleton<IBundledReleaseNotesSource, EmbeddedReleaseNotesSource>();
+        services.AddSingleton<DesktopUpdateRestartHost>();
+        services.AddSingleton<IUpdateRestartHost>(provider => provider.GetRequiredService<DesktopUpdateRestartHost>());
+        services.AddSingleton(provider => new WhatsNewViewModel(
+            provider.GetRequiredService<IBundledReleaseNotesSource>(),
+            provider.GetRequiredService<IApplicationUpdateCoordinator>()));
+        services.AddSingleton(provider => new ApplicationUpdatesViewModel(
+            provider.GetRequiredService<IApplicationUpdateCoordinator>(),
+            provider.GetRequiredService<IUpdatePackageStager>(),
+            provider.GetRequiredService<IInstallationInspector>(),
+            provider.GetRequiredService<IUpdateInstallLauncher>(),
+            provider.GetRequiredService<IUpdateRestartHost>(),
+            provider.GetRequiredService<IUpdateOutcomeStore>(),
+            provider.GetRequiredService<WhatsNewViewModel>(),
+            provider.GetRequiredService<IUiDispatcher>(),
+            build.Version,
+            provider.GetRequiredService<ILogger<ApplicationUpdatesViewModel>>()));
+        services.AddSingleton(provider => new PostUpdateLaunch(
+            provider.GetRequiredService<IUpdateOutcomeStore>(),
+            installedVersion ?? SemanticVersion.Parse("0.0.0"),
+            logger: provider.GetRequiredService<ILogger<PostUpdateLaunch>>()));
+    }
+
+    /// <summary>Phase 23D: stands in when no repository is configured; never contacts anything.</summary>
+    private sealed class UnconfiguredReleaseSource : IUpdateReleaseSource
+    {
+        public Task<IReadOnlyList<ReleaseCandidate>> ListReleasesAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ReleaseCandidate>>([]);
+
+        public Task<byte[]> DownloadSmallAssetAsync(ReleaseCandidate release, string assetName, int maximumBytes, CancellationToken cancellationToken = default) =>
+            throw new UpdateSourceException(UpdateSourceFailureKind.InvalidResponse, "No release source is configured.");
+
+        public Task DownloadPackageAsync(ReleaseCandidate release, string assetName, Stream destination, long expectedBytes, IProgress<long>? progress, CancellationToken cancellationToken = default) =>
+            throw new UpdateSourceException(UpdateSourceFailureKind.InvalidResponse, "No release source is configured.");
     }
 
     /// <summary>
@@ -715,6 +936,12 @@ public partial class App : global::Avalonia.Application
 
         services.Configure<RefreshOrchestratorOptions>(configuration.GetSection("Refresh"));
         services.AddSingleton(provider => provider.GetRequiredService<IOptions<RefreshOrchestratorOptions>>().Value);
+        // Phase 22E.1: Deep Refresh's forward published-schedule discovery (one official month request
+        // per month through the configured horizon) — the same ParkHoursSource, so the same parsing rules.
+        services.AddSingleton(provider => new ParkHoursScheduleDiscovery(
+            provider.GetRequiredService<ParkHoursSource>(),
+            provider.GetRequiredService<IDatedResultRepository>(),
+            provider.GetRequiredService<RefreshOrchestratorOptions>().ParkHoursDiscoveryMonths));
         services.AddSingleton<IRefreshOrchestrator, RefreshOrchestrator>();
 
         // Phase 6A: the headless --scheduled-refresh entry point's only Application-layer

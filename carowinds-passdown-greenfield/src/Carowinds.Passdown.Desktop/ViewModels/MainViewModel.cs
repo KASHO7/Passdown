@@ -37,6 +37,12 @@ public enum AppSection
 public partial class MainViewModel : ViewModelBase
 {
     public MainViewModel(OperationsDashboardViewModel dashboard, OperationsCalendarViewModel calendar, AssociateViewModel associate, OperationalNotesViewModel notes, PassdownHistoryViewModel history, PersonalSyncSettingsViewModel settings, PriceHistoryViewModel? priceHistory = null)
+        : this(dashboard, calendar, associate, notes, history, settings, priceHistory, whatsNew: null)
+    {
+    }
+
+    /// <summary>Phase 23D: <paramref name="whatsNew"/> is the What's New overlay (defaults to the Settings updates panel's own).</summary>
+    public MainViewModel(OperationsDashboardViewModel dashboard, OperationsCalendarViewModel calendar, AssociateViewModel associate, OperationalNotesViewModel notes, PassdownHistoryViewModel history, PersonalSyncSettingsViewModel settings, PriceHistoryViewModel? priceHistory, WhatsNewViewModel? whatsNew)
     {
         ArgumentNullException.ThrowIfNull(dashboard);
         ArgumentNullException.ThrowIfNull(calendar);
@@ -52,6 +58,24 @@ public partial class MainViewModel : ViewModelBase
         History = history;
         Settings = settings;
         PriceHistory = priceHistory;
+        WhatsNew = whatsNew ?? settings.Updates.WhatsNew;
+
+        // Phase 23D: the What's New overlay and the subtle Settings-gear update indicator.
+        WhatsNew.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(WhatsNewViewModel.IsOpen))
+            {
+                OnPropertyChanged(nameof(IsWhatsNewOpen));
+            }
+        };
+        Settings.Updates.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ApplicationUpdatesViewModel.HasUpdateNotification))
+            {
+                OnPropertyChanged(nameof(HasUpdateNotification));
+                OnPropertyChanged(nameof(SettingsNavigationHelpText));
+            }
+        };
 
         // Phase 20A: Associate → Products asks for the Season Price History screen; it opens as an
         // overlay on top of whatever section is showing, so no Associate state is touched.
@@ -70,8 +94,10 @@ public partial class MainViewModel : ViewModelBase
         // "Open Passdown"/"Open Notes" (spec Phase 10C Parts F/G/H): switch the top-level section and
         // set Associate's own internal section explicitly. Phase 21A: Dashboard is today's screen, so
         // "Open Passdown" always opens today's Eastern date (AssociateViewModel.SelectEasternToday,
-        // which flushes any unsaved edit on the previous date first). "Open Notes" still keeps the
-        // current Associate date, and Calendar/History routes keep their explicit dates.
+        // which flushes any unsaved edit on the previous date first). Phase 22E: "Open Notes" sits on the
+        // same today's-passdown tile (it reports today's draft note lines), so it opens today's Eastern
+        // date too instead of whichever date Associate last showed. Calendar/History routes keep their
+        // explicit dates; "View Notes →" (the Operational Notes manager) is not date-scoped and is unchanged.
         Dashboard.OpenAssociateOverviewRequested += (_, _) =>
         {
             Associate.SelectEasternToday();
@@ -80,10 +106,21 @@ public partial class MainViewModel : ViewModelBase
         };
         Dashboard.OpenAssociateNotesRequested += (_, _) =>
         {
+            Associate.SelectEasternToday();
             Associate.SelectedSection = AssociateSection.Notes;
             ShowAssociateSection();
         };
         Dashboard.OpenHistoryRequested += (_, _) => ShowHistorySection();
+
+        // Phase 22C: "View Pricing" on the Dashboard's Daily Admission tile opens the existing detailed
+        // pricing reference — Associate → Products — for today's Eastern date (the Dashboard is today's
+        // screen), through the same flush-then-load path as Open Passdown.
+        Dashboard.OpenPricingRequested += (_, _) =>
+        {
+            Associate.SelectEasternToday();
+            Associate.SelectedSection = AssociateSection.Products;
+            ShowAssociateSection();
+        };
 
         // Phase 11C Part O/P: generic navigation to the existing Operational Notes section — never
         // resets Notes.LifecycleFilter/SelectedNote, so a supervisor's existing filter/selection state
@@ -167,6 +204,17 @@ public partial class MainViewModel : ViewModelBase
 
     public bool IsPriceHistoryOpen => PriceHistory?.IsOpen == true;
 
+    /// <summary>Phase 23D: "What's New in Carowinds Operations" — after a confirmed update, or from Settings → About this build.</summary>
+    public WhatsNewViewModel WhatsNew { get; }
+
+    public bool IsWhatsNewOpen => WhatsNew.IsOpen;
+
+    /// <summary>Phase 23D: an approved update is available and was not snoozed — a small dot on the Settings gear, never a popup.</summary>
+    public bool HasUpdateNotification => Settings.Updates.HasUpdateNotification;
+
+    /// <summary>The gear's help text, so Narrator announces the indicator too (its name stays "Settings").</summary>
+    public string? SettingsNavigationHelpText => HasUpdateNotification ? "Update available" : null;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDashboardSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsOperationsCalendarSectionSelected))]
@@ -213,4 +261,18 @@ public partial class MainViewModel : ViewModelBase
 
     /// <summary>Spec Part X: true unless the Operational Notes section is both currently shown and mid-create/edit — in which case a supervisor must Save or Cancel before any other top-level section becomes reachable.</summary>
     private bool CanLeaveOperationalNotesSection() => !(SelectedSection == AppSection.OperationalNotes && Notes.IsEditing);
+
+    /// <summary>
+    /// Phase 23A: closing could not save the Associate edits on screen. Shows the Associate screen with
+    /// the honest "could not be saved" message and Retry Save, instead of closing as if they were safe.
+    /// </summary>
+    internal void ShowCloseBlockedBySaveFailure()
+    {
+        if (CanLeaveOperationalNotesSection())
+        {
+            SelectedSection = AppSection.AssociatePassdown; // never abandons an in-progress note edit.
+        }
+
+        Associate.ShowCloseBlockedBySaveFailure();
+    }
 }

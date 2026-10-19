@@ -233,3 +233,28 @@ The `shows[]` array of this same response is now read by `ShowScheduleSource`
 both adapters share a `CoalescingRetrievalHttpClient`, so checking a date's hours and shows together
 issues one GET (identical in-flight requests joined; a successful response reused for 2 minutes;
 failures never cached). `ParkHoursSource`'s own behavior and contract are unchanged.
+
+## Phase 22E.1 update — seasonal main-gate labels and the month form
+
+Re-checked live 2026-10-17 (plain GETs plus the official page in a browser):
+
+- **Main gate is operating type id 24, whatever its label.** The official page's server data maps
+  `operatingTypeId 24 → "Park"` and `70 → "Waterpark"`, and its shipped JS selects feed entries by
+  `operatingTypeId`. WinterFest days publish the id-24 entry as `"Winterfest"` (11/27–12/30/2026) and Dec 31
+  as `"New Years Eve"` (15:00–01:00). The page shows these as "Park 12:00 PM to 9:00 PM" / "Park 3:00 PM to
+  1:00 AM". The adapter now matches id 24 / id 70, falling back to the `"Park"` / `"Waterpark"` label only
+  for an entry without an id. Before this change those days were reported NotPublished.
+- **The month form is now used, for forward discovery only.** `?date=yyyyMM` answers each month through
+  exactly one year ahead (`?date=202710` → 10/01–10/17/2027). The current month lists tomorrow onward.
+  `ParkHoursSource.RetrieveMonthAsync` evaluates each listed date with the same rules as a single-date
+  request. A date the month response does not list is absent, never inferred closed. A failed or empty
+  month stores nothing. The month form is still never used for history (Phase 20C finding unchanged).
+
+Updated status table rows:
+
+| Case | Observed response | Status |
+|---|---|---|
+| Seasonal open date (WinterFest, New Year's Eve) | `isParkClosed: false`, `operatings` entry with `operatingTypeId: 24` and a non-"Park" label, times present | **Verified** |
+| Open flag, no hours, inside a published season (e.g. 01/01–01/02/2027) | `isParkClosed: false`, `operatings: []` | **NotPublished** (the official page renders "Closed"; this app does not infer closure) |
+
+See `docs/phase22e1-published-park-schedule-coverage.md`.

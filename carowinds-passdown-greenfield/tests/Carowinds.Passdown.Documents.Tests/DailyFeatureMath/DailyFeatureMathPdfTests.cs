@@ -150,7 +150,7 @@ public sealed class DailyFeatureMathPdfTests
     public void MathOutput_IsDeterministic(AssociatePassdownTemplate template)
     {
         var workspace = NormalDayWith(@"\(\sqrt{x^2+y^2}\) and \[\lim_{x\to 0}\frac{\sin x}{x}=1\]");
-        Assert.Equal(Render(workspace, template), Render(workspace, template));
+        Assert.Equal(PdfInspector.WithoutGenerationTimestamps(Render(workspace, template)), PdfInspector.WithoutGenerationTimestamps(Render(workspace, template)));
     }
 
     [Fact]
@@ -165,7 +165,8 @@ public sealed class DailyFeatureMathPdfTests
 
         var projection = builder.BuildProjection(workspace, GeneratedAt);
         var direct = Generator.Generate(AssociatePassdownDocumentModelBuilder.Build(workspace, GeneratedAt));
-        Assert.Equal(direct.PdfBytes, projection.PdfBytes);
+        // Phase 23: the wall-clock /CreationDate and /ModDate seconds were the intermittent difference.
+        Assert.Equal(PdfInspector.WithoutGenerationTimestamps(direct.PdfBytes!), PdfInspector.WithoutGenerationTimestamps(projection.PdfBytes));
     }
 
     [Fact]

@@ -23,7 +23,7 @@ public class FinalizedPassdownSnapshotBuilderTemplateTests
         var withDefault = Builder.BuildProjection(AssociateWorkspaceFixtures.NormalDay(), AsOf);
         var withExplicitClassic = Builder.BuildProjection(AssociateWorkspaceFixtures.NormalDay(), AsOf, AssociatePassdownTemplate.Classic);
 
-        Assert.Equal(withExplicitClassic.PdfBytes, withDefault.PdfBytes);
+        Assert.Equal(PdfInspector.WithoutGenerationTimestamps(withExplicitClassic.PdfBytes), PdfInspector.WithoutGenerationTimestamps(withDefault.PdfBytes));
     }
 
     [Theory]

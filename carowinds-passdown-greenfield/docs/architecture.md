@@ -1067,3 +1067,253 @@ See `docs/phase22a-design-foundation.md`. Desktop presentation only.
 - No Domain/Application/Infrastructure/Documents change; no view-model change; PDF output unchanged.
 
 Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged.
+
+## Phase 22B — Fury banner and application navigation
+
+See `docs/phase22b-fury-banner-navigation.md`. Desktop presentation only.
+
+- **Desktop** — `Views/MainWindow.axaml`: the navy brand band is replaced by a 72 px theme-invariant
+  banner (`Assets/Branding/fury325-banner.jpg`, an embedded `AvaloniaResource`, `UniformToFill`, under
+  the absolute-pixel `PassdownBannerOverlayBrush` scrim) with one "CAROWINDS OPERATIONS" wordmark. The
+  six-item section strip, its bindings and `MainViewModel` routing are unchanged; its styles moved from
+  `<Window.Styles>` into the "App shell" section of `Themes/PassdownStyles.axaml`. New theme-invariant
+  tokens: `PassdownBannerHeight`, `PassdownFontSizeWordmark`, `PassdownBannerOverlayBrush`,
+  `PassdownNavigationStripPadding`, `PassdownNavigationItemPadding`.
+- No Domain/Application/Infrastructure/Documents change; no view-model change; PDF output unchanged.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged.
+
+## Phase 22C — Dashboard information hierarchy, navigation labels, PDF Shows order
+
+See `docs/phase22c-dashboard-navigation-pdf-order.md`.
+
+- **Application** — `Dashboard/DashboardAdmissionSummary.cs`: `DashboardAdmissionSelector`, a pure
+  projection over the composed `AssociateWorkspace.Products` that picks the ordinary "Park Ticket"
+  official price for today's Eastern date (exact dated first, else the same product's advertised
+  "Starting From"; ambiguous, bundle, Military/First Responder, Fast Lane, add-on, pass, custom,
+  override and historical cases never yield a price). Exposed as `OperationsDashboardSnapshot.Admission`
+  (init property; local data only, no new retrieval).
+- **Desktop** — `DashboardView.axaml` rebuilt around one Operations Overview (park hours, daily
+  admission, passdown, operational notes, compact Official Data with an `Expander.disclosure` for the
+  source breakdown and Deep Refresh), Today's Shows beneath, then Today at a Glance / Latest Finalized.
+  New presentation `DashboardAdmissionPresentation`; overview strings on the existing presentations;
+  `OperationsDashboardViewModel.IsSourceDetailsExpanded` (view state only) and `OpenPricingCommand`,
+  routed by `MainViewModel` to Associate → Products for today. `MainWindow.axaml`: short labels and a
+  trailing Settings `PathIcon` gear (same six destinations/commands). Shared styles gained
+  `Expander.disclosure`, `ToggleButton.disclosureHeader`, `Button.appSectionItem.iconItem`; tokens
+  gained two `StreamGeometry` icons and `PassdownNavigationIconSize`.
+- **Documents** — Classic/Compact/Modern compose Shows after Operational Notes (final substantive
+  section); Compact's Shows line moved out of the summary strip under a "SHOWS" heading. Nothing else
+  in the templates changed; stored History PDFs are never regenerated.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged.
+
+## Phase 22D — Associate workspace refinement, operational-count formatting
+
+See `docs/phase22d-associate-workspace-number-formatting.md`.
+
+- **Domain** — `OperationalCount` (next to `PresentationCulture`): the one display rule for whole-number
+  operational counts (projected attendance, pre-solds) — en-US thousands grouping via
+  `PresentationCulture.UnitedStates`, missing text supplied by the caller (never a fabricated 0), and
+  `TryParseEntry` (the pre-22D whole-number inputs plus ignored US group separators). Display/parse only;
+  never used for persistence, sync, hashing or source parsing.
+- **Application** — `SyncConflictDetail` count rows use `OperationalCount`.
+- **Documents** — `PdfFormatting.FormatCount` and `AssociateTeamsTextFormatter` delegate to
+  `OperationalCount` (identical output to their previous `"N0"` formatting, so PDF/Teams text is unchanged).
+- **Desktop** — `AssociateView.axaml` reorganized (title row with separate official-data and Draft
+  save indicators; one accent toolbar action, Create PDF; one feedback stack visible on every section;
+  Overview grouped into Park Hours (Official) | Attendance (Entered here), Early Ride (Your setting),
+  Daily Feature (Entered here, preview attached to the editor), Hours Overrides; compact two-line Shows
+  rows; Products official-price column; hairline note rows; rail notes count). `AssociateViewModel`:
+  grouped count text on load (`CountEditorTextFor` leaves an identical value's typed text alone),
+  `RegroupCountFields` on blur (display only, no autosave), `HasOperationalNotesCount`.
+  `OperationalCountTextConverter` renders History-detail counts. `OperationsDashboardPresentation`
+  counts use `OperationalCount`. Shared styles: `ListBox.popupList` and selected-hover/pressed row
+  states (Season Price History list on the popup surface in both themes).
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.
+
+## Phase 22E — Calendar, Operational Notes & History refinement
+
+See `docs/phase22e-calendar-notes-history.md`.
+
+- **Domain** — `Catalog.AdvertisedPriceText`: the one "From $x" rule (`PriceKind.StartingFrom` → "From " +
+  `PresentationCulture.FormatUsd`, every other kind the plain amount). Display only.
+- **Documents** — `AssociatePassdownDocumentModelBuilder.FormatPrice` delegates to `AdvertisedPriceText`
+  (identical PDF/Teams text; no template change).
+- **Desktop** — `CalendarShowsPresentation` (selected date's Shows: merged-by-id show count, distinct
+  performance count, compact time lists, per-state wording, shared freshness text) replaces the Calendar's
+  use of `ShowSchedulePresentation` (the Dashboard keeps it). `OperationsCalendarViewModel.CalendarShows`
+  is null while the snapshot is for another date; `IsShowScheduleExpanded` is session-only view state
+  (never persisted, never loads). `OperationsCalendarView` groups the selected-date sections and uses the
+  shared `Expander.disclosure`. Notes rows/detail (`ScheduleText`, `AccessibleSummary`,
+  `CreatedText`/`UpdatedText`), History rows (`ListTitleText`, `ListDetailText`, `PdfTagText`) and History
+  detail layout are presentation only. `ProductRowViewModel` labels prices through `AdvertisedPriceText`
+  from the row's `PriceKind`. `MainViewModel`: Dashboard "Open Notes" selects today's Eastern date (like
+  Open Passdown / View Pricing); "View Notes" is unchanged.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.
+
+## Phase 22E.1 — Automatic published park schedule coverage
+
+See `docs/phase22e1-published-park-schedule-coverage.md`.
+
+- **Application** — `Retrieval.IParkHoursScheduleSource` / `PublishedParkHoursMonth` (one official month
+  request). `Refresh.ParkHoursScheduleDiscovery` (horizon from `RefreshOrchestratorOptions.ParkHoursDiscoveryMonths`,
+  default 12, clamped 1–18) creates `ParkHoursMonthRegistration` operations. Each one persists per date
+  into the existing `dated_results` rows: only dates after the rolling window; unlisted dates untouched; a
+  failed month writes nothing; a month NotPublished never replaces stored Verified/Closed.
+  `RefreshOrchestrator` takes the discovery as a new optional constructor parameter. With it, Deep Refresh
+  plans the rolling window per date (front ranks, shared with every source) plus one month request per
+  month through `ParkHoursCoveragePlanner.DiscoveryHorizon`. Without it, the Phase 13D plan is kept.
+  `SourceOperationResult.CoveredDates` feeds `CoverageThrough`. `DeepRefreshCoverage.NeedsScheduleDiscovery`
+  and `OfficialRefreshPolicy.IsDailyMaintenanceDue` re-run maintenance when coverage is short of the horizon
+  and the last attempt is ≥ 4 h old. `NeedsDeepRefresh` (the Check Online bootstrap) still uses end of next
+  month. `OfficialDataRefreshCoordinator` also evaluates that due-gated maintenance in its five-minute loop
+  after the four-hour check, at most once per 4 h in-process and only with a persisted status.
+- **Infrastructure** — `ParkHoursSource` selects the main gate by official operating-type id 24 (water park
+  70), as the official page does, so "Winterfest" / "New Years Eve" labelled days read as Verified. It also
+  implements `IParkHoursScheduleSource` (`?date=yyyyMM`), sharing `EvaluateDay` with the single-date path.
+- **Desktop** — DI registers `ParkHoursScheduleDiscovery`. No view or view-model change: the Calendar
+  already re-reads on `OfficialData`.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.
+
+
+## Phase 22F — Settings, accessibility & final UI/UX QA
+
+See `docs/phase22f-settings-accessibility-final-qa.md` and `docs/phase22-windows-validation-checklist.md`.
+
+- **Desktop** — `Presentation.EasternTimestampFormat` is the single display formatter for operational
+  timestamps. It sits on `Application.Time.EasternTimeZone` and appends "ET". Every presentation
+  formatter that used `ToLocalTime()` / `LocalDateTime`, plus the five Eastern ones, now goes through
+  it. Schedule times and date-only values are not labelled. `OperationsCalendarViewModel`:
+  `SelectedDateHeadingText`, `SelectedDateIsToday` and `DisplayedMonthText` come from the selection
+  itself. `IsSelectedDetailCurrent` gates the detail panel (`SelectedDateDetails`), and
+  `SelectedDetailPlaceholderText` stands in for it. `OperationsCalendarDayViewModel.IsSelected` is
+  observable. `CanOpenHistory` requires the current detail. A failed read keeps a same-month grid. The
+  `_loadVersion` token is unchanged. Settings is one page in five groups; Appearance and Data Refresh
+  are information only. `PersonalSyncStatusPresentation.IsProblem`,
+  `PersonalSyncAutomationStatusPresentation.IsProblem` and
+  `DiagnosticsExportViewModel.IsDiagnosticsExportProblem` drive error styling only. The
+  `Button.railItem.active` style sets ItemStatus "Current section". Small view fixes: date-picker
+  inactive days, History gate labels, wrapping day-cell hours, named progress bars.
+- **Documents** — `AssociatePassdownDocumentModelBuilder` footer stamp uses `EasternTimeZone` (wording
+  and layout unchanged).
+- **tools/visual-fixtures** — reusable synthetic Skia screenshot harness (outside the solution; links the
+  Ui.Tests fakes).
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.
+
+
+## Phase 23A — Save-failure freeze fix
+
+See `docs/phase23a-save-failure-freeze-fix.md`.
+
+- **Desktop** — `AssociateViewModel.FlushPendingAutosaveAsync` returns `bool` and makes at most one save
+  attempt after a failure (passes capped at `MaxFlushSavePasses`); the pre-23A `while (dirty) save()` loop
+  spun forever on the UI thread because SQLite writes fail synchronously. `SaveDraftNowAsync` returns
+  `bool` and never retries. Date switch, Check Online, add/remove/replace operational note and Create PDF
+  are refused (with `SaveBlockedMessage`) when the flush fails, so stored data never replaces unsaved
+  edits; a refused date switch restores `SelectedDate`. New `RetrySaveCommand` / `IsSaveFailed`; no
+  automatic retry timer. `App.FlushPendingAutosaveBeforeShutdownAsync` returns `bool`; a failed close
+  flush holds the first close once (`MainViewModel.ShowCloseBlockedBySaveFailure`), the next close exits.
+- Application, Infrastructure, Documents — unchanged. Sync metadata was already written only after commit.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.
+
+
+## Phase 23B — Dashboard Shows layout and Fury banner branding
+
+See `docs/phase23b-dashboard-shows-branding.md`.
+
+- **Desktop** — `ShowRowPresentation` gained `Key` (official show id, name fallback) and `Times` (one
+  formatted entry per time); `TimesText` and all Phase 21C ordering/status semantics are unchanged.
+  `ShowTimesDisclosure` holds the compact rule (≤ 5 times shown whole; otherwise 4 + "+N more").
+  `DashboardShowRowViewModel` wraps each row with presentation-only `IsExpanded`;
+  `OperationsDashboardViewModel.ShowRows` rebuilds them on every `ShowsPresentation` change, keeping
+  expanded show keys in memory (pruned when a show disappears, cleared on a new operating date; never
+  persisted or synced). `Controls/ShowColumnsPanel` lays entries out in up to three ≥ 340 px columns, row
+  by row. The Dashboard row template is now stacked (name → times + inline toggle → venue) — the old
+  horizontal StackPanel measured times unconstrained, so they never wrapped. `MainWindow` banner is
+  title-only (track mark removed); the window icon is unchanged.
+- Domain, Application, Infrastructure, Documents — unchanged.
+- **tools/visual-fixtures** — `DashboardShows-*` scenarios and per-capture Shows panel geometry (height,
+  columns, overlap count); fixtures shared from `Ui.Tests/TestSupport/Phase23BDashboardShowsFixtures.cs`.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.
+
+
+
+## Phase 23C — Appearance preferences (System / Light / Dark)
+
+See `docs/phase23c-appearance-preferences.md`.
+
+- **Application** — `Preferences/AppearancePreference.cs`: `AppearancePreference` (`System` = 0, `Light`,
+  `Dark`), `EffectiveAppearance`, `AppearanceResolver` (Light/Dark override, System follows the OS;
+  `Sanitize` maps undefined values to System) and `IAppearancePreferenceStore` (synchronous `Load` so the
+  theme is applied before the first window).
+- **Infrastructure** — `Preferences/FileAppearancePreferenceStore`: `appearance.json` beside the template
+  preference under `AppPaths.LocalApplicationDataDirectory`, string enum names only (integers rejected),
+  `AtomicFileWriter`; missing/corrupt/unknown → System with one non-sensitive warning. Not synced; no table.
+- **Desktop** — `Services/AppearanceThemeController` (singleton; loads once, applies, follows
+  `ISystemAppearanceSource` only in System mode, serializes saves, latest choice wins);
+  `Services/AvaloniaAppearance.cs` (`AvaloniaSystemAppearanceSource` over Avalonia's `IPlatformSettings`
+  and `ColorValuesChanged`, no polling; `ApplicationThemeVariantTarget` sets
+  `Application.RequestedThemeVariant` to Light or Dark). `App.OnFrameworkInitializationCompleted` calls
+  `ApplySavedAppearance` before migrations and before `MainWindow` is resolved; the `--scheduled-refresh`
+  host never initializes it. `ViewModels/AppearanceSettingsViewModel` is
+  `PersonalSyncSettingsViewModel.Appearance` (optional constructor argument; detached in-memory default
+  for tests/fixtures). Settings' Appearance panel is a three-option radio group (one Tab stop, arrow
+  keys select; view code-behind handles only focus/selection-follows-focus). No palette added:
+  `PassdownTokens.axaml` / `PassdownStyles.axaml` unchanged.
+- Domain, Documents — unchanged.
+- **tools/visual-fixtures** — themes go through the real controller with an in-memory store and a
+  simulated OS; 5th argument `forced|system|all`; `Appearance-*` and `LiveSwitch-*` scenarios. Test fakes
+  in `Ui.Tests/TestSupport/FakeAppearance.cs`.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration.
+
+## Phase 23D — GitHub Releases updater & post-update What's New
+
+See `docs/phase23d-github-updater.md`. Unreleased; intended for RC.8.
+
+- **Domain** — `Updates/SemanticVersion` (SemVer 2.0 parsing and precedence) and `Updates/UpdateChannel` +
+  `UpdateChannelPolicy` (Release Candidate accepts `rc.N` and stable; Stable accepts stable only; never
+  downgrade or reinstall). Pure; no I/O.
+- **Application** — `Updates/`: `IUpdateReleaseSource` is the provider boundary (list / small download /
+  package download; GitHub today, SharePoint possible later). `UpdateDiscoveryService` applies the approval
+  rules (non-draft, exact `v<semver>` tag, exact asset names, verified signature, manifest bound to tag,
+  package and channel). `ApplicationUpdateCoordinator` owns check timing (90 s after start, every 6 h,
+  coalesced manual checks, persisted back-off/rate limit), Remind Me Later and acknowledged release notes
+  through `IUpdateStateStore`. Abstractions for staging (`IUpdatePackageStager`), readiness
+  (`IInstallationInspector`), launching the updater (`IUpdateInstallLauncher`) and install outcomes
+  (`IUpdateOutcomeStore`). `ReleaseNotesDocument` (safe Markdown subset → plain blocks),
+  `BundledReleaseNotesParser`, `WhatsNewPolicy`, `PostUpdateLaunch`.
+- **Infrastructure** — `Updates/`: `GitHubReleaseSource` (public REST API, no credentials, ETag, constructed
+  download URLs, manual HTTPS redirect allow-list, size caps), `EcdsaUpdateManifestVerifier` (P-256/SHA-256,
+  keys from configuration), `UpdateManifestJson` (strict format v1 reader/writer), `SafeZipExtractor`,
+  `UpdatePackageStager`, `InstallationInspector` (real write probe), `FileUpdateStateStore`
+  (`updates.json`, local only), `UpdatePaths` (`%LOCALAPPDATA%\Carowinds Operations Updates`, a sibling of
+  the data folder). `Updates/Installation/`: request/record JSON contracts, `UpdateInstaller` (wait →
+  re-verify → in-use/permission/space checks → incoming copy → journaled swap with backup → launch →
+  confirmation → success or rollback/recovery), `IUpdaterEnvironment` (+ `SystemUpdaterEnvironment`),
+  `UpdaterProcessLauncher`, `UpdateInstallRecordStore`.
+- **Updater** (new) — `src/Carowinds.Passdown.Updater`: windowless entry point (`--request <path>` only),
+  `asInvoker` manifest, references Infrastructure. Published by `Publish-Windows.ps1` into the release
+  folder (only its own `Carowinds.Passdown.Updater.*` files); always run from the staged new version.
+- **Desktop** — `ApplicationUpdatesViewModel` (`PersonalSyncSettingsViewModel.Updates`; optional, defaults
+  to Manual update required), `WhatsNewViewModel` + `Views/WhatsNewView` overlay (`MainViewModel.WhatsNew`),
+  `Presentation/ApplicationUpdatePresentation` (all wording), `Services/UpdateRestartHost`
+  (`DesktopUpdateRestartHost` wires the Phase 23A flush and `desktop.Shutdown()`;
+  `EmbeddedReleaseNotesSource`), `ReleaseNotes/release-notes.md` (embedded). `App` registers everything in
+  `AddApplicationUpdates` from `appsettings.json` "Updates"; starts the coordinator after the window,
+  confirms a post-update launch on `MainWindow.Opened`, cleans obsolete update folders, and stops checks /
+  cancels downloads on shutdown. Settings gains "Application Updates" (before About) and About →
+  "What's New"; the gear gets a decorative update dot.
+- **tools/update-signing** (new, in the slnx, never shipped) — key generation, manifest creation, signing
+  and verification, sharing the app's manifest reader and verifier.
+- Documents — unchanged.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration. Update state and
+packages are outside the SQLite data and never synced.

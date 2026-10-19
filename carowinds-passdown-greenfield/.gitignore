@@ -5,3 +5,8 @@ obj/
 
 # Phase 7A: generated Windows release publish output (packaging/windows/Publish-Windows.ps1)
 artifacts/
+
+# Phase 23D: release signing keys must never be committed (keep them offline, outside the repository).
+*.pem
+*.key
+*signing-key*

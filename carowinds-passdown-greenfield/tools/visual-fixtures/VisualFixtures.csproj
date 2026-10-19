@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Phase 22F: the reusable synthetic-fixture screenshot harness (docs/phase22f-settings-accessibility-final-qa.md
+    §16–17). Not part of CarowindsPassdown.slnx, so the normal build and the deterministic test count never
+    depend on it. Renders the real Desktop views with Avalonia Skia under the headless platform (no desktop
+    lifetime, no database, no network) using the Ui.Tests fakes and the synthetic data in Fixtures.cs. Usage: README.md.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Headless" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Carowinds.Passdown.Desktop\Carowinds.Passdown.Desktop.csproj" />
+    <Compile Include="..\..\tests\Carowinds.Passdown.Ui.Tests\TestSupport\*.cs" Link="TestSupport\%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

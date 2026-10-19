@@ -28,6 +28,28 @@ public sealed record DashboardDataHealthPresentation(
     IReadOnlyList<DashboardSourceStatusPresentation> OperationalSources,
     IReadOnlyList<DashboardSourceStatusPresentation> ProductSources)
 {
+    /// <summary>
+    /// Phase 22C: the collapsed one-line breakdown ("8 current · 1 unavailable · 1 not published"),
+    /// built from exactly the same counts as <see cref="Counts"/> — never a separate tally.
+    /// </summary>
+    public string SummaryText => string.Join(" · ", Counts.Select(chip => $"{chip.CountText} {SummaryLabel(chip.Label)}"));
+
+    private static string SummaryLabel(string chipLabel) => chipLabel switch
+    {
+        "Issues" => "unverified",
+        _ => chipLabel.ToLowerInvariant(),
+    };
+
+    /// <summary>
+    /// Phase 22C: sources that are stale, unavailable or could not be verified, named in a single
+    /// concise line so a genuine problem stays visible while the source details are collapsed.
+    /// <see langword="null"/> when nothing needs attention. Not-published / not-checked / not-applicable
+    /// sources are informational and are not listed here (they are still counted in <see cref="SummaryText"/>).
+    /// </summary>
+    public string? AttentionText { get; init; }
+
+    public bool HasAttention => AttentionText is not null;
+
     private static readonly SourceCategory[] OperationalCategories =
     [
         SourceCategory.ParkHours,
@@ -72,7 +94,15 @@ public sealed record DashboardDataHealthPresentation(
         var operational = OperationalCategories.Select(c => BuildSourceRow(byCategory[c])).ToList();
         var products = ProductCategories.Select(c => BuildSourceRow(byCategory[c])).ToList();
 
-        return new DashboardDataHealthPresentation(headline, detail, counts, lastVerifiedText, operational, products);
+        var attention = summary.Sources
+            .Where(source => source.Status is DashboardSourceStatus.Stale or DashboardSourceStatus.Unavailable or DashboardSourceStatus.VerificationIssue)
+            .Select(source => $"{SourceCategoryDisplay.FriendlyName(source.Category)} {AttentionLabel(source.Status)}")
+            .ToList();
+
+        return new DashboardDataHealthPresentation(headline, detail, counts, lastVerifiedText, operational, products)
+        {
+            AttentionText = attention.Count == 0 ? null : "Needs attention: " + string.Join(" · ", attention),
+        };
     }
 
     private static void AddIfNonZero(List<DashboardCountChip> counts, string label, int count)
@@ -82,6 +112,13 @@ public sealed record DashboardDataHealthPresentation(
             counts.Add(new DashboardCountChip(label, count.ToString()));
         }
     }
+
+    private static string AttentionLabel(DashboardSourceStatus status) => status switch
+    {
+        DashboardSourceStatus.Stale => "stale",
+        DashboardSourceStatus.Unavailable => "unavailable",
+        _ => "could not be verified",
+    };
 
     private static string Pluralize(int count, string singular, string plural) => count == 1 ? $"1 {singular}" : $"{count} {plural}";
 

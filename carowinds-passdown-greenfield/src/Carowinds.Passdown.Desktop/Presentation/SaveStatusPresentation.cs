@@ -17,5 +17,5 @@ public sealed record SaveStatusPresentation(string Text)
         };
     }
 
-    private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("h:mm tt", PresentationCulture.UnitedStates);
+    private static string FormatTimestamp(DateTimeOffset value) => EasternTimestampFormat.Time(value);
 }

@@ -63,7 +63,6 @@ public sealed class ModernAssociatePassdownTemplateRenderer : IAssociatePassdown
             // Operations information...
             ComposeSummaryGrid(column, model, m);
             ComposeDailyFeature(column, model);
-            ComposeShows(column, model.Shows, m, density);
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -75,6 +74,10 @@ public sealed class ModernAssociatePassdownTemplateRenderer : IAssociatePassdown
 
             SingleColumnProductLayout.Compose(column, model.ProductCategories, m.SectionSpacing, (el, category) => ComposeCategory(el, category, m));
             ComposeNotes(column, model.OperationalNotes, m);
+
+            // Phase 22C: Shows is the final substantive section (after pricing and Notes) so it never
+            // interrupts the admissions/pricing flow; absent entirely when nothing is selected.
+            ComposeShows(column, model.Shows, m, density);
         });
 
         page.Footer().Element(footer => ComposeFooter(footer, model));

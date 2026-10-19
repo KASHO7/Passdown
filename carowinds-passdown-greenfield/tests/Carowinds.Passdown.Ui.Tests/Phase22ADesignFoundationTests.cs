@@ -33,6 +33,8 @@ public sealed partial class Phase22ADesignFoundationTests
         // Fluent overrides that keep popups, inputs and focus on the shared palette.
         "SystemControlFocusVisualPrimaryBrush", "FlyoutPresenterBackground", "MenuFlyoutPresenterBackground",
         "ComboBoxDropDownBackground", "ToolTipBackground", "TextControlBorderBrush", "TextControlPlaceholderForeground",
+        // Phase 22B app shell (theme-invariant brand tokens).
+        "PassdownBrandDarkBrush", "PassdownHeaderForegroundBrush", "PassdownBannerOverlayBrush",
     ];
 
     private static ThemeVariant Variant(string name) => name == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
@@ -82,12 +84,12 @@ public sealed partial class Phase22ADesignFoundationTests
     [Fact]
     public void TypographySpacingAndRadiusTokens_Resolve()
     {
-        foreach (var key in new[] { "PassdownFontSizePageTitle", "PassdownFontSizePrimaryValue", "PassdownFontSizeStatValue", "PassdownFontSizeSectionHeading", "PassdownFontSizeSubsection", "PassdownFontSizeBody", "PassdownFontSizeMetadata", "PassdownFontSizeCaption", "PassdownFontSizeTableHeader", "PassdownSpace1", "PassdownSpace2", "PassdownSpace3", "PassdownSpace4", "PassdownSpace6" })
+        foreach (var key in new[] { "PassdownFontSizePageTitle", "PassdownFontSizePrimaryValue", "PassdownFontSizeStatValue", "PassdownFontSizeSectionHeading", "PassdownFontSizeSubsection", "PassdownFontSizeBody", "PassdownFontSizeMetadata", "PassdownFontSizeCaption", "PassdownFontSizeTableHeader", "PassdownFontSizeWordmark", "PassdownBannerHeight", "PassdownSpace1", "PassdownSpace2", "PassdownSpace3", "PassdownSpace4", "PassdownSpace6" })
         {
             Assert.True(Resolve<double>(key, ThemeVariant.Light) > 0, key);
         }
 
-        foreach (var key in new[] { "PassdownPagePadding", "PassdownPageHeaderPadding", "PassdownPanelPadding", "PassdownInsetPadding", "PassdownButtonPadding", "PassdownCompactButtonPadding", "PassdownChipPadding", "PassdownRowPadding" })
+        foreach (var key in new[] { "PassdownPagePadding", "PassdownPageHeaderPadding", "PassdownPanelPadding", "PassdownInsetPadding", "PassdownButtonPadding", "PassdownCompactButtonPadding", "PassdownChipPadding", "PassdownRowPadding", "PassdownNavigationStripPadding", "PassdownNavigationItemPadding" })
         {
             Resolve<Thickness>(key, ThemeVariant.Light);
         }
@@ -295,7 +297,7 @@ public sealed partial class Phase22ADesignFoundationTests
         foreach (var view in new[] { "HistoryView", "OperationalNotesView", "PriceHistoryView" })
         {
             var markup = File.ReadAllText(MarkupFiles.Find($"src/Carowinds.Passdown.Desktop/Views/{view}.axaml"));
-            Assert.Matches(new Regex("<ListBox [^>]*Classes=\"selectableRows\""), markup);
+            Assert.Matches(new Regex("<ListBox [^>]*Classes=\"selectableRows[ \"]"), markup);
         }
     }
 
@@ -325,6 +327,8 @@ public sealed partial class Phase22ADesignFoundationTests
             converter.Convert([AssociateAutosaveState.Saved, variant], typeof(IBrush), null, CultureInfo.InvariantCulture));
         Assert.Same(Resolve<IBrush>("PassdownChipBrush", variant),
             converter.Convert([AssociateAutosaveState.Saving, variant], typeof(IBrush), null, CultureInfo.InvariantCulture));
+        Assert.Same(Resolve<IBrush>("PassdownErrorBackgroundBrush", variant),
+            converter.Convert([AssociateAutosaveState.SaveFailed, variant], typeof(IBrush), null, CultureInfo.InvariantCulture));
         Assert.Same(AvaloniaProperty.UnsetValue,
             converter.Convert([null, variant], typeof(IBrush), null, CultureInfo.InvariantCulture));
     }

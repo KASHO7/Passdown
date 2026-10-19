@@ -36,7 +36,16 @@ internal sealed class ParkHoursApiDate
 
 internal sealed class ParkHoursApiOperating
 {
-    /// <summary>`"Park"` for the main gate; `"Waterpark"` also observed but not read by this adapter.</summary>
+    /// <summary>
+    /// Phase 22E.1: the operating type's official id — 24 for the main gate, 70 for the water park
+    /// (read from the official page's own CMS configuration; the page matches entries by this id).
+    /// </summary>
+    public int? OperatingTypeId { get; set; }
+
+    /// <summary>
+    /// Display label for the entry: usually <c>"Park"</c>/<c>"Waterpark"</c>, but seasonal main-gate
+    /// days carry other labels with the same id 24 (observed: <c>"Winterfest"</c>, <c>"New Years Eve"</c>).
+    /// </summary>
     public string? OperatingTypeName { get; set; }
 
     public List<ParkHoursApiOperatingItem>? Items { get; set; }

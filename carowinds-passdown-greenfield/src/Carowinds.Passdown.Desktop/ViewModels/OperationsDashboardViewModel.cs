@@ -41,6 +41,7 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     [NotifyCanExecuteChangedFor(nameof(OpenPassdownCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenNotesCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenOperationalNotesCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenPricingCommand))]
     public partial OperationsDashboardSnapshot? Snapshot { get; set; }
 
     [ObservableProperty]
@@ -49,6 +50,17 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     /// <summary>Phase 21C: "Today's Shows" — rebuilt with every snapshot and, for the upcoming/started split, on the view's minute tick (<see cref="RefreshShowsForTime"/>).</summary>
     [ObservableProperty]
     public partial ShowSchedulePresentation? ShowsPresentation { get; set; }
+
+    /// <summary>
+    /// Phase 23B: the Dashboard's show rows, rebuilt from <see cref="ShowsPresentation"/> each time it changes
+    /// (snapshot reload or minute tick). Which long time lists are expanded is kept here in memory only,
+    /// keyed by official show id and reset when the operating date changes — never persisted, never synced.
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<DashboardShowRowViewModel> ShowRows { get; set; } = [];
+
+    private readonly HashSet<string> _expandedShowKeys = new(StringComparer.OrdinalIgnoreCase);
+    private DateOnly? _expandedShowsDate;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmptyOrErrorState))]
@@ -102,6 +114,19 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     public partial bool DeepRefreshHadIssues { get; set; }
 
     /// <summary>
+    /// Phase 22C: whether the Official Data source breakdown (per-source rows, Deep Refresh) is
+    /// expanded. Collapsed by default; purely presentational — toggling it never reads data, calls the
+    /// network or touches refresh scheduling. Genuine problems stay visible while collapsed through
+    /// <see cref="DashboardDataHealthPresentation.AttentionText"/>.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SourceDetailsToggleText))]
+    public partial bool IsSourceDetailsExpanded { get; set; }
+
+    /// <summary>Phase 22C: the disclosure's label states what activating it will do.</summary>
+    public string SourceDetailsToggleText => IsSourceDetailsExpanded ? "Hide Source Details" : "View Source Details";
+
+    /// <summary>
     /// Raised when the "Open Passdown" action is used (Phase 10A Part O; Phase 10C Part G) — routes to
     /// the existing Associate Passdown screen's Overview section specifically, rather than duplicating
     /// any of its editing UI here or leaving whatever internal section Associate was last on.
@@ -126,6 +151,12 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     /// filter/selection state in that screen is preserved exactly as it was.
     /// </summary>
     public event EventHandler? OpenOperationalNotesRequested;
+
+    /// <summary>
+    /// Phase 22C: raised by "View Pricing" on the Daily Admission tile — routes to the existing detailed
+    /// pricing reference (Associate Passdown → Products) for today's Eastern date, like Open Passdown.
+    /// </summary>
+    public event EventHandler? OpenPricingRequested;
 
     public OperationsDashboardViewModel(
         IOperationsDashboardService service,
@@ -226,6 +257,32 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     }
 
     public bool HasSnapshot => Snapshot is not null;
+
+    partial void OnShowsPresentationChanged(ShowSchedulePresentation? value)
+    {
+        var date = Snapshot?.TodayShows.Date;
+        if (date != _expandedShowsDate)
+        {
+            _expandedShowKeys.Clear();
+            _expandedShowsDate = date;
+        }
+
+        var rows = value?.Rows ?? [];
+        _expandedShowKeys.IntersectWith(rows.Select(row => row.Key));
+        ShowRows = rows.Select(row => new DashboardShowRowViewModel(row, _expandedShowKeys.Contains(row.Key), OnShowExpansionChanged)).ToList();
+    }
+
+    private void OnShowExpansionChanged(string key, bool isExpanded)
+    {
+        if (isExpanded)
+        {
+            _expandedShowKeys.Add(key);
+        }
+        else
+        {
+            _expandedShowKeys.Remove(key);
+        }
+    }
 
     partial void OnSnapshotChanged(OperationsDashboardSnapshot? value) =>
         ShowsPresentation = value is null ? null : ShowSchedulePresentation.Build(value.TodayShows, value.GeneratedAt, isDashboard: true);
@@ -409,6 +466,9 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     private void OpenNotes() => OpenAssociateNotesRequested?.Invoke(this, EventArgs.Empty);
 
     private bool CanOpenPassdown() => HasSnapshot;
+
+    [RelayCommand(CanExecute = nameof(CanOpenPassdown))]
+    private void OpenPricing() => OpenPricingRequested?.Invoke(this, EventArgs.Empty);
 
     [RelayCommand]
     private void OpenHistory() => OpenHistoryRequested?.Invoke(this, EventArgs.Empty);

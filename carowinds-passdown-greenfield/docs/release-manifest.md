@@ -1827,3 +1827,603 @@ unchanged; `Directory.Build.props` still says `0.1.0-rc.6`. The next packaged ca
 | Live smoke (opt-in) | not applicable (no retrieval change) |
 | Release build | 0 warnings, 0 errors |
 | Windows validation | NOT EXECUTED — checklist in the Phase 22A doc §19 |
+
+# Unreleased development — Phase 22B (after RC.6)
+
+Fury banner and application navigation ("Option A — Minimal Fury Banner"): a compact 72 px Fury 325
+photographic banner with a charcoal-navy scrim and a single "CAROWINDS OPERATIONS" wordmark replaces
+the navy brand band; the six-destination section strip is restyled through shared tokens (underline +
+SemiBold + "Current page" status for the active item, neutral hover, width-stable labels, aligned to
+the wordmark). Shell height 87 → 105 px (−18 px content height at every tested size). No page
+redesigned, no routing/view-model/operational change, PDF output unchanged. See
+`docs/phase22b-fury-banner-navigation.md`. RC.6 artifacts are unchanged; `Directory.Build.props` still
+says `0.1.0-rc.6`. The next packaged candidate is **`0.1.0-rc.7`**.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration — presentation only) |
+| Upgrade implications | None. Stored data is unaffected. |
+| New shipped asset | `Assets/Branding/fury325-banner.jpg` (1920×320, 135,816 bytes), embedded in `Carowinds.Passdown.Desktop.dll` |
+| Deterministic tests | **3515/3515** (baseline 3479 at `d12ec88`; +25 `Phase22BShellNavigationTests`, +11 `Phase15ERealWindowLayoutTests`) = 163 Domain + 1035 Application + 833 Infrastructure + 406 Documents + 1011 Ui together + 26 `OperationsCalendarViewTests` + 28 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). The new class uses no real Window and runs in the mixed Ui partition; the run-alone set is unchanged (still five classes) |
+| Live smoke (opt-in) | not applicable (no retrieval change) |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 22B doc §15 |
+| Banner image rights | **BANNER IMAGE DISTRIBUTION RIGHTS PENDING** (photographer/license unknown; see the Phase 22B doc §16). Separate from the pending QuestPDF distribution-license decision |
+
+# Unreleased development — Phase 22C (after RC.6)
+
+Dashboard information hierarchy, navigation labels and PDF Shows ordering: the Dashboard is one
+Operations Overview (park hours, a product-identified official admission price with its own freshness,
+passdown status, operational notes, a compact Official Data summary whose per-source breakdown and Deep
+Refresh are behind "View Source Details"; genuine source problems stay visible while collapsed), with
+Today's Shows beneath. Navigation reads Dashboard · Calendar · Passdown · Notes · History plus an
+accessible Settings gear. Newly generated PDFs print Shows as the final section in all three
+templates; stored History PDFs and Teams Copy are unchanged. See
+`docs/phase22c-dashboard-navigation-pdf-order.md`. RC.6 artifacts are unchanged; `Directory.Build.props`
+still says `0.1.0-rc.6`. The next packaged candidate is **`0.1.0-rc.7`**.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| Upgrade implications | None. Stored data is unaffected; previously finalized History PDFs keep their original (Shows-before-pricing) order; PDFs generated or finalized from this build put Shows last. |
+| Deterministic tests | **3601/3601** (baseline 3515 at `9dec1cb`; +24 `Phase22CDashboardAdmissionTests`, +19 `Phase22CPdfShowsOrderTests`, +34 `Phase22CDashboardOverviewTests`, +1 `Phase22BShellNavigationTests`, +8 `Phase15ERealWindowLayoutTests`) = 163 Domain + 1059 Application + 833 Infrastructure + 425 Documents + 1046 Ui together + 26 `OperationsCalendarViewTests` + 36 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). The run-alone set is unchanged (five classes). Known intermittent: `FinalizedPassdownProjectionTests.BuildProjection_NormalDay_PdfBytesMatchDirectGenerationFromSameModel` failed once in the baseline run at `9dec1cb` (byte comparison of two generations) and passed on every rerun |
+| Live smoke (opt-in) | not applicable (no retrieval change) |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 22C doc §21 |
+| Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
+
+
+# Unreleased development — Phase 22D (after RC.6)
+
+Associate workspace refinement and operational-count formatting: the Associate screen separates
+official from entered values in words ("Official", "Entered here", "Your setting"), keeps one
+accent action (Create PDF) with Check Online as a quiet outlined control, shows official-data
+freshness and the Draft save state as two distinct indicators, and collects every transient message
+in one feedback stack visible on all sections. Projected attendance and pre-solds display with en-US
+thousands separators (38,500 / 21,240) on the Dashboard, the Associate editors (on blur), History
+detail and sync-conflict comparisons; PDFs and Teams Copy already grouped counts and are unchanged.
+Season Price History's product list now paints the theme's popup surface. See
+`docs/phase22d-associate-workspace-number-formatting.md`. RC.6 artifacts are unchanged;
+`Directory.Build.props` still says `0.1.0-rc.6`. The next packaged candidate is **`0.1.0-rc.7`**.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| Upgrade implications | None. Stored counts stay plain integers in SQLite, draft JSON, sync payloads and finalized snapshots; frozen History PDFs are served byte-for-byte as before. |
+| Deterministic tests | **3718/3718** (baseline 3601 at `d768056`; +43 `OperationalCountTests`, +26 `Phase22DCountFormattingTests`, +37 `Phase22DAssociateWorkspaceTests`, +11 `Phase15ERealWindowLayoutTests`; 7 existing assertions updated from ungrouped to grouped counts and one markup regex widened for an extra class) = 206 Domain + 1059 Application + 833 Infrastructure + 451 Documents + 1083 Ui together + 26 `OperationsCalendarViewTests` + 47 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). Run-alone set unchanged (five classes) |
+| Live smoke (opt-in) | not applicable (no retrieval change) |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 22D doc §22 |
+| Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
+
+# Unreleased development — Phase 22E (after RC.6)
+
+Calendar, Operational Notes and History refinement: the Operations Calendar's selected-date panel groups
+its sections and shows a compact Shows summary ("6 scheduled shows · 22 performances") with a
+"View schedule" disclosure (collapsed by default, kept across date changes for the session, never a
+network call, never another date's lineup); Operational Notes rows are three lines with a restrained
+Important rule and created/updated times in the detail; History rows are two lines with a PDF tag and the
+Open Final PDF action sits with the record identity. Associate → Products now labels advertised starting
+prices "From $x" (same shared rule as the PDFs and Teams Copy). Dashboard "Open Notes" opens today's
+passdown notes. See `docs/phase22e-calendar-notes-history.md`. RC.6 artifacts are unchanged;
+`Directory.Build.props` still says `0.1.0-rc.6`. The next packaged candidate is **`0.1.0-rc.7`**.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| Upgrade implications | None. No stored value, snapshot or PDF changes; frozen History PDFs are served byte-for-byte as before; PDF/Teams price text is identical. |
+| Deterministic tests | **3836/3836** (baseline 3718 at `7e7ca9b`; +15 `AdvertisedPriceTextTests`, +40 `Phase22ECalendarShowsTests`, +26 `Phase22ENotesHistoryTests`, +27 `Phase22EProductPriceLabelTests`, +10 `Phase15ERealWindowLayoutTests`; 3 existing tests intentionally updated — Calendar Shows markup and Dashboard Open Notes → today) = 221 Domain + 1059 Application + 833 Infrastructure + 451 Documents + 1176 Ui together + 26 `OperationsCalendarViewTests` + 57 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). Run-alone set unchanged (five classes). Known intermittent: `DailyFeatureMathPdfTests.FinalizedSnapshot_KeepsTheSourceText_AndItsPdfMatchesTheLiveRender` failed once in the baseline run at `7e7ca9b` and passed on every rerun |
+| Live smoke (opt-in) | not applicable (no retrieval change) |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 22E doc §21 |
+| Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
+
+# Unreleased development — Phase 22E.1 (after RC.6)
+
+Automatic published park schedule coverage. Deep Refresh (6 AM task, startup catch-up, background
+maintenance, manual) now discovers the official park schedule about 12 months ahead with one request per
+month, instead of one request per date to the end of next month. WinterFest and New Year's Eve main-gate
+hours (official operating type 24 under a seasonal label) are now read as Verified rather than Not
+Published. The Calendar shows December and later published dates without any date being opened. Show
+schedules, historical backfill and Check Online scope are unchanged. See
+`docs/phase22e1-published-park-schedule-coverage.md`. RC.6 artifacts are unchanged;
+`Directory.Build.props` still says `0.1.0-rc.6`. The next packaged candidate is **`0.1.0-rc.7`**.
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| Upgrade implications | First launch ≥ 4 h after the morning Deep Refresh (or the next scheduled task) runs one discovery Deep Refresh (about 20 Park Hours requests) and fills about 366 future dates (about 156 KB). Earlier NotPublished WinterFest dates become Verified. No draft, snapshot or PDF changes. |
+| Deterministic tests | **3885/3885** (baseline 3836 at `458c527`; +19 `ParkHoursPublishedScheduleTests`, +23 `Phase22E1PublishedScheduleTests`, +7 `OfficialDataRefreshCoordinatorTests`) = 221 Domain + 1089 Application + 852 Infrastructure + 451 Documents + 1176 Ui together + 26 `OperationsCalendarViewTests` + 57 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). Known intermittent `DailyFeatureMathPdfTests.FinalizedSnapshot_KeepsTheSourceText_AndItsPdfMatchesTheLiveRender` failed once and passed on rerun |
+| Live smoke (opt-in) | `ParkHoursSourceLiveSmokeTests` 2/2 passed 2026-10-17 (incl. the new 13-month month-form check) |
+| Release build | 0 warnings, 0 errors |
+| Windows validation | NOT EXECUTED — checklist in the Phase 22E.1 doc §16 |
+| Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
+
+
+# Unreleased development — Phase 22F (after RC.6)
+
+Settings, accessibility and final UI/UX QA, the last Phase 22 phase. Settings is one page:
+Appearance, Data Refresh, Personal Sync, Diagnostics, About. Problems show in the error style, and a
+mixed-version sync caution is visible. The Calendar never shows a previous date's details under a newly
+selected date, including during rapid switching and after a failed read. Operational timestamps show
+the Eastern wall clock with "ET" whatever the PC's zone; the PDF footer is also Eastern. Fixes: date-picker
+adjacent days are muted, History gate times are labelled, Calendar day-cell hours wrap instead of
+truncating, the Associate rail announces its current section, and progress bars are named. Adds
+`tools/visual-fixtures` (synthetic screenshot harness, outside the solution). See
+`docs/phase22f-settings-accessibility-final-qa.md` and the consolidated
+`docs/phase22-windows-validation-checklist.md`. RC.6 artifacts are unchanged; `Directory.Build.props`
+still says `0.1.0-rc.6`. The next packaged candidate is **`0.1.0-rc.7`** (not packaged here).
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| Upgrade implications | None for data. Stored timestamps are unchanged; only their display is Eastern + "ET". Newly generated PDFs print the footer time in Eastern (identical on Eastern PCs); frozen History PDFs are never regenerated. |
+| Deterministic tests | **3968/3968** (baseline 3885 at `f685b72`; +30 `Phase22FCalendarAndTimeTests`, +38 `Phase22FSettingsAccessibilityTests`, +6 `Phase22FGeneratedTimestampTests`, +9 `Phase15ERealWindowLayoutTests`; 23 existing assertions gained " ET", host-local expectations moved to Eastern, one markup binding updated) = 221 Domain + 1089 Application + 852 Infrastructure + 457 Documents + 1244 Ui together + 26 `OperationsCalendarViewTests` + 66 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). Run-alone set unchanged (five classes). Known intermittent `DailyFeatureMathPdfTests.FinalizedSnapshot_KeepsTheSourceText_AndItsPdfMatchesTheLiveRender` failed once and passed 5/5 on rerun |
+| Release build | 0 warnings, 0 errors |
+| Visual QA | 232 synthetic after-captures (29 scenarios × Light/Dark × 960×640, 1280×690, 1280×860, 1920×1000) + before-captures from `f685b72`; no horizontal overflow or clipped button. Not DPI validation |
+| Windows validation | NOT EXECUTED — `docs/phase22-windows-validation-checklist.md` (Narrator, 100/125/150% scaling included) |
+| Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
+
+
+# Unreleased development — Phase 23A (after RC.7)
+
+Critical save-failure freeze fix. After a failed local save, changing the date, Check Online, a
+persistent-note change, Create PDF or closing no longer loops forever on the UI thread (RC.1–RC.7
+defect, RC.7 known limitation). Each of those actions now makes at most one save attempt; if it fails
+the action is refused with an explanation, the edits stay on screen and a **Retry Save** button
+appears. No automatic retry timer. Closing after a failure is held back once with an honest warning;
+closing again exits. See `docs/phase23a-save-failure-freeze-fix.md`. RC.7 artifacts and hashes are
+unchanged; `Directory.Build.props` still says `0.1.0-rc.7`. The next packaged candidate is
+**`0.1.0-rc.8`** (not packaged here).
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| Upgrade implications | None for data. New Retry Save button and one feedback line on the Associate screen. |
+| Deterministic tests | **4011/4011** (baseline 3980 at `6dbdce8`/`9c474b8`; +29 `Phase23ASaveFailureLoopTests`, +2 `Phase23ASaveFailureSyncTests`; one `Phase22DAssociateWorkspaceTests` markup expectation updated) = 221 Domain + 1089 Application + 852 Infrastructure + 463 Documents + 1281 Ui together + 26 `OperationsCalendarViewTests` + 66 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). Run-alone set unchanged (five classes) |
+| Release build | 0 warnings, 0 errors |
+| Stress | 300 actions under a persistent failure: 301 save attempts (linear), 0 network/PDF/note calls, 9 ms |
+| Windows validation | NOT EXECUTED — manual sequence in `docs/phase23a-save-failure-freeze-fix.md` §12 |
+| Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
+
+# Unreleased development — Phase 23B (after RC.7, after Phase 23A)
+
+Dashboard **Today's Shows** no longer lets long performance-time lists run into the venue column: each
+show is a compact stacked entry (name, times, venue) in responsive columns, and a list of more than five
+times shows four plus a keyboard-accessible **+N more** toggle that expands in place (in-memory state
+only). The bar-chart mark before **CAROWINDS OPERATIONS** in the Fury banner was removed (title only,
+aligned to the 24 px content margin); the window/taskbar icon is unchanged. Presentation only. See
+`docs/phase23b-dashboard-shows-branding.md`. RC.7 artifacts and hashes are unchanged;
+`Directory.Build.props` still says `0.1.0-rc.7`. The next packaged candidate is **`0.1.0-rc.8`** (not
+packaged here).
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| Upgrade implications | None for data. Dashboard Shows layout and banner only. |
+| Deterministic tests | **4069/4069** (baseline 4011 at `55e718f`, re-verified; +40 `Phase23BDashboardShowsTests`, +18 `Phase15ERealWindowLayoutTests`; one `Phase21CShowsMarkupTests` binding expectation updated) = 221 Domain + 1089 Application + 852 Infrastructure + 463 Documents + 1321 Ui together + 26 `OperationsCalendarViewTests` + 84 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). Run-alone set unchanged (five classes) |
+| Release build | 0 warnings, 0 errors |
+| Visual QA | 80 before + 80 after synthetic `DashboardShows-*` captures (10 scenarios × Light/Dark × 4 sizes); overlapping text in the panel 3 → 0 (busy, ≤ 1280 px), 1 → 0 (1920 px); whole-app sweep at 1280×860 clean. Not DPI validation |
+| Windows validation | NOT EXECUTED — checklist in `docs/phase23b-dashboard-shows-branding.md` §19 |
+| Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
+
+# Unreleased development — Phase 23C (after RC.7, after Phases 23A and 23B)
+
+Settings → **Appearance** is now a real choice: **Use Windows setting** (default, the RC.7 behavior),
+**Light** or **Dark**. It applies immediately without restarting, is saved in
+`%LOCALAPPDATA%\Carowinds Passdown\appearance.json` on this computer only (never synced, no database
+change), and a saved Light or Dark is applied before the window opens. A missing or unreadable setting
+falls back to Use Windows setting. Uses the existing Phase 22A palettes; Fury banner unchanged. See
+`docs/phase23c-appearance-preferences.md`. RC.7 artifacts and hashes are unchanged;
+`Directory.Build.props` still says `0.1.0-rc.7`. The next packaged candidate is **`0.1.0-rc.8`** (not
+packaged here).
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| Upgrade implications | None for data. Upgraded installs have no `appearance.json` and keep following Windows. One new local file once the user picks an option. |
+| Deterministic tests | **4173/4173** (baseline 4069 at `00f8b3e`, re-verified; +11 `AppearanceResolverTests`, +22 `FileAppearancePreferenceStoreTests`, +50 `Phase23CAppearancePreferenceTests`, +21 `Phase15ERealWindowLayoutTests`; one `Phase22FSettingsAccessibilityTests` expectation replaced) = 221 Domain + 1100 Application + 874 Infrastructure + 463 Documents + 1371 Ui together + 26 `OperationsCalendarViewTests` + 105 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). Run-alone set unchanged (five classes) |
+| Release build | 0 warnings, 0 errors |
+| Visual QA | 526 synthetic captures (forced Light/Dark at four sizes, System under simulated OS Light/Dark); 0 overflow, 0 clipped buttons; live switches with popups/overlays open. Not DPI validation |
+| Windows validation | NOT EXECUTED — checklist in `docs/phase23c-appearance-preferences.md` §16 |
+| Licensing | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** |
+
+# Unreleased development — Phase 23D (after RC.7, after Phases 23A–23C)
+
+GitHub Releases updater and post-update What's New. Settings → **Application Updates** checks the
+configured repository (`KASHO7/Passdown`, from the git remote) for approved releases — signed with an
+offline ECDSA P-256 key whose public half is bundled in the app — and, only after **Install Update** and
+**Restart and Install**, downloads, verifies (signature, ZIP SHA-256, every file's SHA-256), stages and
+installs through the new external `Carowinds.Passdown.Updater.exe` with journaled rollback. A failed draft
+save postpones the update (Phase 23A). What's New opens once after a confirmed successful update and is
+always available from Settings → About this build. See `docs/phase23d-github-updater.md`.
+**Installation is enabled:** the production signing key `carowinds-release-1` is trusted since commit
+`392d125` (public-key SHA-256 `8e0e1086…c969d3`; private key kept outside the repository on the build
+Mac — back it up). Builds before that commit trust no key. RC.6/RC.7 artifacts and hashes are unchanged;
+`Directory.Build.props` still says `0.1.0-rc.7`. Next packaged candidate: **`0.1.0-rc.8`** (not packaged).
+
+| | |
+|---|---|
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 (unchanged; no migration) |
+| New release content | `Carowinds.Passdown.Updater.exe/.dll/.runtimeconfig.json/.deps.json` (required by `release-content-rules.json`); new release assets per version: `…-win-x64.update.json` + `.sig` beside the ZIP |
+| New local files | `%LOCALAPPDATA%\Carowinds Passdown\updates.json` (local only); `%LOCALAPPDATA%\Carowinds Operations Updates\` (downloads, staging, requests, records); `.carowinds-update\` inside the app folder only during an install |
+| Upgrade implications | RC.7 → RC.8 must be a manual ZIP install (RC.7 has no updater). From RC.8 on, in-app updates once a key is configured. No data change |
+| Deterministic tests | **4437/4437** (baseline 4173 at `707864e`, re-verified; +49 Domain, +67 Application, +102 Infrastructure, +42 Ui mixed, +4 `Phase15ERealWindowLayoutTests`) = 270 Domain + 1167 Application + 976 Infrastructure + 463 Documents + 1413 Ui together + 26 `OperationsCalendarViewTests` + 109 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release`, `--filter "Category!=LiveSmoke"`). Run-alone set unchanged (five classes). No test contacts GitHub |
+| Release build | 0 warnings, 0 errors |
+| Build-host packaging | Updater cross-publishes as PE32+ GUI x64 with `asInvoker`; `Publish-Windows.ps1`/`Build-PortableRelease.ps1` not run (no PowerShell on host) |
+| Windows validation | NOT EXECUTED — checklist in `docs/phase23d-github-updater.md` §12 |
+| Licensing / distribution | **QuestPDF distribution license decision pending.** **Fury image distribution rights pending.** **Organisation approval for public GitHub distribution pending.** No release created or uploaded |
+
+# Release manifest — 0.1.0-rc.7 (Phase 23: Phases 22A–22F combined)
+
+**Built, packaged and artifact-verified on the macOS build host. Windows validation NOT EXECUTED.
+Distribution NOT approved.** No Windows PC was reachable from the build session. Run
+`docs/releases/rc7-windows-validation.md`, **backup first**. Release notes:
+`docs/releases/rc7-release-notes.md`. Every Windows item stays **NOT EXECUTED** until results come back.
+
+| | |
+|---|---|
+| Product (visible) | Carowinds Operations |
+| Version | **`0.1.0-rc.7`**, file version `0.1.0.7`, informational `0.1.0-rc.7+6dbdce8c2450d9d89845badad13dad12c52ad951` (read from the packaged `.exe`, `Desktop`/`Documents`/`Application`/`Infrastructure`/`Domain` DLLs and the single-file EXE; none contains `0.1.0-rc.6` or `0.1.0.6`) |
+| Starting HEAD | `347e097` (Phase 22G.2, research only), branch `feature/passdown-redesign`. Application lineage: `c608c7a` (Phase 22F) is the last production-code commit before Phase 23; `2383715`, `7a2befd`, `347e097` are research/documentation only and change no `src/` file |
+| RC.7 source / version commit | **`6dbdce8`**: version bump, save-failure wording, deterministic PDF comparisons, shipped `TESTER-GUIDE.txt`. **Both artifacts were built from this commit** (tree otherwise clean apart from the unrelated pre-staged `.DS_Store`/`.claude` files and uncommitted docs, none of which are build inputs) |
+| About this build | `0.1.0-rc.7 (6dbdce8)` + running executable path |
+| Target | Windows 11 x64 (`win-x64`), self-contained, ReadyToRun, not trimmed, not single-file (primary) |
+| Build host | macOS 27.0.1 (26A434), Apple Silicon arm64; .NET SDK 10.0.400; PowerShell 7.6.7 (local `dotnet tool` in a session scratch folder, nothing installed system-wide) |
+| DB / Draft / Snapshot / SyncSchemaVersion | **16** / 4 / 2 / 1, unchanged from RC.6 (verified in source: latest migration `Migration0016…`, `AssociateDraftPayload.CurrentSchemaVersion = 4`, `FinalizedPassdownSnapshot.CurrentSchemaVersion = 2`, `SyncEnvelopeSerializer.CurrentSyncSchemaVersion = 1`). No migration |
+| Legacy identities | Unchanged: `Carowinds.Passdown.Desktop.exe`, `%LOCALAPPDATA%\Carowinds Passdown`, `carowinds-passdown.db`, `Carowinds Passdown Daily Refresh`, `Carowinds Passdown Personal Sync`, AssemblyVersion `0.1.0.0` |
+| Deterministic tests | Baseline at `347e097`: **3968**. Final at `6dbdce8`: **3980/3980** = 221 Domain + 1089 Application + 852 Infrastructure + 463 Documents + 1250 Ui together + 26 `OperationsCalendarViewTests` + 66 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release --filter "Category!=LiveSmoke"`). Added: +6 `Phase23PdfGenerationTimestampTests` (Documents), +6 `Phase23SaveFailureMessagingTests` (Ui). Modified: 5 PDF byte comparisons, 1 Phase 22F save assertion, 1 Phase 22A chip-brush theory. Live tests not run or counted |
+| Research tests (separate) | `tools/research/fims-ride-monitor`: 64/64 Python `unittest` tests passed. Not part of the application total; RC.7 does not depend on them |
+| Build | `dotnet build CarowindsPassdown.slnx -c Release`: 0 warnings, 0 errors (before and after the version commit) |
+| Superseded | RC.6/RC.5/RC.4/RC.3/RC.2/RC.1/dev artifacts untouched in `artifacts/releases/` (RC.6 SHA-256 re-verified unchanged after this build). Do not distribute |
+
+## Primary release: multi-file portable ZIP (RECOMMENDED)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.7-win-x64.zip` |
+| Bytes | **75,149,722** (RC.6: 74,889,881; +259,841) |
+| SHA-256 | **`6473d1c59cdab360a054d59dafac3834c0184b39ee93ccb5816268c3c852b811`** |
+| Extracted folder | `Carowinds-Operations-0.1.0-rc.7-win-x64\` |
+| Content | 283 files / 283 entries, 165,015,237 bytes uncompressed (RC.6: 283 files, 164,549,199). **File list identical to RC.6** (relative paths). Size drivers: `Carowinds.Passdown.Desktop.dll` 4,227,072 → 4,636,672, `Carowinds.Passdown.Application.dll` 1,839,104 → 1,888,256 |
+| Produced by | `packaging/windows/Build-PortableRelease.ps1` (real script, via `Publish-Windows.ps1`, which deletes `artifacts/publish/win-x64` first). Staging `artifacts/release-staging/Carowinds-Operations-0.1.0-rc.7-win-x64` was freshly created |
+
+- **Packaging validator (`Test-ReleasePackage.ps1`): PASS** on staging and on the final ZIP (283 files
+  each), run by the build script. C# mirror (`CAROWINDS_RELEASE_ZIP=… --filter RealReleaseZip`,
+  Infrastructure.Tests): PASS. Nothing bypassed. Not yet run on Windows.
+- **ZIP structure: PASS.** `unzip -t` clean; one top-level folder; 283 unique entries; no backslash
+  names; no zero-length files. Fresh extraction is `diff -rq`-identical to staging. Executable
+  `PE32+ (GUI) x86-64`.
+- **Runtime/native files present:** `coreclr.dll`, `hostfxr.dll`, `QuestPDF.dll`, `QuestPdfSkia.dll`,
+  `qpdf.dll`, `e_sqlite3.dll`, `libSkiaSharp.dll`, `libHarfBuzzSharp.dll`, `av_libglesv2.dll`;
+  `Carowinds.Passdown.Desktop.runtimeconfig.json`/`deps.json`. Configuration: `appsettings.json` is
+  an embedded resource in `Desktop.dll` (Phase 15F), so it is correctly not a loose file.
+- **Shipped helpers/docs present:** `README.txt`, `TESTER-GUIDE.txt` (RC.7 text), `THIRD-PARTY-NOTICES.txt`,
+  `licenses\` (incl. `QuestPDF-LICENSE.txt`, `STIXTwoMath-OFL.txt`), `Enable/Disable Automatic
+  Refresh.cmd`, `tools\Install-/Uninstall-ScheduledRefresh.ps1`.
+- **Assets:** the Fury banner (`Assets/Branding/fury325-banner.jpg`, 135,816 bytes) occurs exactly once
+  inside `Carowinds.Passdown.Desktop.dll` (Avalonia resource) and once in the single-file EXE; no loose
+  copy. STIX Two Math occurs once in `Documents.dll` and once in the EXE. No loose `.ttf`/`.otf`.
+- **Forbidden content: PASS.** No `.DS_Store`, `__MACOSX`, `.pdb`, `.db`, `-wal`, `-shm`, `.log`,
+  `.zip`, `.pdf`, `.png`, `.py`, `.cs`, `.dylib`, `.so`, test assemblies, test reports, research
+  scripts/outputs (`research`, `fims`), macOS/Linux runtime folders, `.git*`, `CLAUDE.md`,
+  `AGENT_BUILD_SPEC.md`, or rc.6/dev names. No user data, drafts, notes, sync payloads, diagnostics or
+  preview PDFs.
+- **Developer-path scan: PASS.** Checkout path, repository folder name and build user name appear in no
+  file (UTF-8/UTF-16), including the single-file EXE. `/Users/` only in the documented SQLitePCLRaw
+  vendor DLLs, `/home/` only in `MicroCom.Runtime.dll` (and those same bytes inside the EXE);
+  `C:\Users\` nowhere.
+
+## Single-file release (EXPERIMENTAL)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.7-win-x64-singlefile.exe` |
+| Bytes | **191,013,708** (RC.6 EXE: 190,509,900) |
+| SHA-256 | **`caa32e3f4641f6d7cdb3010882247ba94360d4f0222742bc8b89df88e51802b0`** |
+| Checks | Phase 15F single-file command into a freshly deleted `artifacts/publish/win-x64-singlefile`; output = exe + `LatoFont/OFL.txt` only (`.pdb` removed). Carries `0.1.0-rc.7+6dbdce8…` and `0.1.0.7`; Fury image and STIX font embedded once. `PE32+ (GUI) x86-64` |
+| Naming | Renamed from RC.6's `…-win-x64.exe` to `…-win-x64-singlefile.exe` so it cannot be mistaken for the ZIP's main executable |
+| Status | EXPERIMENTAL. No notices when distributed alone. Do **not** hand it out independently. Launch NOT EXECUTED |
+
+## Frozen artifacts
+
+Both RC.7 files are frozen for validation as recorded above (made read-only on the build host). They
+must not be modified, rebuilt over or repacked under these names. A defect that needs a new binary
+ships as **`0.1.0-rc.8`**.
+
+## Phase 23 release-readiness audit
+
+| Area | Finding | Classification |
+|---|---|---|
+| Failed-save messaging | A real persistence failure displayed "Unsaved changes", the same as a pending edit. Now **"Save failed — changes not saved"** (error background, reason in tooltip/Narrator help text); state stays until a save succeeds | Fixed in RC.7 (was nonblocking clarity defect) |
+| Persistent save failure + date switch | `AssociateViewModel.FlushPendingAutosaveAsync` retries `while (_isDirty …)` with no bound or backoff. Reproduced on the build host: with saves failing, a date change ran 100% CPU for > 400 s with no progress. Also reached via Check Online and add/remove/replace operational note. Shutdown is already bounded (5 s). Pre-existing since RC.1 | **Known limitation** (owner decision: document in RC.7, fix in RC.8) + Windows validation item 7.7 caution |
+| Intermittent PDF comparison | Root cause **established**: see below | Fixed (test comparison); no product defect |
+| PDF layout and footer | Shows last in all three templates; footer Eastern; covered by Documents tests (463 pass) | Windows validation required (12.x) |
+| Windows filesystem assumptions | Storage/sync/AppPaths code identical to RC.6 (`git diff ef13a6d` empty for `Infrastructure/Storage`, `Infrastructure/PersonalSync`, `Infrastructure/Preferences`, `AppPaths.cs`) | Windows validation required |
+| Settings folder picker | Native picker only exercisable on Windows | Windows validation required (11.5) |
+| Portable layout / self-contained runtime / native deps | Same 283-file inventory as RC.6; runtime and native DLLs present | Windows validation required (3.4) |
+| Personal Sync schema compatibility | SyncSchemaVersion 1 unchanged; only `SyncConflictDetail` display formatting changed (grouped counts) | Known limitation (mixed-version Shows) |
+| Fury image packaging | Embedded once, no loose file | Pass (build host); rights pending |
+| QuestPDF license | See below | Release gate pending |
+
+### Intermittent PDF test investigation
+
+- **Test**: `DailyFeatureMathPdfTests.FinalizedSnapshot_KeepsTheSourceText_AndItsPdfMatchesTheLiveRender`
+  (also, once, `FinalizedPassdownProjectionTests.BuildProjection_NormalDay_PdfBytesMatchDirectGenerationFromSameModel`).
+- **Failure pattern**: occasional byte mismatch between two renders of the same model; passed on rerun.
+- **Root cause**: QuestPDF writes `/CreationDate` and `/ModDate` from the wall clock at one-second
+  resolution (the generator sets no document metadata). Two renders that straddle a second boundary
+  differ in exactly two bytes, the seconds digit of each stamp. Reproduced deterministically by
+  waiting for the next second between renders: 57,305 bytes each, 2 differing bytes, both inside those
+  fields. The math test failed most often because its renders take longest.
+- **Generated content was not incorrect.** Text, layout and every other byte are identical.
+- **Fix**: `PdfInspector.WithoutGenerationTimestamps` zeroes only those two 14-digit values (same
+  length, offsets unchanged) and throws if either field is missing. Applied to the five
+  render-twice comparisons. `Phase23PdfGenerationTimestampTests` forces a second boundary every run
+  (Classic/Compact/Modern), proves only digits change, and proves a real content difference is still
+  detected. Production PDF output is unchanged.
+- **Evidence**: 15 consecutive runs of the four affected classes (52 tests each, 45 forced boundary
+  crossings in total): all passed. Full suite 3980/3980.
+- **Remaining risk**: none known for these tests. Production PDFs still carry wall-clock metadata
+  dates, as in every earlier RC (frozen PDFs are stored bytes and never regenerated).
+
+## Upgrade compatibility (RC.6 → RC.7)
+
+- No schema, migration, serializer, repository, sync-payload, sync-config or app-path change since
+  RC.6 (`ef13a6d`): `git diff ef13a6d 6dbdce8` is empty for `Infrastructure/Storage`,
+  `Infrastructure/PersonalSync`, `Infrastructure/Preferences`, `Application/Persistence`,
+  `Application/Finalization`, `Application/OperationalNotes`, `AssociateDraftPayload*.cs`,
+  `AppPaths.cs` and the scheduled-task scripts. RC.7 therefore reads and writes an RC.6 profile with
+  byte-identical persistence code. The existing lifecycle/migration suites (`PortableLifecycleTests`,
+  `MigrationHardeningTests`, sync tests) pass.
+- Behavioral data change: the first RC.7 Deep Refresh (6 AM task or startup catch-up ≥ 4 h after the
+  last one) fills about 366 future park-hours dates (about 20 requests, about 156 KB). Earlier
+  NotPublished WinterFest dates become Verified. No draft, note, override, sync-config, snapshot or
+  PDF change.
+- Not executed: opening a real RC.6-used profile with the RC.7 binary on Windows (validation §4). A
+  synthetic cross-binary run was not done on the build host because the persistence code under test
+  is identical.
+
+## QuestPDF licence
+
+QuestPDF **2026.7.3** (`src/Carowinds.Passdown.Documents/Carowinds.Passdown.Documents.csproj`
+`QuestPdfVersion`), `QuestPDF.Settings.License = LicenseType.Community` in
+`AssociatePassdownPdfGenerator`. Licence text shipped as `licenses\QuestPDF-LICENSE.txt`. Its
+"Community License Eligibility" excludes publicly traded companies and organisations above USD 1M
+annual revenue. No owner or organisation approval for this distribution is recorded in the repository.
+No legal conclusion drawn; a technical PASS is not a licensing approval.
+**QuestPDF distribution approval pending.**
+
+## Fury photograph rights
+
+| | |
+|---|---|
+| Asset | `src/Carowinds.Passdown.Desktop/Assets/Branding/fury325-banner.jpg` (135,816 bytes, embedded in `Desktop.dll`) |
+| Known provenance | Cropped from the photograph the product owner attached in the Phase 22B request (`1.webp`, 1920×1080, SHA-256 `29918441…fa97`); see `docs/phase22b-fury-banner-navigation.md` §3 |
+| Rights status | Photographer, licence and redistribution permission undocumented |
+| Intended recipients | Controlled technical testers only |
+| Authorisation documented | No |
+
+**Fury photograph redistribution rights pending.** No substitute image was used.
+
+## Compatibility and known risks
+
+- **Personal Sync mixed versions:** older versions may not understand the latest Show draft selections
+  and may discard them on re-save; that loss syncs. Upgrade all PCs sharing a sync folder together and
+  back up the shared folder first. The app does not technically prevent mixed-version writes.
+- **Rollback:** back up `%LOCALAPPDATA%\Carowinds Passdown` before upgrading. Copying an older
+  executable over newer binaries is not necessarily a safe rollback; restore the backup with the app
+  closed instead.
+- **Persistent save failure + date change freeze** (pre-existing, fix planned for RC.8). See audit.
+
+## Windows validation
+
+Record: `docs/releases/rc7-windows-validation.md`. **Every item NOT EXECUTED** (extraction, launch,
+About RC.7, Fury banner, data path, no migration, no-SDK launch, 100/125/150% scaling, Narrator,
+folder picker, Task Scheduler, OneDrive/two-PC sync, PDFs, Teams Copy, upgrade from RC.6, experimental
+EXE).
+
+## Release status
+
+- **BUILT**: Release 0/0; 3980/3980 deterministic tests; research suite 64/64 separately.
+- **PACKAGED**: ZIP + experimental EXE from `6dbdce8`; frozen.
+- **ARTIFACT VERIFIED (build host)**: validator (PS + C#), integrity, inventory, versions, assets,
+  forbidden-content and developer-path scans, RC.6 immutability.
+- **WINDOWS VALIDATION PENDING.** **TWO-PC SYNC VALIDATION PENDING.**
+- **DISTRIBUTION NOT APPROVED**: QuestPDF distribution approval pending; Fury photograph
+  redistribution rights pending. Controlled technical testing only; not uploaded or published.
+
+# Release manifest — 0.1.0-rc.8 (Phase 24: Phases 23A–23D combined)
+
+**Built, packaged, hash-verified and manifest-signed on the macOS build host. Windows validation NOT
+EXECUTED. Distribution NOT approved. Nothing pushed, uploaded or published.** Run
+`docs/releases/rc8-windows-validation.md` (backup first). Release notes:
+`docs/releases/rc8-release-notes.md`. Installation: `docs/releases/rc8-installation-guide.md`.
+
+| | |
+|---|---|
+| Product (visible) | Carowinds Operations |
+| Version | **`0.1.0-rc.8`**, file version `0.1.0.8`, informational `0.1.0-rc.8+a651e26582b2bf35aaf671890b7018cb58ab6f2e` (read from the packaged `Desktop`/`Application`/`Infrastructure`/`Domain`/`Documents`/`Updater` DLLs and the single-file EXE; no packaged file contains `0.1.0-rc.7` or `0.1.0.7`) |
+| Starting HEAD | `633a431` (Phase 23D docs), branch `feature/passdown-redesign`; version `0.1.0-rc.7` |
+| RC.8 source / version commit | **`a651e26`**: `Directory.Build.props` 0.1.0-rc.8 / 0.1.0.8, bundled What's New notes (`src/Carowinds.Passdown.Desktop/ReleaseNotes/release-notes.md`), shipped `TESTER-GUIDE.txt` and `README.txt`. **All RC.8 artifacts were built from this commit** after a full `bin`/`obj` clean (tree otherwise clean apart from the unrelated pre-staged `.DS_Store`/`.claude` files, which are not build inputs) |
+| About this build | `0.1.0-rc.8 (a651e26)` + running executable path |
+| Target | Windows 11 x64 (`win-x64`), self-contained, ReadyToRun, not trimmed; primary is multi-file (not single-file) |
+| Build host | macOS 27.0.1 (26A434), Apple Silicon arm64; .NET SDK 10.0.400; PowerShell 7.6.7 as a local `dotnet tool` in the session scratchpad (nothing installed system-wide) |
+| DB / Draft / Snapshot / SyncSchemaVersion | **16** / 4 / 2 / 1, unchanged from RC.7 (latest migration `Migration0016…`, `AssociateDraftPayload.CurrentSchemaVersion = 4`, `FinalizedPassdownSnapshot.CurrentSchemaVersion = 2`, `SyncEnvelopeSerializer.CurrentSyncSchemaVersion = 1`). No migration |
+| Storage identity | Unchanged: `Carowinds.Passdown.Desktop.exe`, `%LOCALAPPDATA%\Carowinds Passdown`, `carowinds-passdown.db`, `appearance.json` location, `Carowinds Passdown Daily Refresh`, `Carowinds Passdown Personal Sync`, AssemblyVersion `0.1.0.0`. Updater-only local folders as introduced in Phase 23D |
+| Deterministic tests | Baseline (Phase 23D): **4437**; measured with the RC.8 version applied (the bump changes no test): **4437/4437** = 270 Domain + 1167 Application + 976 Infrastructure + 463 Documents + 1413 Ui together + 26 `OperationsCalendarViewTests` + 109 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release --filter "Category!=LiveSmoke"`). Phase 24 adds +2 `Phase24ReleaseCompatibilityTests` (Application): final **4439/4439** (Application 1169). Run-alone set unchanged (five classes). No test contacts GitHub; live tests not run or counted |
+| Release build | `dotnet build CarowindsPassdown.slnx -c Release`: 0 warnings, 0 errors (before packaging, after a full clean, and at the documentation commit). `tools/update-signing` Release build: 0/0 |
+| Superseded | RC.7/RC.6/older artifacts untouched in `artifacts/releases/`; RC.6 and RC.7 SHA-256 re-verified unchanged after the RC.8 build. Do not distribute superseded versions |
+
+## Primary release: multi-file portable ZIP (RECOMMENDED)
+
+| | |
+|---|---|
+| Artifact | `/Users/kashyap/Documents/Passdown/carowinds-passdown-greenfield/artifacts/releases/Carowinds-Operations-0.1.0-rc.8-win-x64.zip` |
+| Bytes | **75,714,287** (RC.7: 75,149,722) |
+| SHA-256 | **`6d753211ec0cca7393aac162b15d01220f3ae12a05e489a5316c71489c7f83ea`** |
+| Architecture / runtime | win-x64, self-contained (`coreclr.dll`, `hostfxr.dll` included); `Carowinds.Passdown.Desktop.exe` and `Carowinds.Passdown.Updater.exe` are `PE32+ (GUI) x86-64` |
+| Extracted folder | `Carowinds-Operations-0.1.0-rc.8-win-x64\` |
+| Content | 287 files / 287 entries (no directory entries), 166,324,828 bytes uncompressed (RC.7: 283 files, 165,015,237). Relative to RC.7: **+4** `Carowinds.Passdown.Updater.exe` (365,056 B, SHA-256 `ca2662b1…406f`), `.dll` (207,360 B), `.runtimeconfig.json`, `.deps.json`; changed: `Desktop.dll`, `Application.dll`, `Infrastructure.dll`, `Domain.dll`, `README.txt`, `TESTER-GUIDE.txt`; nothing removed |
+| Produced by | `packaging/windows/Build-PortableRelease.ps1` (real script, via `Publish-Windows.ps1`, which deletes `artifacts/publish/win-x64` and publishes the updater from source into a fresh temporary folder). Staging `artifacts/release-staging/Carowinds-Operations-0.1.0-rc.8-win-x64` freshly created |
+| Frozen | Read-only on the build host |
+
+- **Packaging validator (`Test-ReleasePackage.ps1`): PASS** on staging and on the final ZIP (287 files),
+  run by the build script. C# mirror (`CAROWINDS_RELEASE_ZIP=… --filter RealReleaseZip`): PASS.
+- **ZIP structure: PASS.** `unzip -t` clean; one top-level folder; no backslash names; fresh extraction
+  `diff -rq`-identical to staging.
+- **Required content present:** main exe/dll/runtimeconfig/deps; the four updater files; QuestPDF
+  (`QuestPDF.dll`, `QuestPdfSkia.dll`, `qpdf.dll`), Skia/HarfBuzz/ANGLE natives, `e_sqlite3.dll`;
+  `README.txt`, `TESTER-GUIDE.txt`, `THIRD-PARTY-NOTICES.txt`, `licenses\` (incl. `QuestPDF-LICENSE.txt`,
+  `STIXTwoMath-OFL.txt`, `Inter-OFL.txt`), `LatoFont\OFL.txt`, `Enable/Disable Automatic Refresh.cmd`,
+  `tools\Install-/Uninstall-ScheduledRefresh.ps1`.
+- **Embedded (not loose):** Fury banner (`fury325-banner.jpg`, 135,816 B) exactly once in
+  `Desktop.dll`; fonts embedded as before (no loose `.ttf`/`.otf`); `appsettings.json` embedded with
+  `Updates:Repository = KASHO7/Passdown`, channel `ReleaseCandidate`, trusted key `carowinds-release-1`
+  (public key only); bundled What's New notes `Version: 0.1.0-rc.8`.
+- **Forbidden content: PASS.** No `.pem`/private-key material (byte-window scan against the production
+  private key: 0 matches in the extracted ZIP, the EXE and `src/`), no git credentials or GitHub tokens
+  (`ghp_`, `github_pat_`), no `.git*`, `.DS_Store`, `__MACOSX`, `.pdb`, `.db`/`-wal`/`-shm`, logs, PDFs,
+  test assemblies, fixtures, research/monitoring snapshots, `appearance.json`/`updates.json`/sync data,
+  `.update.json`/`.sig`, or source files. The only "PRIVATE KEY" bytes are PEM label constants inside the
+  .NET runtime's `System.Security.Cryptography.dll`.
+- **Developer-path scan: PASS.** Build user name and checkout folder name appear in no packaged file.
+
+## Single-file release (EXPERIMENTAL)
+
+| | |
+|---|---|
+| Artifact | `/Users/kashyap/Documents/Passdown/carowinds-passdown-greenfield/artifacts/releases/Carowinds-Operations-0.1.0-rc.8-win-x64-singlefile.exe` |
+| Bytes | **191,886,156** (RC.7 EXE: 191,013,708) |
+| SHA-256 | **`9026dc93944b0a9a0476858bb71acd9d997696ef2eb00a0ee6d741401753c654`** |
+| Checks | Phase 15F single-file command into a freshly deleted `artifacts/publish/win-x64-singlefile`; output = exe + `LatoFont/OFL.txt` (`.pdb` removed). `PE32+ (GUI) x86-64`; carries `0.1.0-rc.8+a651e26…`; Fury image embedded once; no rc.7 strings, no developer paths, no private-key bytes. Frozen read-only |
+| Updates | **In-app installation is not available for this form.** It has no `Carowinds.Passdown.Updater.exe` or `Carowinds.Passdown.Desktop.dll` beside it, so `InstallationInspector` reports *NotPortableInstallation* and Settings shows *Manual update required* (Phase 23D design, no change needed). Update it manually by replacing the file with a newer one |
+| Status | EXPERIMENTAL. No notices when distributed alone. Do **not** hand it out independently. Launch NOT EXECUTED |
+
+## Update manifest (GitHub Releases metadata, Phase 23D format 1)
+
+| | |
+|---|---|
+| Manifest | `artifacts/releases/Carowinds-Operations-0.1.0-rc.8-win-x64.update.json` — 49,119 B, SHA-256 `8940cff5baa1d927cf5dfc28eae7826da9a9ce868325a1e2d4878b88f1a8d8df` |
+| Signature | `artifacts/releases/Carowinds-Operations-0.1.0-rc.8-win-x64.update.json.sig` — 206 B, SHA-256 `e8f1698ec7c3d999024db0cc438d46809de5a9cec5ed115033d10fe0e42f8aaa`; `ECDSA-P256-SHA256`, key ID `carowinds-release-1` |
+| Contents | product `carowinds-operations`, version `0.1.0-rc.8`, channel `release-candidate`, `win-x64`, `publishedAtUtc 2026-10-18T12:18:47Z` (signing time; **not** published), package `Carowinds-Operations-0.1.0-rc.8-win-x64.zip` / 75,714,287 B / `6d753211…83ea` / root `Carowinds-Operations-0.1.0-rc.8-win-x64`, 287 file entries incl. the six required files |
+| Produced by | `tools/update-signing` `create-manifest` (from the frozen ZIP) → `sign --key-id carowinds-release-1 --private-key ~/.carowinds-signing/carowinds-release-1.pem` → `verify --appsettings src/Carowinds.Passdown.Desktop/appsettings.json` = **VERIFIED** |
+| Signing authorisation | Owner confirmed in this session (2026-10-18) that a second offline protected backup of the private key exists and authorised **local** signing only |
+| Status | **SIGNED, NOT PUBLISHED.** Not uploaded, no tag, no GitHub Release. Only meaningful for a future in-app update *to* RC.8 from an updater-enabled build, which does not exist yet (RC.8 is the first); kept so the published asset set, if RC.8 is ever approved for GitHub, is exactly these frozen files |
+
+**Negative checks (synthetic copies in the session scratchpad, CLI `verify`):** manifest text changed →
+`InvalidSignature`; package SHA-256 changed → `InvalidSignature`; signed with a disposable key claiming
+`carowinds-release-1` → `InvalidSignature`; disposable key with key ID `synthetic-unknown-key` →
+`UnknownKey`; the production pair still `VERIFIED`. The disposable key was deleted afterwards. No command
+printed key material.
+
+## Signing identity
+
+| | |
+|---|---|
+| Configured key | `carowinds-release-1`, ECDSA P-256, in `src/Carowinds.Passdown.Desktop/appsettings.json` → `Updates:TrustedSigningKeys` (trusted since `392d125`) |
+| Public-key fingerprint | SHA-256(SubjectPublicKeyInfo) **`8e0e108689653f027f92b0e91122cf3e49dda206636378723dc7941ed2c969d3`** — computed independently from the bundled Base64 and from the private key's derived public half; identical |
+| Private key | `~/.carowinds-signing/carowinds-release-1.pem` (folder `700`, file `600`), outside the repository, outside the publish/staging folders, never printed or copied |
+| Backup | Owner-confirmed second offline protected copy (2026-10-18). Not verified by the build session |
+
+## Updater security regression (automated, build host)
+
+Covered by the passing suites (no bypass switch exists in `src/` — searched for skip/bypass/environment
+overrides in the updater code paths):
+
+| Rejection | Tests |
+|---|---|
+| Unsigned release / missing signature asset | `UnsignedOrInvalidlySignedRelease_IsNotApproved_AndOlderValidOneIsOffered`, `MissingRequiredAsset_IsIgnored` |
+| Invalid signature / tampered manifest | `TamperedManifest_IsRejected`, `MalformedSignatureFile_IsRejected` |
+| Wrong / unknown key | `SignatureFromAnUntrustedKey_IsRejected`, `NoTrustedKeys_RejectsEverything`, `InvalidConfiguredKeys_AreIgnored_NotTrusted` |
+| Hash mismatch | `CorruptDownload_FailsHashCheck_AndLeavesNothingStaged`, `ModifiedFileContent_IsRejected`, `StagedFileTamperedAfterVerification_IsRejected` |
+| ZIP path traversal / symlinks / duplicates | `HostileOrUnexpectedEntries_AreRejected_AndNothingIsLeftBehind`, `SymbolicLinkEntry_IsRejected`, `DuplicateEntry_IsRejected`, `SignedManifestWithUnsafeOrDuplicatePath_IsRejected` |
+| Wrong architecture / product / channel | `SignedManifestForAnotherArchitecture_IsRejected`, `SignedManifestForAnotherProduct_IsRejected`, `ReleaseCandidateVersionClaimingStable_IsRejected` |
+| Downgrade / same version | `OlderOrSameVersion_IsNeverOffered`, `IsInstallable_NeverDowngradesOrReinstalls`, `DowngradeWrongProductOrUnsafePathInRequest_IsRefused`, `Phase24ReleaseCompatibilityTests` (installed RC.8 ignores RC.7/RC.8, is offered RC.9; built version never offered itself) |
+| Missing required files | `ManifestWithoutTheUpdater_IsRejected`, `MissingFile_IsRejected` |
+| Unauthorised / protected location | `PermissionDenied_ChangesNothing`, `FolderThatBecameUnwritable_StopsBeforeTheUpdaterStarts`, `RequestOutsideTheRequestsFolder_IsIgnoredEntirely`, `UpdaterRunningFromAnotherFolderThanTheStagedOne_RefusesTheRequest` |
+
+These are **TESTED WITH SYNTHETIC DATA** on macOS (fake process environment, POSIX permissions). Windows
+file locking, ACLs, process restart and rollback are not exercised.
+
+## Phase 23A–23D scope in RC.8 (build-host evidence only)
+
+- **23A save-failure freeze:** at most one save attempt per action; failed state persists with Retry
+  Save; date change / Check Online / note operations refused during persistent failure, edits retained;
+  Personal Sync not marked successful; close warns once; no retry timer. ~5 s SQLite lock wait and
+  "second close discards" limitations preserved. (`Phase23ASaveFailureLoopTests`, `…SyncTests`)
+- **23B Dashboard Shows:** stacked name/times/venue, "+N more" in-memory expansion, wrapping, honest
+  missing venue and source states, title-only Fury banner, unchanged window icon; FIMS retrieval
+  untouched. (`Phase23BDashboardShowsTests`, real-window layout tests)
+- **23C Appearance:** Use Windows setting (default) / Light / Dark, immediate, local `appearance.json`
+  (unchanged location), never synced, applied before the first window. (`AppearanceResolverTests`,
+  `FileAppearancePreferenceStoreTests`, `Phase23CAppearancePreferenceTests`)
+- **23D updater:** public GitHub Releases discovery (`KASHO7/Passdown`, unauthenticated, prereleases
+  included, SemVer ordering), signed manifest + SHA-256 verification, safe extraction, external updater,
+  staging, restart, journaled rollback, data preservation, offline bundled notes, What's New once after a
+  confirmed successful update only (clean/manual install never). No silent install, no auto-publishing,
+  no SharePoint.
+
+## Upgrade compatibility (RC.7 → RC.8)
+
+- **Manual ZIP install required** — RC.7 has no updater and cannot upgrade itself.
+- RC.8 is the first build that can later receive an approved, signed in-app update.
+- A manual RC.8 install writes no install record, so What's New does not open automatically
+  (`WhatsNewPolicy`); notes are available from Settings → About this build.
+- No schema, serializer, sync-payload or app-path change (schemas 16/4/2/1). New local files only when
+  used: `appearance.json`, `updates.json`, `%LOCALAPPDATA%\Carowinds Operations Updates\`.
+- Not executed: opening a real or synthetic RC.7 profile with the RC.8 binary on Windows
+  (`rc8-windows-validation.md` §8).
+
+## QuestPDF licence
+
+QuestPDF **2026.7.3**, `LicenseType.Community` in `AssociatePassdownPdfGenerator`; licence text shipped as
+`licenses\QuestPDF-LICENSE.txt`. Its Community License Eligibility limits use to qualifying individuals,
+learning/evaluation, certain non-profits/academia and organisations under USD 1M annual revenue, and
+excludes publicly traded companies and public-sector entities. Whether the intended organisational
+deployment qualifies has not been determined, and no organisational approval is recorded. No legal
+conclusion is drawn. **Distribution approval pending.**
+
+## Fury photograph rights
+
+Unchanged from RC.7 (`fury325-banner.jpg`, 135,816 B, cropped from the owner-supplied image; photographer,
+licence and redistribution permission undocumented). **Photograph redistribution rights pending.** Not
+replaced.
+
+## Public GitHub
+
+`KASHO7/Passdown` is public. Nothing was pushed, tagged, uploaded or attached. A public release is a
+separate action requiring explicit owner approval and resolution of the licensing, photograph and
+organisation-policy gates (`docs/phase23d-github-updater.md` §14).
+
+## Windows validation
+
+Record: `docs/releases/rc8-windows-validation.md`. **Every item NOT EXECUTED** (first launch, save
+failure, Dashboard Shows, appearance, updater, restart/rollback, RC.7 profile upgrade, operational
+features, scaling, Narrator, experimental EXE). The real Windows updater test harness (test-configured
+builds + signed synthetic releases in a separate private test repository) is **not prepared**.
+
+## Frozen artifacts
+
+The RC.8 ZIP, EXE, manifest and signature are frozen (read-only) as recorded above. They must not be
+modified, rebuilt over or repacked under these names. A defect needing a new binary ships as
+**`0.1.0-rc.9`**.
+
+## Outstanding issues
+
+1. Windows validation of everything (§ above).
+2. Updater Windows harness: owner to choose a private test repository for synthetic signed releases.
+3. QuestPDF Community-licence eligibility / organisational approval.
+4. Fury photograph redistribution rights.
+5. Organisation policy on distributing via a personal public GitHub repository.
+6. Executables not Authenticode-signed; SmartScreen/Defender behaviour unknown.
+
+## Release status
+
+- **BUILT**: Release 0/0; 4437/4437 at the version commit, 4439/4439 with the Phase 24 tests.
+- **PACKAGED**: ZIP + experimental EXE from `a651e26`; frozen.
+- **HASH VERIFIED**: sizes and SHA-256 above; RC.6/RC.7 unchanged.
+- **SIGNED**: update manifest, locally, `carowinds-release-1`; **NOT PUBLISHED**.
+- **TESTED WITH SYNTHETIC DATA**: updater, signing, discovery, rollback (macOS).
+- **WINDOWS VALIDATED: NO (NOT EXECUTED).**
+- **DISTRIBUTION APPROVED: NO (PENDING)** — QuestPDF, photograph rights, organisation policy.

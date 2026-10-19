@@ -1,9 +1,11 @@
+using System.Text;
+using System.Text.RegularExpressions;
 using UglyToad.PdfPig;
 
 namespace Carowinds.Passdown.Documents.Tests.Associate.TestSupport;
 
 /// <summary>Test-only PDF page-count/text-extraction helper (PdfPig), so assertions can inspect real rendered content instead of merely checking non-empty bytes (spec Phase 4E Part J). Never referenced by the Documents project itself.</summary>
-internal static class PdfInspector
+internal static partial class PdfInspector
 {
     public static int CountPages(byte[] pdfBytes)
     {
@@ -49,4 +51,33 @@ internal static class PdfInspector
         using var document = PdfDocument.Open(pdfBytes);
         return document.GetPage(pageNumber).GetWords().Select(word => word.Text).ToList();
     }
+
+    /// <summary>
+    /// Phase 23: <paramref name="pdfBytes"/> with the digits of the document-info <c>/CreationDate</c>
+    /// and <c>/ModDate</c> values replaced by zeros (same length, so every offset is unchanged). QuestPDF
+    /// stamps both from the wall clock at one-second resolution, so two renders of the same model that
+    /// straddle a second boundary differ in exactly those bytes — the root cause of the intermittent
+    /// byte-comparison failures. Every other byte is still compared. Throws if the two fields are not
+    /// both present exactly once, so a format change can never make this silently mask nothing.
+    /// </summary>
+    public static byte[] WithoutGenerationTimestamps(byte[] pdfBytes)
+    {
+        var text = Encoding.Latin1.GetString(pdfBytes);
+        var matches = GenerationTimestamp().Matches(text);
+        if (matches.Count != 2 || matches[0].Groups["key"].Value == matches[1].Groups["key"].Value)
+        {
+            throw new InvalidOperationException($"Expected one /CreationDate and one /ModDate; found {matches.Count} timestamp field(s).");
+        }
+
+        var normalized = GenerationTimestamp().Replace(text, match =>
+        {
+            var stamp = match.Groups["stamp"];
+            var start = stamp.Index - match.Index;
+            return string.Concat(match.Value.AsSpan(0, start), new string('0', stamp.Length), match.Value.AsSpan(start + stamp.Length));
+        });
+        return Encoding.Latin1.GetBytes(normalized);
+    }
+
+    [GeneratedRegex(@"/(?<key>CreationDate|ModDate)\s*\(D:(?<stamp>\d{14})")]
+    private static partial Regex GenerationTimestamp();
 }

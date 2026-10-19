@@ -119,9 +119,11 @@ public class Phase21ADashboardOpenPassdownTests
         shell.Main.ShowHistorySectionCommand.Execute(null);
         shell.Main.ShowAssociateSectionCommand.Execute(null);
         shell.Associate.SelectedSection = AssociateSection.Products;
-        shell.Dashboard.OpenNotesCommand.Execute(null);
 
         Assert.Equal(nextSaturday, shell.Associate.SelectedDate);
+
+        // Phase 22E: Dashboard "Open Notes" is no longer ordinary navigation — like Open Passdown, it
+        // opens today's passdown (covered by MainViewModelNavigationTests/Phase22ENotesHistoryTests).
     }
 
     [Fact]

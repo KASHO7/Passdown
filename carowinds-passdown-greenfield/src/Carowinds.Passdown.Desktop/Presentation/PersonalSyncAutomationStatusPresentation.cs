@@ -12,6 +12,9 @@ namespace Carowinds.Passdown.Desktop.Presentation;
 /// </summary>
 public sealed record PersonalSyncAutomationStatusPresentation(string Text, string? DetailText)
 {
+    /// <summary>Phase 22F: an error or a conflict that needs the user — drives the error styling only; the words already say it.</summary>
+    public bool IsProblem { get; init; }
+
     public static PersonalSyncAutomationStatusPresentation Build(PersonalSyncAutomationSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -41,10 +44,18 @@ public sealed record PersonalSyncAutomationStatusPresentation(string Text, strin
             _ => null,
         };
 
-        return new PersonalSyncAutomationStatusPresentation(text, detail);
+        return new PersonalSyncAutomationStatusPresentation(text, detail)
+        {
+            IsProblem = snapshot.State is PersonalSyncAutomationState.Error
+                or PersonalSyncAutomationState.ConflictAttention
+                or PersonalSyncAutomationState.HistoryConflictAttention,
+        };
     }
 
-    /// <summary>"Last synced: 2:41 PM" (§13, display-only — local time, never used for reconciliation ordering) — null until the first successful pass.</summary>
+    /// <summary>
+    /// "Last synced: Oct 17 at 2:41 PM ET" (§13, display-only — never used for reconciliation ordering) — null until the
+    /// first successful pass. Phase 22F: Eastern with its date (a bare time could be from any earlier day).
+    /// </summary>
     public static string? BuildLastSyncedText(DateTimeOffset? lastSuccessfulSyncUtc) =>
-        lastSuccessfulSyncUtc is { } value ? string.Create(PresentationCulture.UnitedStates, $"Last synced: {value.ToLocalTime():h:mm tt}") : null;
+        lastSuccessfulSyncUtc is { } value ? $"Last synced: {EasternTimestampFormat.DateAndTime(value)}" : null;
 }

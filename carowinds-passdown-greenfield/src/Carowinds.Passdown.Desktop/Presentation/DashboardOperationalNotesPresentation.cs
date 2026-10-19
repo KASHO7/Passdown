@@ -65,6 +65,17 @@ public sealed record DashboardOperationalNotesPresentation(
     /// <summary>Phase 11C Part M: shown only when the local query succeeded and returned nothing relevant today — a load failure gets its own distinct message instead (Part AI).</summary>
     public bool ShowEmptyState => !LoadFailed && Count == 0;
 
+    /// <summary>
+    /// Phase 22C: one truthful summary line for the Operations Overview. "Active" is the existing
+    /// definition — notes whose effective range covers today (<c>ListRelevantForDateAsync</c>) — and
+    /// "important" is only ever the priority a supervisor explicitly set; nothing else is implied.
+    /// </summary>
+    public string SummaryText => LoadFailed
+        ? "Unable to load operational notes"
+        : Count == 0
+            ? "No active notes today"
+            : $"{Count} active note{(Count == 1 ? string.Empty : "s")}" + (ImportantCount > 0 ? $" · {ImportantCount} important" : string.Empty);
+
     public static DashboardOperationalNotesPresentation Build(DashboardOperationalNotesSummary summary, DateOnly referenceDate)
     {
         ArgumentNullException.ThrowIfNull(summary);

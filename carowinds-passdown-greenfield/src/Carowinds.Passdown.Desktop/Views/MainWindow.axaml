@@ -11,76 +11,36 @@
         Title="Carowinds Operations"
         Width="1280" Height="860" MinWidth="960" MinHeight="640">
 
-    <Window.Styles>
-        <!-- Top-level app-shell section switcher (spec Phase 9D Part A): a slim horizontal strip
-             below the brand band, not a subsection inside AssociateView's own rail — History is a
-             sibling app section, not something that could be mistaken for an editable Associate
-             subsection (spec Part E). Plain Button + a data-bound "active" class, deliberately not
-             ToggleButton: nothing here needs two-way IsChecked state, and one-way Classes binding to
-             MainViewModel.IsAssociateSectionSelected/IsHistorySectionSelected can never drift out of
-             sync the way a ToggleButton's own click-toggled IsChecked could. -->
-        <Style Selector="Button.appSectionItem">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0,0,0,3" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="CornerRadius" Value="0" />
-            <Setter Property="Padding" Value="18,11" />
-            <Setter Property="FontSize" Value="13.5" />
-            <Setter Property="FontWeight" Value="Medium" />
-            <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
-            <Setter Property="Cursor" Value="Hand" />
-        </Style>
-        <Style Selector="Button.appSectionItem.active">
-            <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentForegroundBrush}" />
-            <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-        </Style>
-        <Style Selector="Button.appSectionItem:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
-            <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
-        </Style>
-        <Style Selector="Button.appSectionItem.active:pointerover /template/ ContentPresenter">
-            <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
-        </Style>
-    
-    </Window.Styles>
+    <!-- Phase 22B: the banner and section-navigation styles (Border.brandBanner,
+         TextBlock.brandWordmark, Border.appNavigation, Button.appSectionItem[.active]) live in
+         Themes/PassdownStyles.axaml with the rest of the shared styles. -->
 
     <Grid>
     <DockPanel LastChildFill="True">
 
-        <!-- Brand identity band (spec §10.2): a constant, theme-invariant deep-navy strip so the app
-             reads as "Carowinds Operations" the instant it opens, independent of the light/dark
-             surfaces underneath (Phase 13G rename). Associate Passdown is the only workflow this
-             release — no mode selector/nav rail is needed for one item, and no Manager entry point is
-             added as a placeholder (CLAUDE.md "current scope decision"). -->
-        <Border DockPanel.Dock="Top" Padding="24,10" Background="{DynamicResource PassdownBrandDarkBrush}"
-                ClipToBounds="True">
-            <Grid ColumnDefinitions="Auto,*">
+        <!-- Brand banner (Phase 22B, "Option A — Minimal Fury Banner"; replaces the Phase 13G navy
+             band): a compact, theme-invariant panoramic crop of Fury 325 under a charcoal-navy
+             left-to-right scrim, with one "CAROWINDS OPERATIONS" wordmark (title only since Phase 23B). The photo is a bundled
+             avares resource (offline, no network fetch) cropped UniformToFill around the camelback
+             crest; it is decorative, so it is hidden from assistive technology and hit testing.
+             Associate Passdown is the only workflow this release — no Manager entry point is added
+             as a placeholder (CLAUDE.md "current scope decision"). -->
+        <Border x:Name="BrandBanner" DockPanel.Dock="Top" Classes="brandBanner">
+            <Panel>
+                <Image x:Name="BrandBannerImage" Source="/Assets/Branding/fury325-banner.jpg"
+                       Stretch="UniformToFill" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                       RenderOptions.BitmapInterpolationMode="HighQuality"
+                       IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw" />
+                <Border Background="{DynamicResource PassdownBannerOverlayBrush}" IsHitTestVisible="False" />
 
-                <!-- Faint trackline motif: a couple of low-opacity coaster-hill strokes, not an image
-                     asset — kept subtle so it reads as texture, not decoration competing with the text. -->
-                <Canvas Grid.Column="0" Grid.ColumnSpan="2" Opacity="0.10" IsHitTestVisible="False">
-                    <Polyline Points="640,46 690,-4 740,46 800,-14 900,50 980,-10 1120,46"
-                              Stroke="{DynamicResource PassdownHeaderForegroundBrush}" StrokeThickness="2.5" />
-                </Canvas>
-
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                    <!-- A small original ascending-track mark (spec §10.1) — plain geometric bars, not a
-                         reskin of any existing asset. -->
-                    <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Bottom" Height="20">
-                        <Rectangle Width="6" Height="9" Fill="{DynamicResource PassdownHeaderForegroundBrush}" VerticalAlignment="Bottom" />
-                        <Rectangle Width="6" Height="14" Fill="{DynamicResource PassdownHeaderForegroundBrush}" VerticalAlignment="Bottom" />
-                        <Rectangle Width="6" Height="20" Fill="{DynamicResource PassdownHeaderForegroundBrush}" VerticalAlignment="Bottom" />
-                    </StackPanel>
-
-                    <StackPanel Spacing="1" VerticalAlignment="Center">
-                        <TextBlock Text="CAROWINDS" FontSize="15" FontWeight="Bold" LetterSpacing="1.5"
-                                   Foreground="{DynamicResource PassdownHeaderForegroundBrush}" />
-                        <TextBlock Text="OPERATIONS" FontSize="10.5" FontWeight="Medium" LetterSpacing="1.5"
-                                   Foreground="{DynamicResource PassdownHeaderMutedForegroundBrush}" />
-                    </StackPanel>
-                </StackPanel>
-            </Grid>
+                <!-- Phase 23B: title-only branding. The small bar-chart "ascending-track" mark that sat before the
+                     title was removed; nothing replaces it. The wordmark starts at the page content's 24 px left
+                     margin (PassdownPagePadding), the same edge as the page titles below. The window/taskbar icon
+                     is the separate Icon="/Assets/logo.ico" above and is unchanged. -->
+                <TextBlock x:Name="BrandWordmark" Classes="brandWordmark" Text="CAROWINDS OPERATIONS"
+                           Margin="24,0" HorizontalAlignment="Left"
+                           AutomationProperties.Name="Carowinds Operations" />
+            </Panel>
         </Border>
 
         <!-- App-shell section strip (spec Phase 9D Part A; extended Phase 10A Part A, Phase 11B Part A,
@@ -93,33 +53,49 @@
              CanExecute (every section except Operational Notes itself, which is always reachable) is
              disabled while Notes.IsEditing is true (spec Part X), so its own IsEnabled need not be
              bound separately here. -->
-        <Border DockPanel.Dock="Top" Background="{DynamicResource PassdownSurfaceBrush}"
-                BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
-            <!-- Phase 15E: WrapPanel, not a fixed-width StackPanel — at the documented 960×640 minimum
-                 window size, five section labels plus padding exceed 960px and a plain StackPanel would
-                 push "History" fully off the visible window with no way to reach it. Wrapping to a
-                 second line keeps every section reachable at any supported width instead of silently
-                 clipping the least-recently-added item. -->
-            <WrapPanel Orientation="Horizontal">
-                <Button Classes="appSectionItem" Classes.active="{Binding IsDashboardSectionSelected}"
-                        Content="Dashboard" Command="{Binding ShowDashboardSectionCommand}"
-                        AutomationProperties.Name="Dashboard section" />
-                <Button Classes="appSectionItem" Classes.active="{Binding IsOperationsCalendarSectionSelected}"
-                        Content="Operations Calendar" Command="{Binding ShowOperationsCalendarSectionCommand}"
-                        AutomationProperties.Name="Operations Calendar section" />
-                <Button Classes="appSectionItem" Classes.active="{Binding IsAssociateSectionSelected}"
-                        Content="Associate Passdown" Command="{Binding ShowAssociateSectionCommand}"
-                        AutomationProperties.Name="Associate Passdown section" />
-                <Button Classes="appSectionItem" Classes.active="{Binding IsOperationalNotesSectionSelected}"
-                        Content="Operational Notes" Command="{Binding ShowOperationalNotesSectionCommand}"
-                        AutomationProperties.Name="Operational Notes section" />
-                <Button Classes="appSectionItem" Classes.active="{Binding IsHistorySectionSelected}"
-                        Content="History" Command="{Binding ShowHistorySectionCommand}"
-                        AutomationProperties.Name="History section" />
-                <Button Classes="appSectionItem" Classes.active="{Binding IsSettingsSectionSelected}"
-                        Content="Settings" Command="{Binding ShowSettingsSectionCommand}"
-                        AutomationProperties.Name="Settings section" />
-            </WrapPanel>
+        <Border x:Name="AppNavigation" DockPanel.Dock="Top" Classes="appNavigation">
+            <!-- Phase 15E: WrapPanel, not a fixed-width StackPanel — if the labels ever do not fit (very
+                 large text scaling), they wrap to a second row instead of pushing a section off the
+                 window. Phase 22C: short visible labels (Dashboard · Calendar · Passdown · Notes ·
+                 History) and Settings as a trailing gear; the accessible names keep the full section
+                 names (each contains its visible label), and the six destinations, commands, order and
+                 selection flags are unchanged. The Grid is the one "Application sections" landmark, so
+                 the gear stays inside it and Tab still runs Dashboard → … → History → Settings. -->
+            <Grid x:Name="AppNavigationLayout" ColumnDefinitions="*,Auto"
+                  AutomationProperties.Name="Application sections" AutomationProperties.LandmarkType="Navigation">
+                <WrapPanel x:Name="AppNavigationItems" Grid.Column="0" Orientation="Horizontal">
+                    <Button Classes="appSectionItem" Classes.active="{Binding IsDashboardSectionSelected}"
+                            Content="Dashboard" Command="{Binding ShowDashboardSectionCommand}"
+                            AutomationProperties.Name="Dashboard section" />
+                    <Button Classes="appSectionItem" Classes.active="{Binding IsOperationsCalendarSectionSelected}"
+                            Content="Calendar" Command="{Binding ShowOperationsCalendarSectionCommand}"
+                            AutomationProperties.Name="Operations Calendar section" />
+                    <Button Classes="appSectionItem" Classes.active="{Binding IsAssociateSectionSelected}"
+                            Content="Passdown" Command="{Binding ShowAssociateSectionCommand}"
+                            AutomationProperties.Name="Associate Passdown section" />
+                    <Button Classes="appSectionItem" Classes.active="{Binding IsOperationalNotesSectionSelected}"
+                            Content="Notes" Command="{Binding ShowOperationalNotesSectionCommand}"
+                            AutomationProperties.Name="Operational Notes section" />
+                    <Button Classes="appSectionItem" Classes.active="{Binding IsHistorySectionSelected}"
+                            Content="History" Command="{Binding ShowHistorySectionCommand}"
+                            AutomationProperties.Name="History section" />
+                </WrapPanel>
+                <Button x:Name="SettingsNavigationItem" Grid.Column="1" VerticalAlignment="Top"
+                        Classes="appSectionItem iconItem" Classes.active="{Binding IsSettingsSectionSelected}"
+                        Command="{Binding ShowSettingsSectionCommand}"
+                        AutomationProperties.Name="Settings" ToolTip.Tip="Settings"
+                        AutomationProperties.HelpText="{Binding SettingsNavigationHelpText}">
+                    <PathIcon Data="{StaticResource PassdownSettingsIconGeometry}" AutomationProperties.AccessibilityView="Raw" />
+                </Button>
+                <!-- Phase 23D: a small accent dot over the gear when an approved update is waiting (and not snoozed) —
+                     the only update notice outside Settings; never a popup. Decorative: the gear's help text says
+                     "Update available" for Narrator, so the dot is hidden from assistive technology and hit testing. -->
+                <Ellipse x:Name="UpdateIndicatorDot" Grid.Column="1" Width="8" Height="8"
+                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0"
+                         Fill="{DynamicResource PassdownAccentBrush}"
+                         IsVisible="{Binding HasUpdateNotification}" IsHitTestVisible="False"
+                         AutomationProperties.AccessibilityView="Raw" />
+            </Grid>
         </Border>
 
         <!-- All five sections are constructed once and stay alive for the app's lifetime (spec Part
@@ -158,6 +134,11 @@
          with no Associate state touched. -->
     <Border IsVisible="{Binding IsPriceHistoryOpen}" Background="{DynamicResource PassdownOverlayScrimBrush}">
         <views:PriceHistoryView DataContext="{Binding PriceHistory}" />
+    </Border>
+
+    <!-- Phase 23D: What's New — opened once after a confirmed in-app update, or from Settings → About this build. -->
+    <Border IsVisible="{Binding IsWhatsNewOpen}" Background="{DynamicResource PassdownOverlayScrimBrush}">
+        <views:WhatsNewView DataContext="{Binding WhatsNew}" />
     </Border>
     </Grid>
 

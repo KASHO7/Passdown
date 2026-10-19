@@ -114,10 +114,13 @@
          hours/status should be visually strongest after the date") — bumped from the pre-15B 10.5px
          now that full-width columns leave room for it, without needing a second font weight/color
          convention. -->
+    <!-- Phase 22F: wraps (after the en dash) to at most two lines instead of truncating — at 960 px or at
+         125–150% scaling "12 PM–9 PM" was cut to "12 PM–9…". Wider cells still show one line. -->
     <Style Selector="TextBlock.dayHoursLine">
       <Setter Property="FontSize" Value="11.5" />
       <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="TextWrapping" Value="NoWrap" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="MaxLines" Value="2" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
     <!-- The shared muted-amber Stale status color ("warning, not error", spec Part J) — never red. -->
@@ -131,10 +134,17 @@
     <!-- Compact Carolina Harbor line (spec Phase 13D Part F) — same cell as main park hours, never a
          separate badge/card; slightly muted relative to dayHoursLine so the main gate's hours stay
          the visually primary line. -->
+    <!-- Phase 22E: one row of the expanded Shows schedule — a hairline above each row, no card. -->
+    <Style Selector="Border.calendarShowRow">
+      <Setter Property="BorderThickness" Value="0,1,0,0" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="Padding" Value="0,6" />
+    </Style>
     <Style Selector="TextBlock.dayWaterparkLine">
       <Setter Property="FontSize" Value="10" />
       <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
-      <Setter Property="TextWrapping" Value="NoWrap" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="MaxLines" Value="2" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
@@ -148,7 +158,7 @@
       <Grid ColumnDefinitions="Auto,*,Auto">
         <StackPanel Grid.Column="0" Spacing="2">
           <TextBlock Text="OPERATIONS CALENDAR" Classes="sectionTitle" Margin="0" />
-          <TextBlock Text="{Binding Presentation.DisplayedMonthText}" Classes="pageTitle"
+          <TextBlock Text="{Binding DisplayedMonthText}" Classes="pageTitle"
                      AutomationProperties.Name="Displayed month" />
           <!-- Phase 20C: background current-year history status — deliberately small and muted, and
                separate from the operational "Official data checked …" line. -->
@@ -171,7 +181,7 @@
     <ScrollViewer Grid.Row="1" Padding="24,20,24,24">
       <StackPanel Spacing="16">
 
-        <ProgressBar IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoading}" />
+        <ProgressBar IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoading}" AutomationProperties.Name="Loading calendar" />
 
         <TextBlock Text="{Binding ErrorMessage}" Classes="fieldError" TextWrapping="Wrap"
                    IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
@@ -240,9 +250,9 @@
                                  state/hours, passdown status, operational-notes summary. -->
                             <StackPanel Spacing="2" IsVisible="{Binding IsInDisplayedMonth}">
                               <TextBlock Text="{Binding OperatingStateLabel}" Classes="dayStateLabel" IsVisible="{Binding HasOperatingStateLabel}" />
-                              <TextBlock Text="{Binding EffectiveHoursLine}" Classes="dayHoursLine" IsVisible="{Binding HasEffectiveHoursLine}" />
+                              <TextBlock Text="{Binding EffectiveHoursLineDisplay}" Classes="dayHoursLine" IsVisible="{Binding HasEffectiveHoursLine}" />
                               <!-- Phase 13D Part F: same cell as main park hours, never a separate badge. -->
-                              <TextBlock Text="{Binding WaterparkLine}" Classes="dayWaterparkLine" IsVisible="{Binding HasWaterparkLine}" />
+                              <TextBlock Text="{Binding WaterparkLineDisplay}" Classes="dayWaterparkLine" IsVisible="{Binding HasWaterparkLine}" />
                               <TextBlock Text="Stale" Classes="dayStaleLabel" IsVisible="{Binding IsHoursStale}" />
                               <TextBlock Text="{Binding PassdownStatusLabel}" Classes="dayIndicator" />
                               <!-- Phase 12E Part H: the "Important" clause reuses the app's one
@@ -265,117 +275,152 @@
 
           <!-- Phase 12E Part A/Q: "heroPanel" (a 3px accent top rule, same recipe as Dashboard's own
                Today's Operation/Passdown Status panels) marks this as the one panel that anchors the
-               screen's secondary hierarchy tier, below the grid itself — reused, not reinvented. -->
+               screen's secondary hierarchy tier, below the grid itself — reused, not reinvented.
+               Phase 22E: each information group is its own tight label/value stack (heading → value 2px)
+               with 14px between groups, so headings bind to their values instead of floating evenly. -->
           <Border Grid.Column="1" Classes="panel heroPanel" AutomationProperties.Name="Selected date summary">
-            <StackPanel Spacing="10">
-              <TextBlock Text="Selected Date" Classes="sectionTitle" />
-              <TextBlock Text="{Binding Presentation.SelectedDateText}" FontSize="16" FontWeight="Bold" TextWrapping="Wrap" />
-              <Border Classes="chip" HorizontalAlignment="Left" IsVisible="{Binding Presentation.SelectedDateIsToday}">
-                <TextBlock Text="Today" />
-              </Border>
+            <StackPanel Spacing="14">
 
-              <!-- Previous/Next Day (Phase 12D Part C): explicit day-stepping alongside the day-cell
-                   grid and month navigation — supervisors scanning adjacent days without switching
-                   months. Plain Buttons, keyboard-reachable like every other action on this screen. -->
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button Content="‹ Prev Day" Classes="secondaryAction" Command="{Binding PreviousDayCommand}"
-                        AutomationProperties.Name="Previous day" />
-                <Button Content="Next Day ›" Classes="secondaryAction" Command="{Binding NextDayCommand}"
-                        AutomationProperties.Name="Next day" />
+              <StackPanel Spacing="6">
+                <TextBlock Text="SELECTED DATE" Classes="subsectionTitle" Margin="0" />
+                <WrapPanel Orientation="Horizontal">
+                  <!-- Phase 22F: bound to the view model's own selected date, so the heading changes the
+                       instant a date is chosen rather than when its details finish loading. -->
+                  <TextBlock x:Name="SelectedDateHeading" Text="{Binding SelectedDateHeadingText}" FontSize="16" FontWeight="Bold" TextWrapping="Wrap"
+                             VerticalAlignment="Center" Margin="0,0,8,0"
+                             AutomationProperties.Name="{Binding SelectedDateHeadingText, StringFormat='Selected date: {0}'}" />
+                  <Border Classes="chip" VerticalAlignment="Center" IsVisible="{Binding SelectedDateIsToday}">
+                    <TextBlock Text="Today" />
+                  </Border>
+                </WrapPanel>
+                <!-- Previous/Next Day (Phase 12D Part C): explicit day-stepping alongside the day-cell
+                     grid and month navigation — supervisors scanning adjacent days without switching
+                     months. Plain Buttons, keyboard-reachable like every other action on this screen.
+                     Phase 22E: a WrapPanel, so at 125–150% scaling the pair wraps instead of overflowing the panel. -->
+                <WrapPanel Orientation="Horizontal">
+                  <Button Content="‹ Prev Day" Classes="secondaryAction" Command="{Binding PreviousDayCommand}" Margin="0,0,8,4"
+                          AutomationProperties.Name="Previous day" />
+                  <Button Content="Next Day ›" Classes="secondaryAction" Command="{Binding NextDayCommand}" Margin="0,0,0,4"
+                          AutomationProperties.Name="Next day" />
+                </WrapPanel>
               </StackPanel>
 
-              <!-- Phase 12E Part J/P: a subtle divider separates day-identity/day-stepping (above,
-                   date-navigation controls) from the informational sections (below) — grouping by a
-                   hairline rule rather than a heavier boxed card. -->
-              <Border Height="1" Background="{DynamicResource PassdownDividerBrush}" Margin="0,2,0,0" />
+              <!-- Phase 12E Part J/P: a hairline separates day-identity/day-stepping from the
+                   informational groups below. -->
+              <Border Height="1" Background="{DynamicResource PassdownDividerBrush}" />
+
+              <!-- Phase 22F: while the selected date's details are not loaded (a date change in flight, or a
+                   failed local read) one compact line stands in for them — the previous date's hours,
+                   pricing, Shows, passdown status and notes are never shown under the new heading. -->
+              <TextBlock x:Name="SelectedDetailPlaceholder" Text="{Binding SelectedDetailPlaceholderText}" Classes="muted" TextWrapping="Wrap"
+                         IsVisible="{Binding !IsSelectedDetailCurrent}"
+                         AutomationProperties.LiveSetting="Polite" />
+
+              <StackPanel x:Name="SelectedDateDetails" Spacing="14" IsVisible="{Binding IsSelectedDetailCurrent}">
 
               <!-- Park Status / Effective Hours (spec Phase 12B Part K) — reuses the same
                    ParkHoursPresentation formatter Associate Overview/Dashboard already use; never a
                    second hours computation. -->
-              <TextBlock Text="Park Status" Classes="sectionTitle detail" />
-              <TextBlock Text="{Binding Presentation.ParkStatusText}" FontWeight="SemiBold"
-                         AutomationProperties.Name="{Binding Presentation.ParkStatusText, StringFormat='Park status: {0}'}" />
-              <StackPanel Spacing="2" IsVisible="{Binding Presentation.EffectiveHoursText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                <TextBlock Text="Effective Hours" Classes="muted" Margin="0" />
-                <TextBlock Text="{Binding Presentation.EffectiveHoursText}" TextWrapping="Wrap" />
-              </StackPanel>
-              <TextBlock Text="{Binding Presentation.ParkHoursVerificationText}" Classes="muted" TextWrapping="Wrap"
-                         IsVisible="{Binding Presentation.ParkHoursVerificationText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-              <TextBlock Text="{Binding Presentation.ParkHoursStaleNoteText}" Classes="fieldWarning" TextWrapping="Wrap"
-                         IsVisible="{Binding Presentation.ParkHoursStaleNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-
-              <!-- Carolina Harbor / waterpark hours (spec Phase 13D Part G) — omitted cleanly (no
-                   blank placeholder) whenever not published for the selected date. -->
-              <StackPanel Spacing="2" IsVisible="{Binding Presentation.HasWaterparkHours}">
-                <TextBlock Text="Carolina Harbor" Classes="muted" Margin="0" />
-                <TextBlock Text="{Binding Presentation.WaterparkHoursText}" TextWrapping="Wrap"
-                           AutomationProperties.Name="{Binding Presentation.WaterparkHoursText, StringFormat='Carolina Harbor hours: {0}'}" />
+              <StackPanel Spacing="2" AutomationProperties.Name="Park status">
+                <TextBlock Text="PARK STATUS" Classes="subsectionTitle" Margin="0,0,0,2" />
+                <TextBlock Text="{Binding Presentation.ParkStatusText}" FontWeight="SemiBold"
+                           AutomationProperties.Name="{Binding Presentation.ParkStatusText, StringFormat='Park status: {0}'}" />
+                <TextBlock Text="{Binding Presentation.EffectiveHoursText}" TextWrapping="Wrap"
+                           IsVisible="{Binding Presentation.EffectiveHoursText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           AutomationProperties.Name="{Binding Presentation.EffectiveHoursText, StringFormat='Effective hours: {0}'}" />
+                <TextBlock Text="{Binding Presentation.ParkHoursVerificationText}" Classes="muted" TextWrapping="Wrap"
+                           IsVisible="{Binding Presentation.ParkHoursVerificationText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <TextBlock Text="{Binding Presentation.ParkHoursStaleNoteText}" Classes="fieldWarning" TextWrapping="Wrap"
+                           IsVisible="{Binding Presentation.ParkHoursStaleNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <!-- Carolina Harbor / waterpark hours (spec Phase 13D Part G) — omitted cleanly (no
+                     blank placeholder) whenever not published for the selected date. -->
+                <TextBlock TextWrapping="Wrap" Margin="0,2,0,0" IsVisible="{Binding Presentation.HasWaterparkHours}"
+                           AutomationProperties.Name="{Binding Presentation.WaterparkHoursText, StringFormat='Carolina Harbor hours: {0}'}"><Run Text="Carolina Harbor · " Foreground="{DynamicResource PassdownTextSecondaryBrush}" /><Run Text="{Binding Presentation.WaterparkHoursText}" /></TextBlock>
               </StackPanel>
 
               <!-- Daily Admission pricing (spec Phase 13D Part AH/AK) — deliberately just one compact
                    line, never every Fast Lane option/pass/promotion/bundle; View Date Pricing (below)
                    is the seam to full detail. -->
-              <TextBlock Text="Daily Ticket" Classes="sectionTitle detail" />
-              <TextBlock Text="{Binding Presentation.DailyAdmissionPriceText}" FontWeight="SemiBold"
-                         AutomationProperties.Name="{Binding Presentation.DailyAdmissionPriceText, StringFormat='Daily ticket price: {0}'}" />
+              <StackPanel Spacing="2">
+                <TextBlock Text="DAILY TICKET" Classes="subsectionTitle" Margin="0,0,0,2" />
+                <TextBlock Text="{Binding Presentation.DailyAdmissionPriceText}" FontWeight="SemiBold"
+                           AutomationProperties.Name="{Binding Presentation.DailyAdmissionPriceText, StringFormat='Daily ticket price: {0}'}" />
+              </StackPanel>
 
-              <!-- Phase 21C: the selected date's official shows — compact name/times/venue lines in the
-                   detail panel only (never inside day cells). Same wording as Dashboard's empty states. -->
-              <TextBlock Text="{Binding ShowsPresentation.Heading}" Classes="sectionTitle detail"
-                         IsVisible="{Binding ShowsPresentation, Converter={x:Static ObjectConverters.IsNotNull}}" />
-              <TextBlock Text="{Binding ShowsPresentation.StatusText}" Classes="muted" TextWrapping="Wrap"
-                         IsVisible="{Binding ShowsPresentation.HasStatusText}" />
-              <ItemsControl ItemsSource="{Binding ShowsPresentation.Rows}" IsVisible="{Binding ShowsPresentation.HasRows}"
-                            AutomationProperties.Name="Shows for the selected date">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="presentation:ShowRowPresentation">
-                    <StackPanel Spacing="0" Margin="0,2">
-                      <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                      <TextBlock Text="{Binding TimesText}" TextWrapping="Wrap" />
-                      <TextBlock Text="{Binding Venue}" Classes="muted" TextWrapping="Wrap" IsVisible="{Binding HasVenue}" />
-                    </StackPanel>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-              <TextBlock Text="{Binding ShowsPresentation.StartedEarlierText}" Classes="muted" TextWrapping="Wrap"
-                         IsVisible="{Binding ShowsPresentation.HasStartedEarlierText}" />
-              <TextBlock Text="{Binding ShowsPresentation.FreshnessText}" Classes="muted" TextWrapping="Wrap"
-                         IsVisible="{Binding ShowsPresentation.HasFreshnessText}" />
+              <!-- Phase 22E: compact Shows — one summary line ("6 scheduled shows · 22 performances") and a
+                   "View schedule ▾" disclosure (the shared Expander.disclosure: ExpandCollapse automation,
+                   Enter/Space, Fluent focus) revealing every official start time and venue. Collapsed by
+                   default; the preference survives date changes for the session. Empty, unpublished, closed,
+                   failed and past states are words, never "0 shows", and get no empty disclosure.
+                   CalendarShows is null while a newly selected date loads, so the previous date's lineup
+                   is never shown under it. Expanding never loads anything. -->
+              <StackPanel Spacing="2" IsVisible="{Binding CalendarShows, Converter={x:Static ObjectConverters.IsNotNull}}"
+                          AutomationProperties.Name="Shows">
+                <TextBlock Text="SHOWS" Classes="subsectionTitle" Margin="0,0,0,2" />
+                <TextBlock Text="{Binding CalendarShows.SummaryText}" FontWeight="SemiBold" TextWrapping="Wrap"
+                           IsVisible="{Binding CalendarShows.HasSummary, FallbackValue=False}"
+                           AutomationProperties.Name="{Binding CalendarShows.SummaryText, StringFormat='Shows: {0}'}" />
+                <TextBlock Text="{Binding CalendarShows.StatusText}" TextWrapping="Wrap"
+                           Classes="muted" Classes.statusError="{Binding CalendarShows.IsProblem, FallbackValue=False}"
+                           IsVisible="{Binding CalendarShows.HasStatusText, FallbackValue=False}" />
+                <Expander x:Name="ShowScheduleExpander" Classes="disclosure" Margin="0,2,0,0"
+                          Header="{Binding ShowScheduleToggleText}"
+                          IsExpanded="{Binding IsShowScheduleExpanded}"
+                          IsVisible="{Binding CalendarShows.HasSchedule, FallbackValue=False}"
+                          AutomationProperties.Name="Show schedule">
+                  <ItemsControl ItemsSource="{Binding CalendarShows.Rows}" AutomationProperties.Name="Shows for the selected date">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="presentation:CalendarShowRowPresentation">
+                        <Border Classes="calendarShowRow" AutomationProperties.Name="{Binding AccessibleText}">
+                          <StackPanel Spacing="1">
+                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock TextWrapping="Wrap"><Run Text="{Binding TimesText}" /><Run Text="{Binding VenueSuffix}" Foreground="{DynamicResource PassdownTextSecondaryBrush}" /></TextBlock>
+                          </StackPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Expander>
+                <TextBlock Text="{Binding CalendarShows.FreshnessText}" Classes="muted" TextWrapping="Wrap" Margin="0,2,0,0"
+                           IsVisible="{Binding CalendarShows.HasFreshnessText, FallbackValue=False}" />
+              </StackPanel>
 
               <!-- Passdown Status (spec Phase 12C Part J/Y): No Draft/Draft In Progress/Finalized,
                    reusing OperationsCalendarPassdownPresentation for both the label and its detail
                    note (last-saved/finalized timestamp, or an empty-state sentence). -->
-              <TextBlock Text="Passdown Status" Classes="sectionTitle detail" />
-              <TextBlock Text="{Binding Presentation.PassdownStatusText}" FontWeight="SemiBold"
-                         AutomationProperties.Name="{Binding Presentation.PassdownStatusText, StringFormat='Passdown status: {0}'}" />
-              <TextBlock Text="{Binding Presentation.PassdownDetailNoteText}" Classes="muted" TextWrapping="Wrap"
-                         IsVisible="{Binding Presentation.PassdownDetailNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <StackPanel Spacing="2">
+                <TextBlock Text="PASSDOWN STATUS" Classes="subsectionTitle" Margin="0,0,0,2" />
+                <TextBlock Text="{Binding Presentation.PassdownStatusText}" FontWeight="SemiBold"
+                           AutomationProperties.Name="{Binding Presentation.PassdownStatusText, StringFormat='Passdown status: {0}'}" />
+                <TextBlock Text="{Binding Presentation.PassdownDetailNoteText}" Classes="muted" TextWrapping="Wrap"
+                           IsVisible="{Binding Presentation.PassdownDetailNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              </StackPanel>
 
               <!-- Active Operational Notes (spec Phase 12C Part J/T): the persistent Operational
                    Notes concept, deliberately labeled to avoid confusion with the daily Associate
-                   draft's own Notes entry — counts only, never note titles/bodies (Part S). -->
-              <TextBlock Text="Active Operational Notes" Classes="sectionTitle detail" />
-              <TextBlock Text="{Binding Presentation.OperationalNotesCountText}" FontWeight="SemiBold"
-                         AutomationProperties.Name="{Binding Presentation.OperationalNotesCountText, StringFormat='Active operational notes: {0}'}" />
-              <!-- Phase 12E Part H/Q: reuses the app's one "Important" convention verbatim
-                   (TextBlock.priorityText.important — bold + PassdownChipAccentForegroundBrush, never
-                   red/alarm) instead of Calendar's previous plain "muted" treatment. -->
-              <TextBlock Text="{Binding Presentation.OperationalNotesImportantText}" Classes="priorityText important" TextWrapping="Wrap"
-                         IsVisible="{Binding Presentation.OperationalNotesImportantText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                   draft's own Notes entry — counts only, never note titles/bodies (Part S).
+                   Phase 12E Part H/Q: "Important" reuses TextBlock.priorityText.important (never red). -->
+              <StackPanel Spacing="2">
+                <TextBlock Text="ACTIVE OPERATIONAL NOTES" Classes="subsectionTitle" Margin="0,0,0,2" />
+                <TextBlock Text="{Binding Presentation.OperationalNotesCountText}" FontWeight="SemiBold"
+                           AutomationProperties.Name="{Binding Presentation.OperationalNotesCountText, StringFormat='Active operational notes: {0}'}" />
+                <TextBlock Text="{Binding Presentation.OperationalNotesImportantText}" Classes="priorityText important" TextWrapping="Wrap"
+                           IsVisible="{Binding Presentation.OperationalNotesImportantText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              </StackPanel>
 
-              <!-- Phase 12E Part J/P: a second divider separates the informational sections above
-                   from the workflow (routing) actions below — the two action *groups* this screen
-                   exposes (date-navigation vs. routing) never blur into one undifferentiated row. -->
-              <Border Height="1" Background="{DynamicResource PassdownDividerBrush}" Margin="0,2,0,0" />
+              </StackPanel>
+
+              <!-- Phase 12E Part J/P: a second divider separates the informational groups above from
+                   the routing actions below. -->
+              <Border Height="1" Background="{DynamicResource PassdownDividerBrush}" />
 
               <StackPanel Spacing="8">
                 <Button Content="Open Passdown" Classes="primaryAction" Command="{Binding OpenAssociateCommand}"
                         HorizontalAlignment="Stretch"
                         AutomationProperties.Name="Open Passdown"
                         AutomationProperties.HelpText="Opens Associate Passdown set to the selected date." />
-                <!-- Phase 12E Part S: disabled (not hidden) until Finalized — HelpText is now dynamic
-                     so a disabled control's explanation stays accurate ("no finalized passdown for
-                     this date yet.") rather than only a generic, always-the-same sentence. -->
+                <!-- Phase 12E Part S: disabled (not hidden) until Finalized — HelpText is dynamic so a
+                     disabled control's explanation stays accurate. -->
                 <Button Content="Open History" Classes="secondaryAction" Command="{Binding OpenHistoryCommand}"
                         HorizontalAlignment="Stretch"
                         AutomationProperties.Name="Open History"

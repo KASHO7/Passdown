@@ -3183,3 +3183,27 @@ data.
 - A win-x64 ReadyToRun assembly cannot be loaded on a macOS host, so build-host checks of the
   published math renderer read its manifest resources with `System.Reflection.Metadata`; rendering
   itself is checked with the same-commit portable build and, finally, on Windows.
+
+
+## Phase 23 — RC.7 packaging
+
+- `0.1.0-rc.7` (file version `0.1.0.7`) packages Phases 22A–22F from version commit `6dbdce8` with the
+  real `Build-PortableRelease.ps1` (PowerShell 7.6.7 local tool on the macOS build host). Hashes, sizes,
+  audit and gate results: `docs/release-manifest.md` "0.1.0-rc.7"; release notes
+  `docs/releases/rc7-release-notes.md`; Windows execution record `docs/releases/rc7-windows-validation.md`.
+- **Experimental EXE name**: from RC.7 the single-file artifact is published as
+  `Carowinds-Operations-<version>-win-x64-singlefile.exe` (RC.6 and earlier: `…-win-x64.exe`), produced by
+  the Phase 15F command above into a freshly deleted `artifacts/publish/win-x64-singlefile` and copied
+  into `artifacts/releases/`. It stays experimental and secondary.
+- **Frozen candidates**: once a candidate's hashes are recorded, its files are never rebuilt, repacked
+  or replaced under the same name (RC.7's were also made read-only on the build host). A defect that
+  needs a new binary ships as the next RC number.
+- **PDF byte comparisons in tests**: QuestPDF stamps `/CreationDate` and `/ModDate` from the wall clock
+  (one-second resolution), so two renders of one model are only byte-identical within the same second.
+  Tests that compare two renders use `PdfInspector.WithoutGenerationTimestamps`. Stored/frozen PDFs are
+  compared byte-for-byte as before.
+- **Research boundary**: Phase 22G (FIMS capability audit and historical ride data check, under
+  `docs/research/`) and the standalone `tools/research/fims-ride-monitor` Python tool are research only.
+  They are not in `CarowindsPassdown.slnx`, not published, not in the ZIP or EXE, and not counted in the
+  application test total (their 64 tests run separately). RC.7 ships none of their findings: no Special
+  Events, maze hours, Ride Schedule History, intraday/live ride status, downtime or new FIMS sources.

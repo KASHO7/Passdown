@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Phase 23D: the external updater (docs/phase23d-github-updater.md). A windowless executable that ships in
+    every portable release next to Carowinds.Passdown.Desktop.exe and is always run from the *staged* copy of
+    the new version, so it never locks a file it replaces. All logic lives in
+    Carowinds.Passdown.Infrastructure/Updates/Installation (tested there); this project is only the entry point.
+    Published by packaging/windows/Publish-Windows.ps1 into the same folder as the Desktop app; only its own
+    Carowinds.Passdown.Updater.* files are taken from its publish output, so it never overwrites a shared DLL.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\Carowinds.Passdown.Desktop\Assets\logo.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!-- Same reasoning as the Desktop project (Phase 18C): no build-machine paths in shipped binaries. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Carowinds.Passdown.Infrastructure\Carowinds.Passdown.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

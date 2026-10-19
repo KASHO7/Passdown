@@ -1,6 +1,7 @@
 using System.Globalization;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.OperationalNotes;
+using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Catalog;
 using Carowinds.Passdown.Domain.Ert;
@@ -264,11 +265,8 @@ public static class AssociatePassdownDocumentModelBuilder
         Qualifier: null,
         Notes: BundleNote(product));
 
-    private static string? FormatPrice(PriceKind kind, decimal? amount)
-    {
-        var formatted = FormatMoney(amount);
-        return formatted is null ? null : kind == PriceKind.StartingFrom ? $"From {formatted}" : formatted;
-    }
+    /// <summary>Phase 22E: the shared <see cref="AdvertisedPriceText"/> rule (also used by Associate → Products); output unchanged.</summary>
+    private static string? FormatPrice(PriceKind kind, decimal? amount) => AdvertisedPriceText.FormatOrNull(amount, kind);
 
     /// <summary>
     /// Phase 13C Part I/W: a source-described bundle (e.g. "Two Friends Just $50") carries its
@@ -302,6 +300,10 @@ public static class AssociatePassdownDocumentModelBuilder
     private static string FormatTime(TimeOnly? time) => time?.ToString("h:mm tt", PresentationCulture.UnitedStates) ?? "-";
 
     /// <summary>"Sep 15 • 1:52 PM" (Phase 17D §19 — replaces the old "Generated Sep 15 at 1:52 PM"; no app name, no "Generated" verb, kept small and quiet by every renderer's footer).</summary>
-    private static string FormatTimestamp(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d", PresentationCulture.UnitedStates)
-        + " • " + value.ToLocalTime().ToString("h:mm tt", PresentationCulture.UnitedStates);
+    /// <remarks>Phase 22F: on the Eastern wall clock (was the host's local zone) so a PC set to another zone prints the park's time; layout and wording unchanged.</remarks>
+    private static string FormatTimestamp(DateTimeOffset value)
+    {
+        var eastern = EasternTimeZone.ConvertFromUtc(value);
+        return eastern.ToString("MMM d", PresentationCulture.UnitedStates) + " • " + eastern.ToString("h:mm tt", PresentationCulture.UnitedStates);
+    }
 }

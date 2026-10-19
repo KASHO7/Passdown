@@ -1,14 +1,17 @@
-Carowinds Operations — Tester Guide
-====================================
+Carowinds Operations 0.1.0-rc.8 — Tester Guide
+================================================
 
-Thanks for testing this app. You do not need any technical background to do this —
-just follow the steps below in order. If anything looks wrong or doesn't match what
-this guide describes, see "If something goes wrong" at the end.
+Thanks for testing this app. You do not need any technical background. Follow the
+steps below in order. If anything looks wrong or does not match this guide, see
+"If something goes wrong" at the end.
 
-*** BACK UP YOUR LOCAL DATA BEFORE FIRST LAUNCH. ***
-----------------------------------------------------
-Your saved passdowns, History, settings and price history live in this folder,
-NOT in the folder you extract the ZIP into:
+Use made-up sample values only. Do not type anything private or real.
+
+
+*** 1. BACK UP YOUR LOCAL DATA BEFORE FIRST LAUNCH ***
+-------------------------------------------------------
+Your saved passdowns, History, notes, settings and price history live in this
+folder, NOT in the folder you extract the ZIP into:
 
     %LOCALAPPDATA%\Carowinds Passdown
 
@@ -20,296 +23,254 @@ Before you open this version for the first time:
   4. Right-click the "Carowinds Passdown" folder, choose Copy, and paste it
      somewhere OUTSIDE that folder (for example your Documents folder).
   5. Rename the copy to include today's date, e.g.
-     "Carowinds Passdown backup 2026-10-17", and write down where you put it.
+     "Carowinds Passdown backup 2026-10-18", and write down where you put it.
   6. Never copy a backup back while the app is open.
 
-*** UPGRADE ALL DEVICES SHARING A SYNC FOLDER BEFORE USING SHOWS. ***
---------------------------------------------------------------------
+Going back to an older version: copying an older app over this one is NOT a safe
+way to undo the upgrade. If you ever need to go back, close the app, put your
+dated backup folder back in place, and then run the older version.
+
+
+*** 2. UPGRADE ALL COMPUTERS SHARING A SYNC FOLDER TOGETHER ***
+----------------------------------------------------------------
 If more than one computer uses Personal Sync with the same shared folder:
-  - Install this version on EVERY one of those computers before you tick any
-    show in the new "Shows" section.
-  - An older version does not understand show selections. If an older version
-    edits and saves a passdown that has shows selected, the show selections
-    are lost.
+  - Install this version on EVERY one of those computers before you use the
+    "Shows" section.
+  - Older versions may not understand the latest Show draft selections and may
+    discard them on re-save. That loss then syncs to the other computers.
+  - The app does NOT stop an older version from saving. Upgrading everything
+    together is the only protection.
   - Back up the shared sync folder (copy it somewhere else) before testing on
     two computers for the first time.
+  - Use a NEW, empty test folder for sync testing (step 13), not your real
+    shared work folder, unless whoever asked you to test says otherwise.
 
-Which version am I running?
----------------------------
-Open Settings and look at "About this build". It should say 0.1.0-rc.6 and show
-the folder the app is running from. If it shows an older number, or a different
-folder, you have opened an older copy (for example through Windows Search) —
-close it and launch Carowinds.Passdown.Desktop.exe from the folder you just
-extracted.
 
-About the single .exe file
---------------------------
-You may also see a single file named Carowinds-Operations-0.1.0-rc.6-win-x64.exe.
-It is EXPERIMENTAL. Please test with the ZIP. The single .exe does not carry the
-license notices or the automatic-refresh helpers, so it must not be handed out on
-its own.
-
-1. Extract the ZIP
+3. Extract the ZIP
 -------------------
-Right-click the ZIP file and choose "Extract All...". Pick a normal folder you can
-write to (Desktop, Documents, a USB drive). Do NOT run the app from inside the ZIP
-without extracting it first — Windows will complain or the app may not behave
-correctly.
+Right-click Carowinds-Operations-0.1.0-rc.8-win-x64.zip and choose
+"Extract All...". Pick a NEW, empty folder you can write to (Desktop, Documents).
+Do NOT run the app from inside the ZIP without extracting it first.
 
-2. Launch the app
-------------------
-Open the extracted folder and double-click Carowinds.Passdown.Desktop.exe. The app
-should open in a few seconds. Nothing else needs to be installed first.
+Do not extract on top of an older version's folder.
 
-3. The Dashboard (default screen)
--------------------------------------
-The app opens on the "Dashboard" — a one-screen summary of today's operation. At the
-top of the window you'll see five sections: "Dashboard", "Operations Calendar",
-"Associate Passdown", "Operational Notes", and "History". Dashboard is selected by
-default. On it you should see:
 
-- Park Status — today's hours (or Closed/Not Published/Unavailable, whichever
-  applies).
-- Passdown Status — whether today's passdown has a draft, and an "Open Passdown"
-  button.
-- Today at a Glance — attendance, pre-solds, Early Ride Time, and the Daily Feature.
-- Passdown Notes preview and an "Open Notes" button.
-- Active Operational Notes — a short list of today's relevant persistent operational
-  notes (see step 5), separate from the Passdown Notes above.
-- Latest Finalized — the most recent finalized (past) passdown, with an
-  "Open History" button.
-- Data Status — a summary of how current the underlying park data is, plus a
-  "Check Online" button.
-
-There is no Refresh button: the Dashboard updates itself whenever something is saved
-on your computer (for example attendance or a gate time typed on Associate Passdown).
-A small line near the top says "Official data checked <time>" — the app checks
-Carowinds' official sources by itself when it starts and every four hours while it
-is open. "Check Online" (in the Data Status card) checks right away — see step 11.
-
-4. Open Passdown / Open Notes / Open History
-------------------------------------------------
-From the Dashboard, click "Open Passdown" — it should take you to the Associate
-Passdown screen's Overview for TODAY, even if you had another date selected there
-before. Go back to Dashboard, click "Open Notes" — it should take you to Associate
-Passdown's Notes area instead. Go back to Dashboard again and click "Open History"
-— it should take you to the History section. None of these should lose anything
-you've typed on the Associate side.
-
-The Dashboard also has a "Today's Shows" card listing today's official show times
-(when Carowinds publishes them). Earlier performances are shown separately from
-upcoming ones.
-
-5. Operations Calendar
-------------------------
-Click the "Operations Calendar" section at the top of the window. This is a
-month-grid view for planning and jumping to a specific date — it doesn't let you
-edit anything itself.
-
-- You should see a full month grid with today's date visibly marked, plus a
-  "Selected Date" panel on the right showing park hours, passdown status (No
-  Draft/Draft/Finalized), and any relevant Operational Notes for the selected date.
-- Click "‹ Prev" / "Next ›" to move between months, and "Today" to jump back to the
-  current month. Click a date that belongs to the previous or next month (shown
-  dimmed at the edges of the grid) — the calendar should move to that date's own
-  month and select it.
-- Use "‹ Prev Day" / "Next Day ›" in the Selected Date panel to step one day at a
-  time, including across a month boundary (e.g. from the last day of a month to the
-  1st of the next).
-- Click a date with a Closed park day, a Custom Hours day, or a Private Buyout day,
-  if your sample data has one — the Selected Date panel and the day cell itself
-  should both reflect it (never just "Open").
-- Click "Open Passdown" — it should take you to Associate Passdown's Overview for
-  that exact date. Go back to Operations Calendar (your selected date and displayed
-  month should be exactly as you left them).
-- Click "Open History" — it is only clickable once the selected date has a
-  finalized passdown; try it on a date you know is finalized and confirm History
-  opens with that same date already selected. On a date with no finalized passdown,
-  the button should be visibly disabled (not hidden).
-- Click "Open Operational Notes" — it should take you to the Operational Notes
-  Manager.
-
-6. Operational Notes Manager
---------------------------------
-Click the "Operational Notes" section at the top of the window. This is a separate,
-supervisor-facing list of notes that can span multiple days (unlike a daily
-passdown's own notes).
-
-- Click "+ New Note", fill in a made-up Title, pick a Category and Priority, leave
-  "Until resolved" checked, and save. It should appear in the list.
-- Select it and click "Edit" — change the title slightly and save; the change
-  should show immediately.
-- Use the filter tabs (All / Active / Upcoming / Expired / Resolved) and the
-  category/priority filters — the list should update instantly with no internet
-  needed.
-- Click "Resolve" on your test note, confirm the prompt — it should disappear from
-  the Active tab but still be visible under "Resolved" (there is no delete button;
-  resolved notes are kept, not removed).
-
-7. Pick a date
----------------
-On the Associate Passdown screen, use the date bar near the top of the window:
-"‹" goes back one day, "›" goes forward one day, "Today" jumps back to today, and
-clicking the date itself opens a calendar (you can change month and year there;
-Escape or clicking outside closes it). Next to the date you should see "Today",
-"Yesterday" or "Tomorrow" when that applies. Changing the date should feel instant
-— it does not need the internet.
-
-The buttons next to it are: "Check Online", "Create PDF" (the current PDF style is
-shown on it), "Copy ▾" (Teams text) and "More ▾" (PDF style Classic / Compact /
-Modern, and Season Price History).
-
-8. Enter some sample information
-----------------------------------
-Type a few things into the fields on the page — for example, a projected attendance
-number, an operational note, or a Daily Fun note. Use made-up/sample values only;
-do not enter anything private or real.
-
-9. Let it save
----------------
-The app saves automatically a moment after you stop typing. Watch the small status
-chip near the top-right of the window — it should change to say your changes were
-saved.
-
-10. Close and reopen
----------------------
-Close the app completely, then double-click Carowinds.Passdown.Desktop.exe again to
-reopen it. Go back to the same date and confirm your sample information from step 8
-is still there.
-
-11. Try "Check Online"
-------------------------
-Click the "Check Online" button (on Associate Passdown, or on the Dashboard's Data
-Status card). This checks the official Carowinds sources for the selected date. It
-may take a few seconds — while it runs you'll see a small progress indicator, and
-the app stays usable. When it finishes, a short status message appears. This step
-needs an internet connection — if it fails and you have no internet, that's
-expected, not a bug.
-
-12. Include a persistent operational note in a passdown
-------------------------------------------------------------
-This checks that Operational Notes are never added to a passdown automatically —
-only when a supervisor explicitly chooses to include one.
-
-- In Operational Notes (step 6), create a test note with an Effective From date
-  that covers the date you picked in step 7.
-- Go to Associate Passdown's Notes area for that same date. Your test note should
-  appear under "available" suggestions — NOT already included.
-- Click "Add" on it. It should now appear under the included/selected notes for
-  this passdown.
-- Go back to Operational Notes and edit that note's title. Return to Associate
-  Passdown's Notes area — the included copy should still show the ORIGINAL title,
-  plus a note that the source has changed, and a "Replace with Current Version"
-  button.
-- Click "Replace with Current Version" — the included copy should now show the
-  updated title.
-- Click "Remove from this passdown" — it should disappear from the included list
-  and reappear as an available suggestion. Confirm in Operational Notes that the
-  original note itself still exists and is unaffected.
-
-12a. Shows (new in this version)
----------------------------------
-(Read the sync warning at the top of this guide first if you use Personal Sync.)
-On Associate Passdown, turn on the "Shows" section. It is off by default. Each
-official show performance for the selected date has its own checkbox; "Select all"
-and "Clear" do what they say. Nothing is ticked automatically. Tick two or three,
-switch to another date and back — your ticks should still be there, and also after
-closing and reopening the app. Only ticked shows appear in the PDF. Shows never
-appear in the Teams "Copy" text.
-
-12b. Math in the Daily Feature (new in this version)
-------------------------------------------------------
-Click in the Daily Feature box, then click the "∑ Math" button. Try inserting a few
-symbols (∫ ∂ ∇ ∑ √ π ∞ ≤ ≥) and an equation template. You can also copy and paste
-these examples into the Daily Feature box, one at a time:
-
-    The derivative of \(x^2\) is \(2x\).
-    \(\frac{1}{2}\)
-    \(\frac{d}{dx}x^2=2x\)
-    \[\int_0^1 x^2\,dx=\frac13\]
-    \(\sum_{i=1}^{n}i\)
-    \(\frac{\partial f}{\partial x}\)
-
-The preview under the box should show proper formulas (fractions stacked, the
-integral with its limits) and should NOT show the \( \) or \[ \] markers. If you
-type something broken (for example \(\frac{1}{ ), the app should not crash — your
-text stays as you typed it and the preview shows it plainly.
-
-Note: in the PDF, a Daily Feature that contains a formula is drawn as a picture,
-so you cannot select or search that paragraph's text in a PDF viewer. That is
-expected. A Daily Feature with no formula stays searchable.
-
-13. Create a PDF
+4. Start the app
 -----------------
-Click "Create PDF". A save dialog will appear — choose anywhere you like (e.g. your
-Desktop) and save it. Open the saved PDF afterward and confirm it looks readable,
-matches what you entered, and (if you added one in step 12) shows the included
-operational note's text. Try all three styles (More ▾ → PDF Style) with the
-shows from step 12a ticked and a formula from step 12b in the Daily Feature.
+Open the extracted folder and double-click  Carowinds.Passdown.Desktop.exe.
+The app should open in a few seconds. Nothing else needs to be installed first
+(no .NET download, no admin rights).
+
+If Windows shows a blue "Windows protected your PC" box, click "More info" and
+then "Run anyway" only if you got the ZIP from the person who asked you to test.
+
+
+5. Check the version
+---------------------
+Click the gear icon (Settings) at the right end of the navigation strip, scroll to
+"About this build". It should say:
+
+    Version 0.1.0-rc.8 (followed by a short code in brackets)
+    Running from  <the folder you just extracted>
+
+If it shows an older number, or a different folder, you opened an older copy (for
+example through Windows Search or the Start menu). Close it and start
+Carowinds.Passdown.Desktop.exe from the folder you just extracted.
+
+About the single .exe file: you may also see
+Carowinds-Operations-0.1.0-rc.8-win-x64-singlefile.exe. It is EXPERIMENTAL.
+Please test with the ZIP. The single .exe does not carry the license notices or
+the automatic-refresh helpers, so it must not be handed out on its own. It also
+cannot update itself: its Settings › Application Updates says "Manual update
+required".
+
+This is the first version that can update itself later. Because the version
+before it (rc.7) has no updater, rc.8 itself must be installed by hand from the
+ZIP, as described above. Starting the new version for the first time does NOT
+open "What's New" — that only happens after an update installed from inside the
+app.
+
+
+6. Look around the main screens
+--------------------------------
+At the top you should see the Fury 325 banner with just the words "CAROWINDS
+OPERATIONS" (no small chart icon in front of them), and
+the navigation:  Dashboard · Calendar · Passdown · Notes · History  plus the
+Settings gear. The current screen is underlined.
+
+Dashboard (opens first)
+  - Operations Overview: today's park hours, the official daily park ticket price
+    ("From $…" means a starting price; a plain price is exact), attendance and
+    pre-solds with commas (for example 38,500).
+  - Data Status: click to expand and collapse the source details. Problems stay
+    visible even when it is collapsed.
+  - Today's Shows: upcoming official show times. Each show lists its name, then
+    its times, then its venue — text should never overlap. A show with many
+    times lists a few plus a "+N more" button; clicking it shows every time,
+    and clicking again collapses the list.
+  - "Open Passdown" goes to today's passdown; "Open Notes" goes to its notes.
+
+Calendar
+  - Click "Next ›" a few times. Months up to about a year ahead should show
+    official hours or "Not Published". Nothing should be invented.
+  - In December, WinterFest weekends and New Year's Eve (closing after midnight)
+    should show real hours.
+  - Click several dates quickly, one after another. The details on the right must
+    always belong to the LAST date you clicked, never the one before.
+  - Shows are collapsed under a short summary; "View schedule" expands them.
+  - "Open Passdown" opens the passdown for the selected date.
+
+Passdown (Associate Passdown)
+  - Date bar: "‹" and "›" move one day, clicking the date opens a small calendar,
+    "Today" jumps back. Changing the date should feel instant and does not need
+    the internet.
+  - Buttons: "Check Online", "Create PDF", "Copy ▾" (Teams text), "More ▾"
+    (PDF style and Season Price History).
+  - Sections: Overview, Products, Notes.
+  - Type an attendance number such as 38500 and click elsewhere: it should change
+    to 38,500. The cursor should not jump while you type.
+  - The small "Draft" chip at the top right says when your changes were saved
+    ("Saved on this computer at … ET").
+
+Notes (Operational Notes)
+  - Create a test note, edit it, try the filters, and resolve it. Times show
+    "ET" (Eastern time).
+
+History
+  - Finalized passdowns are read-only. "Open Final PDF" opens the original stored
+    PDF. Records from before this upgrade must still be there and unchanged.
+
+
+7. Close and reopen
+--------------------
+Close the app completely, start it again, go back to the same date, and confirm
+everything you typed is still there.
+
+
+8. Try "Check Online"
+----------------------
+Click "Check Online" on the Passdown screen. It checks Carowinds' official
+sources for the selected date and may take a few seconds. Without internet it
+should fail politely and keep the last good information. That is expected.
+
+
+9. Create PDFs
+---------------
+On the Passdown screen, fill in sample attendance, pre-solds, a note, tick two or
+three Shows, and add a Daily Feature (the "∑ Math" button can insert a formula,
+for example \(\frac{d}{dx}x^2=2x\)).
+
+Then for EACH style (More ▾ → PDF Style: Classic, Compact, Modern):
+  1. Click "Create PDF" and save it to your Desktop.
+  2. Open it and check: prices (including "From" prices), attendance with commas,
+     the formula drawn properly, Shows at the END (after Operational Notes), the
+     date and time at the bottom of the page, and nothing cut off.
+
+Then try "Copy ▾" and each of its three options, paste into Notepad, and confirm
+the text has no Shows and no Daily Feature.
+
+
+10. Check screen scaling
+-------------------------
+Open Windows Settings › System › Display › "Scale". For each of 100%, 125% and
+150%:
+  - Look at Dashboard, Calendar, Passdown, Notes, History and Settings.
+  - Make the window small (drag a corner as small as it goes) and then
+    maximized.
+  - Nothing should be cut off or overlap, and you should never need to scroll
+    sideways.
+Note anything that looks wrong, with the scale value and a screenshot
+(Windows+Shift+S).
+
+Also try Light and Dark: Windows Settings › Personalization › Colors ›
+"Choose your mode". With the app's Appearance set to "Use Windows setting" (the
+default) the app should follow while it is open. Then in the app's Settings ›
+Appearance choose "Light" while Windows is Dark, and "Dark" while Windows is
+Light: the app should switch at once and stay on your choice. Close and reopen
+the app: your choice should still apply, with no flash of the other theme.
+
+
+11. Keyboard and Narrator (optional, but very helpful)
+-------------------------------------------------------
+  - Press Tab repeatedly on each screen: a visible focus outline should move in a
+    sensible order. Enter or Space should press the focused button.
+  - Turn on Narrator (Ctrl+Windows+Enter). Move through the navigation, the
+    Settings gear, the Calendar day cells and the Shows "View schedule" button.
+    Write down anything Narrator reads as just "button" or does not read at all.
+    Ctrl+Windows+Enter turns Narrator off again.
+
+
+12. Settings
+-------------
+  - Appearance: Use Windows setting, Light or Dark (see step 10). The choice is
+    saved on this computer only; it is not shared through Personal Sync.
+  - Data Refresh only explains how the app behaves.
+  - Application Updates: "Check for Updates" looks for newer approved versions.
+    It is fine if it says you are up to date or that it could not check. Do
+    NOT install anything from here unless whoever asked you to test gave you
+    a special test update.
+  - Diagnostics: "Export Diagnostics…" saves one ZIP with version and health
+    information and recent logs. It does NOT contain your drafts, notes, PDFs or
+    database.
+  - About this build: version and folder (see step 5), and a "What's New"
+    button that shows this version's notes, even without internet.
+
+
+13. Personal Sync (only on test folders)
+-----------------------------------------
+Only do this with a NEW, empty test folder (for example a new folder in OneDrive
+called "Carowinds sync test"). Do not point it at your real shared work folder
+unless whoever asked you to test has said so and you backed that folder up.
+
+  1. Settings › Personal Sync › "Enable Personal Sync", then "Choose Folder…" and
+     pick the test folder (this opens the normal Windows folder picker).
+  2. Click "Sync Now". "Last synced … ET" should update.
+  3. If you have a second test PC with this same version: point it at the same
+     test folder, make a different change to the same date on each PC, then
+     "Sync Now" on both. The app should show a conflict for you to review
+     ("Review Conflicts"), not silently overwrite one PC's change.
+  4. Disconnect from the internet and confirm the app still opens and works from
+     local data.
+
 
 14. Turn on automatic daily refresh (optional)
 -----------------------------------------------
-In the extracted folder, double-click "Enable Automatic Refresh.cmd". A small window
-will briefly appear, tell you whether it worked, and wait for a key press before
-closing. No sign-in or admin prompt should appear.
+Only if whoever asked you to test wants this checked. In the extracted folder,
+double-click "Enable Automatic Refresh.cmd". A small window reports whether it
+worked and waits for a key press. You can check Windows "Task Scheduler" for a
+task named "Carowinds Passdown Daily Refresh". To turn it off again, double-click
+"Disable Automatic Refresh.cmd".
 
-15. Double-check it's on (optional)
---------------------------------------
-If you're comfortable with it, open Windows' "Task Scheduler" app and look for a
-task named "Carowinds Passdown Daily Refresh". Seeing it there confirms step 14
-worked. This step is optional — most testers can skip it.
+If you move the app folder later, run "Enable Automatic Refresh.cmd" again from
+the new location.
 
-16. Turn automatic refresh back off
---------------------------------------
-Double-click "Disable Automatic Refresh.cmd" in the same folder. Again, a small
-window reports what happened.
 
-17. If you move the app folder
----------------------------------
-You can move or copy the extracted folder anywhere else at any time — your saved
-information is not stored inside that folder, so it isn't lost. If you had turned on
-automatic refresh (step 14), double-click "Enable Automatic Refresh.cmd" again from
-the NEW location afterward so the schedule points at the right place.
+15. Save-failure check (testers asked to do this only)
+-------------------------------------------------------
+Only use a test copy of your data for this (back up first, step 1).
+This version shows "Save failed — changes not saved" in the Draft chip when the
+app genuinely cannot save (hover over it to see why), and a "Retry Save" button.
+If you are asked to test this by making the data folder read-only:
+  - Make a change and check the chip text and the Retry Save button.
+  - Try changing the date, Check Online, and adding a note. Each should be
+    refused with an explanation. The app must NOT freeze, and Task Manager
+    should not show it using lots of CPU.
+  - Make the folder writable again and click Retry Save. The chip should say
+    the changes were saved, and your edits should still be there.
+  - Closing the app while the save is failing shows a warning the first time.
+    Closing a second time closes the app and your unsaved changes are lost.
+  - A save can occasionally take up to about five seconds if the data file is
+    busy; that is expected.
 
-18. Export diagnostics
--------------------------
-If you want to help troubleshoot something, open Settings and click "Export
-Diagnostics" (under Diagnostics). Choose where to save the file — it creates one ZIP file containing
-version info, app health information, and recent activity logs. It does NOT include
-anything you typed into the app (no drafts, no notes, no operational notes content)
-and does not include your saved database.
 
-19. Passdown History
------------------------
-Near the top of the window, there's a "History" section (also reachable via
-"Open History" from the Dashboard or Operations Calendar). This is where finalized
-(past) passdowns live — a read-only record of exactly what associates saw for a
-given day.
-
-- A passdown finalizes automatically the morning after it happens (after 6:00 AM
-  the following day) — you don't need to do anything to make this happen, and there
-  is no button to finalize one manually.
-- Once a passdown is finalized, it never changes again. History does not have edit,
-  delete, or "undo" controls of any kind — that's intentional.
-- Click any date in the History list to see its details (park hours, attendance,
-  products, notes, etc.) exactly as they were finalized.
-- "Open Final PDF" opens the exact PDF an associate would have received that day.
-  "Save PDF Copy" lets you save that same exact PDF somewhere else. Both use the
-  original stored PDF — the app never regenerates or recreates it.
-- Some very old records may not have a stored PDF available; if so, the PDF buttons
-  won't appear for that record, and that's expected, not a bug.
-- Switching between "Dashboard", "Operations Calendar", "Associate Passdown",
-  "Operational Notes", and "History" never loses your in-progress work on the
-  Associate side, and never changes what Operations Calendar has selected.
-
-20. If something goes wrong
-------------------------------
-- Note exactly what you were doing and what you expected to happen instead.
-- Click "Export Diagnostics" (step 18) and save the resulting ZIP file.
-- Send both the diagnostics ZIP and your written notes to whoever asked you to test
-  this app.
-- Do not delete anything under %LOCALAPPDATA%\Carowinds Passdown while
-  troubleshooting — that folder holds your saved data and is separate from the app
-  folder you extracted.
+16. If something goes wrong
+----------------------------
+  - Write down exactly what you were doing, what you expected, and what happened
+    instead. Include the Windows display scale and Light/Dark mode.
+  - Take a screenshot (Windows+Shift+S).
+  - Settings › Diagnostics › "Export Diagnostics…", save the ZIP.
+  - Send the notes, screenshots and diagnostics ZIP to whoever asked you to test.
+  - Do not delete anything under %LOCALAPPDATA%\Carowinds Passdown while
+    troubleshooting — that folder holds your saved data.
 
 That's the full test. Thank you!

@@ -58,6 +58,10 @@ public sealed class CompactAssociatePassdownTemplateRenderer : IAssociatePassdow
 
             MasterProductLayout.Compose(column, model.ProductCategories, PairColumnGap, m.SectionSpacing, headingWithFirstRowsHeight: 48f, (el, category) => ComposeCategory(el, category, m));
             ComposeNotes(column, model.OperationalNotes, m);
+
+            // Phase 22C: Shows is the final substantive section (after pricing and Notes) so it never
+            // interrupts the admissions/pricing flow; absent entirely when nothing is selected.
+            ComposeShows(column, model.Shows, m);
         });
 
         page.Footer().Element(footer => ComposeFooter(footer, model));
@@ -128,27 +132,39 @@ public sealed class CompactAssociatePassdownTemplateRenderer : IAssociatePassdow
                 Label(text, "EARLY RIDE");
                 text.Span(PdfFormatting.ErtLineText(model.EarlyRideTime.Kind, model.EarlyRideTime.Rides, model.OperatingDate)).FontSize(BodySize).Bold();
             });
-
-            // Phase 21C: selected shows as one more strip line — "Show A (1:00, 3:00 PM)  •  Show B (5:00 PM)" —
-            // so Shows costs a line or two, never a section. Absent entirely when nothing is selected.
-            if (model.Shows.Count > 0)
-            {
-                strip.Item().Text(text =>
-                {
-                    Label(text, "SHOWS");
-                    for (var i = 0; i < model.Shows.Count; i++)
-                    {
-                        if (i > 0)
-                        {
-                            text.Span("  •  ").FontSize(BodySize).FontColor(MutedTextColor);
-                        }
-
-                        text.Span(model.Shows[i].Name).FontSize(BodySize).Bold();
-                        text.Span($" ({model.Shows[i].CompactTimesText})").FontSize(BodySize);
-                    }
-                });
-            }
         });
+
+    /// <summary>
+    /// Phase 21C/22C: the selected shows as one compact wrapping line — "Show A (1:00, 3:00 PM)  •  Show B
+    /// (5:00 PM)" — under the same small ruled heading as Notes, so Shows costs a line or two, never a
+    /// table. Phase 22C moved it from the summary strip to the end of the page. Omitted entirely (no
+    /// heading, no gap) when nothing is selected or the section is off.
+    /// </summary>
+    private static void ComposeShows(ColumnDescriptor column, IReadOnlyList<PdfShow> shows, Metrics m)
+    {
+        if (shows.Count == 0)
+        {
+            return;
+        }
+
+        column.Item().KeepSection(shows.Count, headingWithFirstRowsHeight: 48f).Column(section =>
+        {
+            SectionHeading(section, "Shows", m);
+            section.Item().Text(text =>
+            {
+                for (var i = 0; i < shows.Count; i++)
+                {
+                    if (i > 0)
+                    {
+                        text.Span("  •  ").FontSize(BodySize).FontColor(MutedTextColor);
+                    }
+
+                    text.Span(shows[i].Name).FontSize(BodySize).Bold();
+                    text.Span($" ({shows[i].CompactTimesText})").FontSize(BodySize);
+                }
+            });
+        });
+    }
 
     /// <summary>A tight heading line directly over its body, no rule, no panel. Phase 18F: omitted entirely when no text was entered.</summary>
     private static void ComposeDailyFeature(ColumnDescriptor column, AssociatePassdownDocumentModel model)

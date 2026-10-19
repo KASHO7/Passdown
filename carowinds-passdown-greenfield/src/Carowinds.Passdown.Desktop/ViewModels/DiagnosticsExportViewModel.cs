@@ -37,11 +37,16 @@ public partial class DiagnosticsExportViewModel : ViewModelBase
     [ObservableProperty]
     public partial string? DiagnosticsExportMessage { get; set; }
 
+    /// <summary>Phase 22F: true when <see cref="DiagnosticsExportMessage"/> reports a failure, so Settings can style it as an error (the words already say so).</summary>
+    [ObservableProperty]
+    public partial bool IsDiagnosticsExportProblem { get; set; }
+
     [RelayCommand]
     private async Task ExportDiagnosticsAsync()
     {
         IsExportingDiagnostics = true;
         DiagnosticsExportMessage = null;
+        IsDiagnosticsExportProblem = false;
         try
         {
             var export = await _exportService.BuildZipAsync().ConfigureAwait(true);
@@ -53,11 +58,13 @@ public partial class DiagnosticsExportViewModel : ViewModelBase
                 DiagnosticExportOutcome.Cancelled => null,
                 _ => saveResult.ErrorMessage ?? "Diagnostics could not be saved. Try again.",
             };
+            IsDiagnosticsExportProblem = saveResult.Outcome is not (DiagnosticExportOutcome.Saved or DiagnosticExportOutcome.Cancelled);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger?.LogError(ex, "Export Diagnostics failed unexpectedly.");
             DiagnosticsExportMessage = "Diagnostics could not be created. Try again.";
+            IsDiagnosticsExportProblem = true;
         }
         finally
         {

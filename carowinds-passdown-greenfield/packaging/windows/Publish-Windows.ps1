@@ -83,6 +83,39 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
+# Phase 23D: the external updater (Carowinds.Passdown.Updater.exe) ships next to the app. It is published
+# separately into a temporary folder and only its own Carowinds.Passdown.Updater.* files are copied into the
+# app's publish output — shared runtime/library files always come from the Desktop publish above, so the
+# updater can never replace a DLL the app depends on with a different build. Same RID, self-contained runtime.
+$updaterProject = Join-Path $repoRoot 'src' 'Carowinds.Passdown.Updater' 'Carowinds.Passdown.Updater.csproj'
+$updaterOutput = Join-Path $repoRoot 'artifacts' 'publish' 'win-x64-updater'
+if (Test-Path -LiteralPath $updaterOutput) {
+    Remove-Item -LiteralPath $updaterOutput -Recurse -Force
+}
+
+Write-Host "Publishing the external updater (Release, win-x64, self-contained)..."
+& dotnet publish $updaterProject `
+    -c Release `
+    -r win-x64 `
+    --self-contained true `
+    -o $updaterOutput
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "dotnet publish of the updater failed with exit code $LASTEXITCODE."
+    exit $LASTEXITCODE
+}
+
+$updaterFiles = Get-ChildItem -LiteralPath $updaterOutput -File -Filter 'Carowinds.Passdown.Updater.*' |
+    Where-Object { $_.Extension -ne '.pdb' }
+foreach ($required in @('Carowinds.Passdown.Updater.exe', 'Carowinds.Passdown.Updater.dll', 'Carowinds.Passdown.Updater.runtimeconfig.json', 'Carowinds.Passdown.Updater.deps.json')) {
+    if (-not ($updaterFiles | Where-Object { $_.Name -eq $required })) {
+        Write-Error "Updater publish is missing '$required'."
+        exit 1
+    }
+}
+$updaterFiles | Copy-Item -Destination $OutputDirectory -Force
+Remove-Item -LiteralPath $updaterOutput -Recurse -Force
+
 $removedPdbs = Get-ChildItem -LiteralPath $OutputDirectory -Filter '*.pdb' -Recurse -File
 if ($removedPdbs.Count -gt 0) {
     $removedPdbs | Remove-Item -Force

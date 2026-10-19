@@ -11,7 +11,8 @@
   Fluent's.
 -->
 <Styles xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System;assembly=System.Runtime">
 
   <!-- Every window paints the neutral app background (Fluent's default is pure black in dark). -->
   <Style Selector="Window">
@@ -330,6 +331,161 @@
     <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
   </Style>
 
+  <!-- Disclosure (Phase 22C): a quiet, left-aligned "View … ▾" toggle that reveals detail in place,
+       without navigation. Expander keeps its ExpandCollapse automation pattern (screen readers hear
+       expanded/collapsed); the header is a real ToggleButton, so Tab reaches it and Enter/Space toggle
+       it, with Fluent's standard focus adorner. No accent fill when expanded — the chevron turns. -->
+  <Style Selector="Expander.disclosure">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Template">
+      <ControlTemplate TargetType="Expander">
+        <StackPanel Spacing="8">
+          <ToggleButton x:Name="DisclosureHeader" Classes="disclosureHeader" HorizontalAlignment="Left"
+                        IsChecked="{TemplateBinding IsExpanded, Mode=TwoWay}"
+                        AutomationProperties.Name="{TemplateBinding AutomationProperties.Name}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ContentPresenter Content="{TemplateBinding Header}" VerticalAlignment="Center" />
+              <PathIcon x:Name="DisclosureChevron" Width="10" Height="10" VerticalAlignment="Center"
+                        Data="{StaticResource PassdownChevronDownGeometry}" AutomationProperties.AccessibilityView="Raw" />
+            </StackPanel>
+          </ToggleButton>
+          <ContentPresenter x:Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}" IsVisible="{TemplateBinding IsExpanded}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" />
+        </StackPanel>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="Expander.disclosure:expanded /template/ PathIcon#DisclosureChevron">
+    <Setter Property="RenderTransform" Value="rotate(180deg)" />
+  </Style>
+  <Style Selector="ToggleButton.disclosureHeader">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="Margin" Value="-8,0,0,0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeMetadata}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="ToggleButton.disclosureHeader /template/ ContentPresenter#PART_ContentPresenter, ToggleButton.disclosureHeader:checked /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+  </Style>
+  <Style Selector="ToggleButton.disclosureHeader:pointerover /template/ ContentPresenter#PART_ContentPresenter, ToggleButton.disclosureHeader:checked:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+  </Style>
+  <Style Selector="ToggleButton.disclosureHeader:pressed /template/ ContentPresenter#PART_ContentPresenter, ToggleButton.disclosureHeader:checked:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownPressedBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+  </Style>
+
+  <!-- ===================================================================================
+       App shell: Fury banner and section navigation (Phase 22B, MainWindow only)
+       =================================================================================== -->
+
+  <!-- The compact photographic brand banner. Theme-invariant (dark in both themes); its height is
+       a single token so every page shares the same shell geometry. -->
+  <Style Selector="Border.brandBanner">
+    <Setter Property="Height" Value="{DynamicResource PassdownBannerHeight}" />
+    <Setter Property="Background" Value="{DynamicResource PassdownBrandDarkBrush}" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <Style Selector="TextBlock.brandWordmark">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeWordmark}" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="LetterSpacing" Value="1.6" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownHeaderForegroundBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <!-- The single row of top-level sections, on the theme's neutral surface. -->
+  <Style Selector="Border.appNavigation">
+    <Setter Property="Background" Value="{DynamicResource PassdownSurfaceBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+    <Setter Property="Padding" Value="{DynamicResource PassdownNavigationStripPadding}" />
+  </Style>
+
+  <!-- A section item. Active = 2px accent underline + SemiBold + primary text (shape and weight,
+       never color alone); hover = neutral background only, so hovered and active never look alike.
+       The label template reserves the SemiBold width up front, so selecting an item never moves its
+       neighbors. Plain Button + a data-bound "active" class (not ToggleButton): selection lives only
+       in MainViewModel.SelectedSection. Fluent's focus adorner is untouched. -->
+  <Style Selector="Button.appSectionItem">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0,0,0,2" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="Padding" Value="{DynamicResource PassdownNavigationItemPadding}" />
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeBody}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="ContentTemplate">
+      <DataTemplate x:DataType="sys:String">
+        <Panel>
+          <TextBlock Text="{Binding}" FontWeight="SemiBold" Opacity="0" TextAlignment="Center"
+                     AutomationProperties.AccessibilityView="Raw" />
+          <TextBlock Text="{Binding}" TextAlignment="Center" />
+        </Panel>
+      </DataTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="Button.appSectionItem.active">
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <!-- Screen readers hear which section is showing, not only sighted users. -->
+    <Setter Property="AutomationProperties.ItemStatus" Value="Current page" />
+  </Style>
+  <!-- Fluent shrinks a pressed button (scale 0.98); a navigation row must not jitter. -->
+  <Style Selector="Button.appSectionItem:pressed">
+    <Setter Property="RenderTransform" Value="scale(1)" />
+  </Style>
+  <Style Selector="Button.appSectionItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.appSectionItem:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownPressedBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.appSectionItem.active:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.appSectionItem.active:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+  </Style>
+  <!-- Phase 22C: the trailing Settings item is an icon (gear) rather than a word. It keeps every
+       appSectionItem state (underline, hover, focus, "Current page"); only the string label template
+       is dropped and the padding evens out so the 33px row height is unchanged. -->
+  <Style Selector="Button.appSectionItem.iconItem">
+    <Setter Property="ContentTemplate" Value="{x:Null}" />
+    <Setter Property="Padding" Value="12,7" />
+  </Style>
+  <Style Selector="Button.appSectionItem.iconItem PathIcon">
+    <Setter Property="Width" Value="{DynamicResource PassdownNavigationIconSize}" />
+    <Setter Property="Height" Value="{DynamicResource PassdownNavigationIconSize}" />
+  </Style>
+  <!-- Disabled while an Operational Note is being edited (MainViewModel CanExecute): stays a quiet
+       label rather than Fluent's gray button fill. -->
+  <Style Selector="Button.appSectionItem:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextDisabledBrush}" />
+  </Style>
+
   <!-- ===================================================================================
        Lists, popups and loading feedback
        =================================================================================== -->
@@ -340,6 +496,28 @@
   </Style>
   <Style Selector="ListBox.selectableRows ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource PassdownSelectedBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+  </Style>
+  <!-- Phase 22D: Fluent's selected+hover and selected+pressed fills are its accent-tinted list brushes,
+       which do not follow the Passdown palette; keep the selected fill, deepened only by hover. -->
+  <Style Selector="ListBox.selectableRows ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter, ListBox.selectableRows ListBoxItem:selected:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownSelectedBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+  </Style>
+  <Style Selector="ListBox.selectableRows ListBoxItem:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownPressedBackgroundBrush}" />
+  </Style>
+  <!-- A list inside a popup/overlay (Season Price History): the popup surface, not Fluent's
+       ListBox fill, inside one hairline frame. -->
+  <Style Selector="ListBox.popupList">
+    <Setter Property="Background" Value="{DynamicResource PassdownPopupSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+    <Setter Property="Padding" Value="2" />
+  </Style>
+  <Style Selector="ListBox.popupList ListBoxItem">
+    <Setter Property="Padding" Value="10,6" />
     <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
   </Style>
 

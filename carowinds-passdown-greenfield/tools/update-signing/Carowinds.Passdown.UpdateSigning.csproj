@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Phase 23D: release signing tool (docs/phase23d-github-updater.md "Signing workflow"). Developer/release
+    machine only — never published, never part of a release ZIP. Creates the update manifest for an approved
+    release ZIP, signs it with the release private key (read from a file outside the repository), and verifies
+    signatures with the same verifier the app uses. Shares UpdateManifestJson/EcdsaUpdateManifestVerifier with
+    the app so the formats can never drift apart.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>carowinds-update-signing</AssemblyName>
+    <RootNamespace>Carowinds.Passdown.UpdateSigning</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Carowinds.Passdown.Infrastructure\Carowinds.Passdown.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Carowinds.Passdown.Infrastructure.Tests" />
+  </ItemGroup>
+</Project>
