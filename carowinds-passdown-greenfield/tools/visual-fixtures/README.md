@@ -40,7 +40,7 @@ or button rectangles inside the panel overlap.
 | Dashboard | busy operating day: 38,500 projected and 21,240 pre-solds, verified Park Ticket, partial source failure (Fast Lane unavailable, Promotions stale), Important note, shows, Daily Feature math |
 | Dashboard Shows (Phase 23B) | `DashboardShows-*`: typical and busy days (page top and scrolled to the panel), busy with one list expanded, one show, no shows, not published, stale, failed latest check with last-known-good — 10:45 AM ET on the operating date |
 | Calendar | busy day with Shows collapsed and expanded, WinterFest (Dec 5, noon–9 PM), New Year's Eve (3 PM–1 AM), historical (Sep 12), Not Published (Mar 2027), stale hours, show check failed, a date change held mid-load, a failed local read |
-| Associate | Overview, Products (exact, From, Military/First Responder, override, stale), Notes, Shows, autosave failure, Season Price History overlay |
+| Associate | Overview, Products (exact, From, Military/First Responder, override, stale), Notes, Shows, autosave failure, Season Price History overlay, Morning Message composer (Phase 29) |
 | Popups | date picker, Copy menu, More menu, Math picker |
 | Notes / History | populated and empty |
 | Settings | sync off, syncing and up to date, conflict review, folder unavailable with sync error and a Diagnostics export failure |

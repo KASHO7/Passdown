@@ -13,6 +13,7 @@ using Carowinds.Passdown.Application.Ert;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Freshness;
 using Carowinds.Passdown.Application.History;
+using Carowinds.Passdown.Application.MorningMessage;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.PersonalSync;
@@ -557,6 +558,14 @@ public partial class App : global::Avalonia.Application
 
         // Phase 18F: plain-text clipboard seam for the Associate screen's Teams "Copy" actions.
         services.AddSingleton<IClipboardService, AvaloniaClipboardService>();
+
+        // Phase 29: the Morning Message composer's local preference and per-date message files (never
+        // synced, never in the database) and the local DAP image picker.
+        services.AddSingleton<IMorningMessagePreferenceStore>(provider => new FileMorningMessagePreferenceStore(
+            FileMorningMessagePreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FileMorningMessagePreferenceStore>>()));
+        services.AddSingleton<IMorningMessageContentStore>(provider => new FileMorningMessageContentStore(
+            FileMorningMessageContentStore.DefaultPath, provider.GetRequiredService<ILogger<FileMorningMessageContentStore>>()));
+        services.AddSingleton<IImageFilePicker, AvaloniaImageFilePicker>();
 
         // Phase 17C §15/§39: the local Associate Passdown template preference (Classic/Compact/
         // Modern) — one flat JSON file, mirroring the PersonalSync file-based stores below. Consumed

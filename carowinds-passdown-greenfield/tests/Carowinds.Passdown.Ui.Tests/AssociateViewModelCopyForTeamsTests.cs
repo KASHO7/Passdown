@@ -261,9 +261,13 @@ public class AssociateViewModelCopyForTeamsTests
         Assert.True(viewModel.CopyForTeamsCommand.CanExecute(AssociateTeamsCopyKind.OperationsSummary));
     }
 
-    /// <summary>The Copy control is one labeled, keyboard-focusable button whose menu holds the three actions — discoverable without hover.</summary>
+    /// <summary>
+    /// The Copy control is one labeled, keyboard-focusable button whose menu holds the three Phase 18F
+    /// actions — unchanged, first, and discoverable without hover — followed by Phase 29's Morning
+    /// Message… and OD Notes.
+    /// </summary>
     [Fact]
-    public async Task View_HasOneLabeledCopyMenu_WithThreeCommandBoundItems()
+    public async Task View_HasOneLabeledCopyMenu_ThreeOriginalItemsPreserved_ThenMorningMessageAndOdNotes()
     {
         var (viewModel, _, _, _) = CreateViewModel();
         await viewModel.PendingLoad;
@@ -277,10 +281,17 @@ public class AssociateViewModelCopyForTeamsTests
 
         var menu = Assert.IsType<MenuFlyout>(copyButton.Flyout);
         var items = menu.Items.OfType<MenuItem>().ToList();
-        Assert.Equal(["Operations Summary", "Today's Pricing", "Operations + Pricing"], items.Select(i => i.Header as string));
+        Assert.Equal(["Operations Summary", "Today's Pricing", "Operations + Pricing", "Morning Message…", "OD Notes"], items.Select(i => i.Header as string));
+
         Assert.Equal(
             [AssociateTeamsCopyKind.OperationsSummary, AssociateTeamsCopyKind.TodaysPricing, AssociateTeamsCopyKind.OperationsAndPricing],
-            items.Select(i => (AssociateTeamsCopyKind)i.CommandParameter!));
+            items.Take(3).Select(i => (AssociateTeamsCopyKind)i.CommandParameter!));
         Assert.All(items, item => Assert.False(string.IsNullOrEmpty(AutomationProperties.GetName(item))));
+
+        // Command bindings are asserted on the markup (bound values evaluate thread-dependently in this assembly).
+        var markup = File.ReadAllText(MarkupFiles.Find("src/Carowinds.Passdown.Desktop/Views/AssociateView.axaml"));
+        Assert.Equal(3, System.Text.RegularExpressions.Regex.Matches(markup, @"Command=""\{Binding CopyForTeamsCommand\}""").Count);
+        Assert.Contains("Command=\"{Binding OpenMorningMessageCommand}\"", markup);
+        Assert.Contains("Command=\"{Binding CopyOdNotesCommand}\"", markup);
     }
 }

@@ -98,8 +98,9 @@ Section headings are the PDF's section headings; product names are the PDF's dis
 
 ## Not included (intentional)
 
-- Daily Feature, Operational Notes, and reminders are not part of any of the three actions. A future
-  "Full Teams Text" action may add them.
+- Daily Feature, Operational Notes, and reminders are not part of any of the three actions. Phase 29 adds
+  them through the separate Morning Message composer (`docs/phase29-morning-message-teams-copy.md`); these
+  three actions are unchanged.
 - No real Teams @mentions: "@Name" in plain clipboard text does not create a Teams identity mention.
   No Microsoft Graph, Teams API, OAuth, Azure app registration, directory lookup, or Power Automate.
 - No DAP/placement images, break-plan assignments, or full Teams message automation.

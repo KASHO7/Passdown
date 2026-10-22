@@ -553,7 +553,7 @@
                     Classes="secondaryAction"
                     IsEnabled="{Binding HasWorkspace}"
                     AutomationProperties.Name="Copy for Teams"
-                    AutomationProperties.HelpText="Opens a menu to copy the operations summary, today's selected pricing, or both as plain text for Microsoft Teams.">
+                    AutomationProperties.HelpText="Opens a menu to copy the operations summary, today's selected pricing, or both for Microsoft Teams, or to build the full morning message.">
               <Button.Flyout>
                 <MenuFlyout Placement="BottomEdgeAlignedLeft">
                   <MenuItem Header="Operations Summary"
@@ -570,6 +570,16 @@
                             Command="{Binding CopyForTeamsCommand}"
                             CommandParameter="{x:Static documents:AssociateTeamsCopyKind.OperationsAndPricing}"
                             AutomationProperties.Name="Copy operations summary and pricing" />
+                  <!-- Phase 29: the full morning message (composer) and OD Notes, which are always their own copy. -->
+                  <Separator />
+                  <MenuItem Header="Morning Message…"
+                            Command="{Binding OpenMorningMessageCommand}"
+                            AutomationProperties.Name="Open the morning message composer"
+                            AutomationProperties.HelpText="Builds the whole Teams morning message from this passdown, with a preview and formatted or plain-text copy." />
+                  <MenuItem Header="OD Notes"
+                            Command="{Binding CopyOdNotesCommand}"
+                            AutomationProperties.Name="Copy OD Notes"
+                            AutomationProperties.HelpText="Copies this date's OD Notes on their own, to post after the morning message." />
                 </MenuFlyout>
               </Button.Flyout>
             </Button>

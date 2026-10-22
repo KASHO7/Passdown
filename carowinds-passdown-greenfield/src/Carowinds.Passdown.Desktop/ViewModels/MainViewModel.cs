@@ -77,6 +77,16 @@ public partial class MainViewModel : ViewModelBase
             }
         };
 
+        // Phase 29: the Morning Message composer is an overlay like Season Price History; it reads the
+        // Associate screen's open date and never changes Associate state.
+        Associate.MorningMessage.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MorningMessageViewModel.IsOpen))
+            {
+                OnPropertyChanged(nameof(IsMorningMessageOpen));
+            }
+        };
+
         // Phase 20A: Associate → Products asks for the Season Price History screen; it opens as an
         // overlay on top of whatever section is showing, so no Associate state is touched.
         if (PriceHistory is not null)
@@ -203,6 +213,11 @@ public partial class MainViewModel : ViewModelBase
     public PriceHistoryViewModel? PriceHistory { get; }
 
     public bool IsPriceHistoryOpen => PriceHistory?.IsOpen == true;
+
+    /// <summary>Phase 29: the Teams Morning Message composer, opened from Associate → Copy ▾.</summary>
+    public MorningMessageViewModel MorningMessage => Associate.MorningMessage;
+
+    public bool IsMorningMessageOpen => Associate.MorningMessage.IsOpen;
 
     /// <summary>Phase 23D: "What's New in Carowinds Operations" — after a confirmed update, or from Settings → About this build.</summary>
     public WhatsNewViewModel WhatsNew { get; }
