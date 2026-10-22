@@ -396,3 +396,25 @@ deployment.
 - Mixed versions across PCs sharing a Personal Sync folder remain possible (existing caution); updating
   all PCs together is still recommended.
 - The experimental single-file EXE is not updatable in place (shows Manual update required).
+
+## 16. Phase 27 amendment — database upgrades (RC.9)
+
+§8's success and rollback rules assumed the database never changes during an update. From RC.9 (schema
+16 → 17) that no longer holds, and the previous version cannot open an upgraded database. Because the
+updater always runs from the **staged new version** (§2), the rules below apply to RC.8 → RC.9 even
+though RC.8 is frozen:
+
+- **Before any installed file is touched**, the updater writes and verifies a database backup
+  (`%LOCALAPPDATA%\Carowinds Passdown\backups\…pre-update-<from>-to-<to>-…db`, SQLite online backup +
+  `integrity_check` + row counts). No verified backup → `NotInstalled` (`database-backup-failed`,
+  `database-in-use`, `database-damaged`, `insufficient-disk-space`).
+- The new app's `MigrationRunner` makes its own verified pre-migration backup inside the migration's write
+  transaction and runs `integrity_check` afterwards — before its window can open and confirm the launch.
+- **Rollback after a failed start** happens only if the database is still at the schema version recorded
+  with the pre-install backup. If it was upgraded (or cannot be read), nothing is reversed or started:
+  record `RecoveryRequired` / `database-upgraded-not-confirmed`, every file and backup kept,
+  `UPDATE-RECOVERY.txt` written. The updater never restores or deletes a database.
+- `UpdateInstallRecord` gains optional `DatabaseBackupPath` and `DatabaseSchemaVersionBefore` (older
+  readers skip them). The request format is unchanged (1).
+
+Details and evidence: `docs/release-manifest.md` "0.1.0-rc.9".

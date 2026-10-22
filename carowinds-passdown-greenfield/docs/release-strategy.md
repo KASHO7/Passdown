@@ -3207,3 +3207,16 @@ data.
   They are not in `CarowindsPassdown.slnx`, not published, not in the ZIP or EXE, and not counted in the
   application test total (their 64 tests run separately). RC.7 ships none of their findings: no Special
   Events, maze hours, Ride Schedule History, intraday/live ride status, downtime or new FIMS sources.
+
+## Phase 27 — RC.9 packaging
+
+- `0.1.0-rc.9` (file version `0.1.0.9`) packages Phases 25–26 plus migration-safe updating from source
+  commit `e20d846`, with the real `Build-PortableRelease.ps1` (PowerShell 7.6.7 local tool) and the
+  Phase 15F single-file command. Hashes, audit and gates: `docs/release-manifest.md` "0.1.0-rc.9".
+- **Database-upgrading releases:** any release whose migrations change the schema must keep the Phase 27
+  rules — verified pre-migration backup in `MigrationRunner`, verified pre-update backup in the updater,
+  and no file rollback once the database was upgraded (`docs/phase23d-github-updater.md` §16). Its signed
+  update notes must start by saying the database changes and older versions cannot open it.
+- **Publishing gate for in-app delivery:** a release that upgrades the database is not published to the
+  update channel until its in-app upgrade from the previous published version has passed on Windows
+  (for RC.9: `docs/releases/rc9-windows-validation.md` §8). Until then it is distributed as a manual ZIP.
