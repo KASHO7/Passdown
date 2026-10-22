@@ -15,7 +15,13 @@ namespace Carowinds.Passdown.Application.PersonalSync;
 /// <c>PersonalSyncService</c>'s folder-switch reconciliation. Itself local/device state — never
 /// synced, exactly like <see cref="SyncRootPath"/> (Phase 16A §A).
 /// </param>
-public sealed record SyncConfiguration(bool PersonalSyncEnabled, string? SyncRootPath, Guid? LastKnownSyncSpaceId = null)
+/// <param name="MorningMessageSyncEnabled">
+/// Phase 30: "Sync Morning Messages" on this computer — off unless the user turns it on, and absent (so off)
+/// in every file written before Phase 30. Local to each computer and never synchronized itself; turning it
+/// off only stops future exchanges. Every save of this record goes through <c>with</c>, so changing any other
+/// Personal Sync setting never resets it.
+/// </param>
+public sealed record SyncConfiguration(bool PersonalSyncEnabled, string? SyncRootPath, Guid? LastKnownSyncSpaceId = null, bool MorningMessageSyncEnabled = false)
 {
     /// <summary>The default when no configuration has ever been saved — sync stays off until a user explicitly turns it on (spec: "Sync disabled must remain the default").</summary>
     public static SyncConfiguration Disabled { get; } = new(false, null);

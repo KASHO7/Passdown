@@ -1374,3 +1374,32 @@ See `docs/phase26-official-price-history-sync.md`. Unreleased work after RC.8 (v
 
 Schemas: **DB 17**, Draft 4, Snapshot 2, **SyncSchemaVersion 1 unchanged** (additive sidecar channel, its own
 `FormatVersion` 1). RC.8 peers ignore the new folder; RC.8 cannot open a DB 17 profile (forward-only migrations).
+
+## Phase 30 — Optional Morning Message sync
+
+See `docs/phase30-optional-morning-message-sync.md`. Unreleased work after RC.9 (version still `0.1.0-rc.9`).
+
+- **Application** — `MorningMessage/Sync/`: `MorningMessageVersion` (per-field version vector, device id →
+  edit counter), `MorningMessageSyncFields` (the closed list of synchronized content/preference fields, their
+  canonical text forms and validation; the DAP image path and all official data are excluded),
+  `MorningMessageFieldReconciliation` (pure field-level merge: descendant replaces, equal text merges,
+  independent different edits conflict; Keep This Device / Use Other Device supersede both sides),
+  `MorningMessageEditorSession` (composer ↔ sync coordination: the open date and preferences are held while the
+  composer is open), result/status/conflict contracts, `IMorningMessageSync` and `IMorningMessageSyncService`.
+  `IMorningMessageContentStore` gained `LoadAllAsync`/`SaveManyAsync`, and clearing a saved date now keeps an
+  empty entry. `SyncConfiguration.MorningMessageSyncEnabled` (default false, local, never synced);
+  `SyncPathService.GetMorningMessage*`; `PersonalSyncResult.MorningMessages`.
+- **Infrastructure** — `PersonalSync/MorningMessageSync` (reads other computers' `morning-message/<device-id>.json`
+  files, bounded and validated; reconciles under the editor-session lock; writes local files, then local sync
+  state, then its own shared file atomically and only when changed; also the Settings service),
+  `MorningMessageSyncFile` (independent `FormatVersion` 1), `MorningMessageSyncStateStore`
+  (`morning-message-sync-state.json`, local). `PersonalSyncService` runs it last, after price history, as a
+  no-op unless the option is on; recoverable failures count as I/O failures for the existing backoff. Temp
+  cleanup covers the new folder.
+- **Desktop** — Settings → Personal Sync → Sync Morning Messages (`MorningMessageSyncSettingsViewModel`: toggle
+  available only with a folder, status line, conflict review); composer holds its date via the session, reloads
+  preferences/text on open and shows a waiting notice; composer saves/close request a `LocalChange` sync.
+- **Documents** — unchanged (no PDF, Teams formatting or plain-text change).
+
+Schemas: DB 17, Draft 4, Snapshot 2, **SyncSchemaVersion 1 unchanged** (additive sidecar folder with its own
+`FormatVersion` 1); no migration. RC.9 peers ignore `morning-message/`.

@@ -100,15 +100,29 @@ public sealed class FileMorningMessageStoresTests : IDisposable
     }
 
     [Fact]
-    public async Task Content_SavingEmpty_RemovesTheDate()
+    public async Task Content_ClearingADate_KeepsAnEmptyEntry_SoSyncCanTellClearedFromAgedOut()
     {
+        // Phase 30 (was Phase 29's "saving empty removes the date"): a cleared date stays as an empty entry.
         var store = new FileMorningMessageContentStore(PathFor("content.json"));
         var date = new DateOnly(2026, 10, 19);
         await store.SaveAsync(date, MorningMessageContent.Empty with { Reminders = "x" });
 
         await store.SaveAsync(date, MorningMessageContent.Empty);
 
-        Assert.DoesNotContain("2026-10-19", File.ReadAllText(PathFor("content.json")), StringComparison.Ordinal);
+        Assert.Contains("2026-10-19", File.ReadAllText(PathFor("content.json")), StringComparison.Ordinal);
+        Assert.Equal(MorningMessageContent.Empty, await store.LoadAsync(date));
+        Assert.Equal(MorningMessageContent.Empty, (await store.LoadAllAsync())[date]);
+        Assert.Null(await store.FindPreviousRemindersAsync(new DateOnly(2026, 10, 20)));
+    }
+
+    [Fact]
+    public async Task Content_SavingEmptyForANeverWrittenDate_WritesNothing()
+    {
+        var store = new FileMorningMessageContentStore(PathFor("content.json"));
+
+        await store.SaveAsync(new DateOnly(2026, 10, 19), MorningMessageContent.Empty);
+
+        Assert.False(File.Exists(PathFor("content.json")));
     }
 
     [Fact]

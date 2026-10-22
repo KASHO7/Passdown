@@ -22,6 +22,7 @@ public static class SyncPathService
     private const string MonthlyErtFolderName = "monthly-ert";
     private const string ErtDateOverridesFolderName = "ert-date-overrides";
     private const string OfficialPriceHistoryFolderName = "official-price-history";
+    private const string MorningMessageFolderName = "morning-message";
 
     /// <summary>Invariant <c>yyyy-MM</c> format for monthly ERT filenames (Phase 17B) — matches <see cref="Ert.MonthlyErtConfiguration.YearMonthKey"/>.</summary>
     private const string MonthFormat = "yyyy-MM";
@@ -98,6 +99,22 @@ public static class SyncPathService
     /// <summary>This computer's own contributor file — named by its device id, so no other computer ever writes it.</summary>
     public static string GetOfficialPriceHistoryFilePath(string selectedRootPath, Guid deviceId) =>
         Path.Combine(GetOfficialPriceHistoryDirectoryPath(selectedRootPath), $"{FormatGuid(deviceId)}.json");
+
+    /// <summary>
+    /// Phase 30: the <c>morning-message/</c> directory — one independently versioned file per computer that has
+    /// Sync Morning Messages turned on (<see cref="GetMorningMessageFilePath"/>). RC.9 and earlier never
+    /// enumerate it, so older builds neither read nor write it.
+    /// </summary>
+    public static string GetMorningMessageDirectoryPath(string selectedRootPath) =>
+        Path.Combine(GetSyncFolderPath(selectedRootPath), MorningMessageFolderName);
+
+    /// <summary>This computer's own Morning Message file — named by its device id, so no other computer ever writes it.</summary>
+    public static string GetMorningMessageFilePath(string selectedRootPath, Guid deviceId) =>
+        Path.Combine(GetMorningMessageDirectoryPath(selectedRootPath), $"{FormatGuid(deviceId)}.json");
+
+    /// <summary>Phase 30: same naming rules as <see cref="TryParseOfficialPriceHistoryFileName"/> (canonical, or a sync-provider conflict copy of one).</summary>
+    public static bool TryParseMorningMessageFileName(string fileName, out Guid deviceId, out bool isCanonical) =>
+        TryParseOfficialPriceHistoryFileName(fileName, out deviceId, out isCanonical);
 
     /// <summary>
     /// Phase 26: recognizes a contributor file name — exactly <c>&lt;guid-D&gt;.json</c>

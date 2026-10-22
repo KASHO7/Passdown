@@ -4,6 +4,7 @@ using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Changes;
 using Carowinds.Passdown.Application.Ert;
 using Carowinds.Passdown.Application.MorningMessage;
+using Carowinds.Passdown.Application.MorningMessage.Sync;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Preferences;
@@ -642,7 +643,8 @@ public partial class AssociateViewModel : ViewModelBase
         IExternalLinkLauncher? externalLinkLauncher = null,
         IMorningMessagePreferenceStore? morningMessagePreferenceStore = null,
         IMorningMessageContentStore? morningMessageContentStore = null,
-        IImageFilePicker? imageFilePicker = null)
+        IImageFilePicker? imageFilePicker = null,
+        MorningMessageEditorSession? morningMessageSession = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -672,7 +674,9 @@ public partial class AssociateViewModel : ViewModelBase
             morningMessagePreferenceStore,
             morningMessageContentStore,
             imageFilePicker,
-            logger);
+            logger,
+            session: morningMessageSession,
+            postToUi: _uiDispatcher.Post);
 
         // "Today" in the park's own wall-clock time (spec §6.5/§6.6 use the same Eastern
         // convention for "today") rather than the host machine's arbitrary local time zone.

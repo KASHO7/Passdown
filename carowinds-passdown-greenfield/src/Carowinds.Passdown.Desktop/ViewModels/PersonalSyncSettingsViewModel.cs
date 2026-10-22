@@ -42,6 +42,11 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
     /// <summary>Phase 23D: Settings → Application Updates, and About this build → What's New.</summary>
     public ApplicationUpdatesViewModel Updates { get; }
 
+    /// <summary>Phase 30: Settings → Personal Sync → Sync Morning Messages; null (and hidden) when not composed in.</summary>
+    public MorningMessageSyncSettingsViewModel? MorningMessages { get; }
+
+    public bool HasMorningMessageSync => MorningMessages is not null;
+
     public string BuildProductName => Build.ProductName;
 
     /// <summary>"0.1.0-rc.1 (096bc4a)" — the release version plus the source commit it was built from.</summary>
@@ -129,7 +134,8 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         BuildIdentity? buildIdentity = null,
         DiagnosticsExportViewModel? diagnostics = null,
         AppearanceSettingsViewModel? appearance = null,
-        ApplicationUpdatesViewModel? updates = null)
+        ApplicationUpdatesViewModel? updates = null,
+        MorningMessageSyncSettingsViewModel? morningMessages = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(folderPicker);
@@ -145,6 +151,7 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         Diagnostics = diagnostics ?? new DiagnosticsExportViewModel();
         Appearance = appearance ?? new AppearanceSettingsViewModel();
         Updates = updates ?? new ApplicationUpdatesViewModel(installedVersion: Build.Version);
+        MorningMessages = morningMessages;
 
         AutomationStatus = coordinator.CurrentStatus;
         // This ViewModel is resolved exactly once for the app's session (MainViewModel's own
@@ -153,7 +160,11 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         // A periodic/retry-triggered pass raises this from a background thread pool thread (there is
         // no user-initiated UI-thread call on that path to preserve), so the property update is
         // marshalled onto the UI thread rather than assumed to already be there.
-        coordinator.StatusChanged += (_, snapshot) => Dispatcher.UIThread.Post(() => AutomationStatus = snapshot);
+        coordinator.StatusChanged += (_, snapshot) => Dispatcher.UIThread.Post(() =>
+        {
+            AutomationStatus = snapshot;
+            RefreshMorningMessages(); // Phase 30: a finished automatic pass may have synced (or conflicted) messages
+        });
 
         _pendingLoad = LoadAsync();
     }
@@ -402,5 +413,11 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         {
             _isApplyingSnapshot = false;
         }
+
+        RefreshMorningMessages();
     }
+
+    /// <summary>Phase 30: the Morning Messages line follows the folder status above it.</summary>
+    private void RefreshMorningMessages() =>
+        MorningMessages?.RefreshAsync(Status, PersonalSyncEnabled && !string.IsNullOrWhiteSpace(SyncRootPath));
 }

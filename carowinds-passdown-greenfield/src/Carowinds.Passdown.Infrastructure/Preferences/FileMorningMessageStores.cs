@@ -12,7 +12,8 @@ namespace Carowinds.Passdown.Infrastructure.Preferences;
 /// Phase 29: <see cref="IMorningMessagePreferenceStore"/> backed by one small local JSON file
 /// (<c>morning-message.json</c>) under <see cref="AppPaths.LocalApplicationDataDirectory"/> — the same
 /// flat-file convention and atomic writer as the appearance and PDF-template preferences; no SQLite table,
-/// no migration, never inside the Personal Sync folder. Enums are stored by name. A missing, unreadable or
+/// no migration, never inside the Personal Sync folder (Phase 30 sync publishes copies of its values only
+/// when Sync Morning Messages is on). Enums are stored by name. A missing, unreadable or
 /// malformed file means <see cref="MorningMessagePreferences.Default"/>, with one non-sensitive warning.
 /// </summary>
 public sealed class FileMorningMessagePreferenceStore(string configFilePath, ILogger<FileMorningMessagePreferenceStore>? logger = null) : IMorningMessagePreferenceStore
@@ -85,9 +86,10 @@ public sealed class FileMorningMessagePreferenceStore(string configFilePath, ILo
 /// Phase 29: <see cref="IMorningMessageContentStore"/> backed by one local JSON file
 /// (<c>morning-message-content.json</c>) holding each recent date's message-only text, keyed by ISO date.
 /// Kept outside the database deliberately: this is composer scratch content that must never reach the
-/// Associate draft, the PDF, History or Personal Sync, and storing it this way needs no schema change
-/// (docs/phase29-morning-message-teams-copy.md). Only the <see cref="RetainedDates"/> most recent dates are
-/// kept. A malformed file reads as empty and is replaced by the next save.
+/// Associate draft, the PDF or History, and storing it this way needs no schema change
+/// (docs/phase29-morning-message-teams-copy.md). Phase 30 Morning Message sync reads and writes it only when
+/// Sync Morning Messages is on. Only the <see cref="RetainedDates"/> most recent dates are kept. A malformed
+/// file reads as empty and is replaced by the next save.
 /// </summary>
 public sealed class FileMorningMessageContentStore(string filePath, ILogger<FileMorningMessageContentStore>? logger = null) : IMorningMessageContentStore
 {
@@ -128,23 +130,15 @@ public sealed class FileMorningMessageContentStore(string filePath, ILogger<File
         {
             var entries = await ReadAsync(cancellationToken).ConfigureAwait(false);
             var key = Key(operatingDate);
-            if (content.IsEmpty)
+            if (content.IsEmpty && !entries.ContainsKey(key))
             {
-                entries.Remove(key);
-            }
-            else
-            {
-                entries[key] = content.Sanitized();
+                return; // nothing was ever written for this date — opening it must not create an entry
             }
 
-            var retained = entries
-                .OrderByDescending(entry => entry.Key, StringComparer.Ordinal)
-                .Take(RetainedDates)
-                .OrderBy(entry => entry.Key, StringComparer.Ordinal)
-                .ToDictionary(entry => entry.Key, entry => entry.Value);
-
-            var json = JsonSerializer.Serialize(new ContentFile(retained), FileMorningMessagePreferenceStore.Options);
-            await AtomicFileWriter.WriteTextAsync(FilePath, json, cancellationToken).ConfigureAwait(false);
+            // Phase 30: clearing a date keeps an empty entry, so Morning Message sync can tell "cleared on
+            // this computer" from "never written" or "aged out".
+            entries[key] = content.IsEmpty ? MorningMessageContent.Empty : content.Sanitized();
+            await WriteRetainedAsync(entries, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -152,7 +146,57 @@ public sealed class FileMorningMessageContentStore(string filePath, ILogger<File
         }
     }
 
-    private async Task<Dictionary<string, MorningMessageContent?>> ReadAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyDictionary<DateOnly, MorningMessageContent>> LoadAllAsync(CancellationToken cancellationToken = default)
+    {
+        var entries = await ReadAsync(cancellationToken).ConfigureAwait(false);
+        var result = new Dictionary<DateOnly, MorningMessageContent>();
+        foreach (var (key, content) in entries)
+        {
+            if (DateOnly.TryParseExact(key, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+            {
+                result[date] = (content ?? MorningMessageContent.Empty).Sanitized();
+            }
+        }
+
+        return result;
+    }
+
+    public async Task SaveManyAsync(IReadOnlyDictionary<DateOnly, MorningMessageContent> contents, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(contents);
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // Sync never replaces a local file it could not read: that text may still be recoverable.
+            var entries = await ReadAsync(cancellationToken, throwIfUnreadable: true).ConfigureAwait(false);
+            foreach (var (date, content) in contents)
+            {
+                entries[Key(date)] = content.IsEmpty ? MorningMessageContent.Empty : content.Sanitized();
+            }
+
+            await WriteRetainedAsync(entries, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>Keeps the <see cref="RetainedDates"/> most recent dates and replaces the file in one atomic write.</summary>
+    private Task WriteRetainedAsync(Dictionary<string, MorningMessageContent?> entries, CancellationToken cancellationToken)
+    {
+        var retained = entries
+            .OrderByDescending(entry => entry.Key, StringComparer.Ordinal)
+            .Take(RetainedDates)
+            .OrderBy(entry => entry.Key, StringComparer.Ordinal)
+            .ToDictionary(entry => entry.Key, entry => entry.Value);
+
+        var json = JsonSerializer.Serialize(new ContentFile(retained), FileMorningMessagePreferenceStore.Options);
+        return AtomicFileWriter.WriteTextAsync(FilePath, json, cancellationToken);
+    }
+
+    private async Task<Dictionary<string, MorningMessageContent?>> ReadAsync(CancellationToken cancellationToken, bool throwIfUnreadable = false)
     {
         if (!File.Exists(FilePath))
         {
@@ -167,6 +211,11 @@ public sealed class FileMorningMessageContentStore(string filePath, ILogger<File
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or NotSupportedException)
         {
+            if (throwIfUnreadable)
+            {
+                throw new IOException("The morning message file on this computer could not be read, so it was not replaced.", ex);
+            }
+
             logger?.LogWarning("Morning message content could not be read ({ExceptionType}); starting empty.", ex.GetType().Name);
             return new Dictionary<string, MorningMessageContent?>(StringComparer.Ordinal);
         }

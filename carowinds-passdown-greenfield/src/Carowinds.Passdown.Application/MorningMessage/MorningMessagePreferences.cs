@@ -6,7 +6,8 @@ namespace Carowinds.Passdown.Application.MorningMessage;
 /// Phase 29: the user's remembered morning-message choices on this computer — greeting, section order and
 /// visibility, the default copy mode, which official price sections the message's Ticket Prices uses, and
 /// whether reminders are bulleted. A device preference like the PDF template and appearance: kept in one
-/// small local file, never in the database and never part of Personal Sync (docs/phase29-morning-message-teams-copy.md).
+/// small local file, never in the database (docs/phase29-morning-message-teams-copy.md). Phase 30 synchronizes it
+/// only when Sync Morning Messages is on (docs/phase30-optional-morning-message-sync.md).
 /// </summary>
 public sealed record MorningMessagePreferences(
     string Greeting,
@@ -84,7 +85,7 @@ public sealed record MorningMessagePreferences(
 /// <summary>
 /// Phase 29: what the user types in the composer for one operating date. Message-only content: it never
 /// changes the Associate draft, the PDF, History or any official value, and it is kept in a local file on
-/// this computer (not synced). <see cref="DapImagePath"/> is a local file the user chose; nothing is ever
+/// this computer (Phase 30: synchronized only when Sync Morning Messages is on, never the image path). <see cref="DapImagePath"/> is a local file the user chose; nothing is ever
 /// downloaded.
 /// </summary>
 public sealed record MorningMessageContent(
@@ -114,7 +115,7 @@ public sealed record MorningMessageContent(
     private static string Clip(string? value) => value is null ? string.Empty : value.Length > MaxFieldLength ? value[..MaxFieldLength] : value;
 }
 
-/// <summary>Phase 29: local persistence for <see cref="MorningMessagePreferences"/>. Never synced.</summary>
+/// <summary>Phase 29: local persistence for <see cref="MorningMessagePreferences"/>. Phase 30: synchronized only when Sync Morning Messages is on.</summary>
 public interface IMorningMessagePreferenceStore
 {
     /// <summary>Never throws: a missing, unreadable or malformed file returns <see cref="MorningMessagePreferences.Default"/>.</summary>
@@ -123,7 +124,7 @@ public interface IMorningMessagePreferenceStore
     Task SaveAsync(MorningMessagePreferences preferences, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Phase 29: local persistence for each date's <see cref="MorningMessageContent"/>. Never synced, never in the database.</summary>
+/// <summary>Phase 29: local persistence for each date's <see cref="MorningMessageContent"/>. Never in the database; Phase 30 synchronizes it only when Sync Morning Messages is on.</summary>
 public interface IMorningMessageContentStore
 {
     /// <summary>Never throws for a missing/unreadable file: returns <see cref="MorningMessageContent.Empty"/>.</summary>
@@ -132,7 +133,17 @@ public interface IMorningMessageContentStore
     /// <summary>The most recent earlier date with non-blank reminders, for the explicit "Reuse last reminders" action; null when none.</summary>
     Task<(DateOnly Date, string Reminders)?> FindPreviousRemindersAsync(DateOnly operatingDate, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Saves one date. Phase 30: clearing a date that has saved text keeps an empty entry for it (so sync can
+    /// tell "cleared" from "never written" or "aged out"); saving empty text for a date with no entry writes nothing.
+    /// </summary>
     Task SaveAsync(DateOnly operatingDate, MorningMessageContent content, CancellationToken cancellationToken = default);
+
+    /// <summary>Phase 30: every retained date's content (including cleared, empty entries), for Morning Message sync.</summary>
+    Task<IReadOnlyDictionary<DateOnly, MorningMessageContent>> LoadAllAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Phase 30: writes several dates in one replacement of the file — all or nothing. Retention still applies.</summary>
+    Task SaveManyAsync(IReadOnlyDictionary<DateOnly, MorningMessageContent> contents, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Phase 29: process-only preference store — the default when none is supplied (tests, composition-free construction), so nothing touches the real profile.</summary>
@@ -173,13 +184,24 @@ public sealed class InMemoryMorningMessageContentStore : IMorningMessageContentS
 
     public Task SaveAsync(DateOnly operatingDate, MorningMessageContent content, CancellationToken cancellationToken = default)
     {
-        if (content.IsEmpty)
+        if (!content.IsEmpty || _entries.ContainsKey(operatingDate))
         {
-            _entries.Remove(operatingDate);
+            _entries[operatingDate] = content.IsEmpty ? MorningMessageContent.Empty : content.Sanitized();
         }
-        else
+
+        SaveCount++;
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyDictionary<DateOnly, MorningMessageContent>> LoadAllAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyDictionary<DateOnly, MorningMessageContent>>(new Dictionary<DateOnly, MorningMessageContent>(_entries));
+
+    public Task SaveManyAsync(IReadOnlyDictionary<DateOnly, MorningMessageContent> contents, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(contents);
+        foreach (var (date, content) in contents)
         {
-            _entries[operatingDate] = content.Sanitized();
+            _entries[date] = content.IsEmpty ? MorningMessageContent.Empty : content.Sanitized();
         }
 
         SaveCount++;

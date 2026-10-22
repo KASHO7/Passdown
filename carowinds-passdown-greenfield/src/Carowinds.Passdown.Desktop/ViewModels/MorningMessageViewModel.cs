@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.MorningMessage;
+using Carowinds.Passdown.Application.MorningMessage.Sync;
 using Carowinds.Passdown.Desktop.Services;
 using Carowinds.Passdown.Documents.Teams;
 using Carowinds.Passdown.Domain;
@@ -19,7 +20,13 @@ namespace Carowinds.Passdown.Desktop.ViewModels;
 /// Message-only by design: nothing typed here changes the Associate draft, PDF, History or any official
 /// value; passdown values (hours, attendance, prices, Daily Feature) are read-only here and edited on the
 /// Associate screen. Never checks online, saves the draft, or changes the selected date. Preferences and the
-/// date's message text are kept in local files on this computer (never synced).
+/// date's message text are kept in local files on this computer.
+/// </para>
+/// <para>
+/// Phase 30: when Sync Morning Messages is on, those files are also exchanged with the user's other computers.
+/// While open, the composer holds its date and the preferences in <see cref="MorningMessageEditorSession"/>, so
+/// sync never replaces what is being typed; changes that arrive meanwhile are announced in
+/// <see cref="SyncNotice"/> and applied after the composer closes.
 /// </para>
 /// </summary>
 public partial class MorningMessageViewModel : ObservableObject
@@ -34,6 +41,7 @@ public partial class MorningMessageViewModel : ObservableObject
     private readonly ILogger? _logger;
     private readonly Func<CancellationToken, Task> _saveDelay;
     private readonly SemaphoreSlim _saveGate = new(1, 1);
+    private readonly MorningMessageEditorSession _session;
 
     private MorningMessagePreferences? _preferences;
     private AssociateWorkspace? _workspace;
@@ -52,7 +60,9 @@ public partial class MorningMessageViewModel : ObservableObject
         IMorningMessageContentStore? contentStore = null,
         IImageFilePicker? imagePicker = null,
         ILogger? logger = null,
-        Func<CancellationToken, Task>? saveDelay = null)
+        Func<CancellationToken, Task>? saveDelay = null,
+        MorningMessageEditorSession? session = null,
+        Action<Action>? postToUi = null)
     {
         _clipboard = clipboard ?? throw new ArgumentNullException(nameof(clipboard));
         _workspaceProvider = workspaceProvider ?? throw new ArgumentNullException(nameof(workspaceProvider));
@@ -63,10 +73,21 @@ public partial class MorningMessageViewModel : ObservableObject
         _imagePicker = imagePicker;
         _logger = logger;
         _saveDelay = saveDelay ?? (token => Task.Delay(TimeSpan.FromMilliseconds(500), token));
+        _session = session ?? new MorningMessageEditorSession();
+
+        var post = postToUi ?? (action => action());
+        _session.Changed += (_, change) => post(() => OnSyncChanged(change));
     }
 
-    /// <summary>The saved preferences, loaded on first use (one small local file).</summary>
+    /// <summary>The saved preferences, loaded on first use (one small local file) and reloaded each time the composer opens.</summary>
     public MorningMessagePreferences Preferences => _preferences ??= _preferenceStore.Load();
+
+    /// <summary>Phase 30: shown while changes from another computer are waiting for the composer to close.</summary>
+    [ObservableProperty]
+    public partial string? SyncNotice { get; set; }
+
+    public const string SyncWaitingNotice =
+        "Changes to this morning message from another computer are waiting. They will be added after you close this window; anything you type here is kept.";
 
     /// <summary>The in-flight (or most recent) local save, so a test can await it.</summary>
     public Task PendingSave { get; private set; } = Task.CompletedTask;
@@ -175,8 +196,17 @@ public partial class MorningMessageViewModel : ObservableObject
         await FlushSaveAsync().ConfigureAwait(true);
 
         _workspace = workspace;
-        var content = await _contentStore.LoadAsync(workspace.OperatingDate).ConfigureAwait(true);
-        var preferences = Preferences;
+        MorningMessageContent content;
+        MorningMessagePreferences preferences;
+        using (await _session.LockAsync().ConfigureAwait(true))
+        {
+            // Held before loading, so a sync pass can't change this date or the preferences underneath the
+            // editor; reloaded so anything another computer sent since the last open is shown.
+            _session.MarkOpen(workspace.OperatingDate);
+            _preferences = null;
+            content = await _contentStore.LoadAsync(workspace.OperatingDate).ConfigureAwait(true);
+            preferences = Preferences;
+        }
 
         _suppressChanges = true;
         try
@@ -196,6 +226,7 @@ public partial class MorningMessageViewModel : ObservableObject
             StatusMessage = null;
             StatusIsError = false;
             AfterCopyReminder = null;
+            SyncNotice = null;
 
             RebuildSectionRows();
             RebuildPriceOptions();
@@ -215,6 +246,28 @@ public partial class MorningMessageViewModel : ObservableObject
     {
         IsOpen = false;
         await FlushSaveAsync().ConfigureAwait(true);
+
+        using (await _session.LockAsync().ConfigureAwait(true))
+        {
+            _session.MarkClosed();
+        }
+
+        SyncNotice = null;
+        _session.RequestSync(); // carries this session's edits, and anything held while it was open
+    }
+
+    /// <summary>Phase 30: sync changed or held back Morning Message data (already on the UI thread).</summary>
+    private void OnSyncChanged(MorningMessageSyncChange change)
+    {
+        if (IsOpen && ((OperatingDate is { } date && change.DeferredDates.Contains(date)) || change.PreferencesDeferred))
+        {
+            SyncNotice = SyncWaitingNotice;
+        }
+
+        if (!IsOpen && change.PreferencesUpdated)
+        {
+            _preferences = null; // the Copy menu's default copy mode follows the synchronized preference
+        }
     }
 
     /// <summary>The current main message (for tests and the copy actions).</summary>
@@ -599,16 +652,24 @@ public partial class MorningMessageViewModel : ObservableObject
         await _saveGate.WaitAsync().ConfigureAwait(true);
         try
         {
+            var saved = false;
             if (_contentDirty && OperatingDate is { } date)
             {
                 _contentDirty = false;
                 await _contentStore.SaveAsync(date, CurrentContent()).ConfigureAwait(true);
+                saved = true;
             }
 
             if (_preferencesDirty)
             {
                 _preferencesDirty = false;
                 await _preferenceStore.SaveAsync(Preferences).ConfigureAwait(true);
+                saved = true;
+            }
+
+            if (saved)
+            {
+                _session.RequestSync();
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)

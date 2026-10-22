@@ -2895,3 +2895,27 @@ Full design: `docs/phase26-official-price-history-sync.md`. Summary for this doc
 - **Local store**: `synced_price_observations` (DB 17); this computer's `season_price_history` and
   `catalog_products` are never written by sync. The live database remains outside the sync folder.
 
+
+# Phase 30 — Optional Morning Message sync (sidecar channel)
+
+Full design: `docs/phase30-optional-morning-message-sync.md`. Summary for this document's model:
+
+- **Opt-in, per computer**: `SyncConfiguration.MorningMessageSyncEnabled` (default false, absent in older
+  `sync-config.json` files, never synchronized). While off, nothing in `morning-message/` is read or written and
+  no local file changes; turning it off deletes nothing (no tombstones, no cleanup of shared files).
+- **New folder** `morning-message/` beside the existing six, one `<device-id>.json` per computer, written only
+  by that computer (`SyncPathService.GetMorningMessageFilePath`). Not a `SyncEnvelope`: an independently
+  versioned file (`FormatVersion` 1) holding Morning Message preferences and per-date composer text (never the
+  DAP image path, never official data, never a rendered message).
+- **Conflict model**: field-level version vectors instead of §G's per-record revision; local bookkeeping in
+  `%LOCALAPPDATA%\Carowinds Passdown\morning-message-sync-state.json` (not `sync_entity_state`). A value is
+  replaced only by a version that covers it; independent identical text merges; independent different text is a
+  conflict kept in the local state file (not `sync_conflicts`) and resolved in Settings with Keep This Device /
+  Use Other Device. Never decided by timestamps.
+- **Deletions**: none. Absence is never deletion; clearing a field is an ordinary edit.
+- **Envelope/manifest**: unchanged; `SyncSchemaVersion` stays 1. RC.9 enumerates only its known folders and
+  never touches the new one; its temp cleaner is folder-scoped too.
+- **Pass order**: runs last in `PersonalSyncService.RunAsync`, after official price history; recoverable failures
+  are counted (I/O → `IoFailureCount`, unreadable files → `MalformedCount`) and never block other entities.
+- **Live database**: untouched (no migration; DB 17). Morning Message data stays in local JSON files outside the
+  sync folder; only copies of its values are published.

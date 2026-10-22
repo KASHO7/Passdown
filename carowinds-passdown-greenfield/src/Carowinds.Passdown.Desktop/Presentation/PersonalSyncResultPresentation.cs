@@ -57,9 +57,40 @@ public static class PersonalSyncResultPresentation
                 {
                     summary += $" {OfficialPriceHistorySummary.SkippedText(result.PriceObservationsSkippedCount)}";
                 }
+                // Phase 30: only when Sync Morning Messages is on; never counted as drafts/notes.
+                if (result.MorningMessages is { } messages)
+                {
+                    summary += " " + MorningMessageText(messages);
+                }
                 return summary;
             default:
                 throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, null);
         }
+    }
+
+    private static string MorningMessageText(Application.MorningMessage.Sync.MorningMessageSyncResult messages)
+    {
+        var parts = new List<string>();
+        if (messages.DatesUpdated > 0)
+        {
+            parts.Add($"{messages.DatesUpdated} morning message{(messages.DatesUpdated == 1 ? "" : "s")} updated from another computer");
+        }
+
+        if (messages.PreferencesUpdated)
+        {
+            parts.Add("morning message preferences updated");
+        }
+
+        if (messages.ConflictCount > 0)
+        {
+            parts.Add($"{messages.ConflictCount} morning message conflict{(messages.ConflictCount == 1 ? "" : "s")} to review");
+        }
+
+        if (messages.DeferredCount > 0)
+        {
+            parts.Add("morning message changes waiting until the composer is closed");
+        }
+
+        return parts.Count == 0 ? "Morning messages up to date." : "Morning messages: " + string.Join("; ", parts) + ".";
     }
 }

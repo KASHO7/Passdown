@@ -24,6 +24,10 @@
           <TextBlock Text="{Binding DateText}" Classes="muted" />
           <TextBlock Text="Text typed here is for this message only — it is not saved to the Passdown, PDF or History. Hours, attendance, prices and the Daily Feature come from the Associate screen; edit them there."
                      Classes="fieldHint" TextWrapping="Wrap" />
+          <!-- Phase 30: Sync Morning Messages — changes from another computer wait until this window closes. -->
+          <TextBlock x:Name="SyncNoticeText" Text="{Binding SyncNotice}" Classes="fieldWarning" Margin="0,4,0,0" TextWrapping="Wrap"
+                     IsVisible="{Binding SyncNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                     AutomationProperties.LiveSetting="Polite" />
         </StackPanel>
         <Button Grid.Column="1" Content="Close" Classes="secondaryAction" VerticalAlignment="Top"
                 Command="{Binding CloseCommand}"
@@ -41,7 +45,7 @@
               <TextBox x:Name="GreetingBox" Text="{Binding Greeting}" AcceptsReturn="True" TextWrapping="Wrap"
                        PlaceholderText="Good Morning!"
                        AutomationProperties.Name="Greeting"
-                       AutomationProperties.HelpText="Your greeting is remembered on this computer for every day." />
+                       AutomationProperties.HelpText="Your greeting is remembered for every day, and follows you to your other computers when Sync Morning Messages is on." />
             </StackPanel>
 
             <!-- Section order: Move Up / Move Down buttons (no drag-and-drop) and an include switch per section. -->

@@ -250,7 +250,7 @@ Release build: 0 warnings, 0 errors.
 
 1. Formatted pasting into Teams is unverified (see above). Plain text is therefore the default.
 2. The Associate draft's Shows are not part of the morning message.
-3. Message text is per computer; it does not follow the user to their other computers through Personal Sync.
+3. Message text is per computer; it does not follow the user to their other computers through Personal Sync. *(Phase 30 adds this as an option, off by default: `docs/phase30-optional-morning-message-sync.md`.)*
 4. Copy Image supports PNG, JPEG, BMP and GIF files (a GIF is copied as a still image).
 5. The rendered preview is plain text; bold and bullets appear only after pasting a formatted copy.
 
