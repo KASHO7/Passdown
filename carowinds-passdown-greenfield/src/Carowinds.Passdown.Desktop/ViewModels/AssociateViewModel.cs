@@ -2096,7 +2096,7 @@ public partial class AssociateViewModel : ViewModelBase
             .GroupBy(entry => entry.Section, entry => entry.Product)
             .ToDictionary(group => group.Key, group => (IReadOnlyList<AssociateProduct>)group.ToList());
 
-        var sections = officialBySection.Keys.Concat(statusBySection.Keys).Distinct().OrderBy(section => (int)section);
+        var sections = officialBySection.Keys.Concat(statusBySection.Keys).Distinct().OrderBy(ProductDisplaySectionResolver.DisplayOrder);
 
         var result = new List<ProductCategorySectionViewModel>();
         foreach (var section in sections)
@@ -2112,7 +2112,8 @@ public partial class AssociateViewModel : ViewModelBase
             }
 
             var rows = products.Select(product => new ProductRowViewModel(product, ScheduleAutosave, RequestPriceHistory)).ToList();
-            result.Add(new ProductCategorySectionViewModel(ProductDisplaySectionDisplay.FriendlyName(section), status, rows));
+            result.Add(new ProductCategorySectionViewModel(
+                ProductDisplaySectionDisplay.FriendlyName(section), status, rows, PassSourcePresentation.SourceNote(section, products)));
         }
 
         ProductSections = result;

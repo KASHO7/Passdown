@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Catalog;
+using Carowinds.Passdown.Domain.Catalog;
 
 namespace Carowinds.Passdown.Application.Retrieval;
 
@@ -22,5 +23,13 @@ namespace Carowinds.Passdown.Application.Retrieval;
 /// the dated sources, catalog products don't need a per-batch "applicable date" here (each
 /// <see cref="ObservedProduct"/> already carries its own <c>DateSpecific</c>/<c>ApplicableDate</c>
 /// when relevant).
+///
+/// Phase 25: <see cref="UnconfirmedProductKeys"/> names products the source listed in this
+/// retrieval but whose values could not be verified (a partial parse). Reconciliation leaves them
+/// exactly as last verified — never counted absent, never updated — so one unreadable offer can
+/// neither retire nor overwrite its last-known-good price. Empty for every other adapter.
 /// </summary>
-public sealed record CatalogPayload(IReadOnlyList<ObservedProduct> Products);
+public sealed record CatalogPayload(IReadOnlyList<ObservedProduct> Products)
+{
+    public IReadOnlyList<CatalogProductKey> UnconfirmedProductKeys { get; init; } = [];
+}

@@ -21,7 +21,7 @@
       <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
         <StackPanel Grid.Column="0" Spacing="2">
           <TextBlock Text="Season Price History" Classes="sectionTitle" FontSize="18" Margin="0" />
-          <TextBlock Text="Advertised official prices for Season Passes and Season Pass Add-Ons, as recorded by this app."
+          <TextBlock Text="Advertised official prices for Season Passes, renewal offers, Memberships and Season Pass Add-Ons, as recorded by this app. Each price type is its own history."
                      Classes="muted" TextWrapping="Wrap" />
         </StackPanel>
         <Button Grid.Column="1" Content="Close" Classes="secondaryAction" VerticalAlignment="Top"
@@ -39,6 +39,10 @@
           <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
             <TextBox x:Name="SearchBox" Text="{Binding SearchText}" PlaceholderText="Search products"
                      AutomationProperties.Name="Search tracked products" />
+            <!-- Phase 25: filter by price type so one-time and monthly prices are never mixed in one list. -->
+            <ComboBox ItemsSource="{Binding FamilyFilters}" SelectedItem="{Binding SelectedFamilyFilter}"
+                      HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="Filter by price type" />
             <CheckBox Content="Include retired products" IsChecked="{Binding IncludeInactive}"
                       AutomationProperties.Name="Include retired products in the list" />
           </StackPanel>

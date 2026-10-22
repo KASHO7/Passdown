@@ -1317,3 +1317,34 @@ See `docs/phase23d-github-updater.md`. Unreleased; intended for RC.8.
 
 Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration. Update state and
 packages are outside the SQLite data and never synced.
+
+## Phase 25 — Membership & Season Pass source compatibility
+
+See `docs/phase25-memberships-season-passes.md`. Unreleased work after RC.8 (version still `0.1.0-rc.8`).
+
+- **Domain** — `Catalog/PassOffer` (+ `PassProductType`, `PassPriceType`, `PassPriceUnit`): the identity of
+  one official pass offer (park, Season Pass vs Membership, tier, new-purchase / renewal / monthly rate /
+  initiation fee, season year) and its deterministic `CatalogProductKey.FromPassOffer` key
+  (`SeasonPasses:pass-offer:carowinds|gold|membership|monthly`); `FromLegacyName` (strict pre-redesign pass
+  names); `AdvertisedPriceText.Format(amount, kind, unit)` ("$7.00/month"). Pure.
+- **Application** — `CatalogPayload.UnconfirmedProductKeys` and the optional `unconfirmedProductKeys`
+  reconciliation parameter (listed-but-unreadable offers are neither confirmed nor counted absent);
+  `ProductReconciliationService` adopts a legacy Season Pass key for the same tier/year new-purchase price
+  (one unambiguous match, never for memberships/renewals/fees, nothing rewritten);
+  `PriceHistoryFamily` gains `SeasonPassRenewal`, `Membership`, `MembershipInitiationFee`
+  (+ `PriceHistoryTrackingPolicy.UnitOf`); `AssociateProduct.PassOffer` / `RenewalPriceAmount` /
+  `InitiationFeeAmount` / `OfficialSourceUrl` / `IsPassdownExportable` (composition-time only);
+  `PassOfferComposition.FoldCompanions`; `ProductDisplaySection.Memberships` (+ `DisplayOrder`); per-row
+  Stale for Season Passes rows older than the source's latest successful check.
+- **Infrastructure** — `SeasonPassCatalogSource` now reads
+  `https://www.sixflags.com/carowinds/memberships-and-season-passes` (same source id/name) through
+  `PassTierPageParser` (Next.js flight data → `product_v2` tier documents) and `PassOfferInterpreter`
+  (labeled fields → offers; partial/unconfirmed handling). One GET, no browser.
+- **Documents** — the PDF/Teams Copy contract is unchanged: only `IsPassdownExportable` pass rows print;
+  the Memberships section is never included.
+- **Desktop** — Products: separate Season Passes and Memberships groups, unit-aware prices, "Reference
+  price", "Renewal offer", initiation fee, "Not available", official source line
+  (`Presentation/PassSourcePresentation`); Price History: price-type filter and unit-aware rows.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration. Catalog and price history
+remain local and unsynced.

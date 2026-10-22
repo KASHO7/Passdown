@@ -22,6 +22,14 @@ public enum ProductDisplaySection
     SeasonPasses,
     AddOns,
     Promotions,
+
+    /// <summary>
+    /// Phase 25: recurring Memberships from the official Memberships &amp; Season Passes page — a
+    /// different product from a Season Pass, so a separate group. Appended (not inserted) so no existing
+    /// value changes; <see cref="ProductDisplaySectionResolver.DisplayOrder"/> places it right after
+    /// <see cref="SeasonPasses"/>. Not part of the Associate PDF/Teams Copy contract (deferred).
+    /// </summary>
+    Memberships,
 }
 
 /// <summary>
@@ -113,6 +121,12 @@ public static class ProductDisplaySectionResolver
         // otherwise defaults to DailyAdmission) still resolves to SeasonPasses, while "Military 1-Day
         // Ticket"/"Military & First Responder Tickets" (no season-pass tier wording) correctly stays
         // DailyAdmission.
+        // Phase 25: a Membership (monthly rate, or an unfolded initiation fee) is never a Season Pass.
+        if (product.PassOffer is { Product: PassProductType.Membership })
+        {
+            return ProductDisplaySection.Memberships;
+        }
+
         if (IsSeasonPassProduct(product.DisplayName))
         {
             return ProductDisplaySection.SeasonPasses;
@@ -153,7 +167,7 @@ public static class ProductDisplaySectionResolver
             .ToList();
 
         var duplicatesToDrop = resolved
-            .GroupBy(entry => (entry.Section, Name: NormalizeName(entry.Product.DisplayName)))
+            .GroupBy(entry => (entry.Section, Name: DuplicateKey(entry.Product, entry.Section)))
             .Where(group => group.Count() > 1)
             .SelectMany(group => group
                 .OrderByDescending(entry => IsNativeToSection(entry.Product.Category, entry.Section))
@@ -164,6 +178,31 @@ public static class ProductDisplaySectionResolver
             ? resolved
             : resolved.Except(duplicatesToDrop).ToList();
     }
+
+    /// <summary>
+    /// Phase 25: the duplicate-detection key within a section. In Season Passes it is the pass offer
+    /// (the native row's <see cref="AssociateProduct.PassOffer"/>, or the strict legacy-name rule for a
+    /// reclassified card such as a promoted "2027 Gold Pass"), so the same pass still prints once even
+    /// though the redesigned page names it "Gold Season Pass — 2027"; everywhere else, and for any
+    /// unrecognized name, the normalized name as before.
+    /// </summary>
+    private static string DuplicateKey(AssociateProduct product, ProductDisplaySection section)
+    {
+        if (section == ProductDisplaySection.SeasonPasses &&
+            (product.PassOffer ?? PassOffer.FromLegacyName(product.DisplayName)) is { } offer)
+        {
+            return "pass-offer:" + offer.IdentityText;
+        }
+
+        return NormalizeName(product.DisplayName);
+    }
+
+    /// <summary>Phase 25: on-screen order of the sections — enum order, except Memberships directly follows Season Passes.</summary>
+    public static int DisplayOrder(ProductDisplaySection section) => section switch
+    {
+        ProductDisplaySection.Memberships => (int)ProductDisplaySection.SeasonPasses * 10 + 5,
+        _ => (int)section * 10,
+    };
 
     /// <summary>True when a product's own retrieval category resolves to <paramref name="section"/> without needing the name-based season-pass/SCarowinds overrides — i.e. it belongs there "natively", not just by reclassification.</summary>
     private static bool IsNativeToSection(SourceCategory? category, ProductDisplaySection section) =>

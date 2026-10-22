@@ -12,8 +12,12 @@ namespace Carowinds.Passdown.Desktop.ViewModels;
 public sealed record ProductCategorySectionViewModel(
     string CategoryDisplayName,
     CategoryStatusPresentation? Status,
-    IReadOnlyList<ProductRowViewModel> Products)
+    IReadOnlyList<ProductRowViewModel> Products,
+    string? SourceNoteText = null)
 {
+    /// <summary>Phase 25: official-source attribution for the Season Passes / Memberships groups.</summary>
+    public bool HasSourceNote => !string.IsNullOrWhiteSpace(SourceNoteText);
+
     public bool HasStatus => Status is not null;
 
     public bool HasProducts => Products.Count > 0;

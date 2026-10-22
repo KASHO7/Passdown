@@ -186,6 +186,9 @@ public static class AssociatePassdownDocumentModelBuilder
         ProductDisplaySection.SeasonPasses => selection.IncludeSeasonPasses,
         ProductDisplaySection.AddOns => selection.IncludeAddOns,
         ProductDisplaySection.SCarowinds => selection.IncludeHauntedAttractions,
+        // Phase 25: Memberships were never part of the Associate PDF/Teams Copy contract; adding a new
+        // printed section is deliberately deferred (docs/phase25-memberships-season-passes.md).
+        ProductDisplaySection.Memberships => false,
         _ => true,
     };
 
@@ -203,7 +206,11 @@ public static class AssociatePassdownDocumentModelBuilder
     {
         var categories = new List<PdfProductCategory>();
 
-        var officialBySection = ProductDisplaySectionResolver.ResolveAll(workspace.Products.Where(product => !product.IsCustom && product.IncludeOnPdf))
+        // Phase 25: only pass prices in the established export contract print — the Season Pass
+        // new-purchase price (renewal/initiation amounts are folded onto rows and not printed) — and an
+        // option the source lists as unavailable never prints as a priced row.
+        var officialBySection = ProductDisplaySectionResolver.ResolveAll(workspace.Products.Where(product =>
+                !product.IsCustom && product.IncludeOnPdf && product.IsPassdownExportable && !product.IsUnavailablePassOption))
             .Where(entry => IsSectionIncluded(entry.Section, workspace.Draft.SectionSelection))
             .GroupBy(entry => entry.Section, entry => entry.Product)
             .OrderBy(group => (int)group.Key);

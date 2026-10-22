@@ -91,6 +91,8 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
     }),
     ("Associate-Overview", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowOverviewSectionCommand.Execute(null); Pump(8); }),
     ("Associate-Products", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8); }),
+    // Phase 25: the Season Passes and Memberships groups (scrolled into view).
+    ("Associate-Memberships", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8); ScrollToEnd(f.Window); }),
     ("Associate-Notes", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowNotesSectionCommand.Execute(null); Pump(8); }),
     ("Associate-Shows", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowNotesSectionCommand.Execute(null); Pump(8); ScrollToName(f.Window, "Shows"); }),
     ("Associate-SaveFailed", () => new Fixture(), f =>

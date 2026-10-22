@@ -2427,3 +2427,21 @@ modified, rebuilt over or repacked under these names. A defect needing a new bin
 - **TESTED WITH SYNTHETIC DATA**: updater, signing, discovery, rollback (macOS).
 - **WINDOWS VALIDATED: NO (NOT EXECUTED).**
 - **DISTRIBUTION APPROVED: NO (PENDING)** — QuestPDF, photograph rights, organisation policy.
+
+# Unreleased work after RC.8
+
+The RC.8 section above is frozen: its artifacts, hashes and source provenance (`a651e26`) are unchanged
+and nothing below was packaged.
+
+## Phase 25 — Membership & Season Pass source compatibility (unreleased)
+
+| | |
+|---|---|
+| Scope | Restores the official Season Pass source after the Carowinds Memberships & Season Passes redesign; separate Season Pass, renewal, Membership and initiation-fee identities; Products and Price History presentation. See `docs/phase25-memberships-season-passes.md` |
+| Base | `f3263ed` (RC.8 docs) on `feature/passdown-redesign` |
+| Version | `0.1.0-rc.8` in `Directory.Build.props` (unchanged — no new release candidate built) |
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 — unchanged, no migration |
+| Deterministic tests | 4538/4538 on the macOS build host; Release build 0 warnings, 0 errors |
+| Live verification | One official-page check on 2026-10-22 10:46 AM ET — Verified, 10 offers, no warnings |
+| Windows validation | **NOT EXECUTED** |
+| Packaging | **NOT PACKAGED.** A build containing this fix must ship as `0.1.0-rc.9`; RC.8 must not be rebuilt or repacked |

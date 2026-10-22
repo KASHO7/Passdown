@@ -41,6 +41,11 @@ internal static class BusyDayFixtures
     private static AssociateProduct P(DateOnly date, string name, SourceCategory c, decimal? price, PriceKind kind = PriceKind.ExactDated, decimal? compare = null, string? qualifier = null, AssociateVerificationInfo? v = null, decimal? over = null) =>
         new($"syn|{c}|{name}", name, c, false, price, null, compare, qualifier, kind == PriceKind.ExactDated, date, v ?? Ok, true, over, kind);
 
+    private static AssociateProduct Pass(DateOnly date, PassOffer offer, decimal? price, decimal? compare = null, string? qualifier = null) =>
+        P(date, offer.DisplayName, SourceCategory.SeasonPasses, price, compare is null ? PriceKind.StandardCatalog : PriceKind.Sale, compare, qualifier,
+            new AssociateVerificationInfo(AssociateVerificationState.Verified, Verified, null, "Verified 3 Season Passes, 2 renewal offers, 2 Memberships (1 not available). Official note: *Synthetic processing fee disclosure."))
+        with { PassOffer = offer, OfficialSourceUrl = new Uri("https://www.sixflags.com/carowinds/memberships-and-season-passes") };
+
     public static void ApplyBusyAssociate(FakeAssociatePassdownService service, bool partialFailure = true)
     {
         service.WorkspaceFactory = date =>
@@ -64,8 +69,13 @@ internal static class BusyDayFixtures
                 P(date, "Military/First Responder", SourceCategory.MilitaryFirstResponder, 40m, PriceKind.StartingFrom, qualifier: "Valid ID required"),
                 P(date, "Fast Lane", SourceCategory.DatedFastLane, 65m, v: partialFailure ? stale : null),
                 P(date, "Fast Lane Plus", SourceCategory.DatedFastLane, 109m, v: partialFailure ? stale : null, over: 99m),
-                P(date, "Gold Season Pass", SourceCategory.SeasonPasses, 129.99m, PriceKind.StandardCatalog),
-                P(date, "Prestige Season Pass", SourceCategory.SeasonPasses, 239.99m, PriceKind.StandardCatalog),
+                // Phase 25: Season Passes and Memberships as separate groups (synthetic values).
+                Pass(date, PassOffer.SeasonPass("Silver", PassPriceType.NewPurchase, 2027), 69.99m, 99.99m),
+                Pass(date, PassOffer.SeasonPass("Gold", PassPriceType.NewPurchase, 2027), 129.99m, 149.99m) with { RenewalPriceAmount = 119.99m },
+                Pass(date, PassOffer.SeasonPass("Prestige", PassPriceType.NewPurchase, 2027), 239.99m) with { RenewalPriceAmount = 229.99m },
+                Pass(date, PassOffer.Membership("Silver", PassPriceType.MonthlyRate), null),
+                Pass(date, PassOffer.Membership("Gold", PassPriceType.MonthlyRate), 9.99m, qualifier: "Auto-renews after 12 months") with { InitiationFeeAmount = 24.99m },
+                Pass(date, PassOffer.Membership("Prestige", PassPriceType.MonthlyRate), 21.99m, qualifier: "Auto-renews after 12 months") with { InitiationFeeAmount = 24.99m },
                 P(date, "All Season Dining", SourceCategory.AddOns, 159.99m, PriceKind.StandardCatalog),
             ];
             List<AssociateProductCategoryStatus> statuses = partialFailure

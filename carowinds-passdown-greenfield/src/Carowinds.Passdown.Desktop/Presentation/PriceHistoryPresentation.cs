@@ -34,28 +34,39 @@ public static class PriceHistoryPresentation
 
     public const string NoChangesYetText = "No price changes recorded yet.";
     public const string NoStatesText = "No official price has been recorded for this product yet. It will appear after the next successful official check.";
-    public const string NoProductsText = "No Season Pass or Season Pass Add-On prices have been recorded yet. History starts with the next successful official check.";
+    public const string NoProductsText = "No Season Pass, Membership or Season Pass Add-On prices have been recorded yet. History starts with the next successful official check.";
     public const string LoadErrorText = "Price history couldn't be loaded. Try again later; nothing else is affected.";
     public const string TimingNoteText = "\"First seen\" is the first successful official check that showed a price. The actual change happened between the previous row's last-confirmed date and that date.";
 
     public static string FormatAmount(decimal amount) => amount.ToString("C2", UsCulture);
 
     /// <summary>"$105.00", "From $105.00", "$89.00 (sale price)" or "$50.00 (bundle)".</summary>
-    public static string FormatPrice(decimal amount, PriceKind kind) => kind switch
+    public static string FormatPrice(decimal amount, PriceKind kind) => FormatPrice(amount, kind, PassPriceUnit.OneTime);
+
+    /// <summary>Phase 25: with the series' unit — a Membership rate reads "$7.00/month", never like a one-time price.</summary>
+    public static string FormatPrice(decimal amount, PriceKind kind, PassPriceUnit unit)
     {
-        PriceKind.StartingFrom => $"From {FormatAmount(amount)}",
-        PriceKind.Sale => $"{FormatAmount(amount)} (sale price)",
-        PriceKind.Bundle => $"{FormatAmount(amount)} (bundle)",
-        _ => FormatAmount(amount),
-    };
+        var money = unit == PassPriceUnit.PerMonth ? $"{FormatAmount(amount)}/month" : FormatAmount(amount);
+        return kind switch
+        {
+            PriceKind.StartingFrom => $"From {money}",
+            PriceKind.Sale => $"{money} (sale price)",
+            PriceKind.Bundle => $"{money} (bundle)",
+            _ => money,
+        };
+    }
 
     /// <summary>"Sep 19, 2026" — the Eastern (park) calendar date of a stored UTC timestamp.</summary>
     public static string FormatDate(DateTimeOffset timestamp) =>
         EasternTimeZone.ConvertFromUtc(timestamp.ToUniversalTime()).ToString("MMM d, yyyy", UsCulture);
 
     /// <summary>"—" for a baseline; "+$6.00 (+6.1%)" / "-$10.00 (-9.5%)"; "$0.00" when only the kind changed.</summary>
-    public static string FormatChange(SeasonPriceChange? change)
+    public static string FormatChange(SeasonPriceChange? change) => FormatChange(change, PassPriceUnit.OneTime);
+
+    /// <summary>Phase 25: a Membership series' change reads per month ("+$2.00/month (+28.6%)").</summary>
+    public static string FormatChange(SeasonPriceChange? change, PassPriceUnit unit)
     {
+        var suffix = unit == PassPriceUnit.PerMonth ? "/month" : string.Empty;
         if (change is null)
         {
             return "—";
@@ -63,11 +74,11 @@ public static class PriceHistoryPresentation
 
         if (!change.AmountChanged)
         {
-            return FormatAmount(0m);
+            return FormatAmount(0m) + suffix;
         }
 
         var sign = change.AmountDelta > 0 ? "+" : "-";
-        var amountText = $"{sign}{FormatAmount(Math.Abs(change.AmountDelta))}";
+        var amountText = $"{sign}{FormatAmount(Math.Abs(change.AmountDelta))}{suffix}";
         return change.PercentChange is { } percent ? $"{amountText} ({FormatPercent(percent)})" : amountText;
     }
 
@@ -81,7 +92,11 @@ public static class PriceHistoryPresentation
             : $"{sign}{magnitude.ToString("0.0", UsCulture)}%";
     }
 
-    public static IReadOnlyList<PriceHistoryRowPresentation> BuildRows(IReadOnlyList<PriceHistoryEntry> entries)
+    public static IReadOnlyList<PriceHistoryRowPresentation> BuildRows(IReadOnlyList<PriceHistoryEntry> entries) =>
+        BuildRows(entries, PassPriceUnit.OneTime);
+
+    /// <param name="unit">Phase 25: the unit of this product's whole series (one product key = one unit).</param>
+    public static IReadOnlyList<PriceHistoryRowPresentation> BuildRows(IReadOnlyList<PriceHistoryEntry> entries, PassPriceUnit unit)
     {
         ArgumentNullException.ThrowIfNull(entries);
 
@@ -94,9 +109,9 @@ public static class PriceHistoryPresentation
             rows.Add(new PriceHistoryRowPresentation(
                 FirstSeenText: FormatDate(interval.FirstObservedAt),
                 LastConfirmedText: FormatDate(interval.LastConfirmedAt),
-                PriceText: FormatPrice(interval.Amount, interval.PriceKind),
-                ChangeText: FormatChange(change),
-                NoteText: BuildNote(previous, entry),
+                PriceText: FormatPrice(interval.Amount, interval.PriceKind, unit),
+                ChangeText: FormatChange(change, unit),
+                NoteText: BuildNote(previous, entry, unit),
                 IsIncrease: change is { AmountDelta: > 0 },
                 IsDecrease: change is { AmountDelta: < 0 }));
             previous = entry;
@@ -106,7 +121,7 @@ public static class PriceHistoryPresentation
     }
 
     /// <summary>Makes a semantic-only change or a reappearance visible even when the amount is unchanged.</summary>
-    private static string? BuildNote(PriceHistoryEntry? previous, PriceHistoryEntry entry)
+    private static string? BuildNote(PriceHistoryEntry? previous, PriceHistoryEntry entry, PassPriceUnit unit)
     {
         if (previous is null || entry.ChangeFromPrevious is not { } change)
         {
@@ -120,8 +135,8 @@ public static class PriceHistoryPresentation
 
         if (change.KindChanged)
         {
-            var before = FormatPrice(previous.Interval.Amount, previous.Interval.PriceKind);
-            var after = FormatPrice(entry.Interval.Amount, entry.Interval.PriceKind);
+            var before = FormatPrice(previous.Interval.Amount, previous.Interval.PriceKind, unit);
+            var after = FormatPrice(entry.Interval.Amount, entry.Interval.PriceKind, unit);
             return $"Price type changed: {before} → {after}.";
         }
 
@@ -136,6 +151,26 @@ public static class PriceHistoryPresentation
     public static string FamilyText(PriceHistoryFamily family) => family switch
     {
         PriceHistoryFamily.SeasonPassAddOn => "Season Pass Add-On",
+        PriceHistoryFamily.SeasonPassRenewal => "Season Pass renewal offer",
+        PriceHistoryFamily.Membership => "Membership · monthly rate",
+        PriceHistoryFamily.MembershipInitiationFee => "Membership · initiation fee",
         _ => "Season Pass",
     };
+
+    /// <summary>Phase 25: the Price History "Price type" filter choices, in display order.</summary>
+    public static IReadOnlyList<PriceHistoryFamilyFilter> FamilyFilters { get; } =
+    [
+        new(null, "All price types"),
+        new(PriceHistoryFamily.SeasonPass, "Season Passes"),
+        new(PriceHistoryFamily.SeasonPassRenewal, "Season Pass renewal offers"),
+        new(PriceHistoryFamily.Membership, "Memberships (monthly rates)"),
+        new(PriceHistoryFamily.MembershipInitiationFee, "Membership initiation fees"),
+        new(PriceHistoryFamily.SeasonPassAddOn, "Season Pass Add-Ons"),
+    ];
+}
+
+/// <summary>Phase 25: one Price History "Price type" filter choice; a null family shows every type.</summary>
+public sealed record PriceHistoryFamilyFilter(PriceHistoryFamily? Family, string DisplayName)
+{
+    public override string ToString() => DisplayName;
 }

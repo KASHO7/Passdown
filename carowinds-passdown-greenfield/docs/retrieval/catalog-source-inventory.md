@@ -516,3 +516,11 @@ valid page = `Verified` with zero products; parse/transport failure = `Error`). 
   `SourceCategory.ShowSchedule`, daily freshness) — the `shows[]` array of the same FIMS
   operating-hours feed park hours uses. Current and future dates only; never a product row and never
   in Teams Copy. See `docs/phase21c-official-show-schedules.md`.
+
+## Phase 25 addendum — Memberships & Season Passes redesign
+
+`/carowinds/season-passes` now redirects to `/carowinds/memberships-and-season-passes`, whose tier cards
+(Silver/Gold/Prestige) no longer carry `productv2-card-price`; each tier offers a Season Pass and a
+Membership. `SeasonPassCatalogSource` reads the page's embedded `product_v2` / `paymentOptions` data
+instead of the shared card parser (which is unchanged for the other pages). See
+`docs/phase25-memberships-season-passes.md`.

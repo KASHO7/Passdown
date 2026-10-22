@@ -12,7 +12,11 @@ public sealed record PriceHistoryProduct(
     string DisplayName,
     PriceHistoryFamily Family,
     bool IsActive,
-    int StateCount);
+    int StateCount)
+{
+    /// <summary>Phase 25: the unit every price in this product's history is quoted in ("$7.00/month" for a Membership).</summary>
+    public PassPriceUnit Unit => PriceHistoryTrackingPolicy.UnitOf(Family);
+}
 
 /// <summary>One interval plus its derived difference from the interval before it (never stored).</summary>
 /// <param name="ChangeFromPrevious"><see langword="null"/> for the first (baseline) interval.</param>
@@ -27,7 +31,7 @@ public sealed record PriceHistoryEntry(SeasonPriceHistoryInterval Interval, Seas
 
 public interface ISeasonPriceHistoryService
 {
-    /// <summary>Every tracked Season Pass / Season Pass Add-On, including retired ones, by family then name.</summary>
+    /// <summary>Every tracked Season Pass, renewal offer, Membership, initiation fee and Season Pass Add-On, including retired ones, by family then name.</summary>
     Task<IReadOnlyList<PriceHistoryProduct>> ListTrackedProductsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>One product's intervals, oldest first, each with its change from the previous interval.</summary>
@@ -54,8 +58,15 @@ public sealed class SeasonPriceHistoryService(
             {
                 var hasHistory = trackedKeys.Contains(record.ProductKey);
                 var family = PriceHistoryTrackingPolicy.ClassifyStoredProduct(
-                    record.Category, record.LastEvidence.SourceName, record.DisplayName, record.DateSpecific, hasHistory);
+                    record.Category, record.LastEvidence.SourceName, record.DisplayName, record.DateSpecific, hasHistory, record.ProductKey);
                 if (family is not { } trackedFamily)
+                {
+                    continue;
+                }
+
+                // Phase 25: an option the source lists as unavailable ("Membership — Not Available") has no
+                // price to show; it appears here only once a real price was ever recorded for it.
+                if (!hasHistory && record.CurrentPriceAmount is null && record.Category == Domain.SourceCategory.SeasonPasses)
                 {
                     continue;
                 }

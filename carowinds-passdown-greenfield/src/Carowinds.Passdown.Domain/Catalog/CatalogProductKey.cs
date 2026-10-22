@@ -45,6 +45,20 @@ public sealed record CatalogProductKey
     }
 
     /// <summary>
+    /// Phase 25: the deterministic identity of one official pass offer —
+    /// <c>SeasonPasses:pass-offer:carowinds|gold|season-pass|new-purchase|2027</c>. Built from verified
+    /// tier/product/price-type/season labels (never a card position or price) because the redesigned
+    /// page's only per-card id is the tier card's own CMS id, which one tier's Season Pass and
+    /// Membership share.
+    /// </summary>
+    public static CatalogProductKey FromPassOffer(PassOffer offer)
+    {
+        ArgumentNullException.ThrowIfNull(offer);
+
+        return new CatalogProductKey(SourceCategory.SeasonPasses, $"pass-offer:{offer.IdentityText}");
+    }
+
+    /// <summary>
     /// Picks the most stable identity available for a retrieved product, following
     /// spec §7.2's priority order.
     /// </summary>

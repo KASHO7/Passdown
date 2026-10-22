@@ -18,6 +18,7 @@ public static class ProductDisplaySectionDisplay
         ProductDisplaySection.SeasonPasses => "Season Passes",
         ProductDisplaySection.AddOns => "Add-Ons",
         ProductDisplaySection.Promotions => "Promotions",
+        ProductDisplaySection.Memberships => "Memberships",
         _ => section.ToString(),
     };
 }

@@ -43,6 +43,43 @@ public partial class ProductRowViewModel : ObservableObject
 
     public string? ComparisonPriceText { get; }
 
+    /// <summary>The "Compare at $x" line — every product except a pass offer (Phase 25), whose comparison reads as <see cref="ReferencePriceNoteText"/>.</summary>
+    public bool HasCompareAtLine => ComparisonPriceText is not null && ReferencePriceNoteText is null;
+
+    /// <summary>
+    /// Phase 25: a pass offer's crossed-out amount, labeled as a reference price ("Reference price
+    /// $115.00") — never as a current sale price.
+    /// </summary>
+    public string? ReferencePriceNoteText { get; }
+
+    public bool HasReferencePriceNote => ReferencePriceNoteText is not null;
+
+    /// <summary>Phase 25: "Renewal offer $89.00" on a Season Pass row — a separate published price for renewing passholders.</summary>
+    public string? RenewalNoteText { get; }
+
+    public bool HasRenewalNote => RenewalNoteText is not null;
+
+    /// <summary>Phase 25: "$20.00 initiation fee" on a Membership row — never added to the monthly rate.</summary>
+    public string? InitiationFeeNoteText { get; }
+
+    public bool HasInitiationFeeNote => InitiationFeeNoteText is not null;
+
+    /// <summary>
+    /// Phase 25: whether this row can print on the passdown (and so offers the PDF checkbox and a display
+    /// price override). False for Memberships, unfolded renewal/initiation rows and unavailable options.
+    /// </summary>
+    public bool CanIncludeOnPdf { get; }
+
+    /// <summary>
+    /// Phase 25: the muted line a non-printable row shows instead of the PDF controls. Membership rows
+    /// carry none — their whole group says it once (<see cref="Presentation.PassSourcePresentation"/>).
+    /// </summary>
+    public string? NotPrintedNoteText => CanIncludeOnPdf || _isMembership ? null : "Not printed on the passdown.";
+
+    public bool HasNotPrintedNote => NotPrintedNoteText is not null;
+
+    private readonly bool _isMembership;
+
     public string? PriceQualifier { get; }
 
     /// <summary>
@@ -90,7 +127,12 @@ public partial class ProductRowViewModel : ObservableObject
     /// evidence label the PDF gives it (a starting-price row prints "From $x" even with an override,
     /// because the document model keeps the row's <see cref="PriceKind"/>).
     /// </summary>
-    public string EffectivePriceText => AdvertisedPriceText.FormatOrNull(_displayPriceOverride, PriceKind) ?? OfficialPriceText;
+    public string EffectivePriceText => AdvertisedPriceText.FormatOrNull(_displayPriceOverride, PriceKind, _priceUnit) ?? OfficialPriceText;
+
+    /// <summary>Phase 25: how a pass option the source lists as unavailable reads — never "$0.00".</summary>
+    public const string UnavailableText = "Not available";
+
+    private readonly PassPriceUnit _priceUnit;
 
     /// <summary>Phase 22E: under an override on a starting-price row, says how it prints ("Prints as From $35.00"); null otherwise.</summary>
     public string? OverridePrintNoteText => IsStartingPrice && HasOverride ? $"Prints as {EffectivePriceText}" : null;
@@ -108,8 +150,16 @@ public partial class ProductRowViewModel : ObservableObject
         ProductIdentity = product.ProductIdentity;
         DisplayName = product.DisplayName;
         PriceKind = product.PriceKind;
-        OfficialPriceText = AdvertisedPriceText.FormatOrNull(product.OfficialPriceAmount, product.PriceKind) ?? product.OfficialDisplayPrice ?? "Not priced";
+        _priceUnit = product.PriceUnit;
+        OfficialPriceText = product.IsUnavailablePassOption
+            ? UnavailableText
+            : AdvertisedPriceText.FormatOrNull(product.OfficialPriceAmount, product.PriceKind, _priceUnit) ?? product.OfficialDisplayPrice ?? "Not priced";
         ComparisonPriceText = PriceFormatting.FormatOrNull(product.ComparisonPriceAmount);
+        ReferencePriceNoteText = ComparisonPriceText is not null && product.PassOffer is not null ? $"Reference price {ComparisonPriceText}" : null;
+        RenewalNoteText = product.RenewalPriceAmount is { } renewal ? $"Renewal offer {PriceFormatting.FormatOrNull(renewal)}" : null;
+        InitiationFeeNoteText = product.InitiationFeeAmount is { } fee ? $"{PriceFormatting.FormatOrNull(fee)} initiation fee" : null;
+        CanIncludeOnPdf = product.IsPassdownExportable && !product.IsUnavailablePassOption;
+        _isMembership = product.PassOffer?.Product == PassProductType.Membership;
         PriceQualifier = product.PriceQualifier;
         BundleNoteText = product is { BundleQuantity: { } quantity, PerPersonPriceAmount: { } perPerson }
             ? $"{quantity} for {PriceFormatting.FormatOrNull(product.BundleTotalPriceAmount)} — {PriceFormatting.FormatOrNull(perPerson)} per person"

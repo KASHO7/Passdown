@@ -21,6 +21,8 @@ public sealed record PriceHistoryProductOption(PriceHistoryProduct Product)
     /// <summary>"Season Pass" or "Season Pass Add-On · Retired" — never color-only.</summary>
     public string DetailText => IsInactive ? $"{FamilyText} · Retired" : FamilyText;
 
+    public PriceHistoryFamily Family => Product.Family;
+
     public string AutomationName => $"{DisplayName}, {DetailText}";
 }
 
@@ -53,6 +55,12 @@ public partial class PriceHistoryViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string? SearchText { get; set; }
+
+    /// <summary>Phase 25: the "Price type" filter choices (all, Season Passes, renewals, Memberships, initiation fees, add-ons).</summary>
+    public IReadOnlyList<PriceHistoryFamilyFilter> FamilyFilters => PriceHistoryPresentation.FamilyFilters;
+
+    [ObservableProperty]
+    public partial PriceHistoryFamilyFilter SelectedFamilyFilter { get; set; } = PriceHistoryPresentation.FamilyFilters[0];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasProducts))]
@@ -137,6 +145,8 @@ public partial class PriceHistoryViewModel : ObservableObject
 
     partial void OnSearchTextChanged(string? value) => ApplyFilter(SelectedProduct?.ProductKey);
 
+    partial void OnSelectedFamilyFilterChanged(PriceHistoryFamilyFilter value) => ApplyFilter(SelectedProduct?.ProductKey);
+
     partial void OnSelectedProductChanged(PriceHistoryProductOption? value) => PendingHistoryLoad = LoadHistoryAsync(value);
 
     private void ApplyFilter(string? preferredKey)
@@ -144,6 +154,7 @@ public partial class PriceHistoryViewModel : ObservableObject
         var search = SearchText?.Trim();
         var filtered = _allProducts
             .Where(p => IncludeInactive || !p.IsInactive)
+            .Where(p => SelectedFamilyFilter?.Family is not { } family || p.Family == family)
             .Where(p => string.IsNullOrEmpty(search) || p.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase))
             .ToList();
         Products = filtered;
@@ -178,7 +189,7 @@ public partial class PriceHistoryViewModel : ObservableObject
                 return; // a newer selection superseded this load
             }
 
-            Rows = PriceHistoryPresentation.BuildRows(entries);
+            Rows = PriceHistoryPresentation.BuildRows(entries, product.Product.Unit);
             AvailabilityText = entries.Count == 0 ? null : PriceHistoryPresentation.AvailabilityText(entries);
             StatusText = entries.Count switch
             {
