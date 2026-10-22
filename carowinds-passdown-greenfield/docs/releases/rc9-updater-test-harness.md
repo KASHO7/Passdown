@@ -6,6 +6,11 @@ the **exact RC.9 updater bytes**, without publishing Carowinds Operations, the p
 **Status: PREPARED, NOT UPLOADED, NOT EXECUTED.** Nothing has been uploaded to GitHub. Every upload needs the
 owner's explicit approval. Windows results go in `rc9-windows-validation.md` §8, and only after they actually run.
 
+**Owner decision (2026-10-22): use the offline route in §8 first; no GitHub upload.** The packages contain the
+compiled RC.9 Infrastructure/Application/Domain libraries, which would make the unreleased Phase 25–27 code
+readable before it reaches public `KASHO7/Passdown` `main` (`5fa5aba`, everything up to RC.8/Phase 24). Sections
+3 and 5 (GitHub upload and discovery) are **on hold**; GitHub discovery and download stay **BLOCKED**.
+
 ## 1. Design
 
 | Piece | What it is | Where it goes |
@@ -157,3 +162,78 @@ appearance and sync settings. It makes no new backup, because the database is al
 
 Delete the test keys from the build Mac. Remove the test releases and tags from the test repository (owner's
 choice). Keep `artifacts/updater-test/` read-only until the results are recorded.
+
+## 8. Offline route (no GitHub) — the procedure to run now
+
+Exercises the **real RC.9 updater bytes** on Windows without uploading anything. The only step replaced is the
+installed app's "download and stage" step. A test tool, `carowinds-offline-update-stager`
+(`tools/updater-offline-stager`), does it with the same production classes the app uses after a download
+(`EcdsaUpdateManifestVerifier`, package size/SHA-256 check, `SafeZipExtractor`, `UpdaterProcessLauncher`). It then
+exits, and the updater it started waits for it to close and installs as usual. It trusts only the throwaway test
+key and has no network code.
+
+### 8.1 Kit (build Mac → test machine, private transfer only)
+
+Built by `tools/updater-offline-stager/build-offline-kit.sh` into `artifacts/updater-test-offline/kit/`
+(git-ignored, read-only). Copy the **whole `kit` folder** by USB stick or private share; never upload it.
+
+| File | Bytes | SHA-256 |
+|---|---|---|
+| `LOCAL-ONLY-updater-test-start-app-Carowinds-Operations-0.0.900-rc.1-win-x64.zip` | 75,715,702 | `43a43f142d03188b94ea15454b6678d45ed3db81506cefe4b94283d559e79709` |
+| `LOCAL-ONLY-offline-update-stager-win-x64.zip` | 37,500,556 | `dc9446d7ca54ebf60f89ec30ce9d6db20c44f2c64fdb16a47721e8b1b18280bb` |
+| `packages/v0.0.900-rc.2 … rc.6/` (ZIP + `.update.json` + `.sig` each) | as in `SHA256SUMS.txt` | same files as `artifacts/updater-test/upload-candidates/` |
+| `SHA256SUMS.txt` | | hashes of everything above |
+
+Build-host checks: kit hashes match; packages unchanged since they were built; stager is win-x64 console,
+self-contained, built from `e20d846` source, embeds only the test public key (`updater-test-only-1`, no
+production key), no `.pdb`, no private-key bytes (production/test/impostor), no Fury bytes, no developer paths.
+**Dry run on macOS** (isolated updates folder, `--no-launch`): rc.2 *signature rejected*, rc.3 *package
+rejected*, rc.4–rc.6 *verified and staged*; with launch, the request is written and removed again when the
+(Windows-only) updater can't start — the expected macOS outcome.
+
+### 8.2 Test machine
+
+As §4: a Windows 11 x64 **VM with snapshots**, or a **new local Windows account** used only for this test.
+`%LOCALAPPDATA%\Carowinds Passdown` must not exist before you start. Then:
+
+1. Copy the `kit` folder to `%USERPROFILE%\Documents\updater-test\kit`. In PowerShell, in that folder, check
+   the hashes: `Get-FileHash -Algorithm SHA256 <file>` against `SHA256SUMS.txt`.
+2. Extract the start-app ZIP to `%USERPROFILE%\Documents\updater-test\app` and the stager ZIP to
+   `%USERPROFILE%\Documents\updater-test\stager`.
+3. The command used in every stage below (one line, in PowerShell), with `N` = 2…6:
+
+   ```powershell
+   & "$env:USERPROFILE\Documents\updater-test\stager\carowinds-offline-update-stager\carowinds-offline-update-stager.exe" --package "$env:USERPROFILE\Documents\updater-test\kit\packages\v0.0.900-rc.N\Carowinds-Operations-0.0.900-rc.N-win-x64.zip" --install "$env:USERPROFILE\Documents\updater-test\app\Carowinds-Operations-0.0.900-rc.1-win-x64"
+   ```
+
+**Always close the app normally first** (window close, which saves drafts — the same save "Restart and
+Install" performs) and wait until it is gone from Task Manager.
+
+### 8.3 Stages
+
+Use §5's Stage 0 to create the synthetic starting data, then take **snapshot S0**. The starting app's own update
+check finds nothing (the test repository has no releases) — expected.
+
+| Stage | Command | Expected |
+|---|---|---|
+| A — untrusted signature | stager with `rc.2` | `1. Signature: REJECTED (InvalidSignature)`; nothing in `%LOCALAPPDATA%\Carowinds Operations Updates\staging`; app folder unchanged |
+| B — tampered package | stager with `rc.3` | `2. Package: REJECTED`; nothing staged; app folder unchanged |
+| C — failure before migration | close app → stager with `rc.4` | as §5 Stage 3: a console window may flash, the starting app reopens **once** at `0.0.900-rc.1` with the Stage 0 data and the "was restored" message; `backups\…pre-update-0.0.900-rc.1-to-0.0.900-rc.4-…db`; record `rolledBack`, `databaseSchemaVersionBefore: 16` |
+| D — failure after migration | close app → stager with `rc.5` | as §5 Stage 4: console shows schema 16 → 17 and exits; **nothing reopens**; `UPDATE-RECOVERY.txt`; record `recoveryRequired` / `database-upgraded-not-confirmed`; then the recovery procedure in §5 Stage 4 |
+| — | **revert to S0** | |
+| E — success | close app → stager with `rc.6` | as §5 Stage 5 items 1–3 and checks: schema 16 → 17 with integrity check and pre-migration backup, `Update record: Succeeded 0.0.900-rc.1 -> 0.0.900-rc.6`, What's New once; a second manual start says "What's New: not shown"; then the real-RC.9 data check |
+| F — app still open (optional) | revert to S0, leave the app **open** → stager with `rc.6` | the updater waits for the stager (not the app), finds the app folder in use and records `notInstalled` / `installation-in-use`; nothing killed or changed; on its next start the app explains it |
+| G — no room for the backup (optional) | revert to S0, fill the disk as §5 → stager with `rc.6` | record `notInstalled` / `insufficient-disk-space`; nothing installed |
+
+Stage F differs from the in-app path: there, the app closes itself before the updater looks. Here the tester
+closes it.
+
+### 8.4 What the offline route covers and what stays BLOCKED
+
+| Validation item (`rc9-windows-validation.md` §8) | Offline route |
+|---|---|
+| 8.1 Detection, 8.2 notes preview, 8.3 install approval in the app | **BLOCKED** — need GitHub discovery |
+| 8.4 Download + signature | signature, package hash and safe extraction on Windows: **testable** (Stages A, B, via the same classes); the app's download itself: **BLOCKED** |
+| 8.5 Safe shutdown | the app's normal close (same save) only; the app-initiated close: **BLOCKED** |
+| 8.6–8.15 Backup, replacement, restart, migration, health confirmation, What's New, data, both failure paths, recovery | **testable** — real updater executable, real migration code |
+| 8.16 Locked installation | **testable** (Stage F, variant noted above) |

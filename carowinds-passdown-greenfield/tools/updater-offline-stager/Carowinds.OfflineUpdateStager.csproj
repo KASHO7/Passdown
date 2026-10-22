@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Phase 27 offline updater test (docs/releases/rc9-updater-test-harness.md §8). NOT part of the product and not in
+    CarowindsPassdown.slnx. Stands in for the part of the installed app that runs after a GitHub download — verify the
+    signed manifest, check the package size and SHA-256, unpack with SafeZipExtractor into the updates staging
+    folder, write the install request and start the staged updater — using the same production classes
+    (EcdsaUpdateManifestVerifier, SafeZipExtractor, UpdaterProcessLauncher) so the real RC.9 updater runs exactly as
+    it would after an in-app download, with no network. Trusts only the throwaway test key (test-trust.json, embedded
+    by the build script; never the production key).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>carowinds-offline-update-stager</AssemblyName>
+    <RootNamespace>Carowinds.OfflineUpdateStager</RootNamespace>
+    <Product>Carowinds offline updater test stager (test only)</Product>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="test-trust.json" LogicalName="OfflineUpdateStager.test-trust.json" Condition="Exists('test-trust.json')" />
+    <ProjectReference Include="..\..\src\Carowinds.Passdown.Infrastructure\Carowinds.Passdown.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

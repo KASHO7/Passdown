@@ -127,32 +127,33 @@ Record the live amounts observed (do not copy them into code or tests).
 
 ## 8. In-app update RC.8 → RC.9 (real external updater)
 
-**Prerequisite — BLOCKED until prepared:** an RC.8 build configured for a **private test repository**
-and a **test signing key**, plus a matching test-signed RC.9 package built from `e20d846` with the same
-test configuration (the production RC.8 trusts only `carowinds-release-1` and `KASHO7/Passdown`). The
-owner must choose the private test repository (outstanding since RC.8). Use a disposable profile created
-by RC.8 with representative data.
+**Route (owner decision 2026-10-22): offline.** Use the offline kit and procedure in
+`docs/releases/rc9-updater-test-harness.md` §8: a test-configured starting app (`0.0.900-rc.1`, RC.8 source),
+synthetic signed packages carrying the exact RC.9 updater bytes, and an offline stager instead of the GitHub
+download. Nothing is uploaded, so GitHub discovery and download (8.1–8.3 and the download part of 8.4) stay
+**BLOCKED**. Everything else is runnable and **NOT EXECUTED**. Use a disposable Windows account or a VM
+snapshot. "Offline stage" refers to harness doc §8.3.
 
 | # | Check | Expected | Result | Notes |
 |---|---|---|---|---|
-| 8.1 | Detection | RC.8 offers RC.9 (Check for Updates or after ~90 s) | BLOCKED | Harness not prepared |
-| 8.2 | Notes preview | Starts "RC.9 updates the local database. A backup is required before installation. Older versions cannot open the updated database." | BLOCKED | |
-| 8.3 | Install approval | Nothing downloads before Install Update; nothing closes before Restart and Install | BLOCKED | |
-| 8.4 | Download + signature | Progress shown; tampered ZIP / wrong key rejected (separate runs) | BLOCKED | |
-| 8.5 | Safe shutdown | Unsaved draft saved first; failed save postpones the update | BLOCKED | |
-| 8.6 | Pre-update backup | `backups\…pre-update-0.1.0-rc.8-to-0.1.0-rc.9-…db` exists, opens in RC.8, and was written **before** the app folder changed (compare timestamps) | BLOCKED | |
-| 8.7 | File replacement | App folder holds RC.9 files; user files kept; no UAC prompt | BLOCKED | |
-| 8.8 | Restart + migration | RC.9 opens; `…pre-migration-schema-16-to-17…db` also exists; DB schema 17 | BLOCKED | |
-| 8.9 | Health confirmation | Install record `Succeeded` only after the window opened (`%LOCALAPPDATA%\Carowinds Operations Updates\records`) | BLOCKED | |
-| 8.10 | Version + What's New | About shows RC.9; What's New once | BLOCKED | |
-| 8.11 | Data preserved | As §3.5 | BLOCKED | |
-| 8.12 | Failure before migration | Test RC.9 whose exe exits immediately → RC.8 restored and reopened once; DB still 16; "was restored" message | BLOCKED | |
-| 8.13 | Failure after migration | Test RC.9 that upgrades then never opens a window → **not** reversed; RC.8 not started; `UPDATE-RECOVERY.txt` lists DB, backup, RC.8 files; RC.9 message on next start | BLOCKED | |
-| 8.14 | Backup cannot be made | Fill the drive (or lock the DB) before Restart and Install → nothing installed; RC.8 explains on restart | BLOCKED | |
-| 8.15 | Recovery procedure | Follow installation guide §7 from 8.13's state; RC.8 opens the restored backup; set-aside DB kept | BLOCKED | |
-| 8.16 | Locked installation | Second instance or scheduled refresh running → not installed; nothing killed | BLOCKED | |
+| 8.1 | Detection | RC.8 offers RC.9 (Check for Updates or after ~90 s) | BLOCKED | Needs GitHub discovery (upload on hold) |
+| 8.2 | Notes preview | Starts "RC.9 updates the local database. A backup is required before installation. Older versions cannot open the updated database." | BLOCKED | Needs GitHub discovery; the warning text is in every test package’s signed notes |
+| 8.3 | Install approval | Nothing downloads before Install Update; nothing closes before Restart and Install | BLOCKED | Needs the in-app offer |
+| 8.4 | Download + signature | Progress shown; tampered ZIP / wrong key rejected (separate runs) | NOT EXECUTED | Offline stages A, B: signature, hash, extraction; the download itself BLOCKED |
+| 8.5 | Safe shutdown | Unsaved draft saved first; failed save postpones the update | NOT EXECUTED | Offline: the app’s normal close only; the app-initiated close BLOCKED |
+| 8.6 | Pre-update backup | `backups\…pre-update-0.1.0-rc.8-to-0.1.0-rc.9-…db` exists, opens in RC.8, and was written **before** the app folder changed (compare timestamps) | NOT EXECUTED | Offline stages C, E |
+| 8.7 | File replacement | App folder holds RC.9 files; user files kept; no UAC prompt | NOT EXECUTED | Offline stage E |
+| 8.8 | Restart + migration | RC.9 opens; `…pre-migration-schema-16-to-17…db` also exists; DB schema 17 | NOT EXECUTED | Offline stage E |
+| 8.9 | Health confirmation | Install record `Succeeded` only after the window opened (`%LOCALAPPDATA%\Carowinds Operations Updates\records`) | NOT EXECUTED | Offline stage E |
+| 8.10 | Version + What's New | About shows RC.9; What's New once | NOT EXECUTED | Offline stage E: version and What’s New printed by the synthetic app |
+| 8.11 | Data preserved | As §3.5 | NOT EXECUTED | Offline stage E plus the real RC.9 data check |
+| 8.12 | Failure before migration | Test RC.9 whose exe exits immediately → RC.8 restored and reopened once; DB still 16; "was restored" message | NOT EXECUTED | Offline stage C |
+| 8.13 | Failure after migration | Test RC.9 that upgrades then never opens a window → **not** reversed; RC.8 not started; `UPDATE-RECOVERY.txt` lists DB, backup, RC.8 files; RC.9 message on next start | NOT EXECUTED | Offline stage D |
+| 8.14 | Backup cannot be made | Fill the drive (or lock the DB) before Restart and Install → nothing installed; RC.8 explains on restart | NOT EXECUTED | Offline stage G |
+| 8.15 | Recovery procedure | Follow installation guide §7 from 8.13's state; RC.8 opens the restored backup; set-aside DB kept | NOT EXECUTED | Offline stage D recovery |
+| 8.16 | Locked installation | Second instance or scheduled refresh running → not installed; nothing killed | NOT EXECUTED | Offline stage F (tester leaves the app open) |
 
-If 8.1–8.15 cannot be demonstrated, RC.9 stays **manual-install only** (installation guide §3, §7).
+RC.9 stays **manual-install only** (installation guide §3, §7) until the offline rows pass and 8.1–8.3 have run against a real GitHub release.
 
 ## 9. RC.8 regression areas
 
