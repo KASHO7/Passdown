@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Phase 29A: renders the Windows test kit's SYNTHETIC morning message (../synthetic-input) through the real
+    Phase 29 composer and writes the expected plain text, HTML fragment and CF_HTML payload to ../expected,
+    checking order, OD Notes separation, CF_HTML offsets and markup safety on the way. Not part of
+    CarowindsPassdown.slnx, so the normal build and the deterministic test count never depend on it.
+    Usage: dotnet run with project tools/phase29a-windows-kit/generator (see ../README.md).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Carowinds.Passdown.Documents\Carowinds.Passdown.Documents.csproj" />
+  </ItemGroup>
+</Project>
