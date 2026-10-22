@@ -1348,3 +1348,29 @@ See `docs/phase25-memberships-season-passes.md`. Unreleased work after RC.8 (ver
 
 Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration. Catalog and price history
 remain local and unsynced.
+
+## Phase 26 — Official price history sync & source links
+
+See `docs/phase26-official-price-history-sync.md`. Unreleased work after RC.8 (version still `0.1.0-rc.8`).
+
+- **Application** — `PersonalSync/OfficialPriceObservation` (+ `OfficialPriceObservationIdentity`: SHA-256 of
+  the canonical immutable fields incl. contributor device/sequence; `OfficialPriceObservationValidator`:
+  eligibility and incoming validation), `OfficialPriceHistoryFile` (independent format 1, deterministic
+  serializer, limits), `SyncPathService.GetOfficialPriceHistory*`; `Persistence/ISyncedPriceObservationRepository`
+  (merge-only: insert / forward-only last-confirmed / conflict keeps stored); `Catalog/PriceHistoryTimelineMerge`
+  (pure, order-independent read-time merge with `PriceHistoryProvenance`); `SeasonPriceHistoryService` takes
+  the optional synced repository and lists imported-only products; `Links/OfficialSourceLinkPolicy` (HTTPS
+  official-host allowlist); `DataChangeKind.OfficialPriceHistory`; `PersonalSyncResult` price-observation counts.
+- **Infrastructure** — migration 17 `synced_price_observations` (additive; `season_price_history` and the
+  catalog are never written by sync); `SqliteSyncedPriceObservationRepository`; `PersonalSync/OfficialPriceHistorySync`
+  (bounded read of `official-price-history/<device-id>.json` files, validation, one-transaction merge,
+  deterministic atomic export of own + merged observations, only when changed), run by `PersonalSyncService`
+  after every existing entity; temp cleanup covers the new folder.
+- **Desktop** — Settings copy; sync result/status "N new observations merged"; Price History in-place refresh,
+  provenance labels, imported-only label and source link; Associate pass-section "View Official … Page"
+  (`OfficialSourceLinkViewModel`, `IExternalLinkLauncher` / `AvaloniaExternalLinkLauncher` over
+  `TopLevel.Launcher`). Dashboard/Calendar ignore the new change kind.
+- **Documents** — unchanged (no PDF or Teams Copy change).
+
+Schemas: **DB 17**, Draft 4, Snapshot 2, **SyncSchemaVersion 1 unchanged** (additive sidecar channel, its own
+`FormatVersion` 1). RC.8 peers ignore the new folder; RC.8 cannot open a DB 17 profile (forward-only migrations).

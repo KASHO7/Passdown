@@ -2873,3 +2873,25 @@ envelope field, or `SyncSchemaVersion` change (still 1); Draft schema stays 4, D
   ("Default" when none is stored).
 - **Mixed versions:** a pre-18D build ignores the fields and drops them if it re-saves that date's
   draft (then syncs that version). Run Phase 18D (or later) on every PC that shares a sync folder.
+
+# Phase 26 — Official price history (merge-only sidecar channel)
+
+Full design: `docs/phase26-official-price-history-sync.md`. Summary for this document's model:
+
+- **New folder** `official-price-history/` beside the existing five, one `<device-id>.json` per computer,
+  written only by that computer (`SyncPathService.GetOfficialPriceHistoryFilePath`). Not a `SyncEnvelope`:
+  an independently versioned file (`FormatVersion` 1) holding every verified official price observation the
+  computer knows — its own and those it merged — sorted by identity.
+- **Conflict model**: none of §G's revision/conflict machinery applies. Price observations are immutable
+  evidence identified by a content hash (`OfficialPriceObservationIdentity`); import is set union with a
+  forward-only `last_confirmed`. Same identity with different content is rejected and logged, never resolved;
+  nothing is added to `sync_conflicts` or the conflict review screen.
+- **Deletions**: none. Absence is never deletion; no tombstones for price history.
+- **Envelope/manifest**: unchanged; `SyncSchemaVersion` stays 1. RC.8 enumerates only its known folders and
+  never touches the new one; its temp cleaner is folder-scoped too.
+- **Pass order**: runs after drafts, notes, History and ERT import/export in `PersonalSyncService.RunAsync`;
+  recoverable failures are counted (I/O → `IoFailureCount`, retried by the coordinator's backoff; unreadable
+  files → `MalformedCount`) and never block the other entities.
+- **Local store**: `synced_price_observations` (DB 17); this computer's `season_price_history` and
+  `catalog_products` are never written by sync. The live database remains outside the sync folder.
+

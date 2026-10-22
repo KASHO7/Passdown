@@ -32,6 +32,9 @@ public enum PersonalSyncOutcome
 /// <param name="HistoryExportedCount">Finalized History/PDF pairs newly exported this pass — a subset already included in <paramref name="ExportedCount"/>.</param>
 /// <param name="HistoryUnchangedCount">Finalized History records that converged/were already in sync (self-authored re-scan or identical content-hash dedup, Phase 16E §12) — a subset already included in <paramref name="UnchangedCount"/>.</param>
 /// <param name="HistoryConflictCount">Finalized History integrity/dual-finalization conditions that require manual review (Phase 16E §13/§14/§17) — same-id-different-hash, independent same-date finalizations, and corrupt/hash-mismatched PDFs. A subset already included in <paramref name="ConflictCount"/>; never auto-resolved.</param>
+/// <param name="PriceObservationsMergedCount">Phase 26: verified official price observations from other computers that this computer did not have before (observations, not price changes). Never counted in <paramref name="ImportedCount"/>.</param>
+/// <param name="PriceObservationsSkippedCount">Phase 26: incoming price observations that failed verification or conflicted with a stored identity — skipped, never written; local history kept.</param>
+/// <param name="IncludesOfficialPriceHistory">Phase 26: this pass also exchanged official price history.</param>
 /// <param name="HistoryIncompleteCount">Finalized History JSON envelopes seen with no PDF companion present yet (Phase 16E §16) — not a failure, not a conflict; expected to resolve on a later pass once the PDF arrives. Never counted anywhere else.</param>
 public sealed record PersonalSyncResult(
     PersonalSyncOutcome Outcome,
@@ -46,7 +49,10 @@ public sealed record PersonalSyncResult(
     int HistoryExportedCount = 0,
     int HistoryUnchangedCount = 0,
     int HistoryConflictCount = 0,
-    int HistoryIncompleteCount = 0)
+    int HistoryIncompleteCount = 0,
+    int PriceObservationsMergedCount = 0,
+    int PriceObservationsSkippedCount = 0,
+    bool IncludesOfficialPriceHistory = false)
 {
     public static PersonalSyncResult AlreadyRunning() =>
         new(PersonalSyncOutcome.AlreadyRunning, 0, 0, 0, 0, 0, 0, "A Personal Sync pass is already running.");

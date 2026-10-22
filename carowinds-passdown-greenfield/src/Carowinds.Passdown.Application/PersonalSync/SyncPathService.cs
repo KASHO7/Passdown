@@ -21,6 +21,7 @@ public static class SyncPathService
     private const string HistoryFolderName = "history";
     private const string MonthlyErtFolderName = "monthly-ert";
     private const string ErtDateOverridesFolderName = "ert-date-overrides";
+    private const string OfficialPriceHistoryFolderName = "official-price-history";
 
     /// <summary>Invariant <c>yyyy-MM</c> format for monthly ERT filenames (Phase 17B) — matches <see cref="Ert.MonthlyErtConfiguration.YearMonthKey"/>.</summary>
     private const string MonthFormat = "yyyy-MM";
@@ -85,6 +86,56 @@ public static class SyncPathService
 
     public static string GetErtDateOverrideFilePath(string selectedRootPath, DateOnly operatingDate) =>
         Path.Combine(GetErtDateOverridesDirectoryPath(selectedRootPath), $"{FormatDate(operatingDate)}.json");
+
+    /// <summary>
+    /// Phase 26: the <c>official-price-history/</c> directory — one independently versioned, merge-only
+    /// contributor file per computer (<see cref="GetOfficialPriceHistoryFilePath"/>). A folder RC.8 and
+    /// earlier never enumerate, so older builds neither read nor write it.
+    /// </summary>
+    public static string GetOfficialPriceHistoryDirectoryPath(string selectedRootPath) =>
+        Path.Combine(GetSyncFolderPath(selectedRootPath), OfficialPriceHistoryFolderName);
+
+    /// <summary>This computer's own contributor file — named by its device id, so no other computer ever writes it.</summary>
+    public static string GetOfficialPriceHistoryFilePath(string selectedRootPath, Guid deviceId) =>
+        Path.Combine(GetOfficialPriceHistoryDirectoryPath(selectedRootPath), $"{FormatGuid(deviceId)}.json");
+
+    /// <summary>
+    /// Phase 26: recognizes a contributor file name — exactly <c>&lt;guid-D&gt;.json</c>
+    /// (<paramref name="isCanonical"/>), or a sync-provider conflict copy of one that keeps the GUID as
+    /// its leading segment followed by a separator (<c>&lt;guid&gt;-LAPTOP.json</c>,
+    /// <c>&lt;guid&gt; (1).json</c>). Conflict copies are safe to read because price-history import is
+    /// merge-only and validated per record. Anything else — temp files, stray files, names with path
+    /// separators — is ignored. Only a bare file name is accepted; it is never combined into a path
+    /// other than the directory listing it came from.
+    /// </summary>
+    public static bool TryParseOfficialPriceHistoryFileName(string fileName, out Guid contributorDeviceId, out bool isCanonical)
+    {
+        contributorDeviceId = Guid.Empty;
+        isCanonical = false;
+
+        if (string.IsNullOrEmpty(fileName)
+            || fileName.IndexOfAny(['/', '\\', ':']) >= 0
+            || !fileName.EndsWith(".json", StringComparison.Ordinal)
+            || fileName.Length < GuidLength + ".json".Length)
+        {
+            return false;
+        }
+
+        if (!Guid.TryParseExact(fileName[..GuidLength], "D", out contributorDeviceId) || contributorDeviceId == Guid.Empty)
+        {
+            contributorDeviceId = Guid.Empty;
+            return false;
+        }
+
+        var rest = fileName[GuidLength..^".json".Length];
+        if (rest.Length == 0)
+        {
+            isCanonical = string.Equals(fileName[..GuidLength], FormatGuid(contributorDeviceId), StringComparison.Ordinal);
+            return true;
+        }
+
+        return rest[0] is '-' or ' ' or '_' or '(';
+    }
 
     /// <summary>
     /// The inverse of <see cref="GetHistoryJsonFilePath"/>/<see cref="GetHistoryPdfFilePath"/>'s naming

@@ -32,6 +32,13 @@ public enum DataChangeKind
     /// views showing past dates (Operations Calendar, Associate on a past date) care.
     /// </summary>
     HistoricalOfficialData,
+
+    /// <summary>
+    /// Phase 26: Personal Sync merged official price observations from another computer into this
+    /// computer's Season Price History. Only the Price History screen cares; it never affects any date's
+    /// projection, draft, or current official price.
+    /// </summary>
+    OfficialPriceHistory,
 }
 
 /// <summary>

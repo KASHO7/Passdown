@@ -74,6 +74,9 @@ public partial class AssociateViewModel : ViewModelBase
     private readonly IClipboardService _clipboardService;
     private readonly IOfficialDataRefreshCoordinator? _refreshCoordinator;
     private readonly IUiDispatcher _uiDispatcher;
+
+    /// <summary>Phase 26: opens a validated official source page in the default browser (null in tests that do not supply one — no link is offered).</summary>
+    private readonly IExternalLinkLauncher? _externalLinkLauncher;
     private readonly ILogger<AssociateViewModel>? _logger;
     private readonly TimeSpan _autosaveDebounce;
     private readonly Func<TimeSpan, CancellationToken, Task> _autosaveDelay;
@@ -628,7 +631,8 @@ public partial class AssociateViewModel : ViewModelBase
         IOfficialDataRefreshCoordinator? refreshCoordinator = null,
         IDataChangeNotifier? dataChangeNotifier = null,
         OfficialDataStatusViewModel? officialDataStatus = null,
-        IUiDispatcher? uiDispatcher = null)
+        IUiDispatcher? uiDispatcher = null,
+        IExternalLinkLauncher? externalLinkLauncher = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -645,6 +649,7 @@ public partial class AssociateViewModel : ViewModelBase
         _clipboardService = clipboardService ?? new UnavailableClipboardService();
         _refreshCoordinator = refreshCoordinator;
         _uiDispatcher = uiDispatcher ?? new AvaloniaUiDispatcher();
+        _externalLinkLauncher = externalLinkLauncher;
         OfficialDataStatus = officialDataStatus;
 
         // "Today" in the park's own wall-clock time (spec §6.5/§6.6 use the same Eastern
@@ -2113,7 +2118,8 @@ public partial class AssociateViewModel : ViewModelBase
 
             var rows = products.Select(product => new ProductRowViewModel(product, ScheduleAutosave, RequestPriceHistory)).ToList();
             result.Add(new ProductCategorySectionViewModel(
-                ProductDisplaySectionDisplay.FriendlyName(section), status, rows, PassSourcePresentation.SourceNote(section, products)));
+                ProductDisplaySectionDisplay.FriendlyName(section), status, rows, PassSourcePresentation.SourceNote(section, products),
+                OfficialSourceLinkViewModel.TryCreate(PassSourcePresentation.SourceUrl(section, products), _externalLinkLauncher)));
         }
 
         ProductSections = result;

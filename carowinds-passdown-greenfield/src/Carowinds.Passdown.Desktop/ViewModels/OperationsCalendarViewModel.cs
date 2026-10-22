@@ -164,6 +164,12 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     /// </summary>
     internal void HandleDataChange(DataChange change)
     {
+        // Phase 26: merged price history never affects the calendar.
+        if (change.Kind == DataChangeKind.OfficialPriceHistory)
+        {
+            return;
+        }
+
         if (change.Kind != DataChangeKind.OperatingDay
             && change.OperatingDate is { } date
             && Snapshot is { Days.Count: > 0 } shown

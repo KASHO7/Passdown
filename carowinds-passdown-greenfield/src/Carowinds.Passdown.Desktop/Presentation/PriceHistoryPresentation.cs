@@ -13,14 +13,28 @@ public sealed record PriceHistoryRowPresentation(
     string ChangeText,
     string? NoteText,
     bool IsIncrease,
-    bool IsDecrease)
+    bool IsDecrease,
+    string? ProvenanceText = null)
 {
     public bool HasNote => !string.IsNullOrWhiteSpace(NoteText);
 
+    /// <summary>Phase 26: shown only for rows that rest (partly) on another computer's checks.</summary>
+    public bool HasProvenance => !string.IsNullOrWhiteSpace(ProvenanceText);
+
     /// <summary>Screen-reader summary of the row, so the meaning never depends on column position or color.</summary>
-    public string AutomationName => HasNote
-        ? $"First seen {FirstSeenText}, {PriceText}, change {ChangeText}. {NoteText}"
-        : $"First seen {FirstSeenText}, {PriceText}, change {ChangeText}.";
+    public string AutomationName
+    {
+        get
+        {
+            var text = $"First seen {FirstSeenText}, {PriceText}, change {ChangeText}.";
+            if (HasNote)
+            {
+                text = $"{text} {NoteText}";
+            }
+
+            return HasProvenance ? $"{text} {ProvenanceText}" : text;
+        }
+    }
 }
 
 /// <summary>
@@ -37,6 +51,7 @@ public static class PriceHistoryPresentation
     public const string NoProductsText = "No Season Pass, Membership or Season Pass Add-On prices have been recorded yet. History starts with the next successful official check.";
     public const string LoadErrorText = "Price history couldn't be loaded. Try again later; nothing else is affected.";
     public const string TimingNoteText = "\"First seen\" is the first successful official check that showed a price. The actual change happened between the previous row's last-confirmed date and that date.";
+    public const string ImportedOnlyDetailText = "Imported history";
 
     public static string FormatAmount(decimal amount) => amount.ToString("C2", UsCulture);
 
@@ -113,7 +128,8 @@ public static class PriceHistoryPresentation
                 ChangeText: FormatChange(change, unit),
                 NoteText: BuildNote(previous, entry, unit),
                 IsIncrease: change is { AmountDelta: > 0 },
-                IsDecrease: change is { AmountDelta: < 0 }));
+                IsDecrease: change is { AmountDelta: < 0 },
+                ProvenanceText: ProvenanceText(entry.Provenance)));
             previous = entry;
         }
 
@@ -142,6 +158,21 @@ public static class PriceHistoryPresentation
 
         return null;
     }
+
+    public const string ImportedProvenanceText = "Imported through Personal Sync from another computer's official checks.";
+    public const string MixedProvenanceText = "Collected on this computer and imported through Personal Sync.";
+
+    /// <summary>
+    /// Phase 26: a row from this computer's own checks needs no label (every pre-Phase 26 row); one that
+    /// rests on another computer's checks says so — it is official history, not proof this computer
+    /// checked the website then.
+    /// </summary>
+    public static string? ProvenanceText(PriceHistoryProvenance provenance) => provenance switch
+    {
+        PriceHistoryProvenance.ImportedThroughSync => ImportedProvenanceText,
+        PriceHistoryProvenance.CollectedHere | PriceHistoryProvenance.ImportedThroughSync => MixedProvenanceText,
+        _ => null,
+    };
 
     public static string AvailabilityText(IReadOnlyList<PriceHistoryEntry> entries) =>
         entries.Count == 0

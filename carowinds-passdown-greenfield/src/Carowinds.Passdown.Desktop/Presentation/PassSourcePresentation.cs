@@ -16,16 +16,7 @@ public static class PassSourcePresentation
 
     public static string? SourceNote(ProductDisplaySection section, IReadOnlyList<AssociateProduct> products)
     {
-        ArgumentNullException.ThrowIfNull(products);
-
-        if (section is not (ProductDisplaySection.SeasonPasses or ProductDisplaySection.Memberships))
-        {
-            return null;
-        }
-
-        var latest = products
-            .Where(product => product.PassOffer is not null && product.Verification.LastVerifiedAt is not null)
-            .MaxBy(product => product.Verification.LastVerifiedAt);
+        var latest = LatestVerified(section, products);
         if (latest is null)
         {
             return null;
@@ -39,5 +30,27 @@ public static class PassSourcePresentation
         }
 
         return section == ProductDisplaySection.Memberships ? $"{note} {MembershipsNotPrintedText}" : note;
+    }
+
+    /// <summary>
+    /// Phase 26: the official page the group's prices were last verified on — the same product the
+    /// source note names, taken from its recorded evidence (never a hard-coded address). Validation
+    /// against the official allowlist happens where the link is built.
+    /// </summary>
+    public static Uri? SourceUrl(ProductDisplaySection section, IReadOnlyList<AssociateProduct> products) =>
+        LatestVerified(section, products)?.OfficialSourceUrl;
+
+    private static AssociateProduct? LatestVerified(ProductDisplaySection section, IReadOnlyList<AssociateProduct> products)
+    {
+        ArgumentNullException.ThrowIfNull(products);
+
+        if (section is not (ProductDisplaySection.SeasonPasses or ProductDisplaySection.Memberships))
+        {
+            return null;
+        }
+
+        return products
+            .Where(product => product.PassOffer is not null && product.Verification.LastVerifiedAt is not null)
+            .MaxBy(product => product.Verification.LastVerifiedAt);
     }
 }

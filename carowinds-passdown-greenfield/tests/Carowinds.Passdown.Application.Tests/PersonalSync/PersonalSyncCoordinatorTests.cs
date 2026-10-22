@@ -375,4 +375,19 @@ public class PersonalSyncCoordinatorTests
 
         Assert.True(raisedCount >= 2); // at least "Syncing" then the final classified state.
     }
+
+    [Fact]
+    public async Task Phase26_StatusSummary_MentionsMergedPriceObservations_AndStaysUpToDate()
+    {
+        var syncService = new FakePersonalSyncService
+        {
+            NextResult = new PersonalSyncResult(PersonalSyncOutcome.Completed, 0, 1, 2, 0, 0, 0, null, PriceObservationsMergedCount: 28, IncludesOfficialPriceHistory: true),
+        };
+        var coordinator = CreateCoordinator(syncService);
+
+        await coordinator.SyncNowAsync();
+
+        Assert.Equal(PersonalSyncAutomationState.UpToDate, coordinator.CurrentStatus.State);
+        Assert.Equal("0 imported, 1 exported, 2 unchanged. Official price history: 28 new observations merged.", coordinator.CurrentStatus.LastResultSummary);
+    }
 }

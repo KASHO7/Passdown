@@ -43,9 +43,10 @@ public class MigrationHardeningTests : IDisposable
         new Migration0014CreateMonthlyErtConfigurationsTable(),
         new Migration0015CreateErtDateOverridesTable(),
         new Migration0016CreateSeasonPriceHistoryTable(),
+        new Migration0017CreateSyncedPriceObservationsTable(),
     ];
 
-    private const int CurrentSchemaVersion = 16;
+    private const int CurrentSchemaVersion = 17;
 
     private int RunMigrations(IReadOnlyList<IMigration> migrations) =>
         new MigrationRunner(new SqliteConnectionFactory(DatabasePath), migrations, NullLogger<MigrationRunner>.Instance).Run();
@@ -74,6 +75,7 @@ public class MigrationHardeningTests : IDisposable
     [InlineData(13)]
     [InlineData(14)]
     [InlineData(15)]
+    [InlineData(16)]
     public async Task HistoricalSchema_UpgradesStraightToCurrent_PreservingDataAndFabricatingNothing(int startVersion)
     {
         var all = AllMigrations();

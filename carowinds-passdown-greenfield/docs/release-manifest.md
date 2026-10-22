@@ -2445,3 +2445,18 @@ and nothing below was packaged.
 | Live verification | One official-page check on 2026-10-22 10:46 AM ET — Verified, 10 offers, no warnings |
 | Windows validation | **NOT EXECUTED** |
 | Packaging | **NOT PACKAGED.** A build containing this fix must ship as `0.1.0-rc.9`; RC.8 must not be rebuilt or repacked |
+
+## Phase 26 — Official price history sync & source links (unreleased)
+
+| | |
+|---|---|
+| Scope | Merge-only, idempotent synchronization of verified official price history through the existing Personal Sync folder (`official-price-history/<device-id>.json`); clickable, allowlisted official source links. See `docs/phase26-official-price-history-sync.md` |
+| Base | `3b4d043` (Phase 25) on `feature/passdown-redesign` |
+| Version | `0.1.0-rc.8` in `Directory.Build.props` (unchanged — no new release candidate built) |
+| Schemas | **DB 17** (migration 17 adds `synced_price_observations`; nothing existing altered), Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; price-history file format 1 |
+| Deterministic tests | 4682/4682 on the macOS build host (+144); Release build 0 warnings, 0 errors |
+| Multi-computer | VERIFIED WITH SYNTHETIC DATA — three disposable profiles, one temp shared folder |
+| Mixed versions | Safe to share a folder with RC.8 (RC.8 ignores the new folder); RC.8 computers neither send nor receive price history. RC.8 cannot open a profile a Phase 26 build migrated — back up first |
+| Windows validation | **NOT EXECUTED** (checklist in the phase doc §18) |
+| Packaging | **NOT PACKAGED.** RC.6/RC.7/RC.8 artifacts and hashes unchanged |
+

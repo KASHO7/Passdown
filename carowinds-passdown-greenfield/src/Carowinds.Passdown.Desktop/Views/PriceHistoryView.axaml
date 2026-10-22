@@ -21,7 +21,7 @@
       <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
         <StackPanel Grid.Column="0" Spacing="2">
           <TextBlock Text="Season Price History" Classes="sectionTitle" FontSize="18" Margin="0" />
-          <TextBlock Text="Advertised official prices for Season Passes, renewal offers, Memberships and Season Pass Add-Ons, as recorded by this app. Each price type is its own history."
+          <TextBlock Text="Advertised official prices for Season Passes, renewal offers, Memberships and Season Pass Add-Ons, as recorded by this app's official checks — including your other computers' through Personal Sync. Each price type is its own history."
                      Classes="muted" TextWrapping="Wrap" />
         </StackPanel>
         <Button Grid.Column="1" Content="Close" Classes="secondaryAction" VerticalAlignment="Top"
@@ -69,6 +69,17 @@
               <TextBlock Text="{Binding SelectedProduct.DetailText}" Classes="muted" />
               <TextBlock Text="{Binding AvailabilityText}" Classes="muted"
                          IsVisible="{Binding AvailabilityText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <!-- Phase 26: the product's verified official page (allowlisted), opened in the default browser. -->
+              <StackPanel Spacing="2" IsVisible="{Binding HasSourceLink}" Margin="0,2,0,0">
+                <Button Classes="linkAction" HorizontalAlignment="Left" Margin="-8,0,0,0"
+                        Content="{Binding SourceLink.Label}"
+                        Command="{Binding SourceLink.OpenCommand}"
+                        AutomationProperties.Name="{Binding SourceLink.Label}"
+                        AutomationProperties.HelpText="{Binding SourceLink.HelpText}"
+                        ToolTip.Tip="{Binding SourceLink.HelpText}" />
+                <TextBlock Text="{Binding SourceLink.Message}" IsVisible="{Binding SourceLink.HasMessage}"
+                           Classes="muted" TextWrapping="Wrap" />
+              </StackPanel>
             </StackPanel>
 
             <Grid ColumnDefinitions="130,130,*,170" IsVisible="{Binding HasRows}" Margin="0,6,0,0">
@@ -91,6 +102,9 @@
                       </Grid>
                       <TextBlock Text="{Binding NoteText}" IsVisible="{Binding HasNote}"
                                  Classes="muted" FontStyle="Italic" TextWrapping="Wrap" />
+                      <!-- Phase 26: rows resting on another computer's official checks say so. -->
+                      <TextBlock Text="{Binding ProvenanceText}" IsVisible="{Binding HasProvenance}"
+                                 Classes="muted" FontSize="12" TextWrapping="Wrap" />
                     </StackPanel>
                   </Border>
                 </DataTemplate>

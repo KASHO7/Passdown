@@ -1192,6 +1192,19 @@
                                  Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="2,0,0,4"
                                  AutomationProperties.Name="{Binding SourceNoteText}" />
 
+                      <!-- Phase 26: the verified official page, opened in the default browser. A real
+                           Button (Tab/Enter/Space, visible focus); its text is the accessible name. -->
+                      <StackPanel Spacing="2" IsVisible="{Binding HasSourceLink}" Margin="2,0,0,6">
+                        <Button Classes="linkAction" HorizontalAlignment="Left"
+                                Content="{Binding SourceLink.Label}"
+                                Command="{Binding SourceLink.OpenCommand}"
+                                AutomationProperties.Name="{Binding SourceLink.Label}"
+                                AutomationProperties.HelpText="{Binding SourceLink.HelpText}"
+                                ToolTip.Tip="{Binding SourceLink.HelpText}" />
+                        <TextBlock Text="{Binding SourceLink.Message}" IsVisible="{Binding SourceLink.HasMessage}"
+                                   Classes="muted" TextWrapping="Wrap" />
+                      </StackPanel>
+
                       <!-- Column headers (Part 4: denser, table-like product presentation). -->
                       <Grid ColumnDefinitions="Auto,*,120,180" IsVisible="{Binding HasProducts}" Margin="0,2,0,2">
                         <TextBlock Grid.Column="1" Text="ITEM" Classes="columnHeader" Margin="28,0,16,0" />
