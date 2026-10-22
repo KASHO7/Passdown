@@ -81,7 +81,7 @@ public sealed class Phase26PersonalSyncCompatibilityTests : IDisposable
 
     private static Dictionary<string, byte[]> Snapshot(string directory) =>
         Directory.Exists(directory)
-            ? Directory.GetFiles(directory).ToDictionary(Path.GetFileName, File.ReadAllBytes)!
+            ? Directory.GetFiles(directory).ToDictionary(path => Path.GetFileName(path), File.ReadAllBytes)
             : [];
 
     [Fact]

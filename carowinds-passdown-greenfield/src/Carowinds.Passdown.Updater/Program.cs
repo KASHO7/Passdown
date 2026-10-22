@@ -20,7 +20,7 @@ internal static class Program
 
         try
         {
-            var installer = new UpdateInstaller(UpdatePaths.Default, new SystemUpdaterEnvironment(), AppContext.BaseDirectory);
+            var installer = new UpdateInstaller(UpdatePaths.Default, new SystemUpdaterEnvironment(), AppContext.BaseDirectory, SqliteUpdateDatabaseGuard.Default);
             return (int)installer.RunAsync(requestPath).GetAwaiter().GetResult();
         }
         catch (Exception)

@@ -1,30 +1,30 @@
-Version: 0.1.0-rc.8
-Title: Safer saving, tidier Shows, your choice of appearance and in-app updates
-Date: 2026-10-18
+Version: 0.1.0-rc.9
+Title: Season Pass and Membership prices, shared price history and safer upgrades
+Date: 2026-10-22
 ---
-## Reliability
+## Official pricing
 
-- If a draft can't be saved, the app no longer freezes or keeps retrying in the background.
-- A Retry Save button appears so you can try again when you're ready.
-- The Draft status clearly says the save failed, and your unsaved changes stay on screen.
-- Changing the date, Check Online and note changes wait until your changes are safely saved, so nothing is lost by accident.
+- Season Pass prices work again after the Carowinds website was redesigned.
+- Silver, Gold and Prestige Season Passes are kept separate.
+- Memberships now have their own prices, including monthly prices and one-time initiation fees.
+- Renewal offers are shown separately from new-purchase prices.
+- Your existing price history was kept exactly as it was.
 
-## Dashboard
+## Price history on all your computers
 
-- Today's Shows no longer lets long lists of times run into the venue.
-- Shows with many times list the first few, with a "+N more" button that shows all of them.
-- The Fury 325 banner shows just the title, without the small chart icon.
+- If you use Personal Sync, official price history now travels between your computers too.
+- History from each computer is added together. Nothing is overwritten or deleted.
+- The current price on each computer still comes from that computer's own official checks.
+- Every computer needs this version to share price history. Older versions keep syncing drafts and notes as before.
 
-## Appearance
+## Source links
 
-- Settings → Appearance now offers Use Windows setting, Light or Dark.
-- Your choice applies immediately and is remembered on this computer.
+- You can now open the official Carowinds pricing page straight from the app to see where a price came from.
 
-## Updates
+## Your data
 
-- Settings → Application Updates can check for new approved versions.
-- Nothing is downloaded or installed until you choose Install Update and then Restart and Install.
-- Every update is checked for a valid signature before it is installed. If something goes wrong, the previous version is put back.
-- After a successful update, What's New opens once. You can reopen it any time from Settings → About this build.
+- This version updates the app's local database to a new format the first time it starts.
+- Before it does, it saves a checked copy of your database in the backups folder inside %LOCALAPPDATA%\Carowinds Passdown.
+- Older versions (RC.8 and earlier) can't open the updated database. To go back, you would need that backup.
 
-Your drafts, notes, prices, History and settings are unchanged by this version.
+Your drafts, notes, History PDFs, Personal Sync settings and appearance choice are kept.

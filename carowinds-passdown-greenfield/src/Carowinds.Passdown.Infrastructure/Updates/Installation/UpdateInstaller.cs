@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Updates;
 using Carowinds.Passdown.Domain.Updates;
+using Carowinds.Passdown.Infrastructure.Storage;
 
 namespace Carowinds.Passdown.Infrastructure.Updates.Installation;
 
@@ -27,8 +28,18 @@ public enum UpdaterExitCode
 /// kept, and UPDATE-RECOVERY.txt in the installation folder explains how to restore it by hand.
 /// Only files of the old and new versions are moved; user files, the data folder and anything else are never
 /// touched (all user data lives under %LOCALAPPDATA%, not in the installation folder).
+/// <para>
+/// Phase 27: a new version may upgrade the database the first time it starts, and the previous version cannot
+/// open an upgraded database. So before anything is copied, the database is backed up and verified
+/// (<see cref="IUpdateDatabaseGuard"/>) — no verified backup, no install. And when the new version fails to
+/// confirm, the old files are put back only if the database is provably still in its pre-install format. If it
+/// was upgraded (or its state cannot be read), nothing is reversed or restarted: the new version, the upgraded
+/// database, the pre-install database backup and the old program files are all kept, the record says
+/// RecoveryRequired (<see cref="UpdateFailureCodes.DatabaseUpgradedNotConfirmed"/>), and UPDATE-RECOVERY.txt
+/// explains the choices. The updater never restores, replaces or deletes a database.
+/// </para>
 /// </summary>
-public sealed class UpdateInstaller(UpdatePaths paths, IUpdaterEnvironment environment, string updaterBaseDirectory)
+public sealed class UpdateInstaller(UpdatePaths paths, IUpdaterEnvironment environment, string updaterBaseDirectory, IUpdateDatabaseGuard databaseGuard)
 {
     public static readonly TimeSpan AppExitTimeout = TimeSpan.FromMinutes(3);
 
@@ -43,6 +54,9 @@ public sealed class UpdateInstaller(UpdatePaths paths, IUpdaterEnvironment envir
     public const string InstalledFilesListName = "installed-files.json";
 
     public const string RecoveryNoteName = "UPDATE-RECOVERY.txt";
+
+    /// <summary>The verified pre-install database backup (and the schema version it captured), once taken.</summary>
+    private DatabaseBackupResult? _databaseBefore;
 
     public async Task<UpdaterExitCode> RunAsync(string requestPath, CancellationToken cancellationToken = default)
     {
@@ -103,6 +117,16 @@ public sealed class UpdateInstaller(UpdatePaths paths, IUpdaterEnvironment envir
         {
             return Fail(request, UpdateFailureCodes.InsufficientDiskSpace);
         }
+
+        // Phase 27: the database is backed up and verified before the installation is touched at all.
+        var databaseBackup = databaseGuard.BackUpBeforeInstall(request.FromVersion, request.ToVersion);
+        if (!databaseBackup.Succeeded)
+        {
+            return Fail(request, DatabaseBackupFailureCode(databaseBackup.Status));
+        }
+
+        _databaseBefore = databaseBackup;
+        Record(request, UpdateInstallStatus.InProgress, null);
 
         if (CopyIncoming(request, incoming) is { } copyFailure)
         {
@@ -446,6 +470,14 @@ public sealed class UpdateInstaller(UpdatePaths paths, IUpdaterEnvironment envir
 
         var workDirectory = Path.Combine(request.InstallDirectory, UpdatePaths.InstallWorkDirectoryName);
         await WaitUntilNotInUseAsync(request.InstallDirectory, journal.Select(entry => entry.Path).ToList(), cancellationToken).ConfigureAwait(false);
+
+        // Phase 27: the previous version can only be put back while the database is still in the format it had
+        // before the install. An upgraded (or unreadable) database stays exactly as it is, with the new version.
+        if (!DatabaseUnchangedSinceBackup())
+        {
+            return KeepNewVersionForRecovery(request, journal, backup);
+        }
+
         if (!Rollback(request.InstallDirectory, backup, journal))
         {
             return RecoveryRequired(request, journal, backup);
@@ -488,6 +520,53 @@ public sealed class UpdateInstaller(UpdatePaths paths, IUpdaterEnvironment envir
         return UpdaterExitCode.RecoveryRequired;
     }
 
+    private bool DatabaseUnchangedSinceBackup() =>
+        _databaseBefore is not null
+        && databaseGuard.TryReadSchemaVersion(out var now)
+        && now == _databaseBefore.SchemaVersion;
+
+    /// <summary>
+    /// Phase 27: the new version upgraded the database (or its state is unknown) but did not confirm it started.
+    /// Reversing the files would leave a previous version that cannot open the database, and restoring the
+    /// pre-install backup could discard work saved since — so nothing is reversed, restored, deleted or started.
+    /// </summary>
+    private UpdaterExitCode KeepNewVersionForRecovery(UpdateInstallRequest request, IReadOnlyList<UpdateSwapEntry> journal, string backup)
+    {
+        Record(request, UpdateInstallStatus.RecoveryRequired, UpdateFailureCodes.DatabaseUpgradedNotConfirmed, backup, journal);
+        try
+        {
+            File.WriteAllText(Combine(request.InstallDirectory, RecoveryNoteName),
+                $"""
+                Carowinds Operations was updated from {request.FromVersion} to {request.ToVersion}, but version {request.ToVersion} did not confirm that it started correctly.
+
+                Version {request.ToVersion} may already have updated your database to its new format. Version {request.FromVersion} cannot open an updated database, so the update was NOT reversed automatically and nothing was deleted:
+                - Version {request.ToVersion} is still installed in this folder.
+                - Your current database is unchanged: {databaseGuard.DatabasePath}
+                - A checked copy of your database from just before the update: {_databaseBefore?.BackupPath ?? "(there was no database before the update)"}
+                - The previous program files ({request.FromVersion}): {backup}
+
+                What to do:
+                1. Start Carowinds.Passdown.Desktop.exe in this folder again. If it opens normally and Settings → About this build shows {request.ToVersion}, the update worked and you can delete this file.
+                2. If it still does not open, do NOT start version {request.FromVersion} against your current database. Export diagnostics if you can, and follow "If the update fails" in the {request.ToVersion} installation guide.
+                3. Going back to {request.FromVersion} means using the database copy from before the update. Anything saved after the update would then only be in the set-aside database, so move the current database files into a new folder rather than deleting them.
+                """);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The record still names every location.
+        }
+
+        return UpdaterExitCode.RecoveryRequired;
+    }
+
+    private static string DatabaseBackupFailureCode(DatabaseBackupStatus status) => status switch
+    {
+        DatabaseBackupStatus.InsufficientDiskSpace => UpdateFailureCodes.InsufficientDiskSpace,
+        DatabaseBackupStatus.DatabaseInUse => UpdateFailureCodes.DatabaseInUse,
+        DatabaseBackupStatus.DatabaseDamaged => UpdateFailureCodes.DatabaseDamaged,
+        _ => UpdateFailureCodes.DatabaseBackupFailed,
+    };
+
     private UpdaterExitCode Fail(UpdateInstallRequest request, string failureCode)
     {
         Record(request, UpdateInstallStatus.NotInstalled, failureCode);
@@ -501,7 +580,8 @@ public sealed class UpdateInstaller(UpdatePaths paths, IUpdaterEnvironment envir
     {
         var record = new UpdateInstallRecord(
             1, request.RequestId, request.FromVersion, request.ToVersion, request.InstallDirectory, request.StagedDirectory,
-            status, failureCode, DateTimeOffset.UtcNow, backupDirectory, journal?.ToList() ?? (IReadOnlyList<UpdateSwapEntry>)[]);
+            status, failureCode, DateTimeOffset.UtcNow, backupDirectory, journal?.ToList() ?? (IReadOnlyList<UpdateSwapEntry>)[],
+            _databaseBefore?.BackupPath, _databaseBefore?.SchemaVersion);
         try
         {
             UpdateJson.WriteAtomic(paths.RecordFile(request.RequestId), record);

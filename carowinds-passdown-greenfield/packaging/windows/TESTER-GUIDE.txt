@@ -1,4 +1,4 @@
-Carowinds Operations 0.1.0-rc.8 — Tester Guide
+Carowinds Operations 0.1.0-rc.9 — Tester Guide
 ================================================
 
 Thanks for testing this app. You do not need any technical background. Follow the
@@ -30,6 +30,11 @@ Going back to an older version: copying an older app over this one is NOT a safe
 way to undo the upgrade. If you ever need to go back, close the app, put your
 dated backup folder back in place, and then run the older version.
 
+This version changes the format of the app's database the first time it starts.
+Before it does, it saves its own checked copy in the "backups" folder inside
+%LOCALAPPDATA%\Carowinds Passdown. Your own dated backup (above) is still the
+safest way back: rc.8 and older CANNOT open the updated database.
+
 
 *** 2. UPGRADE ALL COMPUTERS SHARING A SYNC FOLDER TOGETHER ***
 ----------------------------------------------------------------
@@ -44,11 +49,14 @@ If more than one computer uses Personal Sync with the same shared folder:
     two computers for the first time.
   - Use a NEW, empty test folder for sync testing (step 13), not your real
     shared work folder, unless whoever asked you to test says otherwise.
+  - Official price history is now shared through the sync folder too, but only
+    between computers running this version. Older versions keep syncing drafts
+    and notes and simply ignore the price history.
 
 
 3. Extract the ZIP
 -------------------
-Right-click Carowinds-Operations-0.1.0-rc.8-win-x64.zip and choose
+Right-click Carowinds-Operations-0.1.0-rc.9-win-x64.zip and choose
 "Extract All...". Pick a NEW, empty folder you can write to (Desktop, Documents).
 Do NOT run the app from inside the ZIP without extracting it first.
 
@@ -70,7 +78,7 @@ then "Run anyway" only if you got the ZIP from the person who asked you to test.
 Click the gear icon (Settings) at the right end of the navigation strip, scroll to
 "About this build". It should say:
 
-    Version 0.1.0-rc.8 (followed by a short code in brackets)
+    Version 0.1.0-rc.9 (followed by a short code in brackets)
     Running from  <the folder you just extracted>
 
 If it shows an older number, or a different folder, you opened an older copy (for
@@ -78,17 +86,16 @@ example through Windows Search or the Start menu). Close it and start
 Carowinds.Passdown.Desktop.exe from the folder you just extracted.
 
 About the single .exe file: you may also see
-Carowinds-Operations-0.1.0-rc.8-win-x64-singlefile.exe. It is EXPERIMENTAL.
+Carowinds-Operations-0.1.0-rc.9-win-x64-singlefile.exe. It is EXPERIMENTAL.
 Please test with the ZIP. The single .exe does not carry the license notices or
 the automatic-refresh helpers, so it must not be handed out on its own. It also
 cannot update itself: its Settings › Application Updates says "Manual update
 required".
 
-This is the first version that can update itself later. Because the version
-before it (rc.7) has no updater, rc.8 itself must be installed by hand from the
-ZIP, as described above. Starting the new version for the first time does NOT
-open "What's New" — that only happens after an update installed from inside the
-app.
+Installing this version by hand from the ZIP (as described above) does NOT open
+"What's New" when it first starts — that only happens after an update installed
+from inside the app. Only use rc.8's in-app "Install Update" for rc.9 if whoever
+asked you to test gave you a special test update and a backed-up test profile.
 
 
 6. Look around the main screens
@@ -152,6 +159,16 @@ everything you typed is still there.
 Click "Check Online" on the Passdown screen. It checks Carowinds' official
 sources for the selected date and may take a few seconds. Without internet it
 should fail politely and keep the last good information. That is expected.
+
+Then look at Products:
+  - Silver, Gold and Prestige Season Passes appear separately, each with its own
+    price. A renewal offer, if shown, is labelled as a renewal.
+  - Memberships appear as their own products. Monthly prices say "/month", and a
+    one-time initiation fee is listed separately.
+  - Under the Season Passes and Memberships source note, click "View Official
+    Memberships & Season Passes Page". Your web browser should open that page
+    on sixflags.com.
+  - More ▾ → Season Price History still shows the older prices you had before.
 
 
 9. Create PDFs

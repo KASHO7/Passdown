@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Carowinds.Passdown.Application.Updates;
 using Carowinds.Passdown.Domain.Updates;
+using Carowinds.Passdown.Infrastructure.Storage;
 using Carowinds.Passdown.Infrastructure.Updates;
 using Carowinds.Passdown.Infrastructure.Updates.Installation;
 
@@ -22,6 +23,10 @@ public sealed class UpdateInstallerTests : IDisposable
     private readonly string _install;
     private readonly string _dataFolder;
     private readonly FakeEnvironment _environment;
+
+    // These scenarios are about program files; the database stays in one format throughout. The real SQLite guard,
+    // and versions that upgrade the database, are covered by UpdateInstallerDatabaseSafetyTests (Phase 27).
+    private readonly UnchangedDatabase _database = new();
 
     public UpdateInstallerTests()
     {
@@ -108,6 +113,19 @@ public sealed class UpdateInstallerTests : IDisposable
         }
     }
 
+    private sealed class UnchangedDatabase : IUpdateDatabaseGuard
+    {
+        public string DatabasePath => "carowinds-passdown.db";
+
+        public DatabaseBackupResult BackUpBeforeInstall(string fromVersion, string toVersion) => new(DatabaseBackupStatus.Created, "backup.db", 16);
+
+        public bool TryReadSchemaVersion(out int? schemaVersion)
+        {
+            schemaVersion = 16;
+            return true;
+        }
+    }
+
     private sealed class FakeApp(bool exited = false) : IStartedApp
     {
         public bool HasExited { get; private set; } = exited;
@@ -144,7 +162,7 @@ public sealed class UpdateInstallerTests : IDisposable
         Assert.Equal([UpdaterProcessLauncher.RequestArgument, _paths.RequestFile(launch.RequestId)], started.ArgumentList);
         Assert.Equal(Path.Combine(staged, "Carowinds.Passdown.Updater.exe"), started.FileName);
 
-        return (new UpdateInstaller(_paths, _environment, staged), _paths.RequestFile(launch.RequestId), staged, manifest);
+        return (new UpdateInstaller(_paths, _environment, staged, _database), _paths.RequestFile(launch.RequestId), staged, manifest);
     }
 
     private UpdateInstallRecord Record() => new UpdateInstallRecordStore(_paths, _install).LoadLatestRecord()!;
@@ -414,7 +432,7 @@ public sealed class UpdateInstallerTests : IDisposable
     public async Task UpdaterRunningFromAnotherFolderThanTheStagedOne_RefusesTheRequest()
     {
         var (_, request, _, _) = Prepare();
-        var installer = new UpdateInstaller(_paths, _environment, Path.Combine(_paths.Staging, "somewhere-else"));
+        var installer = new UpdateInstaller(_paths, _environment, Path.Combine(_paths.Staging, "somewhere-else"), _database);
 
         Assert.Equal(UpdaterExitCode.NotInstalled, await installer.RunAsync(request));
         Assert.Equal(UpdateFailureCodes.InvalidRequest, Record().FailureCode);
