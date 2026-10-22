@@ -143,12 +143,8 @@ public sealed class SeasonPriceHistoryService(
 
         if (syncedRepository is not null)
         {
-            var imported = await syncedRepository.GetForProductAsync(productKey, cancellationToken).ConfigureAwait(false);
-            if (imported.Count > 0)
-            {
-                var local = await historyRepository.GetHistoryAsync(productKey, cancellationToken).ConfigureAwait(false);
-                return PriceHistoryTimelineMerge.Merge(productKey, local, imported.Select(i => i.Observation).ToList());
-            }
+            var importedByProduct = await LoadImportedByProductAsync(cancellationToken).ConfigureAwait(false);
+            return await GetHistoryAsync(productKey, importedByProduct, cancellationToken).ConfigureAwait(false);
         }
 
         return await GetLocalHistoryAsync(productKey, cancellationToken).ConfigureAwait(false);
@@ -176,10 +172,33 @@ public sealed class SeasonPriceHistoryService(
         }
 
         var all = await syncedRepository.GetAllAsync(cancellationToken).ConfigureAwait(false);
-        return all
+        var byProduct = all
             .Select(item => item.Observation)
             .GroupBy(o => o.ProductKey, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
+        if (byProduct.Count == 0)
+        {
+            return byProduct;
+        }
+
+        // Another computer's observations of the same Season Pass under its other identity (legacy CMS id
+        // vs pass-offer key) join this computer's product. Display-only copies; nothing stored is rekeyed.
+        var seasonPasses = await catalogRepository.GetByCategoryAsync(Domain.SourceCategory.SeasonPasses, lifecycleState: null, cancellationToken).ConfigureAwait(false);
+        foreach (var (importedKey, catalogKey) in ImportedPassIdentityFolding.Resolve(seasonPasses, byProduct))
+        {
+            var moved = byProduct[importedKey].Select(o => o with { ProductKey = catalogKey }).ToList();
+            byProduct.Remove(importedKey);
+            if (byProduct.TryGetValue(catalogKey, out var existing))
+            {
+                existing.AddRange(moved);
+            }
+            else
+            {
+                byProduct[catalogKey] = moved;
+            }
+        }
+
+        return byProduct;
     }
 
     private async Task<IReadOnlyList<PriceHistoryEntry>> GetLocalHistoryAsync(string productKey, CancellationToken cancellationToken)
