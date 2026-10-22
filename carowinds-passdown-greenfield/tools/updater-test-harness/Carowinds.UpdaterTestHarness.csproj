@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Phase 27 updater test harness (docs/releases/rc9-updater-test-harness.md). NOT part of the product and not in
+    CarowindsPassdown.slnx. A minimal synthetic stand-in for "the new version" in Windows tests of the real external
+    updater: it carries the main-executable file name the updater requires, runs the real production migrations and
+    the real post-update confirmation / What's New policy from Carowinds.Passdown.Infrastructure and .Application,
+    and reports what happened. No Avalonia UI, no QuestPDF, no fonts, no images, no Fury photograph.
+    Behaviour is fixed at build time by HarnessMode (Normal, CrashBeforeMigration, CrashAfterMigration) so every
+    synthetic release is a signed, immutable package with one behaviour.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Carowinds.Passdown.Desktop</AssemblyName>
+    <RootNamespace>Carowinds.UpdaterTestHarness</RootNamespace>
+    <HarnessMode Condition="'$(HarnessMode)' == ''">Normal</HarnessMode>
+    <Product>Carowinds updater test harness (synthetic)</Product>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="HarnessMode" Value="$(HarnessMode)" />
+    <EmbeddedResource Include="test-release-notes.md" LogicalName="UpdaterTestHarness.release-notes.md" />
+    <ProjectReference Include="..\..\src\Carowinds.Passdown.Infrastructure\Carowinds.Passdown.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>
