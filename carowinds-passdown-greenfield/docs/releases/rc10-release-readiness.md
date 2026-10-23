@@ -115,10 +115,16 @@ Still open, and not resolved by this record:
 - GitHub release discovery/download/install — **BLOCKED / NOT EXECUTED** (never exercised end to end).
 - Two-computer Personal Sync convergence on RC.10 — **NOT EXECUTED**.
 - Live-website automated tests — **NOT EXECUTED**.
-- QuestPDF Community licence eligibility — **PENDING** (unchanged from RC.9).
-- Fury photograph redistribution permission — **PENDING** (unchanged from RC.9).
+- QuestPDF Community licence eligibility — **CONFIRMED BY PRODUCT OWNER** (2026-10-23, below).
+- Fury photograph redistribution permission — **CONFIRMED BY PRODUCT OWNER** (2026-10-23, below).
 
-Publication to GitHub Releases awaits the product owner's approval.
+## 7. Distribution confirmation
+
+On 2026-10-23 the product owner stated, before publication: "I confirm we may publicly redistribute the
+Fury 325 photograph and that our use qualifies for the QuestPDF Community licence (or we hold a commercial
+licence)." This is recorded as the owner's confirmation; no independent legal review was made by the build
+session. The owner then authorised publishing `v0.1.0-rc.10` as a public GitHub prerelease of
+`KASHO7/Passdown`, tagged at the binary commit `a8a1d96`, with the three signed files above unchanged.
 
 ---
 
