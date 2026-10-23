@@ -1,4 +1,0 @@
-Avery Example   10:30  Gate 1
-Jordan Testperson  11:00  Gate 2
-Riley Sample    11:30  covers Jordan (Gate 2)
-Morgan Demo     12:00  float

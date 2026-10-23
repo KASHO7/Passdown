@@ -1,7 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
-             xmlns:presentation="using:Carowinds.Passdown.Desktop.Presentation"
              xmlns:updates="using:Carowinds.Passdown.Application.Updates"
              xmlns:converters="using:Carowinds.Passdown.Desktop.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -188,92 +187,6 @@
                            AutomationProperties.LiveSetting="Polite" />
               </StackPanel>
             </Grid>
-
-            <!-- Phase 30: Sync Morning Messages — off by default, chosen per computer, available only once
-                 Personal Sync has a folder. Its own status line and conflict review; never part of the
-                 draft/note conflict list below. -->
-            <Border x:Name="MorningMessageSyncSection" Classes="inset" IsVisible="{Binding HasMorningMessageSync}"
-                    AutomationProperties.Name="Sync Morning Messages">
-              <StackPanel Spacing="8">
-                <CheckBox x:Name="SyncMorningMessagesCheckBox" Content="Sync Morning Messages"
-                          IsChecked="{Binding MorningMessages.IsEnabled}"
-                          IsEnabled="{Binding MorningMessages.IsAvailable}"
-                          AutomationProperties.Name="Sync Morning Messages"
-                          AutomationProperties.HelpText="{x:Static vm:MorningMessageSyncSettingsViewModel.Description}" />
-                <TextBlock Text="{x:Static vm:MorningMessageSyncSettingsViewModel.Description}" Classes="muted" TextWrapping="Wrap" />
-                <TextBlock x:Name="MorningMessageNeedsFolder" Text="{x:Static vm:MorningMessageSyncSettingsViewModel.NeedsFolderText}"
-                           Classes="fieldWarning" TextWrapping="Wrap"
-                           IsVisible="{Binding MorningMessages.ShowNeedsFolder}" />
-                <TextBlock Text="{x:Static vm:MorningMessageSyncSettingsViewModel.DisableExplanation}" Classes="muted" TextWrapping="Wrap" />
-                <TextBlock Text="{x:Static vm:MorningMessageSyncSettingsViewModel.ScopeNote}" Classes="muted" TextWrapping="Wrap" />
-                <Border Classes="statusBadge" Classes.error="{Binding MorningMessages.StatusIsProblem}" HorizontalAlignment="Left">
-                  <TextBlock x:Name="MorningMessageSyncStatus" Text="{Binding MorningMessages.StatusText}"
-                             AutomationProperties.Name="{Binding MorningMessages.StatusText}"
-                             AutomationProperties.LiveSetting="Polite" />
-                </Border>
-                <TextBlock Text="{Binding MorningMessages.Message}" TextWrapping="Wrap"
-                           IsVisible="{Binding MorningMessages.Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                           AutomationProperties.LiveSetting="Polite" />
-
-                <ItemsControl x:Name="MorningMessageConflictList" ItemsSource="{Binding MorningMessages.Conflicts}"
-                              IsVisible="{Binding MorningMessages.HasConflicts}"
-                              AutomationProperties.Name="Morning message conflicts">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="presentation:MorningMessageConflictPresentation">
-                      <Border Classes="conflictRow" Margin="0,0,0,8">
-                        <Grid ColumnDefinitions="*,Auto">
-                          <StackPanel Grid.Column="0" Spacing="2">
-                            <TextBlock Text="{Binding Title}" FontWeight="Medium" TextWrapping="Wrap" />
-                            <TextBlock Text="{Binding Summary}" Classes="muted" TextWrapping="Wrap" />
-                          </StackPanel>
-                          <Button Grid.Column="1" Content="Review" Margin="12,0,0,0" VerticalAlignment="Center"
-                                  Command="{Binding #PersonalSyncRoot.((vm:PersonalSyncSettingsViewModel)DataContext).MorningMessages.ReviewConflictCommand}"
-                                  CommandParameter="{Binding}"
-                                  Classes="secondaryAction"
-                                  AutomationProperties.Name="{Binding Title, StringFormat='Review conflict: {0}'}" />
-                        </Grid>
-                      </Border>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-
-                <Border x:Name="MorningMessageConflictDetail" Classes="conflictRow"
-                        IsVisible="{Binding MorningMessages.HasSelectedConflict}"
-                        AutomationProperties.Name="Morning message conflict detail">
-                  <StackPanel Spacing="10">
-                    <TextBlock Text="{Binding MorningMessages.SelectedConflict.Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                    <TextBlock Text="{Binding MorningMessages.SelectedConflict.Explanation}" Classes="muted" TextWrapping="Wrap" />
-                    <Grid ColumnDefinitions="*,*,*">
-                      <TextBlock Grid.Column="0" Text="Part" Classes="columnHeader" />
-                      <TextBlock Grid.Column="1" Text="This Device" Classes="columnHeader" />
-                      <TextBlock Grid.Column="2" Text="Other Device" Classes="columnHeader" />
-                    </Grid>
-                    <ItemsControl ItemsSource="{Binding MorningMessages.SelectedConflict.Fields}">
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="presentation:MorningMessageConflictFieldPresentation">
-                          <Grid Classes="fieldComparisonRow" ColumnDefinitions="*,*,*">
-                            <TextBlock Grid.Column="0" Text="{Binding Label}" FontWeight="Medium" />
-                            <SelectableTextBlock Grid.Column="1" Text="{Binding ThisDevice}" TextWrapping="Wrap" Padding="0,4" />
-                            <SelectableTextBlock Grid.Column="2" Text="{Binding OtherDevice}" TextWrapping="Wrap" Padding="0,4" />
-                          </Grid>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <WrapPanel Orientation="Horizontal">
-                      <Button Content="Keep This Device" Classes="secondaryAction" Margin="0,0,10,4"
-                              Command="{Binding MorningMessages.KeepThisDeviceCommand}"
-                              AutomationProperties.Name="Keep this device's morning message" />
-                      <Button Content="Use Other Device" Classes="secondaryAction" Margin="0,0,10,4"
-                              Command="{Binding MorningMessages.UseOtherDeviceCommand}"
-                              AutomationProperties.Name="Use the other device's morning message" />
-                      <Button Content="Cancel" Classes="textAction" Margin="0,0,0,4"
-                              Command="{Binding MorningMessages.CloseConflictCommand}"
-                              AutomationProperties.Name="Cancel morning message conflict review" />
-                    </WrapPanel>
-                  </StackPanel>
-                </Border>
-              </StackPanel>
-            </Border>
 
             <!-- Phase 16D §4/§27: the conflict callout — never shown when there is nothing to review. -->
             <Border x:Name="ConflictCallout" Classes="inset" IsVisible="{Binding HasConflicts}"

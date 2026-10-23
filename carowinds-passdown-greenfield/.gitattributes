@@ -7,7 +7,3 @@
 # Third-party license texts are shipped byte-for-byte as their packages provide them
 # (Phase 18C PKG-003) - never line-ending-normalized.
 packaging/windows/licenses/** -text
-
-# Phase 29A: the Windows test kit's expected clipboard outputs are byte-exact (CF_HTML byte offsets, CRLF
-# plain text) and must never be line-ending-normalized.
-tools/phase29a-windows-kit/expected/** -text

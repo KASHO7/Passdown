@@ -1,5 +1,7 @@
 # Phase 29A — Morning Message Windows & Microsoft Teams validation
 
+> **RETIRED (2026-10-23).** The Morning Message Builder, its formatted copy and Morning Message sync were removed by a targeted rollback; see `docs/morning-message-rollback.md`. This document is kept unchanged as a historical record. Nothing it describes exists in the current application.
+
 Validation record for the Phase 29 Morning Message composer and formatted Teams copy
 (`docs/phase29-morning-message-teams-copy.md`).
 

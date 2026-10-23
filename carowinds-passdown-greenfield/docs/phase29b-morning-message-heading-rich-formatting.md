@@ -1,5 +1,7 @@
 # Phase 29B — Morning Message heading and rich formatting fix
 
+> **RETIRED (2026-10-23).** The Morning Message Builder, its formatted copy and Morning Message sync were removed by a targeted rollback; see `docs/morning-message-rollback.md`. This document is kept unchanged as a historical record. Nothing it describes exists in the current application.
+
 Focused correction to the Phase 29 Morning Message composer (`docs/phase29-morning-message-teams-copy.md`).
 Baseline `feature/passdown-redesign` at `1a04251`. Version stays `0.1.0-rc.9`. No release packaged, nothing
 pushed. RC.8 and RC.9 artifacts untouched.

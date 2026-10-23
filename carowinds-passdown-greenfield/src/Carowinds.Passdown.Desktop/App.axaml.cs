@@ -13,8 +13,6 @@ using Carowinds.Passdown.Application.Ert;
 using Carowinds.Passdown.Application.Finalization;
 using Carowinds.Passdown.Application.Freshness;
 using Carowinds.Passdown.Application.History;
-using Carowinds.Passdown.Application.MorningMessage;
-using Carowinds.Passdown.Application.MorningMessage.Sync;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.PersonalSync;
@@ -152,11 +150,6 @@ public partial class App : global::Avalonia.Application
             var mainViewModelResolvedMs = ElapsedSinceProcessStartMs();
 
             var syncCoordinator = services.GetRequiredService<IPersonalSyncCoordinator>();
-
-            // Phase 30: a composer save or close asks for a (debounced) Personal Sync pass, only while Sync
-            // Morning Messages is on — the same LocalChange path draft and note saves use.
-            services.GetRequiredService<MorningMessageEditorSession>().SyncRequested +=
-                (_, _) => syncCoordinator.RequestSync(SyncTriggerReason.LocalChange);
             var refreshCoordinator = services.GetRequiredService<IOfficialDataRefreshCoordinator>();
             var historicalBackfill = services.GetRequiredService<IHistoricalBackfillService>();
             var updateCoordinator = services.GetRequiredService<IApplicationUpdateCoordinator>();
@@ -565,15 +558,6 @@ public partial class App : global::Avalonia.Application
         // Phase 18F: plain-text clipboard seam for the Associate screen's Teams "Copy" actions.
         services.AddSingleton<IClipboardService, AvaloniaClipboardService>();
 
-        // Phase 29: the Morning Message composer's local preference and per-date message files (never in
-        // the database; Phase 30 synchronizes them only when Sync Morning Messages is on) and the local DAP
-        // image picker.
-        services.AddSingleton<IMorningMessagePreferenceStore>(provider => new FileMorningMessagePreferenceStore(
-            FileMorningMessagePreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FileMorningMessagePreferenceStore>>()));
-        services.AddSingleton<IMorningMessageContentStore>(provider => new FileMorningMessageContentStore(
-            FileMorningMessageContentStore.DefaultPath, provider.GetRequiredService<ILogger<FileMorningMessageContentStore>>()));
-        services.AddSingleton<IImageFilePicker, AvaloniaImageFilePicker>();
-
         // Phase 17C §15/§39: the local Associate Passdown template preference (Classic/Compact/
         // Modern) — one flat JSON file, mirroring the PersonalSync file-based stores below. Consumed
         // by both AssociateViewModel (for Preview PDF) and FinalizedPassdownFinalizationService (so a
@@ -698,15 +682,6 @@ public partial class App : global::Avalonia.Application
         // so Sync Now and automatic sync carry it with no separate setup.
         services.AddSingleton<ISyncedPriceObservationRepository, SqliteSyncedPriceObservationRepository>();
         services.AddSingleton<IOfficialPriceHistorySync, OfficialPriceHistorySync>();
-        // Phase 30: optional Morning Message sync. One instance serves both PersonalSyncService's optional
-        // IMorningMessageSync parameter (a no-op unless the option is on) and the Settings surface; the
-        // editor session is shared with the composer so a sync pass never writes what is being typed.
-        services.AddSingleton<MorningMessageEditorSession>();
-        services.AddSingleton(provider => new MorningMessageSyncStateStore(
-            MorningMessageSyncStateStore.DefaultPath, provider.GetRequiredService<ILogger<MorningMessageSyncStateStore>>()));
-        services.AddSingleton<MorningMessageSync>();
-        services.AddSingleton<IMorningMessageSync>(provider => provider.GetRequiredService<MorningMessageSync>());
-        services.AddSingleton<IMorningMessageSyncService>(provider => provider.GetRequiredService<MorningMessageSync>());
         services.AddSingleton<IPersonalSyncService, PersonalSyncService>();
 
         // Phase 16D: explicit conflict resolution and deletion/tombstone propagation. ISyncConflictRepository
@@ -758,7 +733,6 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IThemeVariantTarget, ApplicationThemeVariantTarget>();
         services.AddSingleton<AppearanceThemeController>();
         services.AddTransient<AppearanceSettingsViewModel>();
-        services.AddTransient<MorningMessageSyncSettingsViewModel>();
         services.AddTransient<PersonalSyncSettingsViewModel>();
         // Phase 26: the one system-browser launcher for allowlisted official source pages.
         services.AddSingleton<IExternalLinkLauncher, AvaloniaExternalLinkLauncher>();

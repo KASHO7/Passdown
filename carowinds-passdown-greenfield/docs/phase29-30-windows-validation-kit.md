@@ -1,5 +1,7 @@
 # Phase 29 + 30 — combined Windows validation kit
 
+> **RETIRED (2026-10-23).** The Morning Message Builder, its formatted copy and Morning Message sync were removed by a targeted rollback; see `docs/morning-message-rollback.md`. This document is kept unchanged as a historical record. The kit itself was removed; the release-script guard it introduced (`Build-PortableRelease.ps1` frozen-RC check and `-LocalTestLabel`) is retained.
+
 **Status: PREPARED, NOT VALIDATED.** Every Windows and Teams check is **NOT EXECUTED** until it is run on the
 Windows 11 test VM. Nothing was pushed, published, uploaded or released; no GitHub Release exists for this
 build; production updater settings are unchanged; no RC.10 was packaged.

@@ -1,4 +1,6 @@
-using Carowinds.Passdown.Documents.Teams;
+using System.Text;
+using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Ert;
 
 namespace Carowinds.Passdown.Documents.Associate;
 
@@ -20,49 +22,72 @@ public enum AssociateTeamsCopyKind
 /// <para>
 /// Output is deliberately plain lines (no Markdown tables, no columns) so it stays legible when
 /// Teams strips rich formatting. Daily Feature and Operational Notes are intentionally not included.
-/// Phase 29: the sections themselves come from <see cref="AssociateTeamsMessageBuilder"/> and are rendered
-/// by <see cref="TeamsPlainTextRenderer"/> (text unchanged) or <see cref="TeamsHtmlRenderer"/> (formatted copy).
 /// </para>
 /// </summary>
 public static class AssociateTeamsTextFormatter
 {
+    private const string LineBreak = "\r\n";
+
     /// <summary>
     /// The selected copy action's text, or <see langword="null"/> when there is nothing meaningful to
     /// copy — only <see cref="AssociateTeamsCopyKind.TodaysPricing"/> can be empty (no priced product
     /// selected); <see cref="AssociateTeamsCopyKind.OperationsAndPricing"/> then falls back to the
     /// operations summary alone rather than an empty "Ticket Prices:" heading.
     /// </summary>
-    public static string? Format(AssociatePassdownDocumentModel model, AssociateTeamsCopyKind kind) =>
-        BuildMessage(model, kind) is { } message ? TeamsPlainTextRenderer.Render(message) : null;
-
-    /// <summary>
-    /// Phase 29: the selected copy action as a <see cref="TeamsMessage"/> — the one representation both the
-    /// plain text (<see cref="Format"/>) and the formatted copy are rendered from. Null exactly when
-    /// <see cref="Format"/> is null.
-    /// </summary>
-    public static TeamsMessage? BuildMessage(AssociatePassdownDocumentModel model, AssociateTeamsCopyKind kind)
+    public static string? Format(AssociatePassdownDocumentModel model, AssociateTeamsCopyKind kind) => kind switch
     {
-        ArgumentNullException.ThrowIfNull(model);
-
-        var pricing = AssociateTeamsMessageBuilder.Pricing(model);
-        return kind switch
-        {
-            AssociateTeamsCopyKind.OperationsSummary => new TeamsMessage(AssociateTeamsMessageBuilder.Operations(model)),
-            AssociateTeamsCopyKind.TodaysPricing => pricing.IsEmpty ? null : new TeamsMessage(pricing),
-            AssociateTeamsCopyKind.OperationsAndPricing => pricing.IsEmpty
-                ? new TeamsMessage(AssociateTeamsMessageBuilder.Operations(model))
-                : new TeamsMessage(AssociateTeamsMessageBuilder.Operations(model), pricing),
-            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
-        };
-    }
+        AssociateTeamsCopyKind.OperationsSummary => FormatOperationsSummary(model),
+        AssociateTeamsCopyKind.TodaysPricing => FormatPricing(model),
+        AssociateTeamsCopyKind.OperationsAndPricing => FormatPricing(model) is { } pricing
+            ? FormatOperationsSummary(model) + LineBreak + LineBreak + pricing
+            : FormatOperationsSummary(model),
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+    };
 
     /// <summary>
     /// Park Hours, effective gate times (override ?? default — never labeled as an override),
     /// projected attendance, pre-solds, and Early Ride Time. A value that was never entered is
     /// omitted rather than printed as a placeholder; gate times only print on an open day.
     /// </summary>
-    public static string FormatOperationsSummary(AssociatePassdownDocumentModel model) =>
-        TeamsPlainTextRenderer.Render(new TeamsMessage(AssociateTeamsMessageBuilder.Operations(model)));
+    public static string FormatOperationsSummary(AssociatePassdownDocumentModel model)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        var lines = new List<string>();
+        var hours = model.ParkHours;
+
+        switch (hours.Status)
+        {
+            case PdfParkHoursStatus.Open:
+                lines.Add($"Park Hours: {hours.HeadlineText}");
+                AddIfPresent(lines, "Avenue", hours.AvenueText);
+                AddIfPresent(lines, "North Gate", hours.NorthGateText);
+                break;
+            case PdfParkHoursStatus.Closed:
+                lines.Add("Park Hours: Closed");
+                break;
+            default:
+                lines.Add("Park Hours: Not checked yet");
+                break;
+        }
+
+        if (model.Attendance.ProjectedAttendance is { } projected)
+        {
+            lines.Add($"Projected Attendance: {FormatCount(projected)}");
+        }
+
+        if (model.Attendance.PreSolds is { } preSolds)
+        {
+            lines.Add($"Pre-solds: {FormatCount(preSolds)}");
+        }
+
+        if (ErtText(model.EarlyRideTime) is { } ert)
+        {
+            lines.Add($"ERT: {ert}");
+        }
+
+        return string.Join(LineBreak, lines);
+    }
 
     /// <summary>
     /// "Ticket Prices:" then one block per included product section, in PDF order: the section's PDF
@@ -73,7 +98,56 @@ public static class AssociateTeamsTextFormatter
     /// </summary>
     public static string? FormatPricing(AssociatePassdownDocumentModel model)
     {
-        var pricing = AssociateTeamsMessageBuilder.Pricing(model);
-        return pricing.IsEmpty ? null : TeamsPlainTextRenderer.Render(new TeamsMessage(pricing));
+        ArgumentNullException.ThrowIfNull(model);
+
+        var blocks = model.ProductCategories
+            .Select(category => (category.CategoryName, Rows: category.Products
+                .Where(product => !string.IsNullOrWhiteSpace(product.EffectivePriceText))
+                .Select(product => $"{product.DisplayName}: {product.EffectivePriceText}")
+                .ToList()))
+            .Where(block => block.Rows.Count > 0)
+            .Select(block => block.CategoryName + LineBreak + string.Join(LineBreak, block.Rows))
+            .ToList();
+
+        if (blocks.Count == 0)
+        {
+            return null;
+        }
+
+        var text = new StringBuilder("Ticket Prices:");
+        foreach (var block in blocks)
+        {
+            text.Append(LineBreak).Append(LineBreak).Append(block);
+        }
+
+        return text.ToString();
     }
+
+    private static void AddIfPresent(List<string> lines, string label, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value) && value != "-")
+        {
+            lines.Add($"{label}: {value}");
+        }
+    }
+
+    private static string FormatCount(int value) => OperationalCount.Format(value);
+
+    /// <summary>
+    /// The same three states every PDF template prints (<c>PdfFormatting.ErtLineText</c>), worded for a
+    /// sentence: "None", "Not configured", or the rides joined naturally ("A and B", "A, B, and C").
+    /// </summary>
+    private static string? ErtText(PdfEarlyRideTime earlyRideTime) => earlyRideTime.Kind switch
+    {
+        EffectiveErtKind.NotConfigured => "Not configured",
+        EffectiveErtKind.NoErt => "None",
+        _ => earlyRideTime.Rides.Count > 0 ? JoinNaturally(earlyRideTime.Rides) : null,
+    };
+
+    private static string JoinNaturally(IReadOnlyList<string> items) => items.Count switch
+    {
+        1 => items[0],
+        2 => $"{items[0]} and {items[1]}",
+        _ => string.Join(", ", items.Take(items.Count - 1)) + ", and " + items[^1],
+    };
 }

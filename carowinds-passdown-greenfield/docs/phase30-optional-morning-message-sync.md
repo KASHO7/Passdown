@@ -1,5 +1,7 @@
 # Phase 30 — Optional Morning Message Sync
 
+> **RETIRED (2026-10-23).** The Morning Message Builder, its formatted copy and Morning Message sync were removed by a targeted rollback; see `docs/morning-message-rollback.md`. This document is kept unchanged as a historical record. Nothing it describes exists in the current application.
+
 ## Baseline
 
 | Item | Value |

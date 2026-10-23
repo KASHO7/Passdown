@@ -14,7 +14,7 @@ namespace Carowinds.Passdown.Infrastructure.PersonalSync;
 /// <item>It is directly inside one of the app-owned directories this type knows (the
 /// <see cref="SyncPathService.SyncFolderName"/> folder and its <c>drafts</c>, <c>notes</c>,
 /// <c>history</c>, <c>monthly-ert</c>, <c>ert-date-overrides</c> subfolders, and Phase 26's
-/// <c>official-price-history</c> and Phase 30's <c>morning-message</c>) — enumerated
+/// <c>official-price-history</c>) — enumerated
 /// non-recursively, never the user's selected root itself, never anything else in OneDrive.</item>
 /// <item>Its canonical full path's parent is exactly that directory (no <c>..</c>, rooted, UNC, or
 /// alternate-separator escape), and neither the file nor the directory is a symbolic link/junction.</item>
@@ -42,7 +42,6 @@ public static partial class SyncTempFileCleaner
         MonthlyErt,
         ErtDateOverrides,
         OfficialPriceHistory,
-        MorningMessage,
     }
 
     /// <returns>The number of stale temp files deleted.</returns>
@@ -71,7 +70,6 @@ public static partial class SyncTempFileCleaner
                 (Folder.MonthlyErt, SyncPathService.GetMonthlyErtsDirectoryPath(selectedRootPath)),
                 (Folder.ErtDateOverrides, SyncPathService.GetErtDateOverridesDirectoryPath(selectedRootPath)),
                 (Folder.OfficialPriceHistory, SyncPathService.GetOfficialPriceHistoryDirectoryPath(selectedRootPath)),
-                (Folder.MorningMessage, SyncPathService.GetMorningMessageDirectoryPath(selectedRootPath)),
             })
             {
                 deleted += CleanDirectory(folder, selectedRootPath, directory, nowUtc, threshold);
@@ -179,8 +177,6 @@ public static partial class SyncTempFileCleaner
             Folder.ErtDateOverrides when SyncEntityIdentity.TryParseErtDateOverrideId(stem, out var date) => Path.GetFileName(SyncPathService.GetErtDateOverrideFilePath(root, date)),
             Folder.OfficialPriceHistory when SyncPathService.TryParseOfficialPriceHistoryFileName(finalName, out var contributor, out var isCanonical) && isCanonical
                 => Path.GetFileName(SyncPathService.GetOfficialPriceHistoryFilePath(root, contributor)),
-            Folder.MorningMessage when SyncPathService.TryParseMorningMessageFileName(finalName, out var device, out var isCanonicalMessage) && isCanonicalMessage
-                => Path.GetFileName(SyncPathService.GetMorningMessageFilePath(root, device)),
             _ => null,
         };
 

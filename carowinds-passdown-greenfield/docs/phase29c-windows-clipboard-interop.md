@@ -1,5 +1,7 @@
 # Phase 29C — Windows rich-text clipboard interoperability
 
+> **RETIRED (2026-10-23).** The Morning Message Builder, its formatted copy and Morning Message sync were removed by a targeted rollback; see `docs/morning-message-rollback.md`. This document is kept unchanged as a historical record. Nothing it describes exists in the current application.
+
 Baseline `a612fae` (Phase 29B). Version stays `0.1.0-rc.9`. Nothing pushed, published or packaged as RC.10.
 RC.8/RC.9 artifacts untouched.
 

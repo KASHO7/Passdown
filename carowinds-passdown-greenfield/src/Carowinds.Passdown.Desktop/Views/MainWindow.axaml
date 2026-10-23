@@ -136,12 +136,6 @@
         <views:PriceHistoryView DataContext="{Binding PriceHistory}" />
     </Border>
 
-    <!-- Phase 29: the Teams Morning Message composer, opened from Associate → Copy ▾ → Morning Message…
-         An overlay over the whole shell: closing it returns to the Associate screen untouched. -->
-    <Border IsVisible="{Binding IsMorningMessageOpen}" Background="{DynamicResource PassdownOverlayScrimBrush}">
-        <views:MorningMessageView DataContext="{Binding MorningMessage}" />
-    </Border>
-
     <!-- Phase 23D: What's New — opened once after a confirmed in-app update, or from Settings → About this build. -->
     <Border IsVisible="{Binding IsWhatsNewOpen}" Background="{DynamicResource PassdownOverlayScrimBrush}">
         <views:WhatsNewView DataContext="{Binding WhatsNew}" />

@@ -2898,6 +2898,8 @@ Full design: `docs/phase26-official-price-history-sync.md`. Summary for this doc
 
 # Phase 30 — Optional Morning Message sync (sidecar channel)
 
+> **RETIRED (2026-10-23):** removed by the Morning Message rollback (`docs/morning-message-rollback.md`). Kept as a historical record. The current Personal Sync never reads or writes `morning-message/`, and existing files there are left untouched.
+
 Full design: `docs/phase30-optional-morning-message-sync.md`. Summary for this document's model:
 
 - **Opt-in, per computer**: `SyncConfiguration.MorningMessageSyncEnabled` (default false, absent in older

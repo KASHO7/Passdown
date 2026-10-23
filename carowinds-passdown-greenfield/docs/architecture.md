@@ -1377,6 +1377,8 @@ Schemas: **DB 17**, Draft 4, Snapshot 2, **SyncSchemaVersion 1 unchanged** (addi
 
 ## Phase 30 — Optional Morning Message sync
 
+> **RETIRED (2026-10-23):** removed by the Morning Message rollback (`docs/morning-message-rollback.md`). Kept as a historical record. The current Personal Sync never reads or writes `morning-message/`, and existing files there are left untouched.
+
 See `docs/phase30-optional-morning-message-sync.md`. Unreleased work after RC.9 (version still `0.1.0-rc.9`).
 
 - **Application** — `MorningMessage/Sync/`: `MorningMessageVersion` (per-field version vector, device id →

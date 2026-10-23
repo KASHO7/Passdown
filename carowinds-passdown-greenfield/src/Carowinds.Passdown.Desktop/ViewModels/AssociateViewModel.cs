@@ -3,8 +3,6 @@ using System.Globalization;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Changes;
 using Carowinds.Passdown.Application.Ert;
-using Carowinds.Passdown.Application.MorningMessage;
-using Carowinds.Passdown.Application.MorningMessage.Sync;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Preferences;
@@ -191,8 +189,6 @@ public partial class AssociateViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(SaveStatusText))]
     [NotifyCanExecuteChangedFor(nameof(CreatePdfCommand))]
     [NotifyCanExecuteChangedFor(nameof(CopyForTeamsCommand))]
-    [NotifyCanExecuteChangedFor(nameof(OpenMorningMessageCommand))]
-    [NotifyCanExecuteChangedFor(nameof(CopyOdNotesCommand))]
     public partial AssociateWorkspace? Workspace { get; set; }
 
     /// <summary>
@@ -252,8 +248,6 @@ public partial class AssociateViewModel : ViewModelBase
     [NotifyCanExecuteChangedFor(nameof(CheckOnlineCommand))]
     [NotifyCanExecuteChangedFor(nameof(CreatePdfCommand))]
     [NotifyCanExecuteChangedFor(nameof(CopyForTeamsCommand))]
-    [NotifyCanExecuteChangedFor(nameof(OpenMorningMessageCommand))]
-    [NotifyCanExecuteChangedFor(nameof(CopyOdNotesCommand))]
     public partial bool IsLoadingDate { get; set; }
 
     [ObservableProperty]
@@ -261,8 +255,6 @@ public partial class AssociateViewModel : ViewModelBase
     [NotifyCanExecuteChangedFor(nameof(CheckOnlineCommand))]
     [NotifyCanExecuteChangedFor(nameof(CreatePdfCommand))]
     [NotifyCanExecuteChangedFor(nameof(CopyForTeamsCommand))]
-    [NotifyCanExecuteChangedFor(nameof(OpenMorningMessageCommand))]
-    [NotifyCanExecuteChangedFor(nameof(CopyOdNotesCommand))]
     public partial bool IsCheckingOnline { get; set; }
 
     /// <summary>
@@ -640,11 +632,7 @@ public partial class AssociateViewModel : ViewModelBase
         IDataChangeNotifier? dataChangeNotifier = null,
         OfficialDataStatusViewModel? officialDataStatus = null,
         IUiDispatcher? uiDispatcher = null,
-        IExternalLinkLauncher? externalLinkLauncher = null,
-        IMorningMessagePreferenceStore? morningMessagePreferenceStore = null,
-        IMorningMessageContentStore? morningMessageContentStore = null,
-        IImageFilePicker? imageFilePicker = null,
-        MorningMessageEditorSession? morningMessageSession = null)
+        IExternalLinkLauncher? externalLinkLauncher = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -663,20 +651,6 @@ public partial class AssociateViewModel : ViewModelBase
         _uiDispatcher = uiDispatcher ?? new AvaloniaUiDispatcher();
         _externalLinkLauncher = externalLinkLauncher;
         OfficialDataStatus = officialDataStatus;
-
-        // Phase 29: the Morning Message composer reads this screen's current date and on-screen edits
-        // (the same projection Copy and Create PDF use); it never changes them.
-        MorningMessage = new MorningMessageViewModel(
-            _clipboardService,
-            EffectiveWorkspaceForCopy,
-            () => EasternToday,
-            () => _clock.UtcNow,
-            morningMessagePreferenceStore,
-            morningMessageContentStore,
-            imageFilePicker,
-            logger,
-            session: morningMessageSession,
-            postToUi: _uiDispatcher.Post);
 
         // "Today" in the park's own wall-clock time (spec §6.5/§6.6 use the same Eastern
         // convention for "today") rather than the host machine's arbitrary local time zone.
@@ -1428,8 +1402,7 @@ public partial class AssociateViewModel : ViewModelBase
     private bool CanCreatePdf() => HasWorkspace && !IsBusy && !IsExportingPdf;
 
     /// <summary>
-    /// Phase 18F: copies Teams-friendly plain text for the currently open date (Phase 29: with the formatted
-    /// version alongside when the saved default copy mode is Formatted; the plain text is unchanged). Built from the same
+    /// Phase 18F: copies Teams-friendly plain text for the currently open date. Built from the same
     /// <see cref="AssociatePassdownDocumentModelBuilder"/> model the PDF renders — over the current
     /// editable fields projected onto <see cref="Workspace"/> in memory (<see cref="WithDraftApplied"/>)
     /// — so copied pricing follows the PDF's section/product selections exactly. Never retrieves,
@@ -1447,83 +1420,37 @@ public partial class AssociateViewModel : ViewModelBase
             return;
         }
 
-        var model = AssociatePassdownDocumentModelBuilder.Build(EffectiveWorkspaceForCopy()!, DateTimeOffset.Now);
-        var message = AssociateTeamsTextFormatter.BuildMessage(model, kind);
+        var effective = _draftDateInEdit == workspace.OperatingDate ? WithDraftApplied(workspace, BuildDraft()) : workspace;
+        var model = AssociatePassdownDocumentModelBuilder.Build(effective, DateTimeOffset.Now);
+        var text = AssociateTeamsTextFormatter.Format(model, kind);
 
-        if (message is null)
+        if (text is null)
         {
             CopyMessage = "No pricing selected";
             return;
         }
 
-        // Phase 29: the saved default copy mode decides whether the formatted version goes alongside the
-        // unchanged plain text; a failed formatted copy falls back to the same plain text.
-        var outcome = await TeamsClipboard.CopyAsync(_clipboardService, message, MorningMessage.Preferences.DefaultCopyMode, _logger, $"{kind} for {workspace.OperatingDate}").ConfigureAwait(true);
-        if (outcome == TeamsCopyOutcome.Failed)
+        try
         {
-            CopyMessage = TeamsClipboard.FailureMessage;
-            CopyMessageIsError = true;
-            return;
+            await _clipboardService.SetTextAsync(text).ConfigureAwait(true);
+            CopyMessage = kind switch
+            {
+                AssociateTeamsCopyKind.OperationsSummary => "Operations summary copied",
+                AssociateTeamsCopyKind.TodaysPricing => "Today's pricing copied",
+                _ => AssociateTeamsTextFormatter.FormatPricing(model) is not null
+                    ? "Operations and pricing copied"
+                    : "Operations summary copied (no pricing selected)",
+            };
         }
-
-        CopyMessage = kind switch
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            AssociateTeamsCopyKind.OperationsSummary => "Operations summary copied",
-            AssociateTeamsCopyKind.TodaysPricing => "Today's pricing copied",
-            _ => AssociateTeamsTextFormatter.FormatPricing(model) is not null
-                ? "Operations and pricing copied"
-                : "Operations summary copied (no pricing selected)",
-        } + (outcome == TeamsCopyOutcome.CopiedAsPlainTextFallback ? TeamsClipboard.FallbackSuffix : string.Empty);
+            _logger?.LogError(ex, "Copy for Teams ({CopyKind}) failed for {OperatingDate}.", kind, workspace.OperatingDate);
+            CopyMessage = "Couldn't copy to the clipboard. Try again.";
+            CopyMessageIsError = true;
+        }
     }
 
     private bool CanCopyForTeams(AssociateTeamsCopyKind kind) => HasWorkspace && !IsBusy;
-
-    /// <summary>Phase 29: the Teams Morning Message composer for this screen's open date.</summary>
-    public MorningMessageViewModel MorningMessage { get; }
-
-    /// <summary>Phase 29: Copy ▾ → Morning Message… opens the composer over the current date's on-screen state.</summary>
-    [RelayCommand(CanExecute = nameof(CanCopyForTeamsAny))]
-    private Task OpenMorningMessageAsync()
-    {
-        CopyMessage = null;
-        CopyMessageIsError = false;
-        return MorningMessage.OpenAsync();
-    }
-
-    /// <summary>
-    /// Phase 29: Copy ▾ → OD Notes copies this date's OD Notes (typed in the Morning Message composer) on
-    /// their own, in the saved default copy mode — never appended to the morning message.
-    /// </summary>
-    [RelayCommand(CanExecute = nameof(CanCopyForTeamsAny))]
-    private async Task CopyOdNotesAsync()
-    {
-        CopyMessage = null;
-        CopyMessageIsError = false;
-        if (Workspace is not { } workspace)
-        {
-            return;
-        }
-
-        var outcome = await MorningMessage.CopySavedOdNotesAsync(workspace.OperatingDate).ConfigureAwait(true);
-        (CopyMessage, CopyMessageIsError) = outcome switch
-        {
-            null => ("No OD Notes for this date — add them in Morning Message.", false),
-            TeamsCopyOutcome.Copied => ("OD Notes copied", false),
-            TeamsCopyOutcome.CopiedAsPlainTextFallback => ("OD Notes copied" + TeamsClipboard.FallbackSuffix, false),
-            _ => (TeamsClipboard.FailureMessage, true),
-        };
-    }
-
-    private bool CanCopyForTeamsAny() => HasWorkspace && !IsBusy;
-
-    /// <summary>
-    /// The open date's workspace with the on-screen (possibly unsaved) edits applied in memory — the same
-    /// projection autosave uses — read by Copy and the Morning Message. Null when nothing is loaded. Never saves.
-    /// </summary>
-    private AssociateWorkspace? EffectiveWorkspaceForCopy() =>
-        Workspace is not { } workspace ? null
-        : _draftDateInEdit == workspace.OperatingDate ? WithDraftApplied(workspace, BuildDraft())
-        : workspace;
 
     /// <summary>
     /// Phase 21B: "More → PDF Style". Sets the same <see cref="SelectedTemplateOption"/> the PDF Style
@@ -2611,12 +2538,6 @@ public partial class AssociateViewModel : ViewModelBase
     private sealed class UnavailableClipboardService : IClipboardService
     {
         public Task SetTextAsync(string text, CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("Clipboard is not available.");
-
-        public Task SetTextAndHtmlAsync(string text, string htmlFragment, CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("Clipboard is not available.");
-
-        public Task SetImageFileAsync(string filePath, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Clipboard is not available.");
     }
 }

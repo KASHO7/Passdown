@@ -3,7 +3,6 @@ using System.Text.Json;
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Ert;
 using Carowinds.Passdown.Application.Finalization;
-using Carowinds.Passdown.Application.MorningMessage.Sync;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.PersonalSync;
@@ -42,8 +41,7 @@ public sealed class PersonalSyncService(
     IErtDateOverrideRepository ertDateOverrideRepository,
     IUnitOfWorkFactory? unitOfWorkFactory = null,
     ISyncLocalChangeNotifier? changeNotifier = null,
-    IOfficialPriceHistorySync? officialPriceHistorySync = null,
-    IMorningMessageSync? morningMessageSync = null) : IPersonalSyncService
+    IOfficialPriceHistorySync? officialPriceHistorySync = null) : IPersonalSyncService
 {
     private static readonly JsonSerializerOptions DraftPayloadWriteOptions = new();
 
@@ -122,10 +120,6 @@ public sealed class PersonalSyncService(
             // Phase 26: verified official price history — its own merge-only channel, after every
             // existing entity so a price-history problem can never block drafts, notes or History.
             await SyncOfficialPriceHistoryAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
-
-            // Phase 30: optional Morning Message sync — its own channel, last, and a no-op unless this
-            // computer turned it on; a problem here never blocks any entity above.
-            await SyncMorningMessagesAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
 
             LastPassHistoryPdfBytesRead = counters.HistoryPdfBytesRead;
             LastPassHistoryPdfRevalidationsSkipped = counters.HistoryPdfRevalidationsSkipped;
@@ -209,38 +203,6 @@ public sealed class PersonalSyncService(
         }
 
         counters.PriceHistory = result;
-        counters.IoFailures += result.IoFailures;
-        counters.Malformed += result.UnreadableFiles;
-    }
-
-    /// <summary>
-    /// Phase 30: runs the Morning Message exchange (<see cref="IMorningMessageSync"/>). A recoverable failure is
-    /// counted as an I/O failure so the coordinator's bounded backoff retries it; the channel itself never
-    /// replaces local message text unless the whole update can be written.
-    /// </summary>
-    private async Task SyncMorningMessagesAsync(string root, Guid deviceId, DateTimeOffset now, Counters counters, CancellationToken cancellationToken)
-    {
-        if (morningMessageSync is null)
-        {
-            return;
-        }
-
-        MorningMessageSyncResult result;
-        try
-        {
-            result = await morningMessageSync.RunAsync(root, deviceId, now, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (MorningMessageSync.IsRecoverable(ex))
-        {
-            result = MorningMessageSyncResult.Failed();
-        }
-
-        if (!result.Ran)
-        {
-            return;
-        }
-
-        counters.MorningMessages = result;
         counters.IoFailures += result.IoFailures;
         counters.Malformed += result.UnreadableFiles;
     }
@@ -2018,7 +1980,6 @@ public sealed class PersonalSyncService(
         public long HistoryPdfBytesRead;
         public int HistoryPdfRevalidationsSkipped;
         public OfficialPriceHistorySyncResult? PriceHistory;
-        public MorningMessageSyncResult? MorningMessages;
 
         /// <summary>Phase 18B REL-004: local entities this pass changed (imported, updated, or deleted) — published to open editors once the pass ends.</summary>
         public List<SyncEntityKey> ChangedLocally { get; } = [];
@@ -2027,7 +1988,6 @@ public sealed class PersonalSyncService(
             PersonalSyncOutcome.Completed, Imported, Exported, Unchanged, Conflicts, Malformed, IoFailures, null,
             HistoryImported, HistoryExported, HistoryUnchanged, HistoryConflicts, HistoryIncomplete,
             PriceHistory?.ObservationsMerged ?? 0, (PriceHistory?.ObservationsRejected ?? 0) + (PriceHistory?.IntegrityConflicts ?? 0),
-            IncludesOfficialPriceHistory: PriceHistory is not null,
-            MorningMessages: MorningMessages);
+            IncludesOfficialPriceHistory: PriceHistory is not null);
     }
 }
