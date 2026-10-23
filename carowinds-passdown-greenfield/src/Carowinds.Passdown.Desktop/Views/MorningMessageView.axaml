@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
+             xmlns:conv="using:Carowinds.Passdown.Desktop.Converters"
              x:Class="Carowinds.Passdown.Desktop.Views.MorningMessageView"
              x:DataType="vm:MorningMessageViewModel">
 
@@ -186,7 +187,8 @@
           </StackPanel>
         </ScrollViewer>
 
-        <!-- Preview: the exact plain text; the formatted copy has the same words with bold headings and labels. -->
+        <!-- Preview: the exact words of the copy. Phase 29B: styled for the selected copy mode — bold headings
+             and labels when formatted copy is the default, unstyled for plain text. Local text runs only. -->
         <DockPanel Grid.Column="2">
           <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="0,0,0,6">
             <TextBlock Text="Preview" Classes="fieldLabel" />
@@ -195,7 +197,8 @@
           </StackPanel>
           <Border Classes="inset" Padding="12">
             <ScrollViewer>
-              <SelectableTextBlock x:Name="PreviewBlock" Text="{Binding PreviewText}" TextWrapping="Wrap"
+              <SelectableTextBlock x:Name="PreviewBlock" TextWrapping="Wrap"
+                                   Inlines="{Binding PreviewSpans, Converter={x:Static conv:TeamsPreviewInlinesConverter.Instance}}"
                                    AutomationProperties.Name="Morning message preview" />
             </ScrollViewer>
           </Border>

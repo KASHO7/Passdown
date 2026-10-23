@@ -64,7 +64,7 @@ OD Notes are not a section of the main message and cannot be added to it.
 | Section | Source | Notes |
 | --- | --- | --- |
 | Greeting | saved preference | Defaults to "Good Morning!". Remembered, so it is not retyped daily. Multi-line allowed. No names are added and nobody is tagged. |
-| Today's Operations | Associate draft (on-screen edits included) via the PDF's document model | Park hours, Avenue/North Gate, Carolina Harbor hours when the official source published them, projected attendance, pre-solds, ERT. Values never entered are left out and reported in the preview. Titled "Operations for Thursday, October 22:" when the open date is not today (Eastern). |
+| Today's Operations | Associate draft (on-screen edits included) via the PDF's document model | Park hours, Avenue/North Gate, Carolina Harbor hours when the official source published them, projected attendance, pre-solds, ERT. Values never entered are left out and reported in the preview. Always titled "Today's Operations:" — the operating date is never appended (Phase 29B). |
 | DAP / Placement | composer text | An optional "attach the image" reminder; a chosen local image can be copied separately (**Copy Image**). Images are never put into the text. |
 | Reminders | composer text | Line breaks kept; a blank line starts a new paragraph; lines starting with `- `, `* ` or `• ` become bullets; or "Show every line as a bullet". **Pick a passdown note… → Add to Reminders** inserts one of the date's notes only when chosen. **Reuse last reminders** copies the most recent earlier date's reminders only when pressed. |
 | Ticket Prices | official prices via the PDF's document model | The message has its own price-section choice (default Daily Admission, Fast Lane, Promotions; Season Passes, Add-Ons and SCarowinds opt-in; Memberships never). Per-product include/exclude and price overrides follow the Products tab exactly. Custom/internal items are excluded. The choice never changes the PDF. |
@@ -119,7 +119,9 @@ Saves are debounced (about half a second) and are flushed on copy, close and bef
 list) → lines → runs (text, bold, italic, optional link). Both outputs are rendered from it:
 
 - `TeamsPlainTextRenderer` — CRLF, blank line between blocks and sections, `• ` bullets, no Markdown.
-- `TeamsHtmlRenderer` — `p`, `br`, `strong`, `em`, `ul`/`li`, `a href` only.
+- `TeamsHtmlRenderer` — `p`, `br`, `b`, `i`, `ul`/`li`, `a href` only. Since Phase 29B bold and italic are
+  `<b style="font-weight:bold">` / `<i style="font-style:italic">` (the only style attributes), not
+  `strong`/`em` — see `docs/phase29b-morning-message-heading-rich-formatting.md`.
 
 The three existing actions use the same model (`AssociateTeamsMessageBuilder`), so they gained a formatted mode
 without a second string builder. Tests compare the word sequence of the plain text with the text content of
@@ -130,8 +132,9 @@ the HTML for every action and for the morning message.
 `AvaloniaClipboardService.SetTextAndHtmlAsync` uses Avalonia 12.1.1's `DataTransfer` API: one
 `DataTransferItem` with
 
-- `DataFormat.Text` (CF_UNICODETEXT) = the plain text, and
-- `DataFormat.CreateBytesPlatformFormat("HTML Format")` = the CF_HTML payload.
+- `DataFormat.CreateBytesPlatformFormat("HTML Format")` = the CF_HTML payload (set first since Phase 29B, so
+  it is advertised before the text), and
+- `DataFormat.Text` (CF_UNICODETEXT) = the plain text.
 
 A **bytes** format is required. Avalonia's Win32 backend (`OleDataObjectHelper.WriteStringToHGlobal`, checked
 in the 12.1.1 source) writes a string platform format as UTF-16, but CF_HTML must be UTF-8 with byte offsets.
@@ -252,7 +255,8 @@ Release build: 0 warnings, 0 errors.
 2. The Associate draft's Shows are not part of the morning message.
 3. Message text is per computer; it does not follow the user to their other computers through Personal Sync. *(Phase 30 adds this as an option, off by default: `docs/phase30-optional-morning-message-sync.md`.)*
 4. Copy Image supports PNG, JPEG, BMP and GIF files (a GIF is copied as a still image).
-5. The rendered preview is plain text; bold and bullets appear only after pasting a formatted copy.
+5. ~~The rendered preview is plain text.~~ Since Phase 29B the preview is styled for the selected copy mode
+   (bold headings and labels, italic notes when formatted copy is the default).
 
 ## Version / schema impact
 

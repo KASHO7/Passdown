@@ -6,7 +6,9 @@
 .DESCRIPTION
     Reads the real Windows clipboard (not the app's strings): the list of formats, CF_UNICODETEXT and the
     raw bytes of the registered "HTML Format" (CF_HTML). Checks the CF_HTML header, byte offsets, fragment
-    markers, strict UTF-8, no byte-order mark, allowed markup only (p, br, strong, em, ul, li, a href),
+    markers, strict UTF-8, no byte-order mark, allowed markup only (p, br, b, i, ul, li, a href; Phase 29B:
+    the only style attributes are font-weight:bold on b and font-style:italic on i), HTML Format listed
+    before CF_UNICODETEXT,
     safe links, and that the HTML and the plain text carry the same words in the same order. With
     -Kind MorningMessage it also checks the section order, that the Daily Feature is last and that OD Notes
     are absent; with -Kind OdNotes it checks the separate OD Notes message.
@@ -171,6 +173,10 @@ $hasText = $formats -contains 'CF_UNICODETEXT'
 $hasImage = ($formats -contains 'CF_DIB') -or ($formats -contains 'CF_DIBV5') -or ($formats -contains 'CF_BITMAP') -or ($formats -contains 'PNG')
 Add-Info 'HTML Format present' ([string]$hasHtml)
 Add-Info 'Image format present' ([string]$hasImage)
+if ($hasHtml -and $hasText -and -not $fromFiles) {
+    # Phase 29B: richest format first, so readers that take the first format they understand get the HTML.
+    Add-Result 'HTML Format listed before CF_UNICODETEXT' ([Array]::IndexOf($formats, 'HTML Format') -lt [Array]::IndexOf($formats, 'CF_UNICODETEXT')) ($formats -join ', ')
+}
 
 # 2. Plain text ---------------------------------------------------------------------------------------
 $plain = $null
@@ -185,7 +191,7 @@ if ($hasText) {
     [IO.File]::WriteAllText("$prefix-unicode-text.txt", $plain, (New-Object Text.UTF8Encoding($true)))
     Add-Info 'Plain text length (characters)' ([string]$plain.Length)
 
-    Add-Result 'Plain text has no generated HTML tags or entities' (-not ($plain -match '</?(p|br|strong|em|ul|li|a)[ >]' -or $plain -match '&(amp|lt|gt|nbsp|#39);'))
+    Add-Result 'Plain text has no generated HTML tags or entities' (-not ($plain -match '</?(p|br|b|i|strong|em|ul|li|a)[ >]' -or $plain -match '&(amp|lt|gt|nbsp|#39);'))
     $loneLf = [regex]::Matches($plain, '(?<!\r)\n').Count
     Add-Result 'Plain text uses Windows line breaks (CRLF)' ($loneLf -eq 0) "$loneLf bare LF"
     Add-Result 'Plain text has no Markdown bold (**)' (-not $plain.Contains('**'))
@@ -235,18 +241,23 @@ if ($hasHtml) {
     if ($fragment) {
         [IO.File]::WriteAllText("$prefix-fragment.html", $fragment, (New-Object Text.UTF8Encoding($false)))
         $tags = @([regex]::Matches($fragment, '<\s*/?\s*([A-Za-z0-9]+)') | ForEach-Object { $_.Groups[1].Value.ToLowerInvariant() } | Sort-Object -Unique)
-        $allowed = @('p', 'br', 'strong', 'em', 'ul', 'li', 'a')
+        $allowed = @('p', 'br', 'b', 'i', 'ul', 'li', 'a')
         $bad = @($tags | Where-Object { $allowed -notcontains $_ })
-        Add-Result 'Only p, br, strong, em, ul, li, a elements' ($bad.Count -eq 0) ("found: " + ($tags -join ','))
-        Add-Result 'No script, style, event handler, image or iframe' (-not ($fragment -match '(?i)<script|<style|<img|<iframe|\son[a-z]+\s*=|style\s*=|class\s*='))
+        Add-Result 'Only p, br, b, i, ul, li, a elements' ($bad.Count -eq 0) ("found: " + ($tags -join ','))
+        Add-Result 'No script, style sheet, event handler, image or iframe' (-not ($fragment -match '(?i)<script|<style|<img|<iframe|\son[a-z]+\s*=|class\s*='))
+        $styles = @([regex]::Matches($fragment, '(?i)<([a-z]+)\s+style\s*=\s*"([^"]*)"') | ForEach-Object { $_.Groups[1].Value.ToLowerInvariant() + ':' + $_.Groups[2].Value })
+        $badStyles = @($styles | Where-Object { $_ -ne 'b:font-weight:bold' -and $_ -ne 'i:font-style:italic' })
+        $looseStyles = [regex]::Matches($fragment, '(?i)style\s*=').Count - $styles.Count
+        Add-Result 'Only fixed bold/italic style attributes' (($badStyles.Count -eq 0) -and ($looseStyles -eq 0)) ("$($styles.Count) style attribute(s)")
         $hrefs = @([regex]::Matches($fragment, '<a\s+([^>]*)>') | ForEach-Object { $_.Groups[1].Value })
         $unsafe = @($hrefs | Where-Object { $_ -notmatch '^href="https?://[^"@\s]+"$' })
         Add-Result 'Every link is a plain http/https href' ($unsafe.Count -eq 0) ("$($hrefs.Count) link(s)")
         Add-Result 'javascript: never becomes a link' (-not ($fragment -match '(?i)href="\s*javascript:'))
         Add-Result 'No Teams mention markup (<at>)' (-not ($fragment -match '(?i)<at[\s>]'))
-        Add-Info 'Bold elements' ([string]([regex]::Matches($fragment, '<strong>').Count))
+        Add-Info 'Bold elements' ([string]([regex]::Matches($fragment, '<b style="font-weight:bold">').Count))
         Add-Info 'Bullet items' ([string]([regex]::Matches($fragment, '<li>').Count))
-        Add-Info 'Italic elements' ([string]([regex]::Matches($fragment, '<em>').Count))
+        Add-Info 'Italic elements' ([string]([regex]::Matches($fragment, '<i style="font-style:italic">').Count))
+        Add-Result 'Section headings are explicitly bold' ([regex]::Matches($fragment, '<b style="font-weight:bold">[^<]*:</b>').Count -gt 0)
 
         if ($plain) {
             # Same words, same order: tags stripped, entities decoded; the plain text's bullet glyphs are not words.
@@ -272,7 +283,7 @@ if ($plain -and $Kind -eq 'MorningMessage') {
     Add-Result '@Name stays plain text' ($plain.Contains('@Jordan Testperson'))
     Add-Result 'Passdown notes not included automatically' (-not $plain.Contains('SYNTHETIC private passdown note'))
     $headings = @(
-        @{ Name = 'Operations'; Pattern = "(?m)^(Today's Operations|Operations for [^\r\n]+):" },
+        @{ Name = 'Operations'; Pattern = "(?m)^Today's Operations:" },
         @{ Name = 'DAP / Placement'; Pattern = '(?m)^DAP / Placement:' },
         @{ Name = 'Reminders'; Pattern = '(?m)^Reminders:' },
         @{ Name = 'Ticket Prices'; Pattern = '(?m)^Ticket Prices:' },

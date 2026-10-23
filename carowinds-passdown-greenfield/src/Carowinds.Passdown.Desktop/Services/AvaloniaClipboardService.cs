@@ -11,10 +11,10 @@ namespace Carowinds.Passdown.Desktop.Services;
 /// <see cref="IClipboardService"/> backed by the main window's Avalonia clipboard (the Windows system
 /// clipboard in production).
 /// <para>
-/// Phase 29 formatted copy uses Avalonia 12's <see cref="DataTransfer"/>: one item carrying
-/// <see cref="DataFormat.Text"/> (CF_UNICODETEXT) and a <em>bytes</em> platform format named
-/// "HTML Format" holding the UTF-8 CF_HTML payload from <see cref="CfHtml.Build"/>. A bytes format is
-/// required — Avalonia's Win32 backend writes a string platform format as UTF-16, but CF_HTML is UTF-8
+/// Phase 29 formatted copy uses Avalonia 12's <see cref="DataTransfer"/>: one item carrying a
+/// <em>bytes</em> platform format named "HTML Format" (listed first since Phase 29B) and
+/// <see cref="DataFormat.Text"/> (CF_UNICODETEXT). The HTML format holds the UTF-8 CF_HTML payload from
+/// <see cref="CfHtml.Build"/>. A bytes format is required — Avalonia's Win32 backend writes a string platform format as UTF-16, but CF_HTML is UTF-8
 /// with byte offsets. Other platforms get their native HTML type (UTF-8 bytes) for development only;
 /// Windows is the validated target.
 /// </para>
@@ -34,15 +34,26 @@ public sealed class AvaloniaClipboardService : IClipboardService
         ArgumentNullException.ThrowIfNull(htmlFragment);
 
         var clipboard = GetClipboard();
+
+        // Avalonia takes ownership of the DataTransfer; it must not be disposed here.
+        await clipboard.SetDataAsync(CreateFormattedData(text, htmlFragment));
+    }
+
+    /// <summary>
+    /// Phase 29B: the formatted-copy payload, HTML first. Avalonia's Win32 backend advertises formats in
+    /// the order they were set (<c>IEnumFORMATETC</c> follows <see cref="DataTransferItem.Formats"/>), and
+    /// Windows clipboard convention is richest format first — readers that take the first format they
+    /// understand otherwise pick CF_UNICODETEXT and never see the HTML. The plain text stays alongside.
+    /// </summary>
+    internal static DataTransfer CreateFormattedData(string text, string htmlFragment)
+    {
         var item = new DataTransferItem();
-        item.Set(DataFormat.Text, text);
         item.Set(HtmlFormat(), HtmlPayload(htmlFragment));
+        item.Set(DataFormat.Text, text);
 
         var data = new DataTransfer();
         data.Add(item);
-
-        // Avalonia takes ownership of the DataTransfer; it must not be disposed here.
-        await clipboard.SetDataAsync(data);
+        return data;
     }
 
     public async Task SetImageFileAsync(string filePath, CancellationToken cancellationToken = default)

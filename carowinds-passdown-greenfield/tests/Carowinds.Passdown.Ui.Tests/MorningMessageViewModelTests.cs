@@ -152,7 +152,7 @@ public class MorningMessageViewModelTests
 
         Assert.Equal(h.Composer.PreviewText, Assert.Single(h.Clipboard.Texts));
         var html = Assert.Single(h.Clipboard.Htmls)!;
-        Assert.Contains("<p><strong>Reminders:</strong><br>&lt;b&gt;Hydrate&lt;/b&gt; &amp; smile</p>", html);
+        Assert.Contains("<p><b style=\"font-weight:bold\">Reminders:</b><br>&lt;b&gt;Hydrate&lt;/b&gt; &amp; smile</p>", html);
         Assert.Equal("Morning message copied (formatted)", h.Composer.StatusMessage);
     }
 
@@ -339,7 +339,7 @@ public class MorningMessageViewModelTests
         await h.ViewModel.CopyForTeamsCommand.ExecuteAsync(AssociateTeamsCopyKind.TodaysPricing);
 
         Assert.Equal("Ticket Prices:\r\n\r\nDaily Admission\r\nPark Ticket: $59.00", Assert.Single(h.Clipboard.Texts));
-        Assert.Equal("<p><strong>Ticket Prices:</strong></p><p><strong>Daily Admission</strong><br>Park Ticket: $59.00</p>", Assert.Single(h.Clipboard.Htmls));
+        Assert.Equal("<p><b style=\"font-weight:bold\">Ticket Prices:</b></p><p><b style=\"font-weight:bold\">Daily Admission</b><br>Park Ticket: $59.00</p>", Assert.Single(h.Clipboard.Htmls));
         Assert.Equal("Today's pricing copied", h.ViewModel.CopyMessage);
     }
 
@@ -428,5 +428,100 @@ public class MorningMessageViewModelTests
     {
         Assert.Contains("does not tag or notify anyone", MorningMessageViewModel.MentionHint, StringComparison.Ordinal);
         Assert.Contains("MorningMessageViewModel.MentionHint", Markup("MorningMessageView.axaml"), StringComparison.Ordinal);
+    }
+
+    // ---- Phase 29B: heading, styled preview, clipboard format order ----
+
+    [Fact]
+    public async Task Phase29B_PreviewSpans_FollowTheCopyMode_SameWordsAsPreviewText()
+    {
+        var h = await OpenAsync();
+        h.Composer.Reminders = "- Hydrate\n- Smile";
+
+        h.Composer.UseFormattedByDefault = true;
+        var formatted = h.Composer.PreviewSpans;
+        Assert.Equal(h.Composer.PreviewText.Replace("\r\n", "\n", StringComparison.Ordinal), string.Concat(formatted.Select(span => span.Text)));
+        Assert.Contains(formatted, span => span.Bold && span.Text == "Today's Operations:");
+        Assert.Contains(formatted, span => span.Bold && span.Text == "Reminders:");
+        Assert.Contains(formatted, span => span.Bold && span.Text == "Park Hours:");
+        Assert.Contains("• Hydrate\n• Smile", string.Concat(formatted.Select(span => span.Text)), StringComparison.Ordinal);
+
+        h.Composer.UseFormattedByDefault = false;
+        var plain = h.Composer.PreviewSpans;
+        Assert.Equal(h.Composer.PreviewText.Replace("\r\n", "\n", StringComparison.Ordinal), Assert.Single(plain).Text);
+        Assert.False(plain[0].Bold || plain[0].Italic);
+    }
+
+    [Fact]
+    public async Task Phase29B_PreviewSpans_NeverIncludeOdNotes()
+    {
+        var h = await OpenAsync();
+        h.Composer.OdNotes = "SECRET OD note";
+        h.Composer.UseFormattedByDefault = true;
+
+        Assert.DoesNotContain("SECRET OD note", string.Concat(h.Composer.PreviewSpans.Select(span => span.Text)), StringComparison.Ordinal);
+        Assert.DoesNotContain("OD Notes:", string.Concat(h.Composer.PreviewSpans.Select(span => span.Text)), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Phase29B_OpenDateNotToday_StillTodaysOperations_InPreviewAndBothCopies()
+    {
+        var h = await CreateAsync();
+        h.ViewModel.SelectedDate = Today.AddDays(1);
+        await h.ViewModel.PendingLoad;
+        await h.ViewModel.OpenMorningMessageCommand.ExecuteAsync(null);
+
+        Assert.Equal("Saturday, August 22, 2026", h.Composer.DateText);
+
+        Assert.Contains("\r\nToday's Operations:\r\n", h.Composer.PreviewText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Operations for", h.Composer.PreviewText, StringComparison.Ordinal);
+
+        await h.Composer.CopyFormattedCommand.ExecuteAsync(null);
+        var html = Assert.Single(h.Clipboard.Htmls)!;
+        Assert.Contains("<b style=\"font-weight:bold\">Today&#39;s Operations:</b>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Operations for", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Operations for", Assert.Single(h.Clipboard.Texts), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Phase29B_PreviewInlines_BoldAndItalicRuns_LineBreaks_NoMarkup()
+    {
+        var inlines = Desktop.Converters.TeamsPreviewInlinesConverter.ToInlines(
+        [
+            new("Reminders:", Bold: true),
+            new("\n• Hydrate\n\n"),
+            new("note", Italic: true),
+        ]);
+
+        var runs = inlines.OfType<Avalonia.Controls.Documents.Run>().ToList();
+        Assert.Equal(["Reminders:", "• Hydrate", "note"], runs.Select(run => run.Text));
+        Assert.Equal(Avalonia.Media.FontWeight.Bold, runs[0].FontWeight);
+        Assert.Equal(Avalonia.Media.FontWeight.Normal, runs[1].FontWeight);
+        Assert.Equal(Avalonia.Media.FontStyle.Italic, runs[2].FontStyle);
+        Assert.Equal(3, inlines.OfType<Avalonia.Controls.Documents.LineBreak>().Count());
+        Assert.All(runs, run => Assert.False(run.IsSet(Avalonia.Controls.Documents.TextElement.ForegroundProperty))); // theme color in light and dark
+    }
+
+    [Fact]
+    public void Phase29B_View_PreviewBindsStyledInlines_NotRawText()
+    {
+        var markup = Markup("MorningMessageView.axaml");
+
+        Assert.Contains("Inlines=\"{Binding PreviewSpans, Converter={x:Static conv:TeamsPreviewInlinesConverter.Instance}}\"", markup, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Morning message preview\"", markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("WebView", markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Phase29B_FormattedClipboardData_ListsHtmlBeforePlainText()
+    {
+        var data = Desktop.Services.AvaloniaClipboardService.CreateFormattedData("Plain", "<p>Plain</p>");
+
+        var item = Assert.Single(data.Items);
+        Assert.Equal(2, item.Formats.Count);
+        Assert.Equal(Desktop.Services.AvaloniaClipboardService.HtmlFormat(), item.Formats[0]);
+        Assert.Equal(DataFormat.Text, item.Formats[1]);
+        Assert.Equal("Plain", item.TryGetValue(DataFormat.Text));
+        Assert.Equal(Desktop.Services.AvaloniaClipboardService.HtmlPayload("<p>Plain</p>"), item.TryGetValue(Desktop.Services.AvaloniaClipboardService.HtmlFormat()));
     }
 }

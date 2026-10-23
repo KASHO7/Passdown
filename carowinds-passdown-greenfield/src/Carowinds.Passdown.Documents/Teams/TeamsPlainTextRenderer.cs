@@ -50,7 +50,8 @@ public static class TeamsPlainTextRenderer
 
     private static string RenderLine(TeamsLine line) => string.Concat(line.Runs.Select(RenderRun));
 
-    private static string RenderRun(TeamsRun run)
+    /// <summary>One run's words as the plain copy writes them (also the Phase 29B preview's text, so the two never drift).</summary>
+    internal static string RenderRun(TeamsRun run)
     {
         var text = Normalize(run.Text);
         if (run.Link is { } link && TeamsLinkPolicy.IsSafe(link))

@@ -18,13 +18,29 @@ public static class TeamsLinkPolicy
 
 /// <summary>
 /// Phase 29: renders a <see cref="TeamsMessage"/> as a constrained HTML fragment for the clipboard. The
-/// only elements ever produced are <c>p</c>, <c>br</c>, <c>strong</c>, <c>em</c>, <c>ul</c>, <c>li</c> and
-/// <c>a href</c> (safe links only) — no scripts, styles, classes, images, tables, fonts or colors, so the
-/// message stays readable when Teams strips optional styling. Every piece of text, including user-entered
-/// notes, is HTML-encoded; nothing a user types can become markup.
+/// only elements ever produced are <c>p</c>, <c>br</c>, <c>b</c>, <c>i</c>, <c>ul</c>, <c>li</c> and
+/// <c>a href</c> (safe links only) — no scripts, style sheets, classes, images, tables, fonts or colors.
+/// Every piece of text, including user-entered notes, is HTML-encoded; nothing a user types can become markup.
+/// <para>
+/// Phase 29B: bold and italic are written as <c>&lt;b style="font-weight:bold"&gt;</c> and
+/// <c>&lt;i style="font-style:italic"&gt;</c> — direct formatting, the form Word, Outlook and browsers put
+/// on the clipboard themselves — instead of unstyled semantic <c>strong</c>/<c>em</c>, which Windows 11
+/// validation showed pasting without visible bold in both Word and Teams desktop (bullets survived).
+/// Word maps <c>strong</c> to its "Strong" character style rather than direct bold. Those two fixed
+/// attribute values are the only <c>style</c> attributes ever written; if a sanitizer strips them, the
+/// <c>b</c>/<c>i</c> element still carries the emphasis.
+/// </para>
 /// </summary>
 public static class TeamsHtmlRenderer
 {
+    public const string BoldOpen = "<b style=\"font-weight:bold\">";
+
+    public const string BoldClose = "</b>";
+
+    public const string ItalicOpen = "<i style=\"font-style:italic\">";
+
+    public const string ItalicClose = "</i>";
+
     public static string Render(TeamsMessage message)
     {
         ArgumentNullException.ThrowIfNull(message);
@@ -45,7 +61,7 @@ public static class TeamsHtmlRenderer
 
         if (hasTitle && (section.TitleIsSeparateBlock || blocks[0] is not TeamsParagraph))
         {
-            html.Append("<p><strong>").Append(Encode(section.Title!)).Append("</strong></p>");
+            html.Append("<p>").Append(BoldOpen).Append(Encode(section.Title!)).Append(BoldClose).Append("</p>");
             hasTitle = false;
         }
 
@@ -57,7 +73,7 @@ public static class TeamsHtmlRenderer
                     html.Append("<p>");
                     if (i == 0 && hasTitle)
                     {
-                        html.Append("<strong>").Append(Encode(section.Title!)).Append("</strong>");
+                        html.Append(BoldOpen).Append(Encode(section.Title!)).Append(BoldClose);
                         if (paragraph.Lines.Count > 0)
                         {
                             html.Append("<br>");
@@ -101,12 +117,12 @@ public static class TeamsHtmlRenderer
             var text = Encode(run.Text, ref previousWasSpace);
             if (run.Italic)
             {
-                text = "<em>" + text + "</em>";
+                text = ItalicOpen + text + ItalicClose;
             }
 
             if (run.Bold)
             {
-                text = "<strong>" + text + "</strong>";
+                text = BoldOpen + text + BoldClose;
             }
 
             if (run.Link is { } link && TeamsLinkPolicy.IsSafe(link))

@@ -158,7 +158,7 @@ public sealed class MorningMessageComposerTests
         Assert.StartsWith("Fast Lane Reserve: not re-verified (stale) (last verified Oct 19, 10:00 AM)", notice, StringComparison.Ordinal);
         Assert.Contains("Fast Lane Reserve: $65.00", Plain(composition));
         Assert.Contains("Some prices could not be re-verified today; they are the last confirmed official prices.", Plain(composition));
-        Assert.Contains("<em>Some prices could not be re-verified today", TeamsHtmlRenderer.Render(composition.Message), StringComparison.Ordinal);
+        Assert.Contains("<i style=\"font-style:italic\">Some prices could not be re-verified today", TeamsHtmlRenderer.Render(composition.Message), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -212,7 +212,7 @@ public sealed class MorningMessageComposerTests
         var html = TeamsHtmlRenderer.Render(composition.Message);
 
         Assert.Contains("Fast Lane Reserve: $65.00\r\n\r\nAsk about group rates at Guest Services.", Plain(composition));
-        Assert.Contains("<p><em>Ask about group rates at Guest Services.</em></p>", html);
+        Assert.Contains("<p><i style=\"font-style:italic\">Ask about group rates at Guest Services.</i></p>", html);
     }
 
     [Fact]
@@ -266,10 +266,20 @@ public sealed class MorningMessageComposerTests
         Assert.StartsWith("Gooooood Morning!\r\nHappy Thursday\r\n\r\nToday's Operations:", plain, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void OperationsTitle_NamesTheDate_WhenNotToday()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(1)]
+    [InlineData(-30)]
+    public void OperationsTitle_IsAlwaysTodaysOperations_NeverDated(int daysFromOpenDate)
     {
-        Assert.Contains("Operations for Thursday, October 22:", Plain(Compose(today: Date.AddDays(-1))));
+        // Phase 29B: the dated "Operations for Thursday, October 22:" heading is gone, whichever date is open.
+        var plain = Plain(Compose(today: Date.AddDays(daysFromOpenDate)));
+
+        Assert.Contains("\r\nToday's Operations:\r\nPark Hours:", plain, StringComparison.Ordinal);
+        Assert.DoesNotContain("Operations for", plain, StringComparison.Ordinal);
+        Assert.DoesNotContain("Thursday", plain, StringComparison.Ordinal);
+        Assert.DoesNotContain("October", plain, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -333,5 +343,131 @@ public sealed class MorningMessageComposerTests
 
         Assert.Same(draftBefore, workspace.Draft);
         Assert.Equal(PassdownSectionSelection.Default, workspace.Draft.SectionSelection);
+    }
+
+    // ---- Phase 29B: undated heading, formatted/plain equivalence, bold semantics, CF_HTML ----
+
+    private const string Bold = "<b style=\"font-weight:bold\">";
+
+    private static string Html(MorningMessageComposition composition) => TeamsHtmlRenderer.Render(composition.Message);
+
+    [Fact]
+    public void Phase29B_CompleteMessage_ExactFormattedHtml_BoldHeadingsAndLabels_BulletedReminders()
+    {
+        Assert.Equal(
+            "<p>Good Morning!</p>"
+            + "<p>" + Bold + "Today&#39;s Operations:</b><br>" + Bold + "Park Hours:</b> 10:00 AM - 8:00 PM<br>" + Bold + "Avenue:</b> 9:15 AM<br>"
+            + Bold + "North Gate:</b> 9:30 AM<br>" + Bold + "Projected Attendance:</b> 18,000<br>" + Bold + "Pre-solds:</b> 1,000<br>" + Bold + "ERT:</b> Fury 325</p>"
+            + "<p>" + Bold + "Reminders:</b></p><ul><li>Hydrate often</li><li>Check radios</li></ul>"
+            + "<p>" + Bold + "Ticket Prices:</b></p><p>" + Bold + "Daily Admission</b><br>Park Ticket: $59.00</p><p>" + Bold + "Fast Lane</b><br>Fast Lane Reserve: $65.00</p>"
+            + "<p>" + Bold + "Tentative Break Plan:</b><br>Avery &nbsp;&nbsp;10:30 &nbsp;Gate 1<br>Jordan &nbsp;11:00 &nbsp;Gate 2</p>"
+            + "<p>" + Bold + "Question of the Day:</b><br>Why did the coaster blush? It saw the loop&#39;s bottom.</p>",
+            Html(Compose()));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(7)]
+    public void Phase29B_ExactlyOneTodaysOperationsHeading_InPlainHtmlAndRegeneratedOutput(int daysFromOpenDate)
+    {
+        var first = Compose(today: Date.AddDays(daysFromOpenDate));
+        var regenerated = Compose(today: Date.AddDays(daysFromOpenDate));
+
+        foreach (var composition in new[] { first, regenerated })
+        {
+            var plain = Plain(composition);
+            var html = Html(composition);
+            Assert.Single(System.Text.RegularExpressions.Regex.Matches(plain, "Today's Operations:"));
+            Assert.Single(System.Text.RegularExpressions.Regex.Matches(html, "Today&#39;s Operations:"));
+            Assert.Contains(Bold + "Today&#39;s Operations:</b>", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("Operations for", plain + html, StringComparison.Ordinal);
+        }
+
+        Assert.Equal(Plain(first), Plain(regenerated));
+        Assert.Equal(Html(first), Html(regenerated));
+        Assert.Equal("Today's Operations:", Assert.Single(first.Message.Sections, section => section.Key == "operations").Title);
+    }
+
+    [Fact]
+    public void Phase29B_FormattedAndPlain_SameWordsSameOrder_EveryHeadingBold()
+    {
+        var composition = Compose(content: Content(reminders: "Safety First\n- Hydrate & rest\n- Close <before> 9", priceNote: "Ask about combos."));
+        var plain = Plain(composition);
+        var html = Html(composition);
+
+        Assert.Equal(TeamsRenderingTests.Words(plain), TeamsRenderingTests.Words(TeamsRenderingTests.HtmlToText(html)));
+        foreach (var title in composition.Message.Sections.Select(section => section.Title).OfType<string>())
+        {
+            Assert.Contains(Bold + TeamsHtmlRenderer.Encode(title) + "</b>", html, StringComparison.Ordinal);
+        }
+
+        Assert.DoesNotContain("<strong", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("<em", html, StringComparison.Ordinal);
+        Assert.Contains("<i style=\"font-style:italic\">Ask about combos.</i>", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Phase29B_Reminders_AreRealBullets_InBothForms()
+    {
+        var composition = Compose(content: Content(reminders: "- Hydrate often\n- Check radios\n- Smile"));
+
+        Assert.Contains("Reminders:\r\n• Hydrate often\r\n• Check radios\r\n• Smile", Plain(composition), StringComparison.Ordinal);
+        Assert.Contains("<ul><li>Hydrate often</li><li>Check radios</li><li>Smile</li></ul>", Html(composition), StringComparison.Ordinal);
+
+        var preview = string.Concat(TeamsPreviewRenderer.Render(composition.Message, TeamsCopyMode.Formatted).Select(span => span.Text));
+        Assert.Contains("Reminders:\n• Hydrate often\n• Check radios\n• Smile", preview, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Phase29B_UserText_IsEscaped_InHtmlAndNeverStyledByTheUser()
+    {
+        var html = Html(Compose(content: Content(reminders: "<b style=\"color:red\">x</b> & <script>alert(1)</script>")));
+
+        Assert.Contains("&lt;b style=&quot;color:red&quot;&gt;x&lt;/b&gt; &amp; &lt;script&gt;alert(1)&lt;/script&gt;", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("color:red\"", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("<script", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Phase29B_OdNotes_ExcludedFromMainMessage_PlainHtmlAndPreview()
+    {
+        var composition = Compose(content: Content(odNotes: "SECRET OD note"));
+
+        Assert.DoesNotContain("SECRET OD note", Plain(composition), StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET OD note", Html(composition), StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET OD note", string.Concat(TeamsPreviewRenderer.Render(composition.Message, TeamsCopyMode.Formatted).Select(span => span.Text)), StringComparison.Ordinal);
+        Assert.Equal("<p>" + Bold + "OD Notes:</b><br>SECRET OD note</p>", TeamsHtmlRenderer.Render(composition.OdNotes));
+    }
+
+    [Fact]
+    public void Phase29B_CfHtml_RoundTrips_TheStyledFragment_WithValidOffsets()
+    {
+        var fragment = Html(Compose(content: Content(reminders: "- Café — 10 min early")));
+        var payload = CfHtml.Build(fragment);
+        var parsed = CfHtml.Parse(payload);
+
+        Assert.Equal(fragment, parsed.Fragment);
+        Assert.NotEqual(0xEF, payload[0]);
+        Assert.NotEqual(0, payload[^1]);
+        Assert.Contains(Bold + "Today&#39;s Operations:</b>", parsed.Html, StringComparison.Ordinal);
+        Assert.Contains("<li>Café — 10 min early</li>", parsed.Fragment, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Phase29B_PreviewSpans_PlainModeIsThePlainCopy_FormattedModeAddsOnlyStyling()
+    {
+        var composition = Compose(content: Content(priceNote: "Ask about combos."));
+        var plain = Plain(composition).Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        var plainSpans = TeamsPreviewRenderer.Render(composition.Message, TeamsCopyMode.PlainText);
+        var formattedSpans = TeamsPreviewRenderer.Render(composition.Message, TeamsCopyMode.Formatted);
+
+        Assert.Equal(plain, Assert.Single(plainSpans).Text);
+        Assert.Equal(plain, string.Concat(formattedSpans.Select(span => span.Text)));
+        Assert.Equal(
+            ["Today's Operations:", "Park Hours:", "Avenue:", "North Gate:", "Projected Attendance:", "Pre-solds:", "ERT:", "Reminders:", "Ticket Prices:", "Daily Admission", "Fast Lane", "Tentative Break Plan:", "Question of the Day:"],
+            formattedSpans.Where(span => span.Bold).Select(span => span.Text));
+        Assert.Equal("Ask about combos.", Assert.Single(formattedSpans, span => span.Italic).Text);
     }
 }

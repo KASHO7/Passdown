@@ -45,6 +45,13 @@ public static class MorningMessageComposer
 {
     public const string OdNotesKey = "od-notes";
 
+    /// <summary>Phase 29B: the Operations heading in every Morning Message — never dated.</summary>
+    public const string OperationsTitle = "Today's Operations:";
+
+    /// <remarks>
+    /// <paramref name="easternToday"/> is kept for existing callers; since Phase 29B the message no longer
+    /// depends on it (the Operations heading is always <see cref="OperationsTitle"/>).
+    /// </remarks>
     public static MorningMessageComposition Compose(
         AssociateWorkspace workspace,
         MorningMessagePreferences preferences,
@@ -60,7 +67,7 @@ public static class MorningMessageComposer
         var sections = new Dictionary<MorningMessageSectionId, MorningMessagePreviewSection>
         {
             [MorningMessageSectionId.Greeting] = Greeting(preferences),
-            [MorningMessageSectionId.Operations] = Operations(workspace, model, easternToday),
+            [MorningMessageSectionId.Operations] = Operations(workspace, model),
             [MorningMessageSectionId.DapPlacement] = DapPlacement(content),
             [MorningMessageSectionId.Reminders] = Reminders(content, preferences),
             [MorningMessageSectionId.TicketPrices] = TicketPrices(workspace, preferences, content, now),
@@ -116,13 +123,11 @@ public static class MorningMessageComposer
             new TeamsMessageSection("greeting", null, TeamsUserText.ToBlocks(preferences.Greeting, detectBullets: false)),
             "No greeting — type one above to include it.");
 
-    private static MorningMessagePreviewSection Operations(AssociateWorkspace workspace, AssociatePassdownDocumentModel model, DateOnly easternToday)
+    private static MorningMessagePreviewSection Operations(AssociateWorkspace workspace, AssociatePassdownDocumentModel model)
     {
-        var title = workspace.OperatingDate == easternToday
-            ? "Today's Operations:"
-            : "Operations for " + workspace.OperatingDate.ToDateTime(TimeOnly.MinValue).ToString("dddd, MMMM d", PresentationCulture.UnitedStates) + ":";
-
-        var section = AssociateTeamsMessageBuilder.Operations(model, title);
+        // Phase 29B: always "Today's Operations:" — the message is written for the morning it is sent,
+        // so the operating date is never appended, whichever date is open.
+        var section = AssociateTeamsMessageBuilder.Operations(model, OperationsTitle);
 
         // Carolina Harbor's hours, only when the official source published them for an open park day.
         if (model.ParkHours.Status == PdfParkHoursStatus.Open && workspace.ParkHours.HasWaterparkHours

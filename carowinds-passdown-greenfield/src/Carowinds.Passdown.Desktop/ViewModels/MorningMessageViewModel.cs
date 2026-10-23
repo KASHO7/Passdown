@@ -163,6 +163,13 @@ public partial class MorningMessageViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(CopyPlainTextCommand))]
     public partial string PreviewText { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Phase 29B: the same message as <see cref="PreviewText"/>, styled for the selected copy mode — bold
+    /// headings and labels when formatted copy is the default, unstyled when plain text is.
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<TeamsPreviewSpan> PreviewSpans { get; private set; } = [];
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CopyOdNotesFormattedCommand))]
     [NotifyCanExecuteChangedFor(nameof(CopyOdNotesPlainTextCommand))]
@@ -507,6 +514,7 @@ public partial class MorningMessageViewModel : ObservableObject
 
     partial void OnUseFormattedByDefaultChanged(bool value)
     {
+        RefreshPreviewSpans();
         if (!_suppressChanges)
         {
             _preferences = Preferences with { DefaultCopyMode = value ? TeamsCopyMode.Formatted : TeamsCopyMode.PlainText };
@@ -565,9 +573,13 @@ public partial class MorningMessageViewModel : ObservableObject
         }
 
         PreviewText = TeamsPlainTextRenderer.Render(_composition.Message);
+        RefreshPreviewSpans();
         OdNotesPreviewText = TeamsPlainTextRenderer.Render(_composition.OdNotes);
         OrderSummary = string.Join(" → ", _composition.Preview.Where(section => section.Enabled).Select(section => section.Name));
     }
+
+    private void RefreshPreviewSpans() =>
+        PreviewSpans = TeamsPreviewRenderer.Render(Message, UseFormattedByDefault ? TeamsCopyMode.Formatted : TeamsCopyMode.PlainText);
 
     private void RebuildSectionRows()
     {

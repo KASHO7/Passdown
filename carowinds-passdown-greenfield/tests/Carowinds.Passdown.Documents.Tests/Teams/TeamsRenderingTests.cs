@@ -46,10 +46,10 @@ public sealed partial class TeamsRenderingTests
 
         Assert.Equal(
             "<p>Good Morning!</p>"
-            + "<p><strong>Today&#39;s Operations:</strong><br><strong>Park Hours:</strong> 10:00 AM - 8:00 PM<br><strong>Projected Attendance:</strong> 18,000</p>"
-            + "<p><strong>Reminders:</strong></p><ul><li>Hydrate</li><li>Smile</li></ul>"
+            + "<p><b style=\"font-weight:bold\">Today&#39;s Operations:</b><br><b style=\"font-weight:bold\">Park Hours:</b> 10:00 AM - 8:00 PM<br><b style=\"font-weight:bold\">Projected Attendance:</b> 18,000</p>"
+            + "<p><b style=\"font-weight:bold\">Reminders:</b></p><ul><li>Hydrate</li><li>Smile</li></ul>"
             + "<p>See <a href=\"https://www.carowinds.com/tickets\">https://www.carowinds.com/tickets</a> for details.</p>"
-            + "<p><strong>Ticket Prices:</strong></p><p><strong>Daily Admission</strong><br>Park Ticket: $59.00</p>",
+            + "<p><b style=\"font-weight:bold\">Ticket Prices:</b></p><p><b style=\"font-weight:bold\">Daily Admission</b><br>Park Ticket: $59.00</p>",
             html);
     }
 
@@ -59,8 +59,12 @@ public sealed partial class TeamsRenderingTests
         var html = TeamsHtmlRenderer.Render(Sample());
         var tags = TagPattern().Matches(html).Select(match => match.Groups[1].Value.ToLowerInvariant()).ToHashSet();
 
-        Assert.Subset(new HashSet<string> { "p", "br", "strong", "em", "ul", "li", "a" }, tags);
-        Assert.DoesNotContain("style", html, StringComparison.OrdinalIgnoreCase);
+        Assert.Subset(new HashSet<string> { "p", "br", "b", "i", "ul", "li", "a" }, tags);
+
+        // Phase 29B: the only style attributes are the two fixed emphasis values; no style sheets.
+        var styles = StylePattern().Matches(html).Select(match => match.Value).ToHashSet();
+        Assert.Subset(new HashSet<string> { "style=\"font-weight:bold\"", "style=\"font-style:italic\"" }, styles);
+        Assert.DoesNotContain("<style", html, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("class=", html, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("<img", html, StringComparison.OrdinalIgnoreCase);
     }
@@ -180,4 +184,7 @@ public sealed partial class TeamsRenderingTests
 
     [GeneratedRegex("<\\s*/?\\s*([a-zA-Z]+)")]
     private static partial Regex TagPattern();
+
+    [GeneratedRegex("style\\s*=\\s*\"[^\"]*\"", RegexOptions.IgnoreCase)]
+    private static partial Regex StylePattern();
 }

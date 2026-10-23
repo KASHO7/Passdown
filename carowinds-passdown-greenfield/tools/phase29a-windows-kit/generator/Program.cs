@@ -80,17 +80,20 @@ foreach (var (label, fastLane) in new[] { ("verified", verified), ("stale", stal
     Check(!plain.Contains("OD Notes") && !plain.Contains("SYNTHETIC OD note") && !html.Contains("SYNTHETIC OD note"), "OD Notes absent from main message");
     Check(od.StartsWith("OD Notes:\r\n", StringComparison.Ordinal) && !odHtml.Contains("<script"), "OD Notes separate message");
     Check(!plain.Contains("private passdown note"), "operational notes never auto-included");
-    Check(!Regex.IsMatch(plain, "</?(p|br|strong|em|ul|li|a)[ >]") && !plain.Contains("&amp;") && !plain.Contains("&nbsp;"), "plain text has no generated markup or entities");
+    Check(!Regex.IsMatch(plain, "</?(p|br|b|i|strong|em|ul|li|a)[ >]") && !plain.Contains("&amp;") && !plain.Contains("&nbsp;"), "plain text has no generated markup or entities");
     Check(plain.Contains('—') && plain.Contains("Café"), "Unicode (em dash, é) kept in plain");
     var parsed = CfHtml.Parse(cf);
     Check(parsed.Fragment == html && parsed.Version == "0.9", "CF_HTML offsets delimit exactly the fragment");
     Check(Encoding.UTF8.GetString(cf).Contains("—") && cf.Length == parsed.EndHtml && !(cf.Length >= 3 && cf[0] == 0xEF), "CF_HTML UTF-8, no BOM, EndHTML = length");
     var tags = Regex.Matches(html, "</?([a-zA-Z]+)").Select(m => m.Groups[1].Value.ToLowerInvariant()).Distinct().ToList();
-    Check(tags.All(t => t is "p" or "br" or "strong" or "em" or "ul" or "li" or "a"), "only p/br/strong/em/ul/li/a: " + string.Join(",", tags));
+    Check(tags.All(t => t is "p" or "br" or "b" or "i" or "ul" or "li" or "a"), "only p/br/b/i/ul/li/a: " + string.Join(",", tags));
+    var styles = Regex.Matches(html, "style\\s*=\\s*\"[^\"]*\"").Select(m => m.Value).Distinct().ToList();
+    Check(styles.All(v => v is "style=\"font-weight:bold\"" or "style=\"font-style:italic\""), "only fixed bold/italic styles: " + string.Join(",", styles));
     Check(!html.Contains("javascript:", StringComparison.OrdinalIgnoreCase) || !Regex.IsMatch(html, "href=\"javascript", RegexOptions.IgnoreCase), "javascript: never a link");
     Check(html.Contains("href=\"https://www.carowinds.com/\""), "https link is a link");
     Check(html.Contains("&lt;before&gt;") && html.Contains("&amp;"), "user text HTML-encoded");
-    Check(html.Contains("<ul>") && html.Contains("<strong>"), "bullets and bold present");
+    Check(html.Contains("<ul>") && html.Contains("<b style=\"font-weight:bold\">Today&#39;s Operations:</b>"), "bullets and explicitly bold headings present");
+    Check(plain.Contains("\r\nToday's Operations:\r\n") && !plain.Contains("Operations for") && !html.Contains("Operations for"), "undated Today's Operations heading");
     Check(!html.Contains("<at") && plain.Contains("@Jordan Testperson"), "@Name stays plain text");
     Check(!html.Contains("<img") && !plain.Contains("data:image"), "no image in text");
     var order = new[] { "Gooooood Morning!", "Operations", "DAP / placement", "Reminders:", "Ticket Prices:", "Tentative Break Plan:", "Question of the Day:" }

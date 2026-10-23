@@ -120,6 +120,18 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
         m.OdNotes = "Synthetic OD note";
         Pump(10);
     }),
+    // Phase 29B: the same composer with formatted copy as the default — the preview shows bold headings and labels.
+    ("Associate-MorningMessageFormatted", () => new Fixture(), f =>
+    {
+        Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowOverviewSectionCommand.Execute(null); Pump(8);
+        f.Vm.Associate.OpenMorningMessageCommand.ExecuteAsync(null).Wait(2000); Pump(6);
+        var m = f.Vm.MorningMessage;
+        m.Reminders = "- Synthetic reminder: radio check at 9:45\n- Hydrate and smile";
+        m.BreakPlan = "Synthetic A   10:30  Gate 1\nSynthetic B   11:00  Gate 2";
+        m.PriceNote = "Synthetic price note.";
+        m.UseFormattedByDefault = true;
+        Pump(10);
+    }),
     ("Popup-DatePicker", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "Operating date"); }),
     ("Popup-Copy", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "Copy for Teams"); }),
     ("Popup-More", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "More passdown actions"); }),
