@@ -109,6 +109,10 @@ going back means restoring a backup — see backups\README.txt. Make your own
 dated copy of the data folder before upgrading, and upgrade every computer that
 shares a Personal Sync folder.
 
+Version 0.1.0-rc.10 uses the same database format as rc.9: upgrading from rc.9
+changes nothing in the database. Upgrading straight from rc.8 or older performs
+the rc.9 upgrade described above.
+
 Passdown History
 -----------------
 Next to "Associate Passdown" at the top of the window is a "History" section. Each
