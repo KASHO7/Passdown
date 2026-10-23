@@ -20,16 +20,35 @@
     Skips re-running Publish-Windows.ps1 and packages whatever is already in
     artifacts/publish/win-x64. Useful for iterating on packaging alone. Default: publish is
     always run first, so the ZIP never silently ships stale/prior-build output.
+    Not allowed together with -LocalTestLabel (a test build always publishes fresh).
+
+.PARAMETER LocalTestLabel
+    Builds a disposable LOCAL-ONLY test package instead of a release (Phase 29/30 kit; finding F2
+    in docs/phase29a-windows-teams-validation.md). Everything — publish output, staging folder and
+    ZIP — goes under artifacts/local-test/<label>/ and is named LOCAL-ONLY-<label>-win-x64, so
+    artifacts/releases, artifacts/release-staging and artifacts/publish/win-x64 are never read,
+    written or deleted, whatever <Version> currently is. A LOCAL-ONLY-TEST-BUILD.txt marker is
+    added at the package root. Letters, digits, '.', '_' and '-' only.
+
+.NOTES
+    Frozen-release guard: without -LocalTestLabel the script refuses to run when
+    artifacts/releases/Carowinds-Operations-<Version>-win-x64.zip already exists, before
+    publishing or deleting anything. A shipped RC is never rebuilt in place — bump <Version>
+    first, or use -LocalTestLabel for a test build.
 
 .EXAMPLE
     .\Build-PortableRelease.ps1
 
 .EXAMPLE
     .\Build-PortableRelease.ps1 -SkipPublish
+
+.EXAMPLE
+    .\Build-PortableRelease.ps1 -LocalTestLabel phase29-30-morning-message
 #>
 [CmdletBinding()]
 param(
-    [switch]$SkipPublish
+    [switch]$SkipPublish,
+    [string]$LocalTestLabel
 )
 
 $ErrorActionPreference = 'Stop'
@@ -62,13 +81,50 @@ if ([string]::IsNullOrWhiteSpace($version)) {
 }
 $version = $version.Trim()
 
-$releaseName = "Carowinds-Operations-$version-win-x64"
-Write-Host "Building portable release: $releaseName"
+$isLocalTest = -not [string]::IsNullOrWhiteSpace($LocalTestLabel)
+if ($isLocalTest) {
+    if ($LocalTestLabel -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$') {
+        Write-Error "-LocalTestLabel may contain only letters, digits, '.', '_' and '-' (got '$LocalTestLabel')."
+        exit 1
+    }
+    if ($SkipPublish) {
+        Write-Error "-SkipPublish cannot be combined with -LocalTestLabel; a test build always publishes fresh."
+        exit 1
+    }
+
+    # Test builds live entirely under artifacts/local-test/<label>/ — never the release folders.
+    $localTestRoot = Join-Path $repoRoot 'artifacts' 'local-test' $LocalTestLabel
+    $releaseName = "LOCAL-ONLY-$LocalTestLabel-win-x64"
+    $publishDirectory = Join-Path $localTestRoot 'publish'
+    $stagingRoot = Join-Path $localTestRoot 'staging'
+    $releasesDirectory = $localTestRoot
+    Write-Host "Building LOCAL-ONLY test package (not a release): $releaseName (version $version)"
+}
+else {
+    $releaseName = "Carowinds-Operations-$version-win-x64"
+    $stagingRoot = Join-Path $repoRoot 'artifacts' 'release-staging'
+
+    # Frozen-release guard: a ZIP for this version already exists, so this version has been built
+    # (and possibly shipped). Refuse before publishing or deleting anything — Remove-Item -Force
+    # would otherwise wipe the frozen staging folder and ZIP, read-only or not.
+    $frozenZipPath = Join-Path $releasesDirectory "$releaseName.zip"
+    if (Test-Path -LiteralPath $frozenZipPath) {
+        Write-Error ("'$frozenZipPath' already exists. Refusing to overwrite a built release. " +
+            "Bump <Version> in Directory.Build.props for a new release, or pass -LocalTestLabel <label> for a disposable test build.")
+        exit 1
+    }
+    Write-Host "Building portable release: $releaseName"
+}
 
 if (-not $SkipPublish) {
     Write-Host ""
     Write-Host "Running Publish-Windows.ps1..."
-    & $publishScript
+    if ($isLocalTest) {
+        & $publishScript -OutputDirectory $publishDirectory
+    }
+    else {
+        & $publishScript
+    }
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Publish-Windows.ps1 failed with exit code $LASTEXITCODE."
         exit $LASTEXITCODE
@@ -86,10 +142,9 @@ if (-not (Test-Path -LiteralPath $executablePath -PathType Leaf)) {
     exit 1
 }
 
-# Clean staging: only this script's own version-specific staging path under artifacts/, never
-# user data and never any other artifacts/ content (CLAUDE.md "Do not overwrite unrelated user
-# work").
-$stagingRoot = Join-Path $repoRoot 'artifacts' 'release-staging'
+# Clean staging: only this script's own version-specific (or test-label-specific) staging path
+# under artifacts/, never user data and never any other artifacts/ content (CLAUDE.md "Do not
+# overwrite unrelated user work").
 $stagingReleaseDirectory = Join-Path $stagingRoot $releaseName
 if (Test-Path -LiteralPath $stagingReleaseDirectory) {
     Remove-Item -LiteralPath $stagingReleaseDirectory -Recurse -Force
@@ -169,6 +224,21 @@ if (-not (Test-Path -LiteralPath $licensesSource -PathType Container)) {
 Copy-Item -Path $noticesSource -Destination $stagingReleaseDirectory -Force
 Copy-Item -LiteralPath $licensesSource -Destination $stagingReleaseDirectory -Recurse -Force
 
+if ($isLocalTest) {
+    $commit = (& git -C $repoRoot rev-parse HEAD 2>$null)
+    $markerLines = @(
+        'LOCAL-ONLY TEST BUILD - NOT A RELEASE',
+        '',
+        "Label:   $LocalTestLabel",
+        "Version: $version (same version string as the frozen release; this is NOT that release)",
+        "Commit:  $commit",
+        '',
+        'Use only in a disposable Windows test account. Do not install updates from this build.',
+        'Delete the extracted folder when testing is finished.'
+    )
+    Set-Content -LiteralPath (Join-Path $stagingReleaseDirectory 'LOCAL-ONLY-TEST-BUILD.txt') -Value $markerLines -Encoding ascii
+}
+
 # Phase 18B PKG-002: full release-content validation (required runtime/native files, scheduler
 # helpers, license notices; forbidden PDBs, source, tests, fixtures, databases, logs, diagnostics,
 # sync data, PDFs, Ghostscript artifacts, .DS_Store, non-win-x64 natives, secrets, developer paths).
@@ -208,9 +278,17 @@ $uncompressedMegabytes = [Math]::Round($uncompressedBytes / 1MB, 1)
 $zipBytes = (Get-Item -LiteralPath $zipPath).Length
 $zipMegabytes = [Math]::Round($zipBytes / 1MB, 1)
 
+$zipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+
 Write-Host ""
-Write-Host "Portable release build complete."
+if ($isLocalTest) {
+    Write-Host "LOCAL-ONLY test package complete (not a release; nothing under artifacts/releases was touched)."
+}
+else {
+    Write-Host "Portable release build complete."
+}
 Write-Host "  ZIP path:            $zipPath"
+Write-Host "  SHA-256:             $zipHash"
 Write-Host "  Uncompressed size:   $uncompressedMegabytes MB"
 Write-Host "  ZIP size:            $zipMegabytes MB"
 Write-Host "  File count:          $fileCount"

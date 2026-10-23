@@ -115,6 +115,8 @@ public static class ApplicationUpdatePresentation
         {
             UpdateInstallStatus.RolledBack =>
                 $"The update to {outcome.ToVersion} didn't start correctly, so version {outcome.FromVersion} was restored. No data was changed.",
+            UpdateInstallStatus.RecoveryRequired when outcome.FailureCode == "database-upgraded-not-confirmed" =>
+                $"The update to {outcome.ToVersion} didn't confirm that it started, and it may already have updated your database, so it wasn't reversed. Nothing was deleted, and a backup of your database from before the update was kept. See UPDATE-RECOVERY.txt in the app folder.",
             UpdateInstallStatus.RecoveryRequired =>
                 $"The update to {outcome.ToVersion} couldn't finish, and the previous version couldn't be restored automatically. See UPDATE-RECOVERY.txt in the app folder. Your data is safe.",
             _ => outcome.FailureCode switch
@@ -122,6 +124,9 @@ public static class ApplicationUpdatePresentation
                 "installation-in-use" => $"The update to {outcome.ToVersion} wasn't installed because another copy of Carowinds Operations, or the 6 AM scheduled refresh, was using the app folder. Close other copies and try again.",
                 "not-writable" => $"The update to {outcome.ToVersion} wasn't installed because Windows didn't allow changes to the app folder. Nothing was changed.",
                 "insufficient-disk-space" => $"The update to {outcome.ToVersion} wasn't installed because there wasn't enough free disk space. Nothing was changed.",
+                "database-backup-failed" => $"The update to {outcome.ToVersion} wasn't installed because your database couldn't be backed up first. Nothing was changed.",
+                "database-in-use" => $"The update to {outcome.ToVersion} wasn't installed because another program was using your database, so it couldn't be backed up. Nothing was changed. Try again later.",
+                "database-damaged" => $"The update to {outcome.ToVersion} wasn't installed because your database failed its safety check. Nothing was changed. Export diagnostics and ask for help before updating.",
                 "app-did-not-close" => $"The update to {outcome.ToVersion} wasn't installed because the app didn't close. Nothing was changed.",
                 _ => $"The update to {outcome.ToVersion} wasn't installed. Nothing was changed.",
             },

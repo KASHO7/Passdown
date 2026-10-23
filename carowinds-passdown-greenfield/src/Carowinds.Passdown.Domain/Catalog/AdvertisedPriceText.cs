@@ -17,6 +17,17 @@ public static class AdvertisedPriceText
         return kind == PriceKind.StartingFrom ? $"From {money}" : money;
     }
 
+    /// <summary>
+    /// Phase 25: <see cref="Format(decimal, PriceKind)"/> with the pass price unit — "$7.00/month" for a
+    /// Membership's monthly rate, so a recurring amount can never read as a one-time price.
+    /// </summary>
+    public static string Format(decimal amount, PriceKind kind, PassPriceUnit unit) =>
+        unit == PassPriceUnit.PerMonth ? $"{Format(amount, kind)}/month" : Format(amount, kind);
+
+    /// <summary><see cref="Format(decimal, PriceKind, PassPriceUnit)"/>, or <see langword="null"/> when there is no amount.</summary>
+    public static string? FormatOrNull(decimal? amount, PriceKind kind, PassPriceUnit unit) =>
+        amount is { } value ? Format(value, kind, unit) : null;
+
     /// <summary><see cref="Format(decimal, PriceKind)"/>, or <see langword="null"/> when there is no amount.</summary>
     public static string? FormatOrNull(decimal? amount, PriceKind kind) => amount is { } value ? Format(value, kind) : null;
 }

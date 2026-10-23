@@ -48,6 +48,15 @@ public static class PersonalSyncResultPresentation
                 {
                     summary += $" {result.HistoryIncompleteCount} history item{(result.HistoryIncompleteCount == 1 ? "" : "s")} waiting for their PDF.";
                 }
+                // Phase 26: observations, never "price changes" — one new observation can confirm a known price.
+                if (result.PriceObservationsMergedCount > 0)
+                {
+                    summary += $" {OfficialPriceHistorySummary.MergedText(result.PriceObservationsMergedCount)}";
+                }
+                if (result.PriceObservationsSkippedCount > 0)
+                {
+                    summary += $" {OfficialPriceHistorySummary.SkippedText(result.PriceObservationsSkippedCount)}";
+                }
                 return summary;
             default:
                 throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, null);

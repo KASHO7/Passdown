@@ -62,10 +62,13 @@ public interface IProductReconciliationService
     /// the durably stored catalog. <paramref name="evidence"/> must be a
     /// successful completion (spec §5.2); a failed/errored retrieval must never
     /// be reconciled at all; retain last-known-good state instead (spec §6.7/§7.1).
+    /// Phase 25: <paramref name="unconfirmedProductKeys"/> are products the source listed but could
+    /// not verify — left exactly as stored (not confirmed, not counted absent).
     /// </summary>
     Task<ReconciliationResult> ReconcileAsync(
         SourceCategory category,
         SourceEvidence evidence,
         IReadOnlyList<ObservedProduct> observedProducts,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        IReadOnlyCollection<CatalogProductKey>? unconfirmedProductKeys = null);
 }

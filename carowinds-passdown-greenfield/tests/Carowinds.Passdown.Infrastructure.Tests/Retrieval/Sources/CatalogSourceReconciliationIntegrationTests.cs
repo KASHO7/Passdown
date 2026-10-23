@@ -89,22 +89,23 @@ public class CatalogSourceReconciliationIntegrationTests : IDisposable
     [Fact]
     public async Task SeasonPassesProducts_NewlyObserved_BecomeActiveWithTheAdaptersOwnFields()
     {
+        // Phase 25: the redesigned Memberships & Season Passes page.
         var source = new SeasonPassCatalogSource(
-            new FakeRetrievalHttpClient(HtmlResponse("season-passes/published-page.html")), new FakeClock(SampleUtcNow));
+            new FakeRetrievalHttpClient(HtmlResponse("memberships-and-season-passes/published-page.html")), new FakeClock(SampleUtcNow));
         var reconciliation = BuildReconciliationService();
 
         var retrieval = await source.RetrieveAsync(new RetrievalRequest(source.SourceId, source.Category), CancellationToken.None);
         var result = await reconciliation.ReconcileAsync(source.Category, retrieval.Evidence, retrieval.Payload!.Products);
 
-        Assert.Equal(2, result.Products.Count);
+        Assert.Equal(10, result.Products.Count);
         Assert.All(result.Products, p => Assert.Equal(ReconciliationOutcome.Added, p.Outcome));
 
-        var goldPassKey = retrieval.Payload.Products.Single(p => p.DisplayName == "2027 Gold Pass").Key;
+        var goldPassKey = retrieval.Payload.Products.Single(p => p.DisplayName == "Gold Season Pass — 2027").Key;
         var stored = await new SqliteCatalogProductRepository(_fixture.ConnectionFactory).GetAsync(goldPassKey);
         Assert.Equal(ProductLifecycleState.Active, stored!.LifecycleState);
-        Assert.Equal(89.00m, stored.CurrentPriceAmount);
+        Assert.Equal(99.00m, stored.CurrentPriceAmount);
         Assert.Equal(115.00m, stored.ComparisonPriceAmount);
-        Assert.Equal("Sale Price", stored.PriceQualifier);
+        Assert.Null(stored.PriceQualifier);
     }
 
     [Fact]

@@ -42,7 +42,9 @@ public sealed class CatalogSourceRegistration : SourceRegistration
 
         if (result.Evidence.Status == RetrievalStatus.Verified)
         {
-            await _reconciliationService.ReconcileAsync(_source.Category, result.Evidence, result.Payload!.Products, cancellationToken).ConfigureAwait(false);
+            await _reconciliationService.ReconcileAsync(
+                    _source.Category, result.Evidence, result.Payload!.Products, cancellationToken, result.Payload.UnconfirmedProductKeys)
+                .ConfigureAwait(false);
             return SourceOperationResult.Success(_source.SourceId, _source.Category, requestedDate: null, result.Evidence.Status, result.Evidence.Detail);
         }
 

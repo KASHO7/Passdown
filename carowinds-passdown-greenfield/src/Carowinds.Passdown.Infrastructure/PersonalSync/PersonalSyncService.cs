@@ -40,7 +40,8 @@ public sealed class PersonalSyncService(
     IMonthlyErtRepository monthlyErtRepository,
     IErtDateOverrideRepository ertDateOverrideRepository,
     IUnitOfWorkFactory? unitOfWorkFactory = null,
-    ISyncLocalChangeNotifier? changeNotifier = null) : IPersonalSyncService
+    ISyncLocalChangeNotifier? changeNotifier = null,
+    IOfficialPriceHistorySync? officialPriceHistorySync = null) : IPersonalSyncService
 {
     private static readonly JsonSerializerOptions DraftPayloadWriteOptions = new();
 
@@ -116,6 +117,10 @@ public sealed class PersonalSyncService(
             await ExportMonthlyErtsAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
             await ExportErtDateOverridesAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
 
+            // Phase 26: verified official price history — its own merge-only channel, after every
+            // existing entity so a price-history problem can never block drafts, notes or History.
+            await SyncOfficialPriceHistoryAsync(root, deviceId, now, counters, cancellationToken).ConfigureAwait(false);
+
             LastPassHistoryPdfBytesRead = counters.HistoryPdfBytesRead;
             LastPassHistoryPdfRevalidationsSkipped = counters.HistoryPdfRevalidationsSkipped;
             return counters.ToResult();
@@ -172,6 +177,34 @@ public sealed class PersonalSyncService(
         }
 
         await configurationStore.SaveAsync(configuration with { LastKnownSyncSpaceId = spaceId }, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Phase 26: runs the official price-history exchange (<see cref="IOfficialPriceHistorySync"/>).
+    /// A recoverable failure (locked file, offline folder, a busy or failed database transaction) is
+    /// counted as an I/O failure so the coordinator's existing bounded backoff retries it; local history
+    /// is never touched by a failure because every write is a single all-or-nothing transaction.
+    /// </summary>
+    private async Task SyncOfficialPriceHistoryAsync(string root, Guid deviceId, DateTimeOffset now, Counters counters, CancellationToken cancellationToken)
+    {
+        if (officialPriceHistorySync is null)
+        {
+            return;
+        }
+
+        OfficialPriceHistorySyncResult result;
+        try
+        {
+            result = await officialPriceHistorySync.RunAsync(root, deviceId, now, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (OfficialPriceHistorySync.IsRecoverable(ex))
+        {
+            result = OfficialPriceHistorySyncResult.Failed();
+        }
+
+        counters.PriceHistory = result;
+        counters.IoFailures += result.IoFailures;
+        counters.Malformed += result.UnreadableFiles;
     }
 
     // ----- Drafts: import -----
@@ -1946,12 +1979,15 @@ public sealed class PersonalSyncService(
         public int HistoryIncomplete;
         public long HistoryPdfBytesRead;
         public int HistoryPdfRevalidationsSkipped;
+        public OfficialPriceHistorySyncResult? PriceHistory;
 
         /// <summary>Phase 18B REL-004: local entities this pass changed (imported, updated, or deleted) — published to open editors once the pass ends.</summary>
         public List<SyncEntityKey> ChangedLocally { get; } = [];
 
         public PersonalSyncResult ToResult() => new(
             PersonalSyncOutcome.Completed, Imported, Exported, Unchanged, Conflicts, Malformed, IoFailures, null,
-            HistoryImported, HistoryExported, HistoryUnchanged, HistoryConflicts, HistoryIncomplete);
+            HistoryImported, HistoryExported, HistoryUnchanged, HistoryConflicts, HistoryIncomplete,
+            PriceHistory?.ObservationsMerged ?? 0, (PriceHistory?.ObservationsRejected ?? 0) + (PriceHistory?.IntegrityConflicts ?? 0),
+            IncludesOfficialPriceHistory: PriceHistory is not null);
     }
 }

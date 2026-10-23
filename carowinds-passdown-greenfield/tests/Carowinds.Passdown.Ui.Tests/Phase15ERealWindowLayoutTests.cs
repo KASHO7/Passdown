@@ -899,6 +899,62 @@ public class Phase15ERealWindowLayoutTests
     }
 
     // ==================================================================================
+    // Phase 26: the official source link — keyboard activation, both themes, narrow and wide.
+    // ==================================================================================
+
+    private sealed class RecordingLinkLauncher : Carowinds.Passdown.Desktop.Services.IExternalLinkLauncher
+    {
+        public List<Uri> Opened { get; } = [];
+
+        public Task<bool> OpenAsync(Uri officialPage, CancellationToken cancellationToken = default)
+        {
+            Opened.Add(officialPage);
+            return Task.FromResult(true);
+        }
+    }
+
+    [Theory]
+    [InlineData("Light", 1280)]
+    [InlineData("Dark", 1280)]
+    [InlineData("Light", 760)]
+    [InlineData("Dark", 760)]
+    public async Task PriceHistory_OfficialSourceLink_IsATabStop_EnterOpensIt_InBothThemesAndWidths(string theme, int width)
+    {
+        var page = new Uri("https://www.sixflags.com/carowinds/memberships-and-season-passes");
+        var service = new FakeSeasonPriceHistoryService()
+            .With("gold", "2027 Synthetic Gold Pass", active: true, PriceHistoryFamily.SeasonPass,
+                (99m, PriceKind.StandardCatalog, new DateTimeOffset(2026, 8, 12, 16, 0, 0, TimeSpan.Zero)));
+        service.Products[0] = service.Products[0] with { OfficialSourceUrl = page };
+        var launcher = new RecordingLinkLauncher();
+        var history = new PriceHistoryViewModel(service, linkLauncher: launcher);
+        await history.OpenAsync("gold");
+        var variant = theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
+
+        var window = RealizeInWindow(new PriceHistoryView { DataContext = history }, width, 860);
+        window.RequestedThemeVariant = variant;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var link = window.GetVisualDescendants().OfType<Button>()
+            .Single(b => AutomationProperties.GetName(b) == "View Official Memberships & Season Passes Page");
+        Assert.True(link.Focusable && link.IsTabStop && link.IsEffectivelyEnabled && link.IsEffectivelyVisible);
+        Assert.True(link.Bounds.Width > 0);
+        Assert.True(window.TryFindResource("PassdownAccentForegroundBrush", variant, out var accent));
+        Assert.Same(accent, link.Foreground);
+        AssertNoControlClipsHorizontally(window);
+
+        Assert.True(link.Focus(NavigationMethod.Tab));
+        Assert.True(link.IsFocused);
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        window.KeyReleaseQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal([page], launcher.Opened);
+        Assert.True(link.IsFocused, "opening the page must not drop keyboard focus");
+
+        window.Close();
+    }
+
+    // ==================================================================================
     // Phase 22E: compact Calendar Shows, Notes rows and History rows in a real window.
     // ==================================================================================
 

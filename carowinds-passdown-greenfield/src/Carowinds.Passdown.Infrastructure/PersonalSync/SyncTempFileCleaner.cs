@@ -13,7 +13,8 @@ namespace Carowinds.Passdown.Infrastructure.PersonalSync;
 /// <list type="number">
 /// <item>It is directly inside one of the app-owned directories this type knows (the
 /// <see cref="SyncPathService.SyncFolderName"/> folder and its <c>drafts</c>, <c>notes</c>,
-/// <c>history</c>, <c>monthly-ert</c>, <c>ert-date-overrides</c> subfolders) — enumerated
+/// <c>history</c>, <c>monthly-ert</c>, <c>ert-date-overrides</c> subfolders, and Phase 26's
+/// <c>official-price-history</c>) — enumerated
 /// non-recursively, never the user's selected root itself, never anything else in OneDrive.</item>
 /// <item>Its canonical full path's parent is exactly that directory (no <c>..</c>, rooted, UNC, or
 /// alternate-separator escape), and neither the file nor the directory is a symbolic link/junction.</item>
@@ -40,6 +41,7 @@ public static partial class SyncTempFileCleaner
         History,
         MonthlyErt,
         ErtDateOverrides,
+        OfficialPriceHistory,
     }
 
     /// <returns>The number of stale temp files deleted.</returns>
@@ -67,6 +69,7 @@ public static partial class SyncTempFileCleaner
                 (Folder.History, SyncPathService.GetHistoryDirectoryPath(selectedRootPath)),
                 (Folder.MonthlyErt, SyncPathService.GetMonthlyErtsDirectoryPath(selectedRootPath)),
                 (Folder.ErtDateOverrides, SyncPathService.GetErtDateOverridesDirectoryPath(selectedRootPath)),
+                (Folder.OfficialPriceHistory, SyncPathService.GetOfficialPriceHistoryDirectoryPath(selectedRootPath)),
             })
             {
                 deleted += CleanDirectory(folder, selectedRootPath, directory, nowUtc, threshold);
@@ -172,6 +175,8 @@ public static partial class SyncTempFileCleaner
                 : Path.GetFileName(SyncPathService.GetHistoryJsonFilePath(root, date, id)),
             Folder.MonthlyErt when SyncEntityIdentity.TryParseMonthlyErtId(stem, out var year, out var month) => Path.GetFileName(SyncPathService.GetMonthlyErtFilePath(root, year, month)),
             Folder.ErtDateOverrides when SyncEntityIdentity.TryParseErtDateOverrideId(stem, out var date) => Path.GetFileName(SyncPathService.GetErtDateOverrideFilePath(root, date)),
+            Folder.OfficialPriceHistory when SyncPathService.TryParseOfficialPriceHistoryFileName(finalName, out var contributor, out var isCanonical) && isCanonical
+                => Path.GetFileName(SyncPathService.GetOfficialPriceHistoryFilePath(root, contributor)),
             _ => null,
         };
 

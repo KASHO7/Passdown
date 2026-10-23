@@ -30,6 +30,8 @@ public sealed record UpdateInstallRequest(
 /// Phase 23D: the updater's own account of one attempt, written to <c>records\install-&lt;id&gt;.json</c> after
 /// every step, so the app — and a person following the recovery guide — can always tell what happened.
 /// Contains versions, status, a failure code and folder locations only; no user data.
+/// Phase 27 appended <paramref name="DatabaseBackupPath"/> and <paramref name="DatabaseSchemaVersionBefore"/>
+/// (the verified pre-install database backup); older readers skip them (unmapped members are ignored).
 /// </summary>
 public sealed record UpdateInstallRecord(
     int FormatVersion,
@@ -42,7 +44,9 @@ public sealed record UpdateInstallRecord(
     string? FailureCode,
     DateTimeOffset UpdatedUtc,
     string? BackupDirectory,
-    IReadOnlyList<UpdateSwapEntry> Journal)
+    IReadOnlyList<UpdateSwapEntry> Journal,
+    string? DatabaseBackupPath = null,
+    int? DatabaseSchemaVersionBefore = null)
 {
     public UpdateInstallOutcome ToOutcome() => new(RequestId, FromVersion, ToVersion, Status, FailureCode, UpdatedUtc, BackupDirectory);
 }
@@ -65,6 +69,21 @@ public static class UpdateFailureCodes
     public const string LaunchFailed = "launch-failed";
     public const string NewVersionDidNotStart = "new-version-did-not-start";
     public const string RollbackFailed = "rollback-failed";
+
+    /// <summary>Phase 27: the database could not be backed up and verified, so nothing was installed.</summary>
+    public const string DatabaseBackupFailed = "database-backup-failed";
+
+    /// <summary>Phase 27: another program kept the database busy, so it could not be backed up; nothing was installed.</summary>
+    public const string DatabaseInUse = "database-in-use";
+
+    /// <summary>Phase 27: the database failed SQLite's integrity check, so it was not upgraded; nothing was installed.</summary>
+    public const string DatabaseDamaged = "database-damaged";
+
+    /// <summary>
+    /// Phase 27: the new version did not confirm it started, and the database is no longer in its pre-install format
+    /// (or its state is unknown). The new version, the database and every backup were kept; nothing was reversed.
+    /// </summary>
+    public const string DatabaseUpgradedNotConfirmed = "database-upgraded-not-confirmed";
 }
 
 internal static class UpdateJson

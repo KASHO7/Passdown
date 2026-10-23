@@ -116,4 +116,32 @@ public class SyncPathServiceTests
         Assert.Throws<ArgumentException>(() => SyncPathService.GetSyncFolderPath(""));
         Assert.Throws<ArgumentException>(() => SyncPathService.GetSyncFolderPath("   "));
     }
+
+    [Fact]
+    public void Phase26_OfficialPriceHistoryPaths_AreOneFilePerDevice_InTheirOwnFolder()
+    {
+        var device = Guid.Parse("3fa85f64-5717-4562-b3fc-2c963f66afa6");
+        var path = SyncPathService.GetOfficialPriceHistoryFilePath("root", device);
+
+        Assert.Equal(Path.Combine("root", SyncPathService.SyncFolderName, "official-price-history", "3fa85f64-5717-4562-b3fc-2c963f66afa6.json"), path);
+        Assert.True(SyncPathService.TryParseOfficialPriceHistoryFileName(Path.GetFileName(path), out var parsed, out var canonical));
+        Assert.Equal((device, true), (parsed, canonical));
+    }
+
+    [Theory]
+    [InlineData("3fa85f64-5717-4562-b3fc-2c963f66afa6-LAPTOP.json", true)]
+    [InlineData("3fa85f64-5717-4562-b3fc-2c963f66afa6 (1).json", true)]
+    [InlineData("3fa85f64-5717-4562-b3fc-2c963f66afa6.json.tmp-0123456789abcdef0123456789abcdef", false)]
+    [InlineData("3fa85f64-5717-4562-b3fc-2c963f66afa6x.json", false)]
+    [InlineData("00000000-0000-0000-0000-000000000000.json", false)]
+    [InlineData("notes.json", false)]
+    [InlineData("../3fa85f64-5717-4562-b3fc-2c963f66afa6.json", false)]
+    [InlineData("3fa85f64-5717-4562-b3fc-2c963f66afa6/../x.json", false)]
+    [InlineData("C:3fa85f64-5717-4562-b3fc-2c963f66afa6.json", false)]
+    [InlineData("", false)]
+    public void Phase26_OfficialPriceHistoryFileNames_AcceptOnlyContributorFilesAndTheirConflictCopies(string name, bool accepted)
+    {
+        Assert.Equal(accepted, SyncPathService.TryParseOfficialPriceHistoryFileName(name, out _, out var canonical));
+        Assert.False(canonical);
+    }
 }

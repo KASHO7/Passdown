@@ -1317,3 +1317,91 @@ See `docs/phase23d-github-updater.md`. Unreleased; intended for RC.8.
 
 Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration. Update state and
 packages are outside the SQLite data and never synced.
+
+## Phase 25 — Membership & Season Pass source compatibility
+
+See `docs/phase25-memberships-season-passes.md`. Unreleased work after RC.8 (version still `0.1.0-rc.8`).
+
+- **Domain** — `Catalog/PassOffer` (+ `PassProductType`, `PassPriceType`, `PassPriceUnit`): the identity of
+  one official pass offer (park, Season Pass vs Membership, tier, new-purchase / renewal / monthly rate /
+  initiation fee, season year) and its deterministic `CatalogProductKey.FromPassOffer` key
+  (`SeasonPasses:pass-offer:carowinds|gold|membership|monthly`); `FromLegacyName` (strict pre-redesign pass
+  names); `AdvertisedPriceText.Format(amount, kind, unit)` ("$7.00/month"). Pure.
+- **Application** — `CatalogPayload.UnconfirmedProductKeys` and the optional `unconfirmedProductKeys`
+  reconciliation parameter (listed-but-unreadable offers are neither confirmed nor counted absent);
+  `ProductReconciliationService` adopts a legacy Season Pass key for the same tier/year new-purchase price
+  (one unambiguous match, never for memberships/renewals/fees, nothing rewritten);
+  `PriceHistoryFamily` gains `SeasonPassRenewal`, `Membership`, `MembershipInitiationFee`
+  (+ `PriceHistoryTrackingPolicy.UnitOf`); `AssociateProduct.PassOffer` / `RenewalPriceAmount` /
+  `InitiationFeeAmount` / `OfficialSourceUrl` / `IsPassdownExportable` (composition-time only);
+  `PassOfferComposition.FoldCompanions`; `ProductDisplaySection.Memberships` (+ `DisplayOrder`); per-row
+  Stale for Season Passes rows older than the source's latest successful check.
+- **Infrastructure** — `SeasonPassCatalogSource` now reads
+  `https://www.sixflags.com/carowinds/memberships-and-season-passes` (same source id/name) through
+  `PassTierPageParser` (Next.js flight data → `product_v2` tier documents) and `PassOfferInterpreter`
+  (labeled fields → offers; partial/unconfirmed handling). One GET, no browser.
+- **Documents** — the PDF/Teams Copy contract is unchanged: only `IsPassdownExportable` pass rows print;
+  the Memberships section is never included.
+- **Desktop** — Products: separate Season Passes and Memberships groups, unit-aware prices, "Reference
+  price", "Renewal offer", initiation fee, "Not available", official source line
+  (`Presentation/PassSourcePresentation`); Price History: price-type filter and unit-aware rows.
+
+Schemas: DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; no migration. Catalog and price history
+remain local and unsynced.
+
+## Phase 26 — Official price history sync & source links
+
+See `docs/phase26-official-price-history-sync.md`. Unreleased work after RC.8 (version still `0.1.0-rc.8`).
+
+- **Application** — `PersonalSync/OfficialPriceObservation` (+ `OfficialPriceObservationIdentity`: SHA-256 of
+  the canonical immutable fields incl. contributor device/sequence; `OfficialPriceObservationValidator`:
+  eligibility and incoming validation), `OfficialPriceHistoryFile` (independent format 1, deterministic
+  serializer, limits), `SyncPathService.GetOfficialPriceHistory*`; `Persistence/ISyncedPriceObservationRepository`
+  (merge-only: insert / forward-only last-confirmed / conflict keeps stored); `Catalog/PriceHistoryTimelineMerge`
+  (pure, order-independent read-time merge with `PriceHistoryProvenance`); `SeasonPriceHistoryService` takes
+  the optional synced repository and lists imported-only products; `Links/OfficialSourceLinkPolicy` (HTTPS
+  official-host allowlist); `DataChangeKind.OfficialPriceHistory`; `PersonalSyncResult` price-observation counts.
+- **Infrastructure** — migration 17 `synced_price_observations` (additive; `season_price_history` and the
+  catalog are never written by sync); `SqliteSyncedPriceObservationRepository`; `PersonalSync/OfficialPriceHistorySync`
+  (bounded read of `official-price-history/<device-id>.json` files, validation, one-transaction merge,
+  deterministic atomic export of own + merged observations, only when changed), run by `PersonalSyncService`
+  after every existing entity; temp cleanup covers the new folder.
+- **Desktop** — Settings copy; sync result/status "N new observations merged"; Price History in-place refresh,
+  provenance labels, imported-only label and source link; Associate pass-section "View Official … Page"
+  (`OfficialSourceLinkViewModel`, `IExternalLinkLauncher` / `AvaloniaExternalLinkLauncher` over
+  `TopLevel.Launcher`). Dashboard/Calendar ignore the new change kind.
+- **Documents** — unchanged (no PDF or Teams Copy change).
+
+Schemas: **DB 17**, Draft 4, Snapshot 2, **SyncSchemaVersion 1 unchanged** (additive sidecar channel, its own
+`FormatVersion` 1). RC.8 peers ignore the new folder; RC.8 cannot open a DB 17 profile (forward-only migrations).
+
+## Phase 30 — Optional Morning Message sync
+
+> **RETIRED (2026-10-23):** removed by the Morning Message rollback (`docs/morning-message-rollback.md`). Kept as a historical record. The current Personal Sync never reads or writes `morning-message/`, and existing files there are left untouched.
+
+See `docs/phase30-optional-morning-message-sync.md`. Unreleased work after RC.9 (version still `0.1.0-rc.9`).
+
+- **Application** — `MorningMessage/Sync/`: `MorningMessageVersion` (per-field version vector, device id →
+  edit counter), `MorningMessageSyncFields` (the closed list of synchronized content/preference fields, their
+  canonical text forms and validation; the DAP image path and all official data are excluded),
+  `MorningMessageFieldReconciliation` (pure field-level merge: descendant replaces, equal text merges,
+  independent different edits conflict; Keep This Device / Use Other Device supersede both sides),
+  `MorningMessageEditorSession` (composer ↔ sync coordination: the open date and preferences are held while the
+  composer is open), result/status/conflict contracts, `IMorningMessageSync` and `IMorningMessageSyncService`.
+  `IMorningMessageContentStore` gained `LoadAllAsync`/`SaveManyAsync`, and clearing a saved date now keeps an
+  empty entry. `SyncConfiguration.MorningMessageSyncEnabled` (default false, local, never synced);
+  `SyncPathService.GetMorningMessage*`; `PersonalSyncResult.MorningMessages`.
+- **Infrastructure** — `PersonalSync/MorningMessageSync` (reads other computers' `morning-message/<device-id>.json`
+  files, bounded and validated; reconciles under the editor-session lock; writes local files, then local sync
+  state, then its own shared file atomically and only when changed; also the Settings service),
+  `MorningMessageSyncFile` (independent `FormatVersion` 1), `MorningMessageSyncStateStore`
+  (`morning-message-sync-state.json`, local). `PersonalSyncService` runs it last, after price history, as a
+  no-op unless the option is on; recoverable failures count as I/O failures for the existing backoff. Temp
+  cleanup covers the new folder.
+- **Desktop** — Settings → Personal Sync → Sync Morning Messages (`MorningMessageSyncSettingsViewModel`: toggle
+  available only with a folder, status line, conflict review); composer holds its date via the session, reloads
+  preferences/text on open and shows a waiting notice; composer saves/close request a `LocalChange` sync.
+- **Documents** — unchanged (no PDF, Teams formatting or plain-text change).
+
+Schemas: DB 17, Draft 4, Snapshot 2, **SyncSchemaVersion 1 unchanged** (additive sidecar folder with its own
+`FormatVersion` 1); no migration. RC.9 peers ignore `morning-message/`.

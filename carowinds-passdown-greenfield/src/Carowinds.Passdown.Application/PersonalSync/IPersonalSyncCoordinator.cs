@@ -470,7 +470,8 @@ public sealed class PersonalSyncCoordinator : IPersonalSyncCoordinator
 
     private static string? BuildSummary(PersonalSyncResult result) => result.Outcome switch
     {
-        PersonalSyncOutcome.Completed => $"{result.ImportedCount} imported, {result.ExportedCount} exported, {result.UnchangedCount} unchanged.",
+        PersonalSyncOutcome.Completed => $"{result.ImportedCount} imported, {result.ExportedCount} exported, {result.UnchangedCount} unchanged."
+            + (result.PriceObservationsMergedCount > 0 ? $" {OfficialPriceHistorySummary.MergedText(result.PriceObservationsMergedCount)}" : string.Empty),
         _ => result.Message,
     };
 

@@ -127,7 +127,11 @@
           <StackPanel Spacing="12">
 
             <TextBlock TextWrapping="Wrap" Classes="muted"
-                       Text="Optional and off by default. Keeps your own Associate drafts, Operational Notes, and finalized History in sync between your own Windows computers through a folder you choose (typically in your personal OneDrive). Work is always saved on this computer first; OneDrive is never required." />
+                       Text="Optional and off by default. Keeps your own Associate drafts, Operational Notes, finalized History, and verified official price history in sync between your own Windows computers through a folder you choose (typically in your personal OneDrive). Work is always saved on this computer first; OneDrive is never required." />
+
+            <!-- Phase 26: one compact line — official price history rides the same folder, no extra setup. -->
+            <TextBlock x:Name="OfficialPriceHistoryNote" TextWrapping="Wrap" Classes="muted"
+                       Text="Official price history is merge-only: verified prices from each computer are combined with their original dates, and nothing is ever removed. Computers on an older app version neither send nor receive it." />
 
             <CheckBox Content="Enable Personal Sync" IsChecked="{Binding PersonalSyncEnabled}"
                        IsEnabled="{Binding !IsBusy}"

@@ -1,5 +1,7 @@
 using Carowinds.Passdown.Application.Catalog;
+using Carowinds.Passdown.Application.Changes;
 using Carowinds.Passdown.Desktop.Presentation;
+using Carowinds.Passdown.Desktop.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -18,8 +20,12 @@ public sealed record PriceHistoryProductOption(PriceHistoryProduct Product)
 
     public bool IsInactive => !Product.IsActive;
 
-    /// <summary>"Season Pass" or "Season Pass Add-On · Retired" — never color-only.</summary>
-    public string DetailText => IsInactive ? $"{FamilyText} · Retired" : FamilyText;
+    /// <summary>"Season Pass" or "Season Pass Add-On · Retired" — never color-only. Phase 26: a product known only through Personal Sync reads "… · Imported history".</summary>
+    public string DetailText => Product.IsImportedOnly
+        ? $"{FamilyText} · {PriceHistoryPresentation.ImportedOnlyDetailText}"
+        : IsInactive ? $"{FamilyText} · Retired" : FamilyText;
+
+    public PriceHistoryFamily Family => Product.Family;
 
     public string AutomationName => $"{DisplayName}, {DetailText}";
 }
@@ -35,15 +41,46 @@ public partial class PriceHistoryViewModel : ObservableObject
 {
     private readonly ISeasonPriceHistoryService _service;
     private readonly ILogger _logger;
+    private readonly IExternalLinkLauncher? _linkLauncher;
     private IReadOnlyList<PriceHistoryProductOption> _allProducts = [];
     private int _historyLoadVersion;
 
-    public PriceHistoryViewModel(ISeasonPriceHistoryService service, ILogger<PriceHistoryViewModel>? logger = null)
+    /// <param name="dataChangeNotifier">Phase 26: when Personal Sync merges official price observations, an open screen refreshes in place.</param>
+    /// <param name="linkLauncher">Phase 26: opens the selected product's verified official page (no link is offered without one).</param>
+    public PriceHistoryViewModel(
+        ISeasonPriceHistoryService service,
+        ILogger<PriceHistoryViewModel>? logger = null,
+        IDataChangeNotifier? dataChangeNotifier = null,
+        IExternalLinkLauncher? linkLauncher = null,
+        IUiDispatcher? uiDispatcher = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         _service = service;
         _logger = logger ?? (ILogger)NullLogger.Instance;
+        _linkLauncher = linkLauncher;
+
+        if (dataChangeNotifier is not null)
+        {
+            var dispatcher = uiDispatcher ?? new AvaloniaUiDispatcher();
+            dataChangeNotifier.Changed += (_, change) =>
+            {
+                if (change.Kind == DataChangeKind.OfficialPriceHistory)
+                {
+                    dispatcher.Post(() => PendingRefresh = RefreshAsync());
+                }
+            };
+        }
     }
+
+    /// <summary>The most recent in-place refresh after a Personal Sync merge, for tests to await.</summary>
+    public Task PendingRefresh { get; private set; } = Task.CompletedTask;
+
+    /// <summary>Phase 26: the selected product's verified official page, when its recorded source is an allowed official address.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSourceLink))]
+    public partial OfficialSourceLinkViewModel? SourceLink { get; private set; }
+
+    public bool HasSourceLink => SourceLink is not null;
 
     [ObservableProperty]
     public partial bool IsOpen { get; set; }
@@ -53,6 +90,12 @@ public partial class PriceHistoryViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string? SearchText { get; set; }
+
+    /// <summary>Phase 25: the "Price type" filter choices (all, Season Passes, renewals, Memberships, initiation fees, add-ons).</summary>
+    public IReadOnlyList<PriceHistoryFamilyFilter> FamilyFilters => PriceHistoryPresentation.FamilyFilters;
+
+    [ObservableProperty]
+    public partial PriceHistoryFamilyFilter SelectedFamilyFilter { get; set; } = PriceHistoryPresentation.FamilyFilters[0];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasProducts))]
@@ -101,7 +144,26 @@ public partial class PriceHistoryViewModel : ObservableObject
         IsOpen = true;
         IsLoaded = false;
         StatusText = null;
+        await LoadProductsAsync(productKey, revealRetired: true);
+    }
 
+    /// <summary>
+    /// Phase 26: re-reads the list and the selected product's history in place — the selected product,
+    /// search, price-type filter and "Include retired products" all stay as the user left them. Does
+    /// nothing while the screen is closed (the next open reads fresh data anyway). Local-only.
+    /// </summary>
+    public async Task RefreshAsync()
+    {
+        if (!IsOpen)
+        {
+            return;
+        }
+
+        await LoadProductsAsync(SelectedProduct?.ProductKey, revealRetired: false);
+    }
+
+    private async Task LoadProductsAsync(string? productKey, bool revealRetired)
+    {
         try
         {
             var products = await _service.ListTrackedProductsAsync();
@@ -120,13 +182,13 @@ public partial class PriceHistoryViewModel : ObservableObject
         }
 
         var requested = productKey is null ? null : _allProducts.FirstOrDefault(p => p.ProductKey == productKey);
-        if (requested is { IsInactive: true } && !IncludeInactive)
+        if (revealRetired && requested is { IsInactive: true } && !IncludeInactive)
         {
             IncludeInactive = true; // refilters through OnIncludeInactiveChanged
         }
 
         IsLoaded = true;
-        ApplyFilter(preferredKey: requested?.ProductKey ?? SelectedProduct?.ProductKey);
+        ApplyFilter(preferredKey: requested?.ProductKey ?? SelectedProduct?.ProductKey, reloadHistory: !revealRetired);
         await PendingHistoryLoad;
     }
 
@@ -137,13 +199,16 @@ public partial class PriceHistoryViewModel : ObservableObject
 
     partial void OnSearchTextChanged(string? value) => ApplyFilter(SelectedProduct?.ProductKey);
 
+    partial void OnSelectedFamilyFilterChanged(PriceHistoryFamilyFilter value) => ApplyFilter(SelectedProduct?.ProductKey);
+
     partial void OnSelectedProductChanged(PriceHistoryProductOption? value) => PendingHistoryLoad = LoadHistoryAsync(value);
 
-    private void ApplyFilter(string? preferredKey)
+    private void ApplyFilter(string? preferredKey, bool reloadHistory = false)
     {
         var search = SearchText?.Trim();
         var filtered = _allProducts
             .Where(p => IncludeInactive || !p.IsInactive)
+            .Where(p => SelectedFamilyFilter?.Family is not { } family || p.Family == family)
             .Where(p => string.IsNullOrEmpty(search) || p.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase))
             .ToList();
         Products = filtered;
@@ -153,15 +218,17 @@ public partial class PriceHistoryViewModel : ObservableObject
         {
             SelectedProduct = selection;
         }
-        else if (selection is null)
+        else if (selection is null || reloadHistory)
         {
-            PendingHistoryLoad = LoadHistoryAsync(null);
+            // Phase 26: on a refresh the same product's history may have changed underneath.
+            PendingHistoryLoad = LoadHistoryAsync(selection);
         }
     }
 
     private async Task LoadHistoryAsync(PriceHistoryProductOption? product)
     {
         var version = ++_historyLoadVersion;
+        SourceLink = OfficialSourceLinkViewModel.TryCreate(product?.Product.OfficialSourceUrl, _linkLauncher);
         if (product is null)
         {
             Rows = [];
@@ -178,7 +245,7 @@ public partial class PriceHistoryViewModel : ObservableObject
                 return; // a newer selection superseded this load
             }
 
-            Rows = PriceHistoryPresentation.BuildRows(entries);
+            Rows = PriceHistoryPresentation.BuildRows(entries, product.Product.Unit);
             AvailabilityText = entries.Count == 0 ? null : PriceHistoryPresentation.AvailabilityText(entries);
             StatusText = entries.Count switch
             {

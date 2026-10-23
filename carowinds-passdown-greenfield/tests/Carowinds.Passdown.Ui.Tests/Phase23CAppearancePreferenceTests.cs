@@ -344,7 +344,10 @@ public class Phase23CAppearancePreferenceTests
         Assert.DoesNotContain("Migration", store);
         var app = Markup("src/Carowinds.Passdown.Desktop/App.axaml.cs");
         Assert.Contains("new Migration0016CreateSeasonPriceHistoryTable(),", app);
-        Assert.DoesNotContain("Migration0017", app);
+        // Phase 26 added migration 17 for synced price observations — still no appearance migration.
+        Assert.Contains("new Migration0017CreateSyncedPriceObservationsTable(),", app);
+        Assert.DoesNotContain("Migration0018", app);
+        Assert.DoesNotMatch(@"Migration\d{4}\w*Appearance", app);
     }
 
     // ---------------------------------------------------------------- composition root and startup

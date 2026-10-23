@@ -2427,3 +2427,247 @@ modified, rebuilt over or repacked under these names. A defect needing a new bin
 - **TESTED WITH SYNTHETIC DATA**: updater, signing, discovery, rollback (macOS).
 - **WINDOWS VALIDATED: NO (NOT EXECUTED).**
 - **DISTRIBUTION APPROVED: NO (PENDING)** — QuestPDF, photograph rights, organisation policy.
+
+# Unreleased work after RC.8
+
+The RC.8 section above is frozen: its artifacts, hashes and source provenance (`a651e26`) are unchanged
+and nothing below was packaged.
+
+## Phase 25 — Membership & Season Pass source compatibility (unreleased)
+
+| | |
+|---|---|
+| Scope | Restores the official Season Pass source after the Carowinds Memberships & Season Passes redesign; separate Season Pass, renewal, Membership and initiation-fee identities; Products and Price History presentation. See `docs/phase25-memberships-season-passes.md` |
+| Base | `f3263ed` (RC.8 docs) on `feature/passdown-redesign` |
+| Version | `0.1.0-rc.8` in `Directory.Build.props` (unchanged — no new release candidate built) |
+| Schemas | DB 16, Draft 4, Snapshot 2, SyncSchemaVersion 1 — unchanged, no migration |
+| Deterministic tests | 4538/4538 on the macOS build host; Release build 0 warnings, 0 errors |
+| Live verification | One official-page check on 2026-10-22 10:46 AM ET — Verified, 10 offers, no warnings |
+| Windows validation | **NOT EXECUTED** |
+| Packaging | **NOT PACKAGED.** A build containing this fix must ship as `0.1.0-rc.9`; RC.8 must not be rebuilt or repacked |
+
+## Phase 26 — Official price history sync & source links (unreleased)
+
+| | |
+|---|---|
+| Scope | Merge-only, idempotent synchronization of verified official price history through the existing Personal Sync folder (`official-price-history/<device-id>.json`); clickable, allowlisted official source links. See `docs/phase26-official-price-history-sync.md` |
+| Base | `3b4d043` (Phase 25) on `feature/passdown-redesign` |
+| Version | `0.1.0-rc.8` in `Directory.Build.props` (unchanged — no new release candidate built) |
+| Schemas | **DB 17** (migration 17 adds `synced_price_observations`; nothing existing altered), Draft 4, Snapshot 2, SyncSchemaVersion 1 unchanged; price-history file format 1 |
+| Deterministic tests | 4682/4682 on the macOS build host (+144); Release build 0 warnings, 0 errors |
+| Multi-computer | VERIFIED WITH SYNTHETIC DATA — three disposable profiles, one temp shared folder |
+| Mixed versions | Safe to share a folder with RC.8 (RC.8 ignores the new folder); RC.8 computers neither send nor receive price history. RC.8 cannot open a profile a Phase 26 build migrated — back up first |
+| Windows validation | **NOT EXECUTED** (checklist in the phase doc §18) |
+| Packaging | **NOT PACKAGED.** RC.6/RC.7/RC.8 artifacts and hashes unchanged |
+
+
+# Release manifest — 0.1.0-rc.9 (Phase 27: Phases 25–26 + migration-safe updating)
+
+**Built, packaged, hash-verified and manifest-signed on the macOS build host. Database-upgrade and
+updater safety TESTED WITH SYNTHETIC DATA only. Windows validation NOT EXECUTED (in-app RC.8 → RC.9
+update BLOCKED: no Windows test harness). Distribution NOT approved. Nothing pushed, tagged, uploaded or
+published.** Release notes: `docs/releases/rc9-release-notes.md`. Installation:
+`docs/releases/rc9-installation-guide.md`. Windows record: `docs/releases/rc9-windows-validation.md`.
+The "Unreleased work after RC.8" entries above (Phase 25, Phase 26) are the content of this candidate.
+
+| | |
+|---|---|
+| Product (visible) | Carowinds Operations |
+| Version | **`0.1.0-rc.9`**, file version `0.1.0.9`, informational `0.1.0-rc.9+e20d84643c6572bf589782d456a87f295e8cf41f` (read from the packaged `Desktop`/`Application`/`Infrastructure`/`Domain`/`Documents`/`Updater` DLLs and the EXE; no packaged assembly contains `0.1.0-rc.8+` or `0.1.0.8`. `README.txt`/`TESTER-GUIDE.txt` mention rc.8 only as history) |
+| Starting HEAD | `952a46e` (Phase 26), branch `feature/passdown-redesign`, version `0.1.0-rc.8` — as expected |
+| RC.9 source / version commit | **`e20d846`**. **All RC.9 artifacts were built from this commit** after a full `bin`/`obj` clean. Later documentation commits change no build input |
+| About this build | `0.1.0-rc.9 (e20d846)` + running executable path |
+| Target | Windows 11 x64 (`win-x64`), self-contained, ReadyToRun, not trimmed; primary is multi-file |
+| Build host | macOS (Apple Silicon); .NET SDK 10; PowerShell 7.6.7 as a local `dotnet tool` in the session scratchpad (nothing installed system-wide) |
+| DB / Draft / Snapshot / SyncSchemaVersion | **17** / 4 / 2 / 1 (latest migration `Migration0017CreateSyncedPriceObservationsTable`, `AssociateDraftPayload.CurrentSchemaVersion = 4`, `FinalizedPassdownSnapshot.CurrentSchemaVersion = 2`, `SyncEnvelopeSerializer.CurrentSyncSchemaVersion = 1`) |
+| Price-history sync format | `carowinds-official-price-history` **FormatVersion 1** (separate `official-price-history/` folder) |
+| Storage identity | Unchanged: `Carowinds.Passdown.Desktop.exe`, `%LOCALAPPDATA%\Carowinds Passdown`, `carowinds-passdown.db`, `appearance.json`, task names, AssemblyVersion `0.1.0.0`. New: `%LOCALAPPDATA%\Carowinds Passdown\backups\` (verified database backups + `README.txt`, never deleted automatically) |
+| Deterministic tests | Baseline at `952a46e`: **4682/4682** (as expected). Final at `e20d846`, clean build: **4719/4719** = 303 Domain + 1274 Application + 1071 Infrastructure + 469 Documents + 1450 Ui together + 26 `OperationsCalendarViewTests` + 113 `Phase15ERealWindowLayoutTests` + 2 `RealWindowStartupTimingTests` + 7 `SpellCheckNavigationLifecycleTests` + 4 `Phase21DMathEditorWindowTests` alone (`-c Release --filter "Category!=LiveSmoke"`). Run-alone set unchanged (five classes) |
+| Release build | `dotnet build CarowindsPassdown.slnx -c Release`: **0 warnings, 0 errors**. Discrepancy found at the baseline: **2 warnings** (CS8619/CS8714 in `Phase26PersonalSyncCompatibilityTests`, a test-only nullability annotation) — fixed in `e20d846` |
+| Live check (opt-in, not counted) | `SeasonPassCatalogSourceLiveSmokeTests` against the official Memberships & Season Passes page: PASS, 2026-10-22 12:15 PM ET |
+| Superseded | RC.8/RC.7/RC.6 artifacts untouched; their 8 SHA-256 values re-verified unchanged after the RC.9 build |
+
+## Primary release: multi-file portable ZIP (RECOMMENDED)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.9-win-x64.zip` |
+| Bytes | **75,892,218** (RC.8: 75,714,287) |
+| SHA-256 | **`e1ad521fe711dcee0c169cbd7244ea04f6d547df801c2f72b375bfd781fe1558`** |
+| Architecture / runtime | win-x64, self-contained; `Carowinds.Passdown.Desktop.exe` and `Carowinds.Passdown.Updater.exe` are `PE32+ (GUI) x86-64`; updater manifest `asInvoker` |
+| Extracted folder | `Carowinds-Operations-0.1.0-rc.9-win-x64\` — 287 files, 287 entries; **same file list as RC.8** (nothing added or removed) |
+| Produced by | `packaging/windows/Build-PortableRelease.ps1` (via `Publish-Windows.ps1`, updater published from source into a fresh temporary folder). Staging folder freshly created |
+| Frozen | Read-only on the build host |
+
+- **Packaging validator (`Test-ReleasePackage.ps1`): PASS** on staging and on the ZIP (287 files). C# mirror
+  (`CAROWINDS_RELEASE_ZIP=… --filter RealReleaseZip`): PASS. `unzip -t` clean; one top-level folder; no
+  backslash names; fresh extraction `diff -rq`-identical to staging.
+- **Updater can read the database:** `Carowinds.Passdown.Updater.deps.json` resolves
+  `Microsoft.Data.Sqlite`, `SQLitePCLRaw.*` and the win-x64 `e_sqlite3.dll` shipped in the same folder
+  (the updater runs from the staged copy of this folder).
+- **Embedded:** `appsettings.json` (`Updates:Repository = KASHO7/Passdown`, channel `ReleaseCandidate`,
+  key `carowinds-release-1`, public key only — byte-identical to RC.8's); bundled What's New
+  `Version: 0.1.0-rc.9`; Fury banner (`fury325-banner.jpg`, 135,816 B) exactly once in `Desktop.dll`.
+- **Forbidden content: PASS.** Byte-window scan against the production private key: **0 matches** in
+  the extracted ZIP, the EXE and `src/` (1,880 files). No `.pem`, tokens (`ghp_`, `github_pat_`), `.git*`,
+  `.DS_Store`, `__MACOSX`, `.pdb`, `.db`/`-wal`/`-shm`, logs, PDFs, test assemblies, fixtures, research
+  snapshots, `appearance.json`/`updates.json`/sync data, `.update.json`/`.sig`, source files or loose fonts.
+- **Developer-path scan: PASS.** Build user name and checkout folder name appear in no packaged file
+  (the only `/Users/` strings are the third-party SQLitePCLRaw authors' PDB paths, unchanged from RC.8).
+
+## Single-file release (EXPERIMENTAL)
+
+| | |
+|---|---|
+| Artifact | `artifacts/releases/Carowinds-Operations-0.1.0-rc.9-win-x64-singlefile.exe` |
+| Bytes | **192,508,748** |
+| SHA-256 | **`5fa0769f5ae1726cddb3aa4694cfc1ebcc6929beadd35d3123d13a6b6454faa9`** |
+| Checks | Phase 15F command into a freshly deleted `artifacts/publish/win-x64-singlefile`; output exe + `LatoFont/OFL.txt` (`.pdb` removed). `PE32+ (GUI) x86-64`; carries `0.1.0-rc.9+e20d846…`; RC.9 notes, appsettings and Fury image embedded once; no private-key bytes, no developer paths. Frozen read-only |
+| Updates | Not updatable in place — no updater beside it, so Settings shows **Manual update required** (unchanged Phase 23D behaviour). It does run the same migration with the same pre-migration backup |
+| Status | EXPERIMENTAL. Do not hand out on its own. Launch NOT EXECUTED |
+
+## Update manifest (signed, NOT published)
+
+| | |
+|---|---|
+| Manifest | `Carowinds-Operations-0.1.0-rc.9-win-x64.update.json` — **49,164 B**, SHA-256 **`936b196c927afe34b6fc9b9516e1e2d5a630cad835e10a5fc91a76733bed160f`** |
+| Signature | `Carowinds-Operations-0.1.0-rc.9-win-x64.update.json.sig` — **206 B**, SHA-256 **`af82eaf596a153d03fa89cd533c61e684f21c788af1976f5c2b872d441d993e2`**; `ECDSA-P256-SHA256`, key ID `carowinds-release-1` |
+| Bindings | format 1, product `carowinds-operations`, version `0.1.0-rc.9`, channel `release-candidate`, `win-x64`, `publishedAtUtc 2026-10-22T16:12:01Z` (signing time, not a publication), package `Carowinds-Operations-0.1.0-rc.9-win-x64.zip` / 75,892,218 B / `e1ad521f…1558` / root `Carowinds-Operations-0.1.0-rc.9-win-x64`, 287 file entries incl. the six required Desktop/Updater files |
+| Pre-install notes | Begin with "RC.9 updates the local database. A backup is required before installation. Older versions cannot open the updated database." and explain the automatic verified backup — RC.8 shows these signed notes before Install Update |
+| Verification | `verify` = **VERIFIED** with the current `appsettings.json` **and** with RC.8's own `appsettings.json` from `a651e26` (byte-identical). Verifier, manifest parser, discovery, staging, launcher and signing-tool sources unchanged since `a651e26` |
+| Negative checks (synthetic copies, CLI) | manifest text changed → `InvalidSignature`; package SHA-256 changed → `InvalidSignature`; disposable key claiming `carowinds-release-1` → `InvalidSignature`; disposable key ID `synthetic-unknown-key` → `UnknownKey`. Disposable key deleted. No key material printed |
+| GitHub asset names | Tag `v0.1.0-rc.9`; assets exactly the ZIP, `.update.json`, `.update.json.sig` above. A tag alone, a draft, or a release missing either signed asset is ignored by RC.8 (`Phase27ReleaseCompatibilityTests`) |
+| Status | **SIGNED, NOT PUBLISHED.** No tag, no release, nothing uploaded |
+
+## Signing identity
+
+`carowinds-release-1`, ECDSA P-256; SHA-256(SubjectPublicKeyInfo) **`8e0e108689653f027f92b0e91122cf3e49dda206636378723dc7941ed2c969d3`**
+(recomputed from RC.8's bundled key — unchanged). Private key `~/.carowinds-signing/carowinds-release-1.pem`
+outside the repository and packages; not rotated, regenerated, printed or copied. Offline backup:
+owner-confirmed at RC.8; not verified by this session.
+
+## Migration audit (16 → 17)
+
+- `Migration0017` only runs `CREATE TABLE IF NOT EXISTS synced_price_observations` + one index. No
+  existing table, row or column is altered. Verified on a synthetic RC.8 profile (prices + history, a
+  current catalog price, an Associate draft, an operational note, a frozen History PDF, sync state,
+  `appearance.json`, `sync-config.json`): every pre-existing row is byte-identical after the upgrade;
+  the two JSON files are untouched; current-price inputs (`catalog_products`) unchanged.
+- Idempotent: later starts apply nothing and make no further backup. A brand-new profile is created at
+  17 with no backup.
+- Forward-only (unchanged policy): RC.8 refuses a schema-17 database with
+  `UnsupportedSchemaVersionException` before reading or writing anything.
+
+## Pre-migration backup (implemented in Phase 27)
+
+**Finding:** no backup existed — `MigrationRunner` migrated in place. **Implemented
+(`SqliteDatabaseBackup`, `e20d846`):**
+
+- SQLite online backup API from a live connection (never a file copy), so WAL/rollback-journal content is
+  included and a hot journal is rolled back by SQLite first; the copy is converted to a single
+  self-contained file (`journal_mode=DELETE`).
+- Written to a new `.partial` file → verified (`PRAGMA integrity_check` = ok, same `user_version`, same
+  tables, same row count per table) → renamed to a unique name
+  (`carowinds-passdown-<reason>-<UTC time>Z-<id>.db`). Never overwrites anything; a failed attempt leaves
+  nothing behind. Free-space check (database + journal/WAL + 16 MB). Stored in
+  `%LOCALAPPDATA%\Carowinds Passdown\backups\` — beside the database, never beside the binaries, never in
+  the cloud-sync folder.
+- **App (every install route: ZIP, EXE, updater, 6 AM headless task):** `MigrationRunner` takes the
+  backup *inside the first pending migration's write transaction* (`BEGIN IMMEDIATE`), so the copy is
+  exactly the state being migrated and no other process can write in between. No verified backup → the
+  transaction is rolled back, nothing changes, startup fails (`PreMigrationBackupException`, logged).
+  After migrating, `PRAGMA integrity_check` must pass (`DatabaseIntegrityException` otherwise).
+- **Updater:** a second verified backup (`pre-update-<from>-to-<to>`) after the app has exited and
+  before any installed file is touched. Failure → `NotInstalled` with `database-backup-failed`,
+  `database-in-use`, `database-damaged` or `insufficient-disk-space`; nothing installed.
+- Tests: `Phase27MigrationBackupTests` (12), `UpdateInstallerDatabaseSafetyTests` (14) — upgrade with
+  verified backup, idempotency, fresh profile, no disk space, unwritable backup location, failed
+  migration transaction (rolled back, backup kept, later retry), RC.8 refuses 17 but opens the backup,
+  WAL content captured, damaged and non-database files, locked database, no overwriting.
+
+## Updater ordering and rollback (amended in Phase 27)
+
+**Key finding — RC.8 compatibility:** the RC.8 app does not run its own updater for the swap. It
+verifies and stages the package, saves work, writes the (unchanged, format 1) request and starts
+**`Carowinds.Passdown.Updater.exe` from the staged RC.9 package**. Every step after RC.8 closes is RC.9
+code. So the RC.8 → RC.9 install *can* enforce the backup and rollback rules below without changing
+RC.8. What RC.8 itself contributes (signature/hash checks, safe extraction, Phase 23A save, notes shown
+before install) is unchanged and sufficient.
+
+Success sequence: 1 package verified (RC.8) → 2 RC.8 closed, save flushed (RC.8) → 3 database backed up
+and verified (RC.9 updater) → 4 files swapped, journaled → 5 RC.9 started → 6 migration (RC.9 app,
+with its own backup) → 7 `integrity_check` → 8 window opened → confirmation written → 9 `Succeeded`
+recorded → 10 What's New eligible. The confirmation can only be written after 6–7, because migration
+runs before the window exists.
+
+Rollback after a failed start: the updater re-reads the database's schema version (opening it lets
+SQLite undo an interrupted transaction). **Still at the pre-install version** → the RC.8 files are put
+back and RC.8 started once (Phase 23D behaviour). **Upgraded, or unreadable** → nothing is reversed or
+started; RC.9 files, the database, both backups and the RC.8 program files are kept; record
+`RecoveryRequired` / `database-upgraded-not-confirmed`; `UPDATE-RECOVERY.txt` lists every location and
+the manual procedure. The updater never restores, replaces or deletes a database (post-upgrade edits are
+never overwritten — tested). RC.8 can still read the record (new fields are optional and skipped).
+
+## Mixed-version Personal Sync
+
+RC.8 enumerates only its known folders and ignores `official-price-history/` (never reads, edits or
+deletes it); drafts/notes/History/ERT sync both ways between RC.8 and RC.9; RC.8 cannot write
+`synced_price_observations` (it cannot open a schema-17 database and has no price-history component);
+RC.9 validates `FormatVersion` and leaves newer or damaged files untouched (`Phase26PersonalSyncCompatibilityTests`,
+`Phase26OfficialPriceHistorySyncTests`). Three-computer convergence (older/newer/recent histories, 4 sync
+orders, repeated syncs, original dates and sources preserved, no rewrite of legacy renewal
+classifications): TESTED WITH SYNTHETIC DATA (Phase 26).
+
+## Upgrade compatibility (RC.8 → RC.9)
+
+- **Recommended now: manual ZIP install** (installation guide §3) after the owner's own backup.
+- **In-app RC.8 → RC.9:** designed to be safe (above) and TESTED WITH SYNTHETIC DATA; **not demonstrated
+  on Windows** — `rc9-windows-validation.md` §8 is BLOCKED until a private test repository and test key
+  harness exist. Do not publish RC.9 to GitHub (which would make RC.8 offer it) until §8 passes.
+- What's New: shown once after a confirmed in-app success; never after manual install or failure.
+
+## QuestPDF licence
+
+Unchanged from RC.8: QuestPDF 2026.7.3, `LicenseType.Community`. Organisational Community-licence
+eligibility **undetermined; distribution approval pending**. Packaging and signing are not approval.
+
+## Fury photograph rights
+
+Unchanged (`fury325-banner.jpg`, 135,816 B). Redistribution permission undocumented — **pending**. Not
+replaced.
+
+## Public GitHub
+
+`KASHO7/Passdown` is public. Nothing was pushed, tagged, uploaded or attached.
+
+## Windows validation
+
+`docs/releases/rc9-windows-validation.md`: **every item NOT EXECUTED; §8 (real updater) BLOCKED.**
+
+## Frozen artifacts
+
+The four RC.9 files above are read-only on the build host and must not be rebuilt, repacked or replaced
+under these names. A binary change ships as **`0.1.0-rc.10`**.
+
+## Known limitations
+
+1. Startup failure UI: if the pre-migration backup cannot be made, RC.9 closes at startup with only a
+   log entry (no dialog); the database is unchanged.
+2. After a `NotInstalled` updater outcome the closed RC.8 is not restarted automatically (Phase 23D
+   behaviour); the user starts it and it explains the reason.
+3. Backups accumulate (two per in-app upgrade: pre-update + pre-migration); nothing prunes them.
+4. Automatic recovery after a post-upgrade failure is intentionally not attempted; the manual procedure
+   discards nothing but needs a person.
+5. Windows file locking, ACLs, real process restart and the real updater's SQLite load are not exercised
+   on macOS.
+
+## Release status
+
+- **BUILT**: Release 0/0 at `e20d846`; 4719/4719 deterministic.
+- **PACKAGED**: ZIP + experimental EXE from `e20d846`; frozen.
+- **HASH VERIFIED**: sizes and SHA-256 above; RC.6/RC.7/RC.8 unchanged.
+- **SIGNED**: update manifest, locally, `carowinds-release-1`; verified with RC.8's trust configuration;
+  **NOT PUBLISHED**.
+- **TESTED WITH SYNTHETIC DATA**: migration, backups, updater ordering/rollback, discovery, sync.
+- **WINDOWS VALIDATED: NO (NOT EXECUTED; in-app update BLOCKED).**
+- **DISTRIBUTION APPROVED: NO (PENDING)** — QuestPDF, photograph rights, organisation policy.

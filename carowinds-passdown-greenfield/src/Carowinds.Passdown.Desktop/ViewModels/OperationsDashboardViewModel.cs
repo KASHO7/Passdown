@@ -190,6 +190,12 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     /// </summary>
     internal void HandleDataChange(DataChange change)
     {
+        // Phase 26: merged price history never affects the Dashboard's projection.
+        if (change.Kind == DataChangeKind.OfficialPriceHistory)
+        {
+            return;
+        }
+
         if (change.Kind != DataChangeKind.OperatingDay && Snapshot is { } shown && !change.MayAffect(shown.OperatingDate))
         {
             return;

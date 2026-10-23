@@ -510,6 +510,7 @@ public partial class App : global::Avalonia.Application
             new Migration0014CreateMonthlyErtConfigurationsTable(),
             new Migration0015CreateErtDateOverridesTable(),
             new Migration0016CreateSeasonPriceHistoryTable(),
+            new Migration0017CreateSyncedPriceObservationsTable(),
         ]);
         services.AddSingleton<MigrationRunner>();
 
@@ -676,6 +677,11 @@ public partial class App : global::Avalonia.Application
         // no separate finalization-to-sync hook was added (spec §22: export dirtiness is decided by
         // content-hash comparison during enumeration, so a never-synced finalized passdown is picked up
         // on the very next "Sync Now" without any change to FinalizedPassdownFinalizationService).
+        // Phase 26: merge-only official price-history sync. Resolved into PersonalSyncService's optional
+        // IOfficialPriceHistorySync parameter (and SeasonPriceHistoryService's optional synced repository),
+        // so Sync Now and automatic sync carry it with no separate setup.
+        services.AddSingleton<ISyncedPriceObservationRepository, SqliteSyncedPriceObservationRepository>();
+        services.AddSingleton<IOfficialPriceHistorySync, OfficialPriceHistorySync>();
         services.AddSingleton<IPersonalSyncService, PersonalSyncService>();
 
         // Phase 16D: explicit conflict resolution and deletion/tombstone propagation. ISyncConflictRepository
@@ -728,6 +734,8 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<AppearanceThemeController>();
         services.AddTransient<AppearanceSettingsViewModel>();
         services.AddTransient<PersonalSyncSettingsViewModel>();
+        // Phase 26: the one system-browser launcher for allowlisted official source pages.
+        services.AddSingleton<IExternalLinkLauncher, AvaloniaExternalLinkLauncher>();
         services.AddTransient<PriceHistoryViewModel>();
 
         AddApplicationUpdates(services, configuration);

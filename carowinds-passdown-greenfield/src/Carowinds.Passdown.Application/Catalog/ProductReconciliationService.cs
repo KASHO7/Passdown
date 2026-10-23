@@ -36,7 +36,8 @@ public sealed class ProductReconciliationService(
         SourceCategory category,
         SourceEvidence evidence,
         IReadOnlyList<ObservedProduct> observedProducts,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyCollection<CatalogProductKey>? unconfirmedProductKeys = null)
     {
         ArgumentNullException.ThrowIfNull(evidence);
         ArgumentNullException.ThrowIfNull(observedProducts);
@@ -51,8 +52,16 @@ public sealed class ProductReconciliationService(
         var existingByKey = (await catalogRepository.GetByCategoryAsync(category, lifecycleState: null, cancellationToken)
                 .ConfigureAwait(false))
             .ToDictionary(record => record.ProductKey);
+        var legacyAliases = LegacyPassIdentityAliases(
+            category,
+            observedProducts.Select(p => p.Key).Concat(unconfirmedProductKeys ?? []),
+            existingByKey);
+        observedProducts = ApplyLegacyPassIdentities(observedProducts, legacyAliases);
         observedProducts = SeparatePassYears(category, observedProducts, existingByKey);
         var observedKeys = observedProducts.Select(p => p.Key.ToString()).ToHashSet();
+        var unconfirmedKeys = (unconfirmedProductKeys ?? [])
+            .Select(key => legacyAliases.GetValueOrDefault(key.ToString(), key.ToString()))
+            .ToHashSet();
 
         var results = new List<ReconciledProduct>();
 
@@ -70,6 +79,7 @@ public sealed class ProductReconciliationService(
         var missing = existingByKey.Values
             .Where(record =>
                 !observedKeys.Contains(record.ProductKey) &&
+                !unconfirmedKeys.Contains(record.ProductKey) &&
                 record.LastEvidence.SourceName == evidence.SourceName &&
                 record.LifecycleState is ProductLifecycleState.Active or ProductLifecycleState.PendingConfirmation);
 
@@ -81,6 +91,84 @@ public sealed class ProductReconciliationService(
         LogTransitions(category, evidence, observedProducts.Count, results);
         return new ReconciliationResult(category, results);
     }
+
+    /// <summary>
+    /// Phase 25 legacy compatibility: before the official redesign, a Season Pass was stored under the
+    /// old page's per-card CMS id ("2027 Gold Pass" → <c>SeasonPasses:id:550e3db6-…</c>). The redesigned
+    /// page no longer publishes that id, so the same real product now arrives under its deterministic
+    /// pass-offer key (<see cref="PassOffer"/>). Only when the observation is a Season Pass
+    /// <b>new-purchase</b> price with a stated season year, no record exists under its own new key yet,
+    /// and exactly one stored legacy (non pass-offer) Season Passes record names the same tier and the
+    /// same year (<see cref="PassOffer.FromLegacyName"/>, active records preferred), is the observation
+    /// filed under that legacy key instead — so its catalog row, draft overrides and price history
+    /// continue as one product rather than forking into a duplicate. Memberships, renewal offers and
+    /// initiation fees never adopt a legacy identity (the old page never sold them), nothing stored is
+    /// rewritten, and an ambiguous match adopts nothing. Returns observed-key → legacy-key text.
+    /// </summary>
+    private IReadOnlyDictionary<string, string> LegacyPassIdentityAliases(
+        SourceCategory category,
+        IEnumerable<CatalogProductKey> keys,
+        IReadOnlyDictionary<string, CatalogProductRecord> existingByKey)
+    {
+        var aliases = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (category != SourceCategory.SeasonPasses)
+        {
+            return aliases;
+        }
+
+        var legacyByOffer = existingByKey.Values
+            .Where(record => PassOffer.FromKey(record.ProductKey) is null)
+            .Select(record => (Record: record, Offer: PassOffer.FromLegacyName(record.DisplayName)))
+            .Where(entry => entry.Offer is { SeasonYear: not null })
+            .GroupBy(entry => entry.Offer!, entry => entry.Record)
+            .ToDictionary(group => group.Key, group => group.ToList());
+
+        foreach (var key in keys)
+        {
+            var keyText = key.ToString();
+            if (aliases.ContainsKey(keyText) ||
+                existingByKey.ContainsKey(keyText) ||
+                PassOffer.FromKey(keyText) is not { Product: PassProductType.SeasonPass, PriceType: PassPriceType.NewPurchase, SeasonYear: not null } offer ||
+                !legacyByOffer.TryGetValue(offer, out var candidates))
+            {
+                continue;
+            }
+
+            var active = candidates
+                .Where(record => record.LifecycleState is ProductLifecycleState.Active or ProductLifecycleState.PendingConfirmation)
+                .ToList();
+            var chosen = active.Count == 1 ? active[0] : active.Count == 0 && candidates.Count == 1 ? candidates[0] : null;
+            if (chosen is null)
+            {
+                _logger.LogWarning(
+                    "Several stored Season Pass records match {PassOffer}; none was adopted as its legacy identity ({Candidates}).",
+                    offer.IdentityText, string.Join(", ", candidates.Select(record => record.ProductKey)));
+                continue;
+            }
+
+            if (aliases.ContainsValue(chosen.ProductKey))
+            {
+                continue;
+            }
+
+            _logger.LogInformation(
+                "Season Pass {PassOffer} continues under its existing identity {ProductKey} ('{StoredName}').",
+                offer.IdentityText, chosen.ProductKey, chosen.DisplayName);
+            aliases[keyText] = chosen.ProductKey;
+        }
+
+        return aliases;
+    }
+
+    private static IReadOnlyList<ObservedProduct> ApplyLegacyPassIdentities(
+        IReadOnlyList<ObservedProduct> observedProducts, IReadOnlyDictionary<string, string> aliases) =>
+        aliases.Count == 0
+            ? observedProducts
+            : observedProducts
+                .Select(product => aliases.TryGetValue(product.Key.ToString(), out var legacyKey)
+                    ? product with { Key = CatalogProductKey.Parse(legacyKey) }
+                    : product)
+                .ToList();
 
     /// <summary>
     /// Phase 21A pass-year identity: a pass's validity year is part of what the product is — a 2026

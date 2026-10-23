@@ -99,6 +99,20 @@ Versions before rc.8 cannot update themselves, so rc.8 is installed by extractin
 this ZIP by hand. In-app updating needs this extracted folder (not the single
 .exe) in a place you can write to, such as Documents or Desktop.
 
+Database upgrade (rc.9)
+------------------------
+Version 0.1.0-rc.9 changes the format of the local database the first time it
+starts. Before it does, it writes a checked copy of the database to the
+"backups" folder inside %LOCALAPPDATA%\Carowinds Passdown (backups are never
+deleted automatically). rc.8 and older cannot open the upgraded database, so
+going back means restoring a backup — see backups\README.txt. Make your own
+dated copy of the data folder before upgrading, and upgrade every computer that
+shares a Personal Sync folder.
+
+Version 0.1.0-rc.10 uses the same database format as rc.9: upgrading from rc.9
+changes nothing in the database. Upgrading straight from rc.8 or older performs
+the rc.9 upgrade described above.
+
 Passdown History
 -----------------
 Next to "Associate Passdown" at the top of the window is a "History" section. Each

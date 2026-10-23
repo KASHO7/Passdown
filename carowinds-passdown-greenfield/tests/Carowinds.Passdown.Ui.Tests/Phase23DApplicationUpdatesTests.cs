@@ -484,6 +484,10 @@ public sealed class Phase23DApplicationUpdatesTests
     [InlineData(UpdateInstallStatus.NotInstalled, "installation-in-use", "6 AM scheduled refresh")]
     [InlineData(UpdateInstallStatus.NotInstalled, "not-writable", "didn't allow changes")]
     [InlineData(UpdateInstallStatus.RecoveryRequired, "rollback-failed", "UPDATE-RECOVERY.txt")]
+    [InlineData(UpdateInstallStatus.NotInstalled, "database-backup-failed", "couldn't be backed up first. Nothing was changed.")]
+    [InlineData(UpdateInstallStatus.NotInstalled, "database-in-use", "another program was using your database")]
+    [InlineData(UpdateInstallStatus.NotInstalled, "database-damaged", "failed its safety check")]
+    [InlineData(UpdateInstallStatus.RecoveryRequired, "database-upgraded-not-confirmed", "a backup of your database from before the update was kept. See UPDATE-RECOVERY.txt")]
     public void PreviousFailedAttempt_IsReportedHonestly(UpdateInstallStatus status, string? code, string expected)
     {
         var outcome = new UpdateInstallOutcome(Guid.NewGuid(), Installed, Next, status, code, DateTimeOffset.UnixEpoch, null);

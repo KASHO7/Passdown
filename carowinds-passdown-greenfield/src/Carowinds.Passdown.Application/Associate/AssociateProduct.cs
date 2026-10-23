@@ -52,4 +52,32 @@ public sealed record AssociateProduct(
     /// (<see cref="PriceHistoryTrackingPolicy"/>). Composition-time only, never persisted.
     /// </summary>
     public string? PriceHistoryProductKey { get; init; }
+
+    /// <summary>
+    /// Phase 25: the official pass offer this row is (<see cref="Domain.Catalog.PassOffer.Resolve"/>) —
+    /// a Season Pass new-purchase price, a renewal offer, a Membership monthly rate or an initiation
+    /// fee — or <see langword="null"/> for every non-pass product. Composition-time only, never persisted.
+    /// </summary>
+    public PassOffer? PassOffer { get; init; }
+
+    /// <summary>Phase 25: the Season Pass's published renewal offer, folded onto its new-purchase row (never a new-customer price).</summary>
+    public decimal? RenewalPriceAmount { get; init; }
+
+    /// <summary>Phase 25: the Membership's published initiation fee, folded onto its monthly-rate row (never added to the monthly rate).</summary>
+    public decimal? InitiationFeeAmount { get; init; }
+
+    /// <summary>Phase 25: the official page a catalog product was last verified from (its stored evidence), for source attribution.</summary>
+    public Uri? OfficialSourceUrl { get; init; }
+
+    /// <summary>Phase 25: the unit <see cref="OfficialPriceAmount"/> is quoted in — per month for a Membership rate.</summary>
+    public PassPriceUnit PriceUnit => PassOffer?.Unit ?? PassPriceUnit.OneTime;
+
+    /// <summary>
+    /// Phase 25: whether this row belongs to the Associate PDF/Teams Copy contract — every non-pass
+    /// product and the Season Pass new-purchase price; never a Membership, renewal offer or initiation fee.
+    /// </summary>
+    public bool IsPassdownExportable => PassOffer is null || PassOffer.IsPassdownExportable;
+
+    /// <summary>Phase 25: a pass option the source lists but marks unavailable ("Not Available") — not a $0 price.</summary>
+    public bool IsUnavailablePassOption => PassOffer is not null && OfficialPriceAmount is null && !IsCustom;
 }

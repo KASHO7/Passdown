@@ -420,6 +420,8 @@ public sealed class AssociatePassdownService(
             products.AddRange(ComposeCatalogProducts(category, records, draft, priceHistoryKeys));
         }
 
+        PassOfferComposition.FoldCompanions(products);
+
         var timeframe = applyHistoricalPricingRule
             ? HistoricalPricingPolicy.TimeframeFor(operatingDate, asOf)
             : AssociatePricingTimeframe.Current;
@@ -607,6 +609,7 @@ public sealed class AssociatePassdownService(
     private static IEnumerable<AssociateProduct> ComposeCatalogProducts(
         SourceCategory category, IReadOnlyList<CatalogProductRecord> records, AssociateDraftPayload draft, IReadOnlySet<string> priceHistoryKeys)
     {
+        var latestVerifiedBySource = LatestVerifiedBySource(category, records);
         foreach (var record in records)
         {
             if (record.LifecycleState is ProductLifecycleState.Archived or ProductLifecycleState.Expired)
@@ -633,7 +636,7 @@ public sealed class AssociatePassdownService(
                 record.PriceQualifier,
                 record.DateSpecific,
                 record.ApplicableDate,
-                VerificationFromCatalog(record),
+                VerificationFromCatalog(record, latestVerifiedBySource),
                 draftOverride.IncludeOnPdf,
                 draftOverride.DisplayPriceOverride,
                 priceKind,
@@ -642,9 +645,11 @@ public sealed class AssociatePassdownService(
                 PerPersonPriceAmount: bundle?.PerPersonPriceAmount)
             {
                 PriceHistoryProductKey = PriceHistoryTrackingPolicy.ClassifyStoredProduct(
-                        category, record.LastEvidence.SourceName, record.DisplayName, record.DateSpecific, priceHistoryKeys.Contains(record.ProductKey)) is not null
+                        category, record.LastEvidence.SourceName, record.DisplayName, record.DateSpecific, priceHistoryKeys.Contains(record.ProductKey), record.ProductKey) is not null
                     ? record.ProductKey
                     : null,
+                PassOffer = PassOffer.Resolve(category, record.ProductKey, record.DisplayName),
+                OfficialSourceUrl = record.LastEvidence.SourceUrl,
             };
         }
     }
@@ -859,8 +864,40 @@ public sealed class AssociatePassdownService(
     /// catalog retrieval. Unlike dated results, catalog storage does not retain a separate
     /// last-failed-attempt snapshot per product, so there is no per-product "Stale" to derive here.
     /// </summary>
-    private static AssociateVerificationInfo VerificationFromCatalog(CatalogProductRecord record) =>
-        new(AssociateVerificationState.Verified, record.LastVerifiedAt, StaleAge: null, record.LastEvidence.Detail);
+    private static AssociateVerificationInfo VerificationFromCatalog(
+        CatalogProductRecord record, IReadOnlyDictionary<string, DateTimeOffset> latestVerifiedBySource)
+    {
+        if (record.LastVerifiedAt is { } verifiedAt &&
+            latestVerifiedBySource.TryGetValue(record.LastEvidence.SourceName, out var latest) &&
+            verifiedAt < latest)
+        {
+            return new(AssociateVerificationState.Stale, verifiedAt, latest - verifiedAt, record.LastEvidence.Detail);
+        }
+
+        return new(AssociateVerificationState.Verified, record.LastVerifiedAt, StaleAge: null, record.LastEvidence.Detail);
+    }
+
+    /// <summary>
+    /// Phase 25 partial-success honesty for the Season Passes &amp; Memberships source: every offer a
+    /// successful check verified carries that check's time, so a shown row verified <i>before</i> the
+    /// source's latest successful check was not confirmed by it (unreadable on a partial check, or
+    /// missing once) and is labeled stale with its own last verified time. Limited to
+    /// <see cref="SourceCategory.SeasonPasses"/>; other catalog categories keep their established
+    /// behavior.
+    /// </summary>
+    private static IReadOnlyDictionary<string, DateTimeOffset> LatestVerifiedBySource(SourceCategory category, IReadOnlyList<CatalogProductRecord> records)
+    {
+        if (category != SourceCategory.SeasonPasses)
+        {
+            return new Dictionary<string, DateTimeOffset>();
+        }
+
+        return records
+            .Where(record => record.LastVerifiedAt is not null &&
+                record.LifecycleState is ProductLifecycleState.Active or ProductLifecycleState.PendingConfirmation)
+            .GroupBy(record => record.LastEvidence.SourceName, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Max(record => record.LastVerifiedAt!.Value), StringComparer.Ordinal);
+    }
 
     private static IEnumerable<AssociateProduct> ComposeCustomProducts(AssociateDraftPayload draft) =>
         draft.CustomProducts.Select(custom => new AssociateProduct(
