@@ -73,7 +73,7 @@ Message files left untouched (`RetiredMorningMessageCompatibilityTests`, `Mornin
 | Release artifacts free of private-key bytes (16-byte window scan of all 287 files: 0), developer paths (0), databases, logs, PDBs, test data, `.update.json`/`.sig` | PASS |
 | RC.9 → RC.10 compatibility: same DB schema (no migration), same sync formats, same trusted key, updater/verifier code unchanged since RC.9 | PASS (by analysis + tests) |
 | Offline RC.9 → RC.10 in-app install on Windows (offline stager route) | NOT EXECUTED — no Windows result recorded for the RC.9 offline route either |
-| GitHub release discovery and download (RC.9 finding RC.10 on GitHub) | **BLOCKED / NOT EXECUTED** — needs a real GitHub release; never exercised end to end |
+| GitHub release discovery, download and install (RC.9 → RC.10 from the public release) | **USER-VERIFIED ON WINDOWS** (§9) |
 
 ## 5. Windows smoke test
 
@@ -98,8 +98,8 @@ sync folder (reported 2026-10-23). Manual GUI checks; not automated.
 
 Not covered by this smoke test, and not claimed:
 
-- In-app updating: GitHub release discovery, download and install (RC.9 → RC.10) — **BLOCKED / NOT EXECUTED**;
-  the offline updater route on Windows — **NOT EXECUTED**.
+- In-app updating (RC.9 → RC.10) — not part of the smoke test; later run separately against the public
+  release, see §9. The offline updater route on Windows — **NOT EXECUTED**.
 - Two-computer Personal Sync convergence — **NOT EXECUTED** in this RC.10 session (item 9 used one computer
   and a disposable folder).
 - Live-website automated tests (LiveSmoke) — **NOT EXECUTED**.
@@ -108,11 +108,12 @@ Not covered by this smoke test, and not claimed:
 
 Automated checks: **all PASS, nothing FAIL.** Windows smoke test: **11 / 11 USER-VERIFIED ON WINDOWS.**
 The signed RC.10 ZIP, `.update.json` and `.sig` are unchanged byte-for-byte since signing (SHA-256 re-verified
-when this record was updated). Nothing uploaded, tagged, pushed or published.
+when this record was updated). Published afterwards — see §8.
 
 Still open, and not resolved by this record:
 
-- GitHub release discovery/download/install — **BLOCKED / NOT EXECUTED** (never exercised end to end).
+- GitHub release discovery/download/install — **USER-VERIFIED ON WINDOWS** after publication (§9); the
+  unreported details listed there remain NOT EXECUTED.
 - Two-computer Personal Sync convergence on RC.10 — **NOT EXECUTED**.
 - Live-website automated tests — **NOT EXECUTED**.
 - QuestPDF Community licence eligibility — **CONFIRMED BY PRODUCT OWNER** (2026-10-23, below).
@@ -125,6 +126,34 @@ Fury 325 photograph and that our use qualifies for the QuestPDF Community licenc
 licence)." This is recorded as the owner's confirmation; no independent legal review was made by the build
 session. The owner then authorised publishing `v0.1.0-rc.10` as a public GitHub prerelease of
 `KASHO7/Passdown`, tagged at the binary commit `a8a1d96`, with the three signed files above unchanged.
+
+## 8. Publication
+
+| Check | Result |
+|---|---|
+| Release | https://github.com/KASHO7/Passdown/releases/tag/v0.1.0-rc.10 — "Carowinds Operations v0.1.0-rc.10", prerelease, not a draft, published 2026-10-23T13:55:03Z | PASS |
+| Tag | `v0.1.0-rc.10` (annotated) → `a8a1d96` | PASS |
+| Assets | exactly the three files above, original names; anonymous downloads byte-identical (SHA-256 and size), GitHub digests match | PASS |
+| Signature of the downloaded manifest | VERIFIED, `carowinds-release-1`, version `0.1.0-rc.10`, package `26f447e3…5d28fae` | PASS |
+
+Published assets and tag must never be replaced; any change ships as `0.1.0-rc.11`.
+
+## 9. In-app update RC.9 → RC.10 (Windows)
+
+Performed by the product owner on Windows against the public GitHub release (reported 2026-10-23). Manual
+check; not automated.
+
+| # | Check | Result |
+|---|---|---|
+| 1 | RC.9 discovered and downloaded RC.10 from the public GitHub Release | USER-VERIFIED ON WINDOWS |
+| 2 | Installation completed and the updated application launched | USER-VERIFIED ON WINDOWS |
+| 3 | About this build showed `0.1.0-rc.10 (a8a1d96)` | USER-VERIFIED ON WINDOWS |
+| 4 | Existing drafts, notes and historical pricing remained intact | USER-VERIFIED ON WINDOWS |
+| 5 | What's New appeared after the update | USER-VERIFIED ON WINDOWS |
+
+Not reported, and not claimed: inspection of the pre-update backup file in `backups\`; database integrity or
+schema-version queries; What's New appearing only once (not again on later launches); updater
+rollback/failure paths on Windows; updating straight from RC.8.
 
 ---
 
