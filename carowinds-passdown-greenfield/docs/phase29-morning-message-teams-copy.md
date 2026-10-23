@@ -129,6 +129,12 @@ the HTML for every action and for the morning message.
 
 ### Formatted copy (Windows)
 
+> **Phase 29C:** on Windows, formatted copy no longer goes through Avalonia. `WindowsNativeClipboard`
+> (Infrastructure) writes "HTML Format" and CF_UNICODETEXT with `OpenClipboard`/`SetClipboardData`, because
+> Avalonia's OLE data object refused standard OLE requests for the HTML (Word could not see it). See
+> `docs/phase29c-windows-clipboard-interop.md`. The Avalonia description below now applies to macOS/Linux
+> development builds only.
+
 `AvaloniaClipboardService.SetTextAndHtmlAsync` uses Avalonia 12.1.1's `DataTransfer` API: one
 `DataTransferItem` with
 
@@ -142,7 +148,8 @@ in the 12.1.1 source) writes a string platform format as UTF-16, but CF_HTML mus
 `CfHtml.Build` writes the documented header (`Version:0.9`, `StartHTML`, `EndHTML`, `StartFragment`,
 `EndFragment`, ten zero-padded digits each), then
 `<html><body><!--StartFragment-->…<!--EndFragment--></body></html>`. Offsets are byte offsets into the UTF-8
-payload; there is no BOM and no trailing NUL. `CfHtml.Parse` validates a payload (used by the tests).
+payload; there is no BOM. Since Phase 29C the native Windows writer adds one NUL byte after EndHTML in the
+clipboard block (offsets unchanged). `CfHtml.Parse` validates a payload (used by the tests).
 
 macOS/Linux (development only) get `public.html` / `text/html` as plain UTF-8 HTML.
 

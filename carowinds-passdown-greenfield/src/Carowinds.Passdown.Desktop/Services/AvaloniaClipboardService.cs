@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Media.Imaging;
 using Carowinds.Passdown.Documents.Teams;
+using Carowinds.Passdown.Infrastructure.Clipboard;
 
 namespace Carowinds.Passdown.Desktop.Services;
 
@@ -11,16 +12,40 @@ namespace Carowinds.Passdown.Desktop.Services;
 /// <see cref="IClipboardService"/> backed by the main window's Avalonia clipboard (the Windows system
 /// clipboard in production).
 /// <para>
-/// Phase 29 formatted copy uses Avalonia 12's <see cref="DataTransfer"/>: one item carrying a
-/// <em>bytes</em> platform format named "HTML Format" (listed first since Phase 29B) and
-/// <see cref="DataFormat.Text"/> (CF_UNICODETEXT). The HTML format holds the UTF-8 CF_HTML payload from
-/// <see cref="CfHtml.Build"/>. A bytes format is required — Avalonia's Win32 backend writes a string platform format as UTF-16, but CF_HTML is UTF-8
-/// with byte offsets. Other platforms get their native HTML type (UTF-8 bytes) for development only;
-/// Windows is the validated target.
+/// Phase 29C: on Windows, formatted copy bypasses Avalonia and goes through
+/// <see cref="WindowsNativeClipboard"/> — "HTML Format" (the UTF-8 CF_HTML payload from
+/// <see cref="CfHtml.Build"/>) and CF_UNICODETEXT written directly with the Win32 clipboard API. Avalonia
+/// 12.1.1's OLE data object rejects any request whose <c>tymed</c> is not exactly <c>TYMED_HGLOBAL</c>, so OLE
+/// consumers (Word, and the Teams desktop paste) could not retrieve the HTML even though raw clipboard
+/// readers saw it (docs/phase29c-windows-clipboard-interop.md).
+/// </para>
+/// <para>
+/// Plain-text copy, images, and formatted copy on other platforms (development only) still use Avalonia's
+/// clipboard; there the HTML goes out as a <em>bytes</em> platform format, since Avalonia writes a string
+/// platform format as UTF-16. A failed formatted copy throws, and the caller falls back to plain text through
+/// the independent Avalonia path.
 /// </para>
 /// </summary>
 public sealed class AvaloniaClipboardService : IClipboardService
 {
+    private readonly Action<nint, string, byte[]>? _windowsHtmlWriter;
+    private readonly Func<nint?> _ownerWindow;
+
+    public AvaloniaClipboardService()
+        : this(OperatingSystem.IsWindows() ? WindowsNativeClipboard.SetTextAndHtml : null, MainWindowHandle)
+    {
+    }
+
+    /// <summary>Test seam: <paramref name="windowsHtmlWriter"/> replaces the native writer (null = Avalonia path).</summary>
+    internal AvaloniaClipboardService(Action<nint, string, byte[]>? windowsHtmlWriter, Func<nint?> ownerWindow)
+    {
+        _windowsHtmlWriter = windowsHtmlWriter;
+        _ownerWindow = ownerWindow ?? throw new ArgumentNullException(nameof(ownerWindow));
+    }
+
+    /// <summary>True when formatted copy goes through the native Windows writer rather than Avalonia.</summary>
+    internal bool UsesNativeWindowsHtml => _windowsHtmlWriter is not null;
+
     public async Task SetTextAsync(string text, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -33,6 +58,13 @@ public sealed class AvaloniaClipboardService : IClipboardService
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(htmlFragment);
 
+        if (_windowsHtmlWriter is not null)
+        {
+            var owner = _ownerWindow() ?? throw new InvalidOperationException("No application window is available to own the clipboard.");
+            _windowsHtmlWriter(owner, text, CfHtml.Build(htmlFragment));
+            return;
+        }
+
         var clipboard = GetClipboard();
 
         // Avalonia takes ownership of the DataTransfer; it must not be disposed here.
@@ -40,8 +72,8 @@ public sealed class AvaloniaClipboardService : IClipboardService
     }
 
     /// <summary>
-    /// Phase 29B: the formatted-copy payload, HTML first. Avalonia's Win32 backend advertises formats in
-    /// the order they were set (<c>IEnumFORMATETC</c> follows <see cref="DataTransferItem.Formats"/>), and
+    /// Phase 29B: the formatted-copy payload for the Avalonia path (non-Windows since Phase 29C), HTML first.
+    /// Avalonia's Win32 backend advertises formats in the order they were set (<c>IEnumFORMATETC</c> follows <see cref="DataTransferItem.Formats"/>), and
     /// Windows clipboard convention is richest format first — readers that take the first format they
     /// understand otherwise pick CF_UNICODETEXT and never see the HTML. The plain text stays alongside.
     /// </summary>
@@ -75,6 +107,8 @@ public sealed class AvaloniaClipboardService : IClipboardService
     /// <summary>CF_HTML on Windows; elsewhere the bare fragment as UTF-8 (those platforms take plain HTML).</summary>
     internal static byte[] HtmlPayload(string htmlFragment) =>
         OperatingSystem.IsWindows() ? CfHtml.Build(htmlFragment) : System.Text.Encoding.UTF8.GetBytes(htmlFragment);
+
+    private static nint? MainWindowHandle() => GetTopLevel()?.TryGetPlatformHandle()?.Handle;
 
     private static IClipboard GetClipboard() =>
         GetTopLevel()?.Clipboard ?? throw new InvalidOperationException("No application window clipboard is available.");

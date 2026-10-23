@@ -1,0 +1,73 @@
+PHASE 29C - WINDOWS RICH-TEXT CLIPBOARD - SHORT CHECKLIST
+=========================================================
+
+Build: LOCAL-ONLY-phase29c-windows-clipboard-win-x64.zip (NOT a release).
+Same rules as before: disposable Windows TEST account on the test VM, its
+"Carowinds Passdown" data backed up/renamed first, updates declined, Personal
+Sync not configured. Teams: drafts in a chat with yourself only. NEVER Send.
+
+Result values: PASS / FAIL / PARTIAL / BLOCKED / NOT EXECUTED.
+Every row starts NOT EXECUTED. Mac test results do not count for any row.
+
+The inspector is scripts\Inspect-TeamsClipboard.ps1 (double-click
+"1 Inspect clipboard (Morning Message).cmd"). Results go to
+Desktop\Phase29A-results. It now also reads the clipboard the way Word does
+(section "OLE consumer").
+
+0. Confirm the cause on the OLD build (optional, ~3 min, recommended)
+---------------------------------------------------------------------
+[ ] 0.1 Run the Phase 29B test build. Morning Message -> Copy Formatted.
+        Run the inspector. Write down these rows:
+          Clipboard owner window class          ____________
+          OLE consumer can query HTML Format (TYMED_HGLOBAL|TYMED_ISTREAM)  ____
+          OLE consumer can query HTML Format (any TYMED)                    ____
+          OLE consumer can retrieve HTML Format (GetData)                   ____
+        If the diagnosis is right, the old build shows owner class
+        CLIPBRDWNDCLASS and the HTML query rows FAIL (0x80040069 =
+        DV_E_TYMED). If they PASS instead, say so - the diagnosis is then
+        incomplete. Close the old build.
+
+1. New build - clipboard
+------------------------
+[ ] 1.1 Run the Phase 29C build. About shows 0.1.0-rc.9 (<29C commit>).    ____
+[ ] 1.2 Check Online, enter attendance/pre-solds, Copy -> Morning Message...,
+        paste the synthetic inputs, Copy Formatted.                        ____
+[ ] 1.3 Run the inspector. ALL rows PASS, in particular:
+          HTML Format listed before CF_UNICODETEXT
+          OLE consumer can query HTML Format (TYMED_HGLOBAL|TYMED_ISTREAM)
+          OLE consumer can query HTML Format (any TYMED)
+          OLE consumer can retrieve HTML Format (GetData)
+          OLE HTML bytes match the raw CF_HTML (up to EndHTML)
+        Owner window class is NOT CLIPBRDWNDCLASS (expected: the app's
+        window class). Keep the report file.                               ____
+
+2. Microsoft Word
+-----------------
+[ ] 2.1 Home -> Paste -> Paste Special...: "HTML Format" is listed.        ____
+[ ] 2.2 Ctrl+V into a blank document: headings and labels BOLD, reminders
+        a real bulleted list, price note italic.                           ____
+[ ] 2.3 Copy Plain Text, paste: same words, no bold.                       ____
+
+3. Teams desktop (new Teams)
+----------------------------
+[ ] 3.1 Copy Formatted, Ctrl+V into a draft: headings and labels BOLD,
+        bullets kept, link clickable, @Name plain text.                    ____
+[ ] 3.2 OD Notes absent; Copy OD Notes (Formatted) into a second draft:
+        "OD Notes:" bold.                                                  ____
+[ ] 3.3 Copy Plain Text, paste: same words, no bold.                       ____
+
+4. Teams in Edge
+----------------
+[ ] 4.1 Same as 3.1 in teams.microsoft.com (Edge).                         ____
+[ ] 4.2 Differences vs Teams desktop, or "none".                           ____
+
+5. Other copies still work
+--------------------------
+[ ] 5.1 Associate -> Copy: Operations Summary, Today's Pricing,
+        Operations + Pricing paste correctly (plain default; then with
+        "Use formatted copy by default" on, bold in Word).                 ____
+[ ] 5.2 Copy Image (DAP picture) still pastes into Word/Teams.             ____
+[ ] 5.3 Copy Formatted, then close the app, then paste in Word: still
+        bold (data stays on the clipboard after exit).                     ____
+
+If anything fails: keep the inspector report and note which row failed.

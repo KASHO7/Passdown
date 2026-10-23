@@ -13,6 +13,10 @@
     -Kind MorningMessage it also checks the section order, that the Daily Feature is last and that OD Notes
     are absent; with -Kind OdNotes it checks the separate OD Notes message.
 
+    Phase 29C: also reads the clipboard the way OLE consumers such as Word do (OleGetClipboard, then
+    QueryGetData/GetData with TYMED masks) and reports the clipboard owner window class, so a format that a
+    raw read sees but Word cannot obtain shows up as a FAIL.
+
     Read-only: never changes the clipboard. Needs no administrator rights. Writes a report and copies of
     the raw payloads to a "Phase29A-results" folder on the Desktop (synthetic test data only).
 
@@ -137,6 +141,161 @@ public static class Phase29AClipboard
         finally { CloseClipboard(); }
     }
 }
+// Phase 29C: reads the clipboard the way OLE consumers (Word, Office, many rich editors) do -
+// OleGetClipboard, then IDataObject.QueryGetData / GetData with TYMED masks - on an STA thread.
+public static class Phase29COleProbe
+{
+    [DllImport("ole32.dll")] static extern int OleGetClipboard(out System.Runtime.InteropServices.ComTypes.IDataObject data);
+    [DllImport("ole32.dll")] static extern void ReleaseStgMedium(ref System.Runtime.InteropServices.ComTypes.STGMEDIUM medium);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern uint RegisterClipboardFormatW(string name);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClipboardFormatNameW(uint format, StringBuilder name, int max);
+    [DllImport("user32.dll")] static extern IntPtr GetClipboardOwner();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassNameW(IntPtr window, StringBuilder name, int max);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("kernel32.dll")] static extern IntPtr GlobalLock(IntPtr handle);
+    [DllImport("kernel32.dll")] static extern bool GlobalUnlock(IntPtr handle);
+    [DllImport("kernel32.dll")] static extern UIntPtr GlobalSize(IntPtr handle);
+
+    const int TymedHGlobal = 1;
+    const int TymedIStream = 4;
+    const int TymedAll = 127;
+
+    public static string[] Run()
+    {
+        string[] result = null;
+        Exception error = null;
+        var thread = new Thread(() => { try { result = RunCore(); } catch (Exception e) { error = e; } });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+        return error != null ? new[] { "error=" + error.GetType().Name + ": " + error.Message } : result;
+    }
+
+    static string Hr(int hr) { return "0x" + hr.ToString("X8"); }
+
+    static string[] RunCore()
+    {
+        var lines = new List<string>();
+        IntPtr owner = GetClipboardOwner();
+        var cls = new StringBuilder(256);
+        if (owner != IntPtr.Zero && GetClassNameW(owner, cls, cls.Capacity) > 0) { lines.Add("owner.class=" + cls); }
+        else { lines.Add("owner.class=(none)"); }
+        if (owner != IntPtr.Zero)
+        {
+            uint pid;
+            GetWindowThreadProcessId(owner, out pid);
+            string name;
+            try { name = System.Diagnostics.Process.GetProcessById((int)pid).ProcessName; } catch (Exception) { name = "pid " + pid; }
+            lines.Add("owner.process=" + name);
+        }
+
+        System.Runtime.InteropServices.ComTypes.IDataObject data;
+        int hr = OleGetClipboard(out data);
+        lines.Add("OleGetClipboard=" + Hr(hr));
+        if (hr != 0 || data == null) { return lines.ToArray(); }
+
+        var listed = new List<string>();
+        try
+        {
+            var formats = data.EnumFormatEtc(System.Runtime.InteropServices.ComTypes.DATADIR.DATADIR_GET);
+            var one = new System.Runtime.InteropServices.ComTypes.FORMATETC[1];
+            var fetched = new int[1];
+            while (formats.Next(1, one, fetched) == 0 && fetched[0] == 1)
+            {
+                listed.Add(Name((uint)(ushort)one[0].cfFormat) + "/tymed=" + (int)one[0].tymed);
+            }
+        }
+        catch (Exception e) { listed.Add("EnumFormatEtc failed: " + e.Message); }
+        lines.Add("ole.formats=" + string.Join(", ", listed.ToArray()));
+
+        uint html = RegisterClipboardFormatW("HTML Format");
+        foreach (var format in new[] { html, 13u })
+        {
+            string key = format == 13u ? "text" : "html";
+            lines.Add(key + ".query.hglobal=" + Hr(Query(data, format, TymedHGlobal)));
+            lines.Add(key + ".query.hglobal_istream=" + Hr(Query(data, format, TymedHGlobal | TymedIStream)));
+            lines.Add(key + ".query.all=" + Hr(Query(data, format, TymedAll)));
+            byte[] bytes;
+            lines.Add(key + ".getdata.hglobal_istream=" + GetData(data, format, TymedHGlobal | TymedIStream, out bytes));
+            if (bytes != null) { lines.Add(key + ".bytes=" + Convert.ToBase64String(bytes)); }
+        }
+
+        return lines.ToArray();
+    }
+
+    static int Query(System.Runtime.InteropServices.ComTypes.IDataObject data, uint format, int tymed)
+    {
+        var etc = Etc(format, tymed);
+        return data.QueryGetData(ref etc);
+    }
+
+    static System.Runtime.InteropServices.ComTypes.FORMATETC Etc(uint format, int tymed)
+    {
+        var etc = new System.Runtime.InteropServices.ComTypes.FORMATETC();
+        etc.cfFormat = unchecked((short)format);
+        etc.dwAspect = System.Runtime.InteropServices.ComTypes.DVASPECT.DVASPECT_CONTENT;
+        etc.lindex = -1;
+        etc.ptd = IntPtr.Zero;
+        etc.tymed = (System.Runtime.InteropServices.ComTypes.TYMED)tymed;
+        return etc;
+    }
+
+    static string GetData(System.Runtime.InteropServices.ComTypes.IDataObject data, uint format, int tymed, out byte[] bytes)
+    {
+        bytes = null;
+        var etc = Etc(format, tymed);
+        System.Runtime.InteropServices.ComTypes.STGMEDIUM medium;
+        try { data.GetData(ref etc, out medium); }
+        catch (COMException e) { return "FAILED " + Hr(e.ErrorCode); }
+        try
+        {
+            if ((int)medium.tymed == TymedHGlobal)
+            {
+                IntPtr pointer = GlobalLock(medium.unionmember);
+                try
+                {
+                    bytes = new byte[(int)GlobalSize(medium.unionmember).ToUInt64()];
+                    Marshal.Copy(pointer, bytes, 0, bytes.Length);
+                }
+                finally { GlobalUnlock(medium.unionmember); }
+                return "OK hglobal " + bytes.Length + " bytes";
+            }
+            if ((int)medium.tymed == TymedIStream)
+            {
+                var stream = (System.Runtime.InteropServices.ComTypes.IStream)Marshal.GetObjectForIUnknown(medium.unionmember);
+                var buffer = new List<byte>();
+                var chunk = new byte[4096];
+                IntPtr read = Marshal.AllocHGlobal(4);
+                try
+                {
+                    while (true)
+                    {
+                        stream.Read(chunk, chunk.Length, read);
+                        int count = Marshal.ReadInt32(read);
+                        if (count <= 0) { break; }
+                        for (int i = 0; i < count; i++) { buffer.Add(chunk[i]); }
+                    }
+                }
+                finally { Marshal.FreeHGlobal(read); }
+                bytes = buffer.ToArray();
+                return "OK istream " + bytes.Length + " bytes";
+            }
+            return "OK other tymed " + (int)medium.tymed;
+        }
+        finally { ReleaseStgMedium(ref medium); }
+    }
+
+    static string Name(uint format)
+    {
+        if (format == 13) { return "CF_UNICODETEXT"; }
+        if (format == 1) { return "CF_TEXT"; }
+        if (format == 7) { return "CF_OEMTEXT"; }
+        if (format == 16) { return "CF_LOCALE"; }
+        var sb = new StringBuilder(256);
+        return GetClipboardFormatNameW(format, sb, sb.Capacity) > 0 ? sb.ToString() : ("#" + format);
+    }
+}
+
 '@
 }
 
@@ -271,6 +430,38 @@ if ($hasHtml) {
     }
 } else {
     Add-Info 'HTML Format' 'Not present (expected after Copy Plain Text, or for the original options when formatted copy is not the default)'
+}
+
+# 3b. OLE consumer probe (Phase 29C) ---------------------------------------------------------------------
+# Word and other OLE consumers read through OleGetClipboard and ask with TYMED masks; a raw GetClipboardData
+# read (section 3) can succeed while that path fails. 0x00000000 = S_OK; 0x80040069 = DV_E_TYMED;
+# 0x80040064 = DV_E_FORMATETC.
+if (-not $fromFiles -and $hasHtml) {
+    $probe = @{}
+    foreach ($line in [Phase29COleProbe]::Run()) {
+        $eq = $line.IndexOf('=')
+        if ($eq -gt 0) { $probe[$line.Substring(0, $eq)] = $line.Substring($eq + 1) }
+    }
+    if ($probe.ContainsKey('error')) {
+        Add-Result 'OLE probe ran' $false $probe['error']
+    } else {
+        Add-Info 'Clipboard owner window class' ([string]$probe['owner.class'])
+        Add-Info 'Clipboard owner process' ([string]$probe['owner.process'])
+        Add-Info 'OLE formats (EnumFormatEtc)' ([string]$probe['ole.formats'])
+        foreach ($k in @('html', 'text')) {
+            Add-Info "OLE QueryGetData $k (HGLOBAL / HGLOBAL|ISTREAM / all)" (@($probe["$k.query.hglobal"], $probe["$k.query.hglobal_istream"], $probe["$k.query.all"]) -join ' / ')
+        }
+        Add-Result 'OLE consumer can query HTML Format (TYMED_HGLOBAL|TYMED_ISTREAM)' ($probe['html.query.hglobal_istream'] -eq '0x00000000') ([string]$probe['html.query.hglobal_istream'])
+        Add-Result 'OLE consumer can query HTML Format (any TYMED)' ($probe['html.query.all'] -eq '0x00000000') ([string]$probe['html.query.all'])
+        Add-Result 'OLE consumer can retrieve HTML Format (GetData)' ([string]$probe['html.getdata.hglobal_istream']).StartsWith('OK') ([string]$probe['html.getdata.hglobal_istream'])
+        Add-Result 'OLE consumer can retrieve CF_UNICODETEXT (GetData)' ([string]$probe['text.getdata.hglobal_istream']).StartsWith('OK') ([string]$probe['text.getdata.hglobal_istream'])
+        if ($probe.ContainsKey('html.bytes') -and $e -gt 0) {
+            $oleBytes = [Convert]::FromBase64String($probe['html.bytes'])
+            $same = ($oleBytes.Length -ge $e)
+            for ($i = 0; $same -and $i -lt $e; $i++) { if ($oleBytes[$i] -ne $bytes[$i]) { $same = $false } }
+            Add-Result 'OLE HTML bytes match the raw CF_HTML (up to EndHTML)' $same "$($oleBytes.Length) bytes via OLE"
+        }
+    }
 }
 
 # 4. Message-specific checks --------------------------------------------------------------------------

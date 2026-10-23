@@ -524,4 +524,46 @@ public class MorningMessageViewModelTests
         Assert.Equal("Plain", item.TryGetValue(DataFormat.Text));
         Assert.Equal(Desktop.Services.AvaloniaClipboardService.HtmlPayload("<p>Plain</p>"), item.TryGetValue(Desktop.Services.AvaloniaClipboardService.HtmlFormat()));
     }
+
+    // ---- Phase 29C: native Windows formatted copy routing ----
+
+    [Fact]
+    public async Task Phase29C_FormattedCopy_GoesToTheNativeWindowsWriter_WithExactTextAndCfHtml()
+    {
+        var calls = new List<(nint Owner, string Text, byte[] Html)>();
+        var service = new Desktop.Services.AvaloniaClipboardService((owner, text, html) => calls.Add((owner, text, html)), () => 0x1234);
+        const string fragment = "<p><b style=\"font-weight:bold\">Today&#39;s Operations:</b><br>Café</p>";
+
+        await service.SetTextAndHtmlAsync("Today's Operations:\r\nCafé", fragment);
+
+        var call = Assert.Single(calls);
+        Assert.Equal((nint)0x1234, call.Owner);
+        Assert.Equal("Today's Operations:\r\nCafé", call.Text);
+        Assert.Equal(Documents.Teams.CfHtml.Build(fragment), call.Html);
+        Assert.Equal(fragment, Documents.Teams.CfHtml.Parse(call.Html).Fragment);
+    }
+
+    [Fact]
+    public async Task Phase29C_NativeWriterFailure_Throws_SoTheCallerFallsBackToPlainText()
+    {
+        var service = new Desktop.Services.AvaloniaClipboardService((_, _, _) => throw new System.ComponentModel.Win32Exception(5), () => 0x1234);
+
+        await Assert.ThrowsAsync<System.ComponentModel.Win32Exception>(() => service.SetTextAndHtmlAsync("x", "<p>x</p>"));
+    }
+
+    [Fact]
+    public async Task Phase29C_NoOwnerWindow_Throws_NeverWritesWithoutAnOwner()
+    {
+        var written = false;
+        var service = new Desktop.Services.AvaloniaClipboardService((_, _, _) => written = true, () => null);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.SetTextAndHtmlAsync("x", "<p>x</p>"));
+        Assert.False(written);
+    }
+
+    [Fact]
+    public void Phase29C_DefaultService_UsesTheNativeWriterOnlyOnWindows()
+    {
+        Assert.Equal(OperatingSystem.IsWindows(), new Desktop.Services.AvaloniaClipboardService().UsesNativeWindowsHtml);
+    }
 }
