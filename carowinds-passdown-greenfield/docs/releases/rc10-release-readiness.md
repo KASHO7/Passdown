@@ -3,8 +3,9 @@
 Date: 2026-10-23 · Branch `feature/passdown-redesign` · Build commit **`a8a1d96`** (version bump on top of
 `433bb29`, the Morning Message rollback). Built on macOS. **Nothing uploaded, tagged, pushed or merged.**
 
-Result values: **PASS** · **FAIL** · **NOT EXECUTED** · **BLOCKED**. "PASS" below means an automated or
-build-host check unless the row says Windows.
+Result values: **PASS** · **USER-VERIFIED ON WINDOWS** · **FAIL** · **NOT EXECUTED** · **BLOCKED**. "PASS" means an
+automated or build-host check; **USER-VERIFIED ON WINDOWS** means the product owner ran the step by hand on
+Windows with the RC.10 ZIP (§5).
 
 ## Candidate
 
@@ -57,7 +58,7 @@ Message files left untouched (`RetiredMorningMessageCompatibilityTests`, `Mornin
 |---|---|
 | All of the above, by the 4,752-test suite with disposable data | PASS |
 | Real operational database untouched (`~/Library/Application Support/Carowinds Passdown` last modified 2026-10-15; app never launched) | PASS |
-| Windows startup/shutdown, real clipboard paste, real PDF viewer, real sync folder | NOT EXECUTED (Windows) |
+| Windows startup/shutdown, real clipboard paste, real PDF generation, disposable sync folder | USER-VERIFIED ON WINDOWS (§5) |
 
 ## 4. Updater and packaging
 
@@ -76,13 +77,48 @@ Message files left untouched (`RetiredMorningMessageCompatibilityTests`, `Mornin
 
 ## 5. Windows smoke test
 
-All items **NOT EXECUTED** — checklist below.
+Run by the product owner on Windows with the RC.10 ZIP above, using a separate test profile and a disposable
+sync folder (reported 2026-10-23). Manual GUI checks; not automated.
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Correct RC.10 version and startup | USER-VERIFIED ON WINDOWS |
+| 2 | Associate Passdown save and persistence | USER-VERIFIED ON WINDOWS |
+| 3 | All three original Copy options (Operations Summary, Today's Pricing, Operations + Pricing) | USER-VERIFIED ON WINDOWS |
+| 4 | Silver, Gold, Prestige and Membership pricing | USER-VERIFIED ON WINDOWS |
+| 5 | Gold Pass historical price identity folding | USER-VERIFIED ON WINDOWS |
+| 6 | Dashboard, Calendar and Notes | USER-VERIFIED ON WINDOWS |
+| 7 | Classic and Modern PDF generation | USER-VERIFIED ON WINDOWS |
+| 8 | Data persistence after restart | USER-VERIFIED ON WINDOWS |
+| 9 | Appearance settings and disposable-folder Personal Sync | USER-VERIFIED ON WINDOWS |
+| 10 | Morning Message Builder absent | USER-VERIFIED ON WINDOWS |
+| 11 | Clean application shutdown without unexpected errors | USER-VERIFIED ON WINDOWS |
+
+**11 / 11 USER-VERIFIED ON WINDOWS, 0 FAIL.**
+
+Not covered by this smoke test, and not claimed:
+
+- In-app updating: GitHub release discovery, download and install (RC.9 → RC.10) — **BLOCKED / NOT EXECUTED**;
+  the offline updater route on Windows — **NOT EXECUTED**.
+- Two-computer Personal Sync convergence — **NOT EXECUTED** in this RC.10 session (item 9 used one computer
+  and a disposable folder).
+- Live-website automated tests (LiveSmoke) — **NOT EXECUTED**.
 
 ## 6. Decision
 
-Automated checks: **all PASS, nothing FAIL.** RC.10 is ready for the Windows smoke test, not for publication.
-Still pending before publishing: Windows smoke test; GitHub discovery/download (blocked); QuestPDF Community
-licence eligibility and Fury photograph rights (unchanged from RC.9, pending).
+Automated checks: **all PASS, nothing FAIL.** Windows smoke test: **11 / 11 USER-VERIFIED ON WINDOWS.**
+The signed RC.10 ZIP, `.update.json` and `.sig` are unchanged byte-for-byte since signing (SHA-256 re-verified
+when this record was updated). Nothing uploaded, tagged, pushed or published.
+
+Still open, and not resolved by this record:
+
+- GitHub release discovery/download/install — **BLOCKED / NOT EXECUTED** (never exercised end to end).
+- Two-computer Personal Sync convergence on RC.10 — **NOT EXECUTED**.
+- Live-website automated tests — **NOT EXECUTED**.
+- QuestPDF Community licence eligibility — **PENDING** (unchanged from RC.9).
+- Fury photograph redistribution permission — **PENDING** (unchanged from RC.9).
+
+Publication to GitHub Releases awaits the product owner's approval.
 
 ---
 
@@ -94,16 +130,16 @@ never touched. Use made-up values only.
 
 | # | Step | Expected | Result |
 |---|---|---|---|
-| 0 | Copy the ZIP over. Optional: in PowerShell, `Get-FileHash <zip>` | `26F447E387DE95C18D2894BE9799A7C8EF72BDB2BF8262312F4AF5B1E5D28FAE` | |
-| 1 | Extract All… to a new folder in Documents; double-click `Carowinds.Passdown.Desktop.exe` | Opens within seconds; no .NET or admin prompt. Settings (gear) → About this build: `0.1.0-rc.10 (a8a1d96)` and this folder | |
-| 2 | Passdown: type a test note in a few fields; wait for "Saved"; switch tabs and back | Text still there | |
-| 3 | Copy ▾ → Operations Summary, paste into Notepad (and Teams if handy); repeat for Today's Pricing and Operations + Pricing | Three plain-text pastes with the right sections | |
-| 4 | Products → Check Online; then More ▾ → Season Price History… | Silver, Gold, Prestige separate; Memberships separate (/month); history rows listed | |
-| 5 | Dashboard, Calendar (pick another date — no "checking online"), Notes (add one note) | All open without errors; note saved | |
-| 6 | Create PDF (try Classic and Modern) | PDF opens and looks right | |
-| 7 | Close the app (X); reopen | Draft text and note still there | |
-| 8 | Settings: Appearance → Dark, then Light; Personal Sync → Choose Folder… → a **new empty** folder → Sync Now | Theme changes at once and persists after restart; sync status OK; files appear only in the new folder | |
-| 9 | Look through the navigation, Copy menu and Settings | No Morning Message anywhere | |
-| 10 | Close the app; open `%LOCALAPPDATA%\Carowinds Passdown\logs` (Windows+R), open the newest log in Notepad, search for `Exception` | App closed fully (gone from taskbar / Task Manager); no unexpected exceptions | |
+| 0 | Copy the ZIP over. Optional: in PowerShell, `Get-FileHash <zip>` | `26F447E387DE95C18D2894BE9799A7C8EF72BDB2BF8262312F4AF5B1E5D28FAE` |Not reported separately |
+| 1 | Extract All… to a new folder in Documents; double-click `Carowinds.Passdown.Desktop.exe` | Opens within seconds; no .NET or admin prompt. Settings (gear) → About this build: `0.1.0-rc.10 (a8a1d96)` and this folder |USER-VERIFIED ON WINDOWS (§5 #1) |
+| 2 | Passdown: type a test note in a few fields; wait for "Saved"; switch tabs and back | Text still there |USER-VERIFIED ON WINDOWS (§5 #2, 8) |
+| 3 | Copy ▾ → Operations Summary, paste into Notepad (and Teams if handy); repeat for Today's Pricing and Operations + Pricing | Three plain-text pastes with the right sections |USER-VERIFIED ON WINDOWS (§5 #3) |
+| 4 | Products → Check Online; then More ▾ → Season Price History… | Silver, Gold, Prestige separate; Memberships separate (/month); history rows listed |USER-VERIFIED ON WINDOWS (§5 #4, 5) |
+| 5 | Dashboard, Calendar (pick another date — no "checking online"), Notes (add one note) | All open without errors; note saved |USER-VERIFIED ON WINDOWS (§5 #6) |
+| 6 | Create PDF (try Classic and Modern) | PDF opens and looks right |USER-VERIFIED ON WINDOWS (§5 #7) |
+| 7 | Close the app (X); reopen | Draft text and note still there |USER-VERIFIED ON WINDOWS (§5 #8) |
+| 8 | Settings: Appearance → Dark, then Light; Personal Sync → Choose Folder… → a **new empty** folder → Sync Now | Theme changes at once and persists after restart; sync status OK; files appear only in the new folder |USER-VERIFIED ON WINDOWS (§5 #9) |
+| 9 | Look through the navigation, Copy menu and Settings | No Morning Message anywhere |USER-VERIFIED ON WINDOWS (§5 #10) |
+| 10 | Close the app; open `%LOCALAPPDATA%\Carowinds Passdown\logs` (Windows+R), open the newest log in Notepad, search for `Exception` | App closed fully (gone from taskbar / Task Manager); no unexpected exceptions |USER-VERIFIED ON WINDOWS (§5 #11) |
 
 Report each line as PASS / FAIL. If anything fails, stop — do not publish; a fix ships as rc.11.
