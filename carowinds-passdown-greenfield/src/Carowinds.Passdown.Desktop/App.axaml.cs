@@ -20,6 +20,7 @@ using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Retrieval.Browser;
+using Carowinds.Passdown.Application.ProductDetails;
 using Carowinds.Passdown.Application.Seasons;
 using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Application.SpellCheck;
@@ -30,6 +31,7 @@ using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
 using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Promotions;
 using Carowinds.Passdown.Domain.Retrieval;
 using Carowinds.Passdown.Domain.Updates;
 using Carowinds.Passdown.Infrastructure;
@@ -611,6 +613,8 @@ public partial class App : global::Avalonia.Application
         // cache only (never online on date navigation).
         services.AddSingleton<IOperatingSeasonService, OperatingSeasonService>();
         services.AddSingleton<IOfficialDealsService, OfficialDealsService>();
+        // Phase 31B: Important Details & Deadlines read from the cached official product-details documents.
+        services.AddSingleton<IProductImportantDetailsService, ProductImportantDetailsService>();
         services.AddTransient<OperationsCalendarViewModel>();
 
         // Phase 11A: the persistent Operational Notes domain/persistence/service foundation.
@@ -939,12 +943,18 @@ public partial class App : global::Avalonia.Application
                 new DatedSourceRegistration<DatedHauntedPayload>(provider.GetRequiredService<DatedHauntedSource>(), datedResultRepository),
                 // Phase 31: the same Promotions check also stores the official deals document.
                 new CatalogSourceRegistration(provider.GetRequiredService<PromotionsCatalogSource>(), reconciliationService,
-                    dealsDocuments: provider.GetRequiredService<IOfficialReferenceDocumentRepository>()),
-                new CatalogSourceRegistration(provider.GetRequiredService<SeasonPassCatalogSource>(), reconciliationService),
+                    dealsDocuments: provider.GetRequiredService<IOfficialReferenceDocumentRepository>(),
+                    productDetailsDocuments: provider.GetRequiredService<IOfficialReferenceDocumentRepository>(),
+                    productDetailsChannel: OfficialProductChannel.Promotions),
+                new CatalogSourceRegistration(provider.GetRequiredService<SeasonPassCatalogSource>(), reconciliationService,
+                    productDetailsDocuments: provider.GetRequiredService<IOfficialReferenceDocumentRepository>(),
+                    productDetailsChannel: OfficialProductChannel.SeasonPasses),
                 new CatalogSourceRegistration(provider.GetRequiredService<SeasonPassAddOnsCatalogSource>(), reconciliationService),
                 new CatalogSourceRegistration(provider.GetRequiredService<GeneralAddOnsCatalogSource>(), reconciliationService),
                 new DatedSourceRegistration<DatedBringAFriendDuoPayload>(provider.GetRequiredService<DatedBringAFriendDuoSource>(), datedResultRepository),
-                new CatalogSourceRegistration(provider.GetRequiredService<MilitaryFirstResponderCatalogSource>(), reconciliationService),
+                new CatalogSourceRegistration(provider.GetRequiredService<MilitaryFirstResponderCatalogSource>(), reconciliationService,
+                    productDetailsDocuments: provider.GetRequiredService<IOfficialReferenceDocumentRepository>(),
+                    productDetailsChannel: OfficialProductChannel.MilitaryFirstResponder),
                 new DatedSourceRegistration<DatedBringAFriendPayload>(provider.GetRequiredService<DatedBringAFriendSource>(), datedResultRepository),
                 new DatedSourceRegistration<DatedMilitaryFirstResponderPayload>(provider.GetRequiredService<DatedMilitaryFirstResponderSource>(), datedResultRepository),
                 // Phase 21C: official show schedule — today and future dates only, so a past date's

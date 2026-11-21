@@ -54,7 +54,8 @@
               <DataTemplate x:DataType="vm:PriceHistoryProductOption">
                 <StackPanel Spacing="1" AutomationProperties.Name="{Binding AutomationName}">
                   <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                  <TextBlock Text="{Binding DetailText}" Classes="muted" FontSize="12" />
+                  <TextBlock Text="{Binding DetailText}" Classes="muted" FontSize="12"
+                             ToolTip.Tip="{Binding AvailabilityReason}" />
                 </StackPanel>
               </DataTemplate>
             </ListBox.ItemTemplate>
@@ -66,7 +67,9 @@
           <StackPanel Spacing="8">
             <StackPanel Spacing="2" IsVisible="{Binding HasSelection}">
               <TextBlock Text="{Binding SelectedProduct.DisplayName}" FontSize="16" FontWeight="Bold" TextWrapping="Wrap" />
-              <TextBlock Text="{Binding SelectedProduct.DetailText}" Classes="muted" />
+              <TextBlock Text="{Binding SelectedProduct.DetailText}" Classes="muted" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding SelectedProduct.AvailabilityReason}" Classes="muted" FontSize="12" TextWrapping="Wrap"
+                         IsVisible="{Binding SelectedProduct.IsAvailabilityNoteVisible}" />
               <TextBlock Text="{Binding AvailabilityText}" Classes="muted"
                          IsVisible="{Binding AvailabilityText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
               <!-- Phase 26: the product's verified official page (allowlisted), opened in the default browser. -->

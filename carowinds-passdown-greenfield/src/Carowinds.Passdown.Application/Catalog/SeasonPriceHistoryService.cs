@@ -26,6 +26,14 @@ public sealed record PriceHistoryProduct(
 
     /// <summary>Phase 26: the official page this computer last verified the product on, when known (validated before it is ever opened).</summary>
     public Uri? OfficialSourceUrl { get; init; }
+
+    /// <summary>
+    /// Phase 31B: whether "retired" may honestly be shown. A dedicated-channel product (Military &amp;
+    /// First Responder) missing from its public page reads "Availability unconfirmed", not retired.
+    /// </summary>
+    public ProductAvailabilityAssessment Availability { get; init; } = new(
+        IsActive ? ProductAvailability.Available : ProductAvailability.Retired,
+        IsActive ? "Listed at the latest successful official check." : "No longer listed on the official page.");
 }
 
 /// <summary>One interval plus its derived difference from the interval before it (never stored).</summary>
@@ -43,6 +51,13 @@ public sealed record PriceHistoryEntry(SeasonPriceHistoryInterval Interval, Seas
     /// published again at the same price (a new availability interval, not a price change).
     /// </summary>
     public bool IsReappearanceAtSamePrice => ChangeFromPrevious is { AmountChanged: false, KindChanged: false };
+
+    /// <summary>
+    /// Phase 31B: an earlier row with a different price state was still being confirmed after this row's
+    /// last confirmation — two computers' official checks disagreed during this period. Both are kept;
+    /// this row is concurrent evidence, not a confirmed change.
+    /// </summary>
+    public bool OverlapsEarlierPeriod { get; init; }
 }
 
 public interface ISeasonPriceHistoryService
@@ -61,10 +76,16 @@ public interface ISeasonPriceHistoryService
 /// combined with this computer's own intervals by <see cref="PriceHistoryTimelineMerge"/> — a read-time
 /// view only; neither store is rewritten, and the current catalog price is never derived from it.
 /// </summary>
+/// <remarks>
+/// Phase 31B: <paramref name="deviceIdProvider"/> (optional) identifies this computer's own contributions
+/// relayed back through Personal Sync. It is only consulted when imported observations exist — which
+/// implies Personal Sync already created the device id — so reading history never creates one.
+/// </remarks>
 public sealed class SeasonPriceHistoryService(
     ICatalogProductRepository catalogRepository,
     ISeasonPriceHistoryRepository historyRepository,
-    ISyncedPriceObservationRepository? syncedRepository = null) : ISeasonPriceHistoryService
+    ISyncedPriceObservationRepository? syncedRepository = null,
+    IDeviceIdProvider? deviceIdProvider = null) : ISeasonPriceHistoryService
 {
     public async Task<IReadOnlyList<PriceHistoryProduct>> ListTrackedProductsAsync(CancellationToken cancellationToken = default)
     {
@@ -98,10 +119,13 @@ public sealed class SeasonPriceHistoryService(
                 var stateCount = hasHistory
                     ? (await GetHistoryAsync(record.ProductKey, importedByProduct, cancellationToken).ConfigureAwait(false)).Count
                     : 0;
-                var isActive = record.LifecycleState is ProductLifecycleState.Active or ProductLifecycleState.PendingConfirmation;
+                // Phase 31B: retirement is only asserted on reliable evidence; an unconfirmed product stays listed.
+                var availability = ProductAvailabilityClassifier.Classify(record.LifecycleState, record.Category, record.ArchivedReason);
+                var isActive = availability.Availability is ProductAvailability.Available or ProductAvailability.Unconfirmed;
                 products.Add(new PriceHistoryProduct(record.ProductKey, record.DisplayName, trackedFamily, isActive, stateCount)
                 {
                     OfficialSourceUrl = record.LastEvidence.SourceUrl,
+                    Availability = availability,
                 });
                 listedKeys.Add(record.ProductKey);
             }
@@ -161,7 +185,24 @@ public sealed class SeasonPriceHistoryService(
         }
 
         var local = await historyRepository.GetHistoryAsync(productKey, cancellationToken).ConfigureAwait(false);
-        return PriceHistoryTimelineMerge.Merge(productKey, local, imported);
+        return PriceHistoryTimelineMerge.Merge(productKey, local, imported, LocalDeviceId());
+    }
+
+    private Guid? LocalDeviceId()
+    {
+        if (deviceIdProvider is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return deviceIdProvider.GetOrCreateDeviceId();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            return null; // grouping still works; relayed own observations simply stay separate evidence
+        }
     }
 
     private async Task<Dictionary<string, List<OfficialPriceObservation>>> LoadImportedByProductAsync(CancellationToken cancellationToken)

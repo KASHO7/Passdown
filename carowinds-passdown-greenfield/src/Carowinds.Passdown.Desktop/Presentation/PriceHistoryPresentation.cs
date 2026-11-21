@@ -50,7 +50,10 @@ public static class PriceHistoryPresentation
     public const string NoStatesText = "No official price has been recorded for this product yet. It will appear after the next successful official check.";
     public const string NoProductsText = "No Season Pass, Membership or Season Pass Add-On prices have been recorded yet. History starts with the next successful official check.";
     public const string LoadErrorText = "Price history couldn't be loaded. Try again later; nothing else is affected.";
-    public const string TimingNoteText = "\"First seen\" is the first successful official check that showed a price. The actual change happened between the previous row's last-confirmed date and that date.";
+    public const string TimingNoteText = "\"First seen\" is the earliest successful official check, on any of your computers, that showed a price; \"Last confirmed\" is the latest check that still showed it. Matching checks from different computers are combined into one row. The actual change happened between the previous row's last-confirmed date and that row's first-seen date.";
+
+    /// <summary>Phase 31B: a row whose period lies inside an earlier, different-price row (computers' checks disagreed).</summary>
+    public const string ConcurrentObservationNoteText = "Recorded while another computer's official checks still showed the earlier price; both observations are kept.";
     public const string ImportedOnlyDetailText = "Imported history";
 
     public static string FormatAmount(decimal amount) => amount.ToString("C2", UsCulture);
@@ -147,6 +150,11 @@ public static class PriceHistoryPresentation
         if (entry.IsReappearanceAtSamePrice)
         {
             return "Published again after being retired.";
+        }
+
+        if (entry.OverlapsEarlierPeriod)
+        {
+            return ConcurrentObservationNoteText;
         }
 
         if (change.KindChanged)

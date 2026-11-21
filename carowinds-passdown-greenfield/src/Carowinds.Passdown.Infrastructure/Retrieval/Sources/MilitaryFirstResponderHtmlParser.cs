@@ -59,6 +59,58 @@ internal static class MilitaryFirstResponderHtmlParser
         return cards;
     }
 
+    /// <summary>Generous cap for the last current-layout card (image srcsets put ~26 KB before its price on the live page).</summary>
+    private const int MaxCurrentLayoutFragmentLength = 120_000;
+
+    /// <summary>
+    /// Phase 31B: parses the whole page in either layout. The official page moved to the shared
+    /// <c>productv2-card</c> component in November 2026; the original layout is still understood.
+    /// Current-layout cards keep the established identity — the accesso keyword
+    /// (<c>MilitaryWizard</c>, <c>FallMilitaryGoldSP2027</c>), never the card's CMS id — so existing
+    /// catalog rows, overrides and price history continue unchanged. One unreadable current-layout card
+    /// is isolated (its keyword reported) rather than failing the page; a malformed original-layout card
+    /// still throws <see cref="FormatException"/> as before.
+    /// </summary>
+    public static MilitaryPageParseResult ParsePage(string html)
+    {
+        ArgumentNullException.ThrowIfNull(html);
+
+        var cards = new List<ParsedProductCard>(Parse(html));
+        var unreadableKeywords = new List<string>();
+        var unidentifiedUnreadable = 0;
+
+        var index = html.IndexOf(ProductCardHtmlParser.CardMarker, StringComparison.Ordinal);
+        while (index >= 0)
+        {
+            var nextIndex = html.IndexOf(ProductCardHtmlParser.CardMarker, index + ProductCardHtmlParser.CardMarker.Length, StringComparison.Ordinal);
+            var fragmentEnd = nextIndex >= 0 ? nextIndex : Math.Min(html.Length, index + MaxCurrentLayoutFragmentLength);
+            var fragment = html[index..fragmentEnd];
+
+            var card = ProductCardHtmlParser.TryParseCard(fragment);
+            var keyword = card?.AccessoKeyword ?? ProductCardHtmlParser.ExtractAttributeValue(fragment, AccessoKeywordAttribute);
+            if (card is not null)
+            {
+                cards.Add(card with { SanityProductId = null });
+            }
+            else if (keyword is not null)
+            {
+                unreadableKeywords.Add(keyword);
+            }
+            else
+            {
+                unidentifiedUnreadable++;
+            }
+
+            index = nextIndex;
+        }
+
+        return new MilitaryPageParseResult(
+            cards,
+            unreadableKeywords.Distinct(StringComparer.Ordinal).ToList(),
+            unidentifiedUnreadable,
+            HasPurchaseMarkup: html.Contains(AccessoKeywordAttribute + "=\"", StringComparison.Ordinal));
+    }
+
     private static ParsedProductCard ParseCard(string fragment)
     {
         var displayName = ExtractElementText(fragment, CardMarker);
@@ -109,3 +161,14 @@ internal static class MilitaryFirstResponderHtmlParser
         return text.Length == 0 ? null : text;
     }
 }
+
+/// <summary>
+/// Phase 31B: one parse of the official Military &amp; First Responder page.
+/// <see cref="HasPurchaseMarkup"/> is true when the page carries any official Buy Now keyword at all —
+/// so "no readable cards" on such a page is a layout change, never evidence that the offers are gone.
+/// </summary>
+internal sealed record MilitaryPageParseResult(
+    IReadOnlyList<ParsedProductCard> Cards,
+    IReadOnlyList<string> UnreadableCardKeywords,
+    int UnidentifiedUnreadableCardCount,
+    bool HasPurchaseMarkup);

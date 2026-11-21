@@ -28,7 +28,15 @@ internal sealed record OfferCard(
     string? DescriptionText,
     IReadOnlyList<string> BenefitLabels,
     IReadOnlyList<string> Disclosures,
-    IReadOnlyList<OfferCardOption> Options);
+    IReadOnlyList<OfferCardOption> Options)
+{
+    /// <summary>
+    /// Phase 31B: the card's fine print (its <c>disclaimer</c> blocks and <c>disclaimerModal</c>
+    /// paragraphs), one entry per paragraph. The modal is often shared by several cards; a footnoted
+    /// paragraph ("^Purchase a Season Pass…") only applies to a card that references the marker.
+    /// </summary>
+    public IReadOnlyList<string> FinePrintBlocks { get; init; } = [];
+}
 
 /// <summary>A page-level campaign statement with a date, e.g. "Hurry! Black Friday Deal Ends 11/27".</summary>
 internal sealed record CampaignStatement(string CampaignPhrase, OfficialDateStatement End);
@@ -62,10 +70,24 @@ internal static partial class OfficialOfferPageParser
                 DescriptionText: NextFlightPayload.GetBlockText(obj, "description"),
                 BenefitLabels: ReadLabels(obj, "featuredBenefits", "guestFacingLabel"),
                 Disclosures: NextFlightPayload.GetBlockText(obj, "taxesAndFeesDisclosure") is { } disclosure ? [disclosure] : [],
-                Options: ReadOptions(obj)));
+                Options: ReadOptions(obj))
+            {
+                FinePrintBlocks = ReadFinePrint(obj),
+            });
         }
 
         return cards;
+    }
+
+    private static IReadOnlyList<string> ReadFinePrint(JsonElement obj)
+    {
+        var blocks = new List<string>(NextFlightPayload.GetBlockParagraphs(obj, "disclaimer"));
+        if (obj.TryGetProperty("disclaimerModal", out var modal) && modal.ValueKind == JsonValueKind.Object)
+        {
+            blocks.AddRange(NextFlightPayload.GetBlockParagraphs(modal, "description"));
+        }
+
+        return blocks;
     }
 
     private static IReadOnlyList<string> ReadLabels(JsonElement obj, string arrayProperty, string labelProperty)

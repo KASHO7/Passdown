@@ -890,7 +890,11 @@ public sealed class PersonalSyncService(
 
         var localHash = localConfiguration is null ? null : SyncContentHash.ComputeMonthlyErtHash(MonthlyErtSyncPayload.FromDomain(localConfiguration));
 
-        var decision = SyncReconciliation.Decide(deviceId, envelope, localConfiguration is not null, localHash, state, remoteHash);
+        // Phase 31B: the same rides in a different order (or a different edit time) is agreement, not a conflict.
+        var localSemanticHash = localConfiguration is null ? null : SyncContentHash.ComputeMonthlyErtSemanticHash(MonthlyErtSyncPayload.FromDomain(localConfiguration));
+        var remoteSemanticHash = remotePayload is null ? null : SyncContentHash.ComputeMonthlyErtSemanticHash(remotePayload);
+
+        var decision = SyncReconciliation.Decide(deviceId, envelope, localConfiguration is not null, localHash, state, remoteHash, localSemanticHash, remoteSemanticHash);
 
         switch (decision)
         {
@@ -914,23 +918,44 @@ public sealed class PersonalSyncService(
 
             case SyncImportDecision.Converged:
             {
+                // Phase 31B: both devices agree (possibly listing the same rides in a different order). An
+                // unresolved conflict recorded for this entity is cleared only when it is moot — the same
+                // remote device has since moved to agreeing content, or the recorded conflicting content
+                // itself means the same as local (e.g. one detected before order-independent comparison).
+                // A conflict with a different device's still-different content is preserved untouched.
+                var existingConflict = await conflictRepository.GetAsync(SyncEntityType.MonthlyErt, entityId, cancellationToken).ConfigureAwait(false);
+                var conflictIsMoot = existingConflict is null
+                    || existingConflict.RemoteDeviceId == envelope.DeviceId
+                    || IsSemanticallySameAsLocal(existingConflict, localSemanticHash, json => SyncContentHash.ComputeMonthlyErtSemanticHash(MonthlyErtSyncPayloadSerializer.Deserialize(json)));
                 var baseRevision = state?.LocalRevision ?? 1;
-                await stateRepository.UpsertAsync(
-                    (state ?? SyncEntityState.CreateNew(SyncEntityType.MonthlyErt, entityId, now)) with
+                var converged = (state ?? SyncEntityState.CreateNew(SyncEntityType.MonthlyErt, entityId, now)) with
+                {
+                    LocalRevision = baseRevision,
+                    SyncedRevision = baseRevision,
+                    // The local bytes are the agreed baseline, so this device's own ride order is never re-exported or replaced.
+                    SyncedContentHash = localHash ?? remoteHash,
+                    LastRemoteDeviceId = envelope.DeviceId,
+                    LastRemoteRevision = envelope.Revision,
+                    UpdatedAtUtc = now,
+                };
+                if (conflictIsMoot)
+                {
+                    converged = converged with
                     {
-                        LocalRevision = baseRevision,
-                        SyncedRevision = baseRevision,
-                        SyncedContentHash = remoteHash,
-                        LastRemoteDeviceId = envelope.DeviceId,
-                        LastRemoteRevision = envelope.Revision,
                         ConflictState = SyncConflictState.None,
                         ConflictRemoteDeviceId = null,
                         ConflictRemoteRevision = null,
                         ConflictRemoteContentHash = null,
                         ConflictDetectedAtUtc = null,
-                        UpdatedAtUtc = now,
-                    },
-                    unitOfWork, cancellationToken).ConfigureAwait(false);
+                    };
+                }
+
+                await stateRepository.UpsertAsync(converged, unitOfWork, cancellationToken).ConfigureAwait(false);
+                if (existingConflict is not null && conflictIsMoot)
+                {
+                    await conflictRepository.DeleteAsync(SyncEntityType.MonthlyErt, entityId, unitOfWork, cancellationToken).ConfigureAwait(false);
+                }
+
                 counters.Unchanged++;
                 break;
             }
@@ -1175,7 +1200,11 @@ public sealed class PersonalSyncService(
 
         var localHash = localOverride is null ? null : SyncContentHash.ComputeErtDateOverrideHash(ErtDateOverrideSyncPayload.FromDomain(localOverride));
 
-        var decision = SyncReconciliation.Decide(deviceId, envelope, localOverride is not null, localHash, state, remoteHash);
+        // Phase 31B: see ProcessMonthlyErtEnvelopeAsync — order-independent ride comparison.
+        var localSemanticHash = localOverride is null ? null : SyncContentHash.ComputeErtDateOverrideSemanticHash(ErtDateOverrideSyncPayload.FromDomain(localOverride));
+        var remoteSemanticHash = remotePayload is null ? null : SyncContentHash.ComputeErtDateOverrideSemanticHash(remotePayload);
+
+        var decision = SyncReconciliation.Decide(deviceId, envelope, localOverride is not null, localHash, state, remoteHash, localSemanticHash, remoteSemanticHash);
 
         switch (decision)
         {
@@ -1199,23 +1228,44 @@ public sealed class PersonalSyncService(
 
             case SyncImportDecision.Converged:
             {
+                // Phase 31B: both devices agree (possibly listing the same rides in a different order). An
+                // unresolved conflict recorded for this entity is cleared only when it is moot — the same
+                // remote device has since moved to agreeing content, or the recorded conflicting content
+                // itself means the same as local (e.g. one detected before order-independent comparison).
+                // A conflict with a different device's still-different content is preserved untouched.
+                var existingConflict = await conflictRepository.GetAsync(SyncEntityType.ErtDateOverride, entityId, cancellationToken).ConfigureAwait(false);
+                var conflictIsMoot = existingConflict is null
+                    || existingConflict.RemoteDeviceId == envelope.DeviceId
+                    || IsSemanticallySameAsLocal(existingConflict, localSemanticHash, json => SyncContentHash.ComputeErtDateOverrideSemanticHash(ErtDateOverrideSyncPayloadSerializer.Deserialize(json)));
                 var baseRevision = state?.LocalRevision ?? 1;
-                await stateRepository.UpsertAsync(
-                    (state ?? SyncEntityState.CreateNew(SyncEntityType.ErtDateOverride, entityId, now)) with
+                var converged = (state ?? SyncEntityState.CreateNew(SyncEntityType.ErtDateOverride, entityId, now)) with
+                {
+                    LocalRevision = baseRevision,
+                    SyncedRevision = baseRevision,
+                    // The local bytes are the agreed baseline, so this device's own ride order is never re-exported or replaced.
+                    SyncedContentHash = localHash ?? remoteHash,
+                    LastRemoteDeviceId = envelope.DeviceId,
+                    LastRemoteRevision = envelope.Revision,
+                    UpdatedAtUtc = now,
+                };
+                if (conflictIsMoot)
+                {
+                    converged = converged with
                     {
-                        LocalRevision = baseRevision,
-                        SyncedRevision = baseRevision,
-                        SyncedContentHash = remoteHash,
-                        LastRemoteDeviceId = envelope.DeviceId,
-                        LastRemoteRevision = envelope.Revision,
                         ConflictState = SyncConflictState.None,
                         ConflictRemoteDeviceId = null,
                         ConflictRemoteRevision = null,
                         ConflictRemoteContentHash = null,
                         ConflictDetectedAtUtc = null,
-                        UpdatedAtUtc = now,
-                    },
-                    unitOfWork, cancellationToken).ConfigureAwait(false);
+                    };
+                }
+
+                await stateRepository.UpsertAsync(converged, unitOfWork, cancellationToken).ConfigureAwait(false);
+                if (existingConflict is not null && conflictIsMoot)
+                {
+                    await conflictRepository.DeleteAsync(SyncEntityType.ErtDateOverride, entityId, unitOfWork, cancellationToken).ConfigureAwait(false);
+                }
+
                 counters.Unchanged++;
                 break;
             }
@@ -1911,6 +1961,24 @@ public sealed class PersonalSyncService(
     }
 
     // ----- Conflict persistence (shared by drafts and notes, Phase 16D §2/§10) -----
+
+    /// <summary>Phase 31B: whether a recorded (non-deletion) ERT conflict's remote content means the same as the local content.</summary>
+    private static bool IsSemanticallySameAsLocal(SyncConflictRecord conflict, string? localSemanticHash, Func<string, string> semanticHashOf)
+    {
+        if (localSemanticHash is null || conflict.RemoteIsDeleted || conflict.RemotePayloadJson is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            return string.Equals(semanticHashOf(conflict.RemotePayloadJson), localSemanticHash, StringComparison.Ordinal);
+        }
+        catch (Exception ex) when (SyncPayloadValidator.IsPayloadDecodeFailure(ex) || ex is InvalidOperationException)
+        {
+            return false;
+        }
+    }
 
     /// <summary>
     /// Persists a newly-detected conflict's full remote envelope (so 16D resolution can act on it after

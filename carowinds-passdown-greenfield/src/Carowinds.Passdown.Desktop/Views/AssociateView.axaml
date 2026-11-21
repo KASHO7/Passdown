@@ -17,6 +17,22 @@
     <converters:ParkHoursBadgeBrushConverter x:Key="BadgeBrushConverter" />
   </UserControl.Resources>
 
+  <!-- Phase 31B: one Important Details & Deadlines line (used by the product rows' ItemsControl). -->
+  <UserControl.DataTemplates>
+    <DataTemplate DataType="presentation:ProductDetailLinePresentation" x:DataType="presentation:ProductDetailLinePresentation">
+      <StackPanel Spacing="0" Margin="0,2" AutomationProperties.Name="{Binding AutomationName}" ToolTip.Tip="{Binding StatusReason}">
+        <TextBlock FontSize="12" TextWrapping="Wrap">
+          <Run Text="{Binding KindLabel}" FontWeight="SemiBold" />
+          <Run Text=" · " />
+          <Run Text="{Binding StatusLabel}" FontStyle="Italic" />
+        </TextBlock>
+        <TextBlock Text="{Binding Text}" FontSize="12" TextWrapping="Wrap" Classes.muted="{Binding IsNotCurrent}" />
+        <TextBlock Text="{Binding DeadlineText}" IsVisible="{Binding HasDeadline}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" />
+        <TextBlock Text="{Binding StatusReason}" IsVisible="{Binding IsNotCurrent}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+      </StackPanel>
+    </DataTemplate>
+  </UserControl.DataTemplates>
+
   <UserControl.Styles>
     <!-- Associate deltas on the shared styles (Themes/PassdownStyles.axaml, Phase 22A): compact,
          single-line labels and slightly smaller inline validation for the dense editor grid. -->
@@ -1632,6 +1648,35 @@
                                           Classes="linkAction"
                                           FontSize="12" HorizontalAlignment="Left"
                                           AutomationProperties.Name="{Binding DisplayName, StringFormat='View price history for {0}'}" />
+                                  <!-- Phase 31B: official Important Details & Deadlines (display only; never printed).
+                                       Lines use the view-level ProductDetailLinePresentation template, so this row
+                                       template contains no nested DataTemplate. -->
+                                  <Expander IsVisible="{Binding HasImportantDetails}" Padding="4,2" Margin="0,2,0,0"
+                                            AutomationProperties.Name="{Binding DisplayName, StringFormat='Important details and deadlines for {0}'}">
+                                    <Expander.Header>
+                                      <StackPanel Spacing="0">
+                                        <TextBlock Text="{Binding ImportantDetails.Header}" FontSize="12" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding ImportantDetails.SummaryText}" IsVisible="{Binding ImportantDetails.HasSummary}"
+                                                   Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                                      </StackPanel>
+                                    </Expander.Header>
+                                    <StackPanel Spacing="4">
+                                      <ItemsControl ItemsSource="{Binding ImportantDetails.Lines}" />
+                                      <TextBlock Text="{Binding ImportantDetails.DiscrepanciesText}" IsVisible="{Binding ImportantDetails.HasDiscrepancies}"
+                                                 Classes="fieldWarning" FontSize="12" TextWrapping="Wrap" />
+                                      <TextBlock Text="{Binding ImportantDetails.FreshnessWarning}" IsVisible="{Binding ImportantDetails.HasFreshnessWarning}"
+                                                 Classes="fieldWarning" FontSize="12" TextWrapping="Wrap" />
+                                      <Expander Header="Earlier official terms" IsVisible="{Binding ImportantDetails.HasPreviousTerms}" Padding="4,2"
+                                                AutomationProperties.Name="{Binding DisplayName, StringFormat='Earlier official terms for {0}'}">
+                                        <TextBlock Text="{Binding ImportantDetails.PreviousTermsText}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+                                      </Expander>
+                                      <TextBlock Text="{Binding ImportantDetails.ProvenanceText}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+                                      <Button Content="{Binding ImportantDetailsSourceLink.Label}" Command="{Binding ImportantDetailsSourceLink.OpenCommand}"
+                                              IsVisible="{Binding HasImportantDetailsSourceLink}" Classes="linkAction" FontSize="12"
+                                              HorizontalAlignment="Left" ToolTip.Tip="{Binding ImportantDetailsSourceLink.HelpText}"
+                                              AutomationProperties.Name="{Binding DisplayName, StringFormat='Open the official page for {0}'}" />
+                                    </StackPanel>
+                                  </Expander>
                                 </StackPanel>
 
                                 <TextBlock Grid.Column="2" Text="{Binding OfficialPriceText}" Classes="officialPrice"

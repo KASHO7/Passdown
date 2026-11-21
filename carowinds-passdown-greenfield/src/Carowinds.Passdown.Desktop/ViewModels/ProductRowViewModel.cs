@@ -1,4 +1,6 @@
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.ProductDetails;
+using Carowinds.Passdown.Desktop.Services;
 using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Domain.Catalog;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -139,10 +141,39 @@ public partial class ProductRowViewModel : ObservableObject
 
     public bool HasOverridePrintNote => OverridePrintNoteText is not null;
 
+    /// <summary>The composed product this row was built from (read-only; never mutated).</summary>
+    internal AssociateProduct Product { get; }
+
+    /// <summary>
+    /// Phase 31B: the row's expandable "Important Details &amp; Deadlines" (official terms, purchase and
+    /// redemption deadlines, eligibility, fees), or null when no official details match this product.
+    /// Display only — never printed, never part of the draft.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasImportantDetails))]
+    public partial ProductImportantDetailsPresentation? ImportantDetails { get; private set; }
+
+    public bool HasImportantDetails => ImportantDetails is not null;
+
+    /// <summary>Phase 31B: the allowlisted official page the details were verified on.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasImportantDetailsSourceLink))]
+    public partial OfficialSourceLinkViewModel? ImportantDetailsSourceLink { get; private set; }
+
+    public bool HasImportantDetailsSourceLink => ImportantDetailsSourceLink is not null;
+
+    /// <summary>Phase 31B: applies (or clears) the official details for this row; changes nothing else.</summary>
+    internal void ApplyImportantDetails(ProductImportantDetails? details, IExternalLinkLauncher? linkLauncher)
+    {
+        ImportantDetails = details is null ? null : ProductImportantDetailsPresentation.Build(details);
+        ImportantDetailsSourceLink = details is null ? null : OfficialSourceLinkViewModel.TryCreate(details.Source.PrimarySourceUrl, linkLauncher);
+    }
+
     public ProductRowViewModel(AssociateProduct product, Action notifyChanged, Action<string>? openPriceHistory = null)
     {
         ArgumentNullException.ThrowIfNull(product);
         ArgumentNullException.ThrowIfNull(notifyChanged);
+        Product = product;
         _notifyChanged = notifyChanged;
         _openPriceHistory = openPriceHistory;
         PriceHistoryProductKey = product.PriceHistoryProductKey;

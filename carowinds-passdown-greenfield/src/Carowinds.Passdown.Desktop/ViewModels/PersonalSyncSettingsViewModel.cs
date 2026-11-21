@@ -101,6 +101,7 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
     [NotifyCanExecuteChangedFor(nameof(KeepLocalCommand))]
     [NotifyCanExecuteChangedFor(nameof(UseRemoteCommand))]
     [NotifyCanExecuteChangedFor(nameof(AcceptDeletionCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveEditedErtRidesCommand))]
     public partial ConflictDetailPresentation? SelectedConflictDetail { get; set; }
 
     [ObservableProperty]
@@ -307,6 +308,14 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
                     SelectedConflictDetail = detail is null ? null : ConflictDetailPresentation.ForDraft(summary, detail);
                 }
             }
+            else if (summary.EntityType is SyncEntityType.MonthlyErt or SyncEntityType.ErtDateOverride)
+            {
+                // Phase 31B: ERT conflicts open with a side-by-side comparison and an editable ride list.
+                var detail = await _conflictService.GetErtConflictDetailAsync(summary.EntityType, summary.EntityId).ConfigureAwait(true);
+                SelectedConflictDetail = detail is null ? null : ConflictDetailPresentation.ForErt(summary, detail);
+                EditedErtRidesText = detail is null ? null : string.Join(Environment.NewLine, detail.SuggestedMergedRides);
+                ErtBaseIsThisDevice = detail?.Local is not null;
+            }
             else if (SyncEntityIdentity.TryParseNoteId(summary.EntityId, out var noteId))
             {
                 var detail = await _conflictService.GetNoteConflictDetailAsync(noteId).ConfigureAwait(true);
@@ -326,6 +335,45 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         SelectedConflictDetail = null;
         ConflictActionMessage = null;
     }
+
+    /// <summary>Phase 31B: the editable final ERT ride list for the open conflict, one ride per line.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SaveEditedErtRidesCommand))]
+    public partial string? EditedErtRidesText { get; set; }
+
+    /// <summary>Phase 31B: keep this device's start time/state/note with the edited rides (else the other device's).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ErtBaseIsOtherDevice))]
+    public partial bool ErtBaseIsThisDevice { get; set; } = true;
+
+    public bool ErtBaseIsOtherDevice
+    {
+        get => !ErtBaseIsThisDevice;
+        set => ErtBaseIsThisDevice = !value;
+    }
+
+    /// <summary>Phase 31B: resets the editable list to this device's rides followed by the other device's additional rides.</summary>
+    [RelayCommand]
+    private void UseMergedErtRides()
+    {
+        if (SelectedConflictDetail?.Ert is { } ert)
+        {
+            EditedErtRidesText = string.Join(Environment.NewLine, ert.SuggestedMergedRides);
+        }
+    }
+
+    /// <summary>Phase 31B: "Save Edited Rides" — the edited list becomes the resolved Early Ride Time and syncs normally.</summary>
+    [RelayCommand(CanExecute = nameof(CanSaveEditedErtRides))]
+    private Task SaveEditedErtRidesAsync()
+    {
+        var rides = (EditedErtRidesText ?? string.Empty)
+            .Split(['\r', '\n', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+        var resolution = new ErtConflictEditedResolution(ErtBaseIsThisDevice ? ErtResolutionBase.ThisDevice : ErtResolutionBase.OtherDevice, rides);
+        return ResolveSelectedConflictAsync((type, id, token) => _conflictService.ResolveWithEditedErtRidesAsync(type, id, resolution, token));
+    }
+
+    private bool CanSaveEditedErtRides() => SelectedConflictDetail is { IsErtConflict: true, CanEditErtRides: true };
 
     /// <summary>"Keep This Device" (spec §7/§15).</summary>
     [RelayCommand(CanExecute = nameof(HasSelectedConflict))]

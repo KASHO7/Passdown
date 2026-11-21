@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
+             xmlns:presentation="using:Carowinds.Passdown.Desktop.Presentation"
              xmlns:updates="using:Carowinds.Passdown.Application.Updates"
              xmlns:converters="using:Carowinds.Passdown.Desktop.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -264,6 +265,29 @@
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
+
+              <!-- Phase 31B: Early Ride Time conflicts can be merged/edited into a final ride list. -->
+              <StackPanel Spacing="6" IsVisible="{Binding SelectedConflictDetail.CanEditErtRides}">
+                <TextBlock Text="Merge or edit rides" FontWeight="SemiBold" />
+                <TextBlock Text="{x:Static presentation:ConflictDetailPresentation.ErtEditHelpText}" Classes="muted" TextWrapping="Wrap" />
+                <TextBox Text="{Binding EditedErtRidesText}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80"
+                         AutomationProperties.Name="Final Early Ride Time rides, one per line" />
+                <StackPanel Spacing="2" IsVisible="{Binding SelectedConflictDetail.ShowsErtBaseChoice}">
+                  <TextBlock Text="Start time, scheduled state and note differ. Keep them from:" Classes="muted" TextWrapping="Wrap" />
+                  <RadioButton GroupName="ErtBase" Content="This Device" IsChecked="{Binding ErtBaseIsThisDevice}"
+                               AutomationProperties.Name="Keep start time and note from this device" />
+                  <RadioButton GroupName="ErtBase" Content="Other Device" IsChecked="{Binding ErtBaseIsOtherDevice}"
+                               AutomationProperties.Name="Keep start time and note from the other device" />
+                </StackPanel>
+                <WrapPanel Orientation="Horizontal">
+                  <Button Content="Save Edited Rides" Classes="secondaryAction" Margin="0,0,10,4"
+                          Command="{Binding SaveEditedErtRidesCommand}"
+                          AutomationProperties.Name="Save edited Early Ride Time rides" />
+                  <Button Content="Reset to Merged List" Classes="textAction" Margin="0,0,10,4"
+                          Command="{Binding UseMergedErtRidesCommand}"
+                          AutomationProperties.Name="Reset rides to the merged list" />
+                </WrapPanel>
+              </StackPanel>
 
               <TextBlock Text="{Binding ConflictActionMessage}" Classes="muted" TextWrapping="Wrap"
                          IsVisible="{Binding ConflictActionMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"

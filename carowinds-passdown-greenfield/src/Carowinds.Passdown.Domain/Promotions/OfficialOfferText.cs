@@ -125,6 +125,29 @@ public static partial class OfficialOfferText
     }
 
     /// <summary>
+    /// Phase 31B: the last day to use/redeem something, stated as "Use by 1/3/27", "Redeem by …", "valid
+    /// on any public operating day through 01/03/2027", "to be used … through …". Redemption, never
+    /// purchase — a "Book/Buy by" date is never returned here.
+    /// </summary>
+    public static OfficialDateStatement? FindRedemptionDeadline(string? text, DateOnly observedOn)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        if (FindUseBy(text, observedOn) is { } useBy)
+        {
+            return useBy;
+        }
+
+        var match = RedemptionThroughRegex().Match(text);
+        return match.Success && TryParseDate(match.Groups["date"].Value, observedOn, out var date, out var inferred)
+            ? new OfficialDateStatement(date, Sentence(text, match.Index, match.Length), DeadlineSource.OfferTerms, inferred)
+            : null;
+    }
+
+    /// <summary>
     /// Parses "November 30, 2026", "Nov 30, 2026", "11/30/2026", "11/30/26", or a year-less "11/27" /
     /// "November 27". A year-less date resolves to its next occurrence on or after
     /// <paramref name="observedOn"/> (the day the official page said it) and is flagged inferred.
@@ -211,4 +234,7 @@ public static partial class OfficialOfferText
 
     [GeneratedRegex(@"\b(?:Use|Redeem|Valid)\s+(?:by|through|thru|until)\s+(?<date>" + DatePattern + ")", RegexOptions.IgnoreCase)]
     private static partial Regex UseByRegex();
+
+    [GeneratedRegex(@"\b(?:used|use|valid|redeemable|redeemed)\b[^.\n]{0,80}?\b(?:through|thru|until|by)\s+(?<date>" + DatePattern + ")", RegexOptions.IgnoreCase)]
+    private static partial Regex RedemptionThroughRegex();
 }

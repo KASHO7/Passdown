@@ -7,6 +7,7 @@ using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Application.Refresh;
+using Carowinds.Passdown.Application.ProductDetails;
 using Carowinds.Passdown.Application.Seasons;
 using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Application.Time;
@@ -79,6 +80,8 @@ public partial class AssociateViewModel : ViewModelBase
     /// <summary>Phase 26: opens a validated official source page in the default browser (null in tests that do not supply one — no link is offered).</summary>
     private readonly IExternalLinkLauncher? _externalLinkLauncher;
     private readonly IOfficialDealsService? _dealsService;
+    private readonly IProductImportantDetailsService? _importantDetailsService;
+    private ProductImportantDetailsIndex _importantDetailsIndex = ProductImportantDetailsIndex.Empty;
     private int _dealsLoadGeneration;
     private readonly ILogger<AssociateViewModel>? _logger;
     private readonly TimeSpan _autosaveDebounce;
@@ -636,7 +639,8 @@ public partial class AssociateViewModel : ViewModelBase
         OfficialDataStatusViewModel? officialDataStatus = null,
         IUiDispatcher? uiDispatcher = null,
         IExternalLinkLauncher? externalLinkLauncher = null,
-        IOfficialDealsService? dealsService = null)
+        IOfficialDealsService? dealsService = null,
+        IProductImportantDetailsService? importantDetailsService = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -655,6 +659,7 @@ public partial class AssociateViewModel : ViewModelBase
         _uiDispatcher = uiDispatcher ?? new AvaloniaUiDispatcher();
         _externalLinkLauncher = externalLinkLauncher;
         _dealsService = dealsService;
+        _importantDetailsService = importantDetailsService;
         OfficialDataStatus = officialDataStatus;
 
         // "Today" in the park's own wall-clock time (spec §6.5/§6.6 use the same Eastern
@@ -1198,6 +1203,12 @@ public partial class AssociateViewModel : ViewModelBase
     /// <summary>Reads the cached official deals (never online) and applies them; a later load supersedes an earlier one.</summary>
     private void StartDealsLoad()
     {
+        if (_importantDetailsService is not null)
+        {
+            var detailsGeneration = ++_importantDetailsLoadGeneration;
+            PendingImportantDetailsLoad = LoadImportantDetailsAsync(detailsGeneration);
+        }
+
         if (_dealsService is null)
         {
             return;
@@ -1205,6 +1216,37 @@ public partial class AssociateViewModel : ViewModelBase
 
         var generation = ++_dealsLoadGeneration;
         PendingDealsLoad = LoadDealsAsync(generation);
+    }
+
+    private int _importantDetailsLoadGeneration;
+
+    /// <summary>Phase 31B: the in-flight (or most recent) Important Details load, so a test can await it.</summary>
+    public Task PendingImportantDetailsLoad { get; private set; } = Task.CompletedTask;
+
+    /// <summary>Phase 31B: reads the cached official product details (never online) and applies them to the current rows.</summary>
+    private async Task LoadImportantDetailsAsync(int generation)
+    {
+        ProductImportantDetailsIndex index;
+        try
+        {
+            index = await _importantDetailsService!.GetIndexAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogWarning(ex, "The cached official product details could not be read.");
+            index = ProductImportantDetailsIndex.Empty;
+        }
+
+        if (generation != _importantDetailsLoadGeneration)
+        {
+            return;
+        }
+
+        _importantDetailsIndex = index;
+        foreach (var row in ProductSections.SelectMany(section => section.Products))
+        {
+            row.ApplyImportantDetails(index.Find(row.Product), _externalLinkLauncher);
+        }
     }
 
     private async Task LoadDealsAsync(int generation)
@@ -2257,6 +2299,11 @@ public partial class AssociateViewModel : ViewModelBase
             }
 
             var rows = products.Select(product => new ProductRowViewModel(product, ScheduleAutosave, RequestPriceHistory)).ToList();
+            foreach (var row in rows)
+            {
+                row.ApplyImportantDetails(_importantDetailsIndex.Find(row.Product), _externalLinkLauncher);
+            }
+
             result.Add(new ProductCategorySectionViewModel(
                 ProductDisplaySectionDisplay.FriendlyName(section), status, rows, PassSourcePresentation.SourceNote(section, products),
                 OfficialSourceLinkViewModel.TryCreate(PassSourcePresentation.SourceUrl(section, products), _externalLinkLauncher)));

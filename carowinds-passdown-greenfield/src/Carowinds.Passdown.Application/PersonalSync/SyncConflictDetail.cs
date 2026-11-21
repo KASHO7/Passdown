@@ -202,4 +202,86 @@ public interface IPersonalSyncConflictResolutionService
 
     /// <summary>"Accept Deletion" (§15): the remote tombstone wins — the local record is deleted and the tombstone accepted. Refused when the conflict is not actually a remote deletion.</summary>
     Task<ConflictResolutionResult> ResolveAcceptDeletionAsync(SyncEntityType entityType, string entityId, CancellationToken cancellationToken = default);
+
+    /// <summary>Phase 31B: the side-by-side Early Ride Time comparison for a monthly or per-date ERT conflict (null when none exists).</summary>
+    Task<ErtConflictDetail?> GetErtConflictDetailAsync(SyncEntityType entityType, string entityId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<ErtConflictDetail?>(null);
+
+    /// <summary>
+    /// Phase 31B: "Merge or edit": the edited ride list (with the other ERT fields of the chosen side)
+    /// becomes the resolved canonical value — saved locally, exported as a new revision and synchronized
+    /// normally. The conflict record is removed only in the same transaction that saves the result, after
+    /// the export succeeded; any failure leaves the conflict and local data exactly as they were.
+    /// </summary>
+    Task<ConflictResolutionResult> ResolveWithEditedErtRidesAsync(
+        SyncEntityType entityType, string entityId, ErtConflictEditedResolution resolution, CancellationToken cancellationToken = default) =>
+        Task.FromResult(ConflictResolutionResult.WrongActionForConflict("Editing an Early Ride Time conflict is not available."));
+}
+
+/// <summary>Phase 31B: one side of an Early Ride Time conflict, as the user authored it.</summary>
+/// <param name="Note">The monthly note, or a date override's reason.</param>
+public sealed record ErtSelectionSnapshot(
+    Domain.Ert.ErtConfigurationState State,
+    TimeOnly? StartTime,
+    IReadOnlyList<string> Rides,
+    string? Note);
+
+/// <summary>Phase 31B: which side's start time, state and note an edited ERT resolution keeps.</summary>
+public enum ErtResolutionBase
+{
+    ThisDevice,
+    OtherDevice,
+}
+
+/// <summary>Phase 31B: the user's edited final ERT selection for a conflict.</summary>
+public sealed record ErtConflictEditedResolution(ErtResolutionBase BaseSide, IReadOnlyList<string> Rides);
+
+/// <summary>
+/// Phase 31B: a focused Early Ride Time conflict comparison. <see cref="Local"/> is null when this device
+/// considers the entity deleted; <see cref="Remote"/> is null for a remote deletion. Ride equality is
+/// order-independent (<see cref="Domain.Ert.ErtRideSelection"/>).
+/// </summary>
+public sealed record ErtConflictDetail(
+    SyncEntityType EntityType,
+    string EntityId,
+    ErtSelectionSnapshot? Local,
+    ErtSelectionSnapshot? Remote,
+    bool IsRemoteDeletion,
+    bool IsLocalDeletion,
+    Guid RemoteDeviceId,
+    DateTimeOffset RemoteModifiedUtc,
+    bool HasNewerRemoteActivity)
+{
+    public bool RidesDiffer => !Domain.Ert.ErtRideSelection.SameSelection(Local?.Rides, Remote?.Rides);
+
+    /// <summary>Start time, scheduled/no-ERT state or note differ (shown so an edit never hides them).</summary>
+    public bool OtherFieldsDiffer => Local is not null && Remote is not null &&
+        (Local.State != Remote.State || Local.StartTime != Remote.StartTime ||
+         !string.Equals(Local.Note?.Trim(), Remote.Note?.Trim(), StringComparison.Ordinal));
+
+    /// <summary>A starting point for "Merge or edit": this device's rides in its order, then the other device's additional rides.</summary>
+    public IReadOnlyList<string> SuggestedMergedRides => Domain.Ert.ErtRideSelection.Merge(Local?.Rides, Remote?.Rides);
+
+    public IReadOnlyList<ConflictFieldComparison> BuildFieldComparisons()
+    {
+        static string State(ErtSelectionSnapshot? s) => s is null ? "(deleted)" : s.State == Domain.Ert.ErtConfigurationState.NoErt ? "No Early Ride Time" : "Early Ride Time scheduled";
+        static string Time(ErtSelectionSnapshot? s) => s?.StartTime?.ToString("h:mm tt", System.Globalization.CultureInfo.GetCultureInfo("en-US")) ?? "—";
+        static string Rides(ErtSelectionSnapshot? s) => s is null || s.Rides.Count == 0 ? "—" : string.Join(", ", s.Rides);
+        static string Note(ErtSelectionSnapshot? s) => string.IsNullOrWhiteSpace(s?.Note) ? "—" : s!.Note!.Trim();
+
+        var rides = new ConflictFieldComparison("Rides", Rides(Local), Rides(Remote));
+        if (!RidesDiffer && rides.Differs)
+        {
+            // Same rides in another order: shown, but labeled so it never reads as a real difference.
+            rides = rides with { Label = "Rides (same rides, different order)" };
+        }
+
+        return
+        [
+            new ConflictFieldComparison("Early Ride Time", State(Local), State(Remote)),
+            new ConflictFieldComparison("Start time", Time(Local), Time(Remote)),
+            rides,
+            new ConflictFieldComparison(EntityType == SyncEntityType.ErtDateOverride ? "Reason" : "Note", Note(Local), Note(Remote)),
+        ];
+    }
 }

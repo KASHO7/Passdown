@@ -197,11 +197,18 @@ internal static partial class NextFlightPayload
     /// <summary>Plain text of a Sanity portable-text block array (paragraph text joined by spaces).</summary>
     public static string? GetBlockText(JsonElement element, string property)
     {
+        var paragraphs = GetBlockParagraphs(element, property);
+        return paragraphs.Count == 0 ? null : string.Join(" ", paragraphs);
+    }
+
+    /// <summary>Phase 31B: each paragraph of a Sanity portable-text block array, in order (blank ones skipped).</summary>
+    public static IReadOnlyList<string> GetBlockParagraphs(JsonElement element, string property)
+    {
         if (element.ValueKind != JsonValueKind.Object ||
             !element.TryGetProperty(property, out var blocks) ||
             blocks.ValueKind != JsonValueKind.Array)
         {
-            return null;
+            return [];
         }
 
         var paragraphs = new List<string>();
@@ -225,7 +232,7 @@ internal static partial class NextFlightPayload
             }
         }
 
-        return paragraphs.Count == 0 ? null : string.Join(" ", paragraphs);
+        return paragraphs;
     }
 
     [GeneratedRegex(@"self\.__next_f\.push\(\[1,""(?<chunk>(?:[^""\\]|\\.)*)""\]\)")]

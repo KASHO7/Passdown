@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.ProductDetails;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Seasons;
 using Carowinds.Passdown.Application.Time;
@@ -151,6 +152,8 @@ public sealed class PromotionsCatalogSource(IRetrievalHttpClient httpClient, ICl
         var promotions = new Dictionary<string, OfficialPromotion>(StringComparer.Ordinal);
         var unreadableOfferIds = new List<string>();
         var unconfirmedKeys = new List<CatalogProductKey>();
+        var details = new Dictionary<string, OfficialProductDetails>(StringComparer.Ordinal);
+        var unreadableDetailIds = new List<string>();
 
         foreach (var page in pages)
         {
@@ -197,6 +200,7 @@ public sealed class PromotionsCatalogSource(IRetrievalHttpClient httpClient, ICl
                     {
                         unreadableOfferIds.Add("offer:" + id);
                         unconfirmedKeys.Add(CatalogProductKey.FromOfficialId(Category, id));
+                        unreadableDetailIds.Add(OfficialProductDetailsReader.DetailsIdFor(OfficialProductChannel.Promotions, card));
                     }
 
                     continue;
@@ -204,6 +208,15 @@ public sealed class PromotionsCatalogSource(IRetrievalHttpClient httpClient, ICl
 
                 catalogCards.AddRange(OfficialOfferMapper.ToCatalogCards(card));
                 AddPromotion(promotions, OfficialOfferMapper.ToPromotion(card, page.Url, timeChecked, campaignStatements));
+
+                // Phase 31B: the same card's important details and deadlines (page campaign banners included).
+                var cardDetails = OfficialProductDetailsReader.FromCard(
+                    card, page.Url, timeChecked,
+                    campaignStatements.Select(c => new CampaignDeadline(c.CampaignPhrase, c.End)).ToList(),
+                    OfficialProductChannel.Promotions);
+                details[cardDetails.DetailsId] = details.TryGetValue(cardDetails.DetailsId, out var existingDetails)
+                    ? OfficialProductDetailsReader.MergeDuplicate(existingDetails, cardDetails)
+                    : cardDetails;
             }
         }
 
@@ -228,7 +241,16 @@ public sealed class PromotionsCatalogSource(IRetrievalHttpClient httpClient, ICl
                 RetrievalStrategy.Html,
                 requestedDate: null,
                 technicalDetail: warnings.Count == 0 ? null : string.Join(" ", warnings)),
-            new CatalogPayload(products) { UnconfirmedProductKeys = unconfirmedKeys, Deals = deals });
+            new CatalogPayload(products)
+            {
+                UnconfirmedProductKeys = unconfirmedKeys,
+                Deals = deals,
+                ProductDetails = new OfficialProductDetailsObservation(OfficialProductChannel.Promotions, details.Values.ToList())
+                {
+                    UnreadableDetailIds = unreadableDetailIds.Distinct(StringComparer.Ordinal).ToList(),
+                    UnreachablePageUrls = unreachable,
+                },
+            });
     }
 
     private static IEnumerable<Uri> DiscoverCampaignPages(string offersPageBody)

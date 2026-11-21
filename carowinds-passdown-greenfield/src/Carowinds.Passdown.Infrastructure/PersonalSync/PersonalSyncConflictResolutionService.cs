@@ -624,6 +624,183 @@ public sealed class PersonalSyncConflictResolutionService(
         return ConflictResolutionResult.Resolved();
     }
 
+    /// <inheritdoc />
+    public async Task<ErtConflictDetail?> GetErtConflictDetailAsync(SyncEntityType entityType, string entityId, CancellationToken cancellationToken = default)
+    {
+        if (entityType is not (SyncEntityType.MonthlyErt or SyncEntityType.ErtDateOverride))
+        {
+            return null;
+        }
+
+        var conflict = await conflictRepository.GetAsync(entityType, entityId, cancellationToken).ConfigureAwait(false);
+        if (conflict is null)
+        {
+            return null;
+        }
+
+        var (local, remote) = await LoadErtSidesAsync(conflict, cancellationToken).ConfigureAwait(false);
+        return new ErtConflictDetail(
+            entityType,
+            entityId,
+            local,
+            remote,
+            conflict.RemoteIsDeleted,
+            local is null,
+            conflict.RemoteDeviceId,
+            conflict.RemoteModifiedUtc,
+            conflict.NewerRemoteDeviceId is not null);
+    }
+
+    /// <inheritdoc />
+    public async Task<ConflictResolutionResult> ResolveWithEditedErtRidesAsync(
+        SyncEntityType entityType, string entityId, ErtConflictEditedResolution resolution, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(resolution);
+        if (entityType is not (SyncEntityType.MonthlyErt or SyncEntityType.ErtDateOverride))
+        {
+            return ConflictResolutionResult.WrongActionForConflict("Only Early Ride Time conflicts can be edited.");
+        }
+
+        var conflict = await conflictRepository.GetAsync(entityType, entityId, cancellationToken).ConfigureAwait(false);
+        if (conflict is null)
+        {
+            return ConflictResolutionResult.NoConflictFound();
+        }
+
+        var (local, remote) = await LoadErtSidesAsync(conflict, cancellationToken).ConfigureAwait(false);
+        var baseSide = resolution.BaseSide == ErtResolutionBase.ThisDevice ? local : remote;
+        if (baseSide is null)
+        {
+            return ConflictResolutionResult.WrongActionForConflict(resolution.BaseSide == ErtResolutionBase.ThisDevice
+                ? "This device no longer has this Early Ride Time; choose the other device's settings as the base."
+                : "The other device deleted this Early Ride Time; choose this device's settings as the base.");
+        }
+
+        var rides = Domain.Ert.ErtRideSelection.Distinct(resolution.Rides);
+        if (baseSide.State == Domain.Ert.ErtConfigurationState.NoErt && rides.Count > 0)
+        {
+            return ConflictResolutionResult.WrongActionForConflict(
+                "The chosen side has no Early Ride Time scheduled, so rides can't be added. Choose the side with Early Ride Time scheduled as the base.");
+        }
+
+        var snapshot = await settingsService.LoadAsync(cancellationToken).ConfigureAwait(false);
+        if (snapshot.Status != PersonalSyncStatus.Ready)
+        {
+            return ConflictResolutionResult.ExportUnavailable();
+        }
+
+        var root = snapshot.SyncRootPath!;
+        var deviceId = deviceIdProvider.GetOrCreateDeviceId();
+        var now = clock.UtcNow;
+        var state = await stateRepository.GetAsync(entityType, entityId, cancellationToken).ConfigureAwait(false);
+        var newRevision = (state?.LocalRevision ?? 1) + 1;
+
+        string newHash;
+        SyncEnvelope envelope;
+        string path;
+        Func<IUnitOfWork, Task> saveLocal;
+        if (entityType == SyncEntityType.MonthlyErt)
+        {
+            SyncEntityIdentity.TryParseMonthlyErtId(entityId, out var year, out var month);
+            var configuration = new MonthlyErtConfiguration(year, month, baseSide.State, baseSide.StartTime, rides, baseSide.Note, now);
+            var payload = MonthlyErtSyncPayload.FromDomain(configuration);
+            newHash = SyncContentHash.ComputeMonthlyErtHash(payload);
+            envelope = ErtEnvelope(entityType, entityId, deviceId, newRevision, now, MonthlyErtSyncPayload.CurrentSchemaVersion,
+                JsonSerializer.SerializeToElement(payload, MonthlyErtSyncPayloadSerializer.Options));
+            path = SyncPathService.GetMonthlyErtFilePath(root, year, month);
+            saveLocal = unitOfWork => monthlyErtRepository.UpsertAsync(configuration, unitOfWork, cancellationToken);
+        }
+        else
+        {
+            SyncEntityIdentity.TryParseErtDateOverrideId(entityId, out var operatingDate);
+            var dateOverride = new ErtDateOverride(operatingDate, baseSide.State, baseSide.StartTime, rides, baseSide.Note, now);
+            var payload = ErtDateOverrideSyncPayload.FromDomain(dateOverride);
+            newHash = SyncContentHash.ComputeErtDateOverrideHash(payload);
+            envelope = ErtEnvelope(entityType, entityId, deviceId, newRevision, now, ErtDateOverrideSyncPayload.CurrentSchemaVersion,
+                JsonSerializer.SerializeToElement(payload, ErtDateOverrideSyncPayloadSerializer.Options));
+            path = SyncPathService.GetErtDateOverrideFilePath(root, operatingDate);
+            saveLocal = unitOfWork => ertDateOverrideRepository.UpsertAsync(dateOverride, unitOfWork, cancellationToken);
+        }
+
+        // Export first: if the folder is unavailable nothing changes. If the app stops after the export but
+        // before the commit, the conflict and local data are still exactly as before and the same edit can
+        // simply be applied again (our own exported file is ignored on the next scan).
+        if (!await TryExportAsync(path, envelope, cancellationToken).ConfigureAwait(false))
+        {
+            return ConflictResolutionResult.ExportUnavailable();
+        }
+
+        await using (var unitOfWork = await unitOfWorkFactory.BeginAsync(cancellationToken).ConfigureAwait(false))
+        {
+            await saveLocal(unitOfWork).ConfigureAwait(false);
+            await stateRepository.UpsertAsync(
+                (state ?? SyncEntityState.CreateNew(entityType, entityId, now)) with
+                {
+                    LocalRevision = newRevision,
+                    SyncedRevision = newRevision,
+                    SyncedContentHash = newHash,
+                    LastRemoteDeviceId = conflict.RemoteDeviceId,
+                    LastRemoteRevision = conflict.RemoteRevision,
+                    ConflictState = SyncConflictState.None,
+                    ConflictRemoteDeviceId = null,
+                    ConflictRemoteRevision = null,
+                    ConflictRemoteContentHash = null,
+                    ConflictDetectedAtUtc = null,
+                    UpdatedAtUtc = now,
+                },
+                unitOfWork, cancellationToken).ConfigureAwait(false);
+            await conflictRepository.DeleteAsync(entityType, entityId, unitOfWork, cancellationToken).ConfigureAwait(false);
+            await unitOfWork.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        changeNotifier?.Publish([new SyncEntityKey(entityType, entityId)]);
+        return ConflictResolutionResult.Resolved();
+    }
+
+    private async Task<(ErtSelectionSnapshot? Local, ErtSelectionSnapshot? Remote)> LoadErtSidesAsync(SyncConflictRecord conflict, CancellationToken cancellationToken)
+    {
+        ErtSelectionSnapshot? local;
+        ErtSelectionSnapshot? remote = null;
+        if (conflict.EntityType == SyncEntityType.MonthlyErt)
+        {
+            SyncEntityIdentity.TryParseMonthlyErtId(conflict.EntityId, out var year, out var month);
+            var stored = await monthlyErtRepository.GetAsync(year, month, cancellationToken).ConfigureAwait(false);
+            local = stored is null ? null : new ErtSelectionSnapshot(stored.State, stored.StartTime, stored.Rides, stored.Note);
+            if (conflict is { RemoteIsDeleted: false, RemotePayloadJson: { } json })
+            {
+                var payload = MonthlyErtSyncPayloadSerializer.Deserialize(json);
+                remote = new ErtSelectionSnapshot(payload.State, payload.StartTime, payload.Rides, payload.Note);
+            }
+        }
+        else
+        {
+            SyncEntityIdentity.TryParseErtDateOverrideId(conflict.EntityId, out var operatingDate);
+            var stored = await ertDateOverrideRepository.GetAsync(operatingDate, cancellationToken).ConfigureAwait(false);
+            local = stored is null ? null : new ErtSelectionSnapshot(stored.State, stored.StartTime, stored.Rides, stored.Reason);
+            if (conflict is { RemoteIsDeleted: false, RemotePayloadJson: { } json })
+            {
+                var payload = ErtDateOverrideSyncPayloadSerializer.Deserialize(json);
+                remote = new ErtSelectionSnapshot(payload.State, payload.StartTime, payload.Rides, payload.Reason);
+            }
+        }
+
+        return (local, remote);
+    }
+
+    private static SyncEnvelope ErtEnvelope(
+        SyncEntityType entityType, string entityId, Guid deviceId, int revision, DateTimeOffset now, int payloadSchemaVersion, JsonElement payload) => new()
+    {
+        SyncSchemaVersion = SyncEnvelopeSerializer.CurrentSyncSchemaVersion,
+        EntityType = entityType,
+        EntityId = entityId,
+        DeviceId = deviceId,
+        Revision = revision,
+        ModifiedUtc = now,
+        IsDeleted = false,
+        PayloadSchemaVersion = payloadSchemaVersion,
+        Payload = payload,
+    };
+
     private static async Task<bool> TryExportAsync(string path, SyncEnvelope envelope, CancellationToken cancellationToken)
     {
         try

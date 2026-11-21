@@ -39,4 +39,11 @@ public sealed record CatalogPayload(IReadOnlyList<ObservedProduct> Products)
     /// document by <see cref="Refresh.CatalogSourceRegistration"/>; never affects catalog reconciliation.
     /// </summary>
     public Seasons.OfficialDealsObservation? Deals { get; init; }
+
+    /// <summary>
+    /// Phase 31B: official important details and deadlines read from the same page in the same request,
+    /// when the source provides them (Season Passes, Military &amp; First Responder, Promotions). Stored as
+    /// that channel's product-details reference document; never affects catalog reconciliation.
+    /// </summary>
+    public ProductDetails.OfficialProductDetailsObservation? ProductDetails { get; init; }
 }

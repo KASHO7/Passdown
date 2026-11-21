@@ -2,6 +2,7 @@ using Carowinds.Passdown.Application.Catalog;
 using Carowinds.Passdown.Application.Changes;
 using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Desktop.Services;
+using Carowinds.Passdown.Domain.Catalog;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -21,9 +22,16 @@ public sealed record PriceHistoryProductOption(PriceHistoryProduct Product)
     public bool IsInactive => !Product.IsActive;
 
     /// <summary>"Season Pass" or "Season Pass Add-On · Retired" — never color-only. Phase 26: a product known only through Personal Sync reads "… · Imported history".</summary>
+    /// <remarks>Phase 31B: "… · Availability unconfirmed" for a dedicated-channel product the app cannot confirm either way; "… · Expired" for an ended one.</remarks>
     public string DetailText => Product.IsImportedOnly
         ? $"{FamilyText} · {PriceHistoryPresentation.ImportedOnlyDetailText}"
-        : IsInactive ? $"{FamilyText} · Retired" : FamilyText;
+        : Product.Availability.Availability == ProductAvailability.Available ? FamilyText : $"{FamilyText} · {Product.Availability.Label}";
+
+    /// <summary>Phase 31B: why the product reads as it does (tooltip), e.g. the ID.me-gated channel explanation.</summary>
+    public string AvailabilityReason => Product.Availability.Reason;
+
+    /// <summary>Phase 31B: the reason line is shown under the selected product only when it is not simply available.</summary>
+    public bool IsAvailabilityNoteVisible => !Product.IsImportedOnly && Product.Availability.Availability != ProductAvailability.Available;
 
     public PriceHistoryFamily Family => Product.Family;
 
