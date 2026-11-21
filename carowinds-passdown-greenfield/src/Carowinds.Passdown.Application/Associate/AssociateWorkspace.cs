@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.Seasons;
 using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Ert;
@@ -87,6 +88,18 @@ public sealed record AssociateWorkspace(
 
     /// <summary>Phase 21A: how many current-catalog rows were withheld from a historical date (diagnostics only).</summary>
     public int WithheldCurrentCatalogProductCount { get; init; }
+
+    /// <summary>
+    /// Phase 31: the official operating season for <see cref="OperatingDate"/> (event schedule +
+    /// freshness). Read-only context composed from cached official data — never triggers retrieval.
+    /// </summary>
+    public AssociateSeasonView Season
+    {
+        get => _season ?? AssociateSeasonView.NotChecked(OperatingDate);
+        init => _season = value;
+    }
+
+    private readonly AssociateSeasonView? _season;
 
     /// <summary>Phase 21A: a past date with no official price recorded for it — show <see cref="HistoricalPricingPolicy.UnavailableMessage"/>, never today's prices.</summary>
     public bool IsHistoricalPricingUnavailable =>

@@ -1112,6 +1112,37 @@
                 <TextBlock Text="Include in Passdown" Classes="sectionTitle" Margin="0" />
                 <TextBlock Text="Day, date, park hours, attendance, Early Ride Time, and the Daily Feature always print. Choose which additional sections appear on the PDF."
                            Classes="muted" TextWrapping="Wrap" />
+
+                <!-- Phase 31: the selected date's official events (from the official Carowinds event
+                     schedule, cached; never fetched on date change), with freshness. -->
+                <Border Classes="inset" IsVisible="{Binding HasSeasonContext}" Margin="0,4,0,2">
+                  <StackPanel Spacing="3">
+                    <TextBlock Text="{Binding SeasonContext.HeadingText}" FontWeight="SemiBold" TextWrapping="Wrap"
+                               AutomationProperties.Name="{Binding SeasonContext.HeadingText}" />
+                    <ItemsControl ItemsSource="{Binding SeasonContext.Events}" IsVisible="{Binding SeasonContext.HasEvents}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="presentation:SeasonEventLine">
+                          <TextBlock TextWrapping="Wrap" AutomationProperties.Name="{Binding Name}">
+                            <Run Text="{Binding Name}" FontWeight="SemiBold" />
+                            <Run Text=" — " />
+                            <Run Text="{Binding DateText}" />
+                            <Run Text=" · " />
+                            <Run Text="{Binding StatusText}" />
+                          </TextBlock>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="{Binding SeasonContext.NoEventText}" IsVisible="{Binding SeasonContext.HasNoEventText}"
+                               Classes="muted" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding SeasonContext.RecentlyEndedText}" IsVisible="{Binding SeasonContext.HasRecentlyEndedText}"
+                               Classes="muted" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding SeasonContext.UpcomingText}" IsVisible="{Binding SeasonContext.HasUpcomingText}"
+                               Classes="muted" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding SeasonContext.FreshnessText}" FontSize="12" TextWrapping="Wrap"
+                               Classes="muted" Classes.fieldWarning="{Binding SeasonContext.IsFreshnessWarning}" />
+                  </StackPanel>
+                </Border>
+
                 <WrapPanel ItemSpacing="20" LineSpacing="0">
                   <CheckBox Content="Daily Admission" IsChecked="{Binding IncludeDailyAdmission}"
                             AutomationProperties.Name="Include Daily Admission in the Passdown" />
@@ -1124,10 +1155,15 @@
                   <CheckBox Content="Add-Ons" IsChecked="{Binding IncludeAddOns}"
                             AutomationProperties.Name="Include Add-Ons in the Passdown" />
                   <CheckBox Content="SCarowinds / Haunt" IsChecked="{Binding IncludeHauntedAttractions}"
+                            IsVisible="{Binding ShowHauntedOption}"
                             AutomationProperties.Name="Include SCarowinds / Haunt in the Passdown" />
                   <CheckBox Content="Operational Notes" IsChecked="{Binding IncludeOperationalNotes}"
                             AutomationProperties.Name="Include Operational Notes in the Passdown" />
                 </WrapPanel>
+                <!-- Phase 31: why the seasonal option is not offered, or why a saved choice no longer applies. -->
+                <TextBlock Text="{Binding HauntedSeasonNote}" IsVisible="{Binding HasHauntedSeasonNote}"
+                           Classes="muted" FontSize="12" TextWrapping="Wrap"
+                           AutomationProperties.Name="{Binding HauntedSeasonNote}" />
               </StackPanel>
             </Border>
 
@@ -1157,6 +1193,345 @@
             <Border Classes="panel" IsVisible="{Binding HasHistoricalPricingNotice}">
               <TextBlock Text="{Binding HistoricalPricingNotice}" TextWrapping="Wrap"
                          AutomationProperties.Name="{Binding HistoricalPricingNotice}" />
+            </Border>
+
+            <!-- Phase 31: official deals — current, upcoming, previously verified and expired kept
+                 apart, with last-checked/last-error status and an explicit empty state. Read from the
+                 cached official deals document (checked with the Promotions refresh). -->
+            <Border Classes="panel" IsVisible="{Binding HasDealsPanel}">
+              <StackPanel Spacing="4">
+                <Border Classes="categoryBand">
+                  <TextBlock Text="Current Deals" />
+                </Border>
+                <TextBlock Text="{Binding DealsStatusText}" FontSize="12" TextWrapping="Wrap" Margin="2,0,0,2"
+                           Classes="muted" Classes.fieldWarning="{Binding IsDealsStatusWarning}"
+                           AutomationProperties.Name="{Binding DealsStatusText}" />
+                <TextBlock Text="{Binding DealsEmptyText}" IsVisible="{Binding HasDealsEmptyText}" Margin="2,0,0,4"
+                           TextWrapping="Wrap" AutomationProperties.Name="{Binding DealsEmptyText}" />
+                  <ItemsControl ItemsSource="{Binding CurrentDeals}" IsVisible="{Binding HasCurrentDeals}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:DealItemViewModel">
+                        <Border Classes="productRow" Padding="2,6,2,8">
+                          <StackPanel Spacing="2" AutomationProperties.Name="{Binding AccessibleSummary}">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                              <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                <Border Classes="sourceTag" IsVisible="{Binding HasBadge}" VerticalAlignment="Center">
+                                  <TextBlock Text="{Binding Badge}" />
+                                </Border>
+                                <TextBlock Text="{Binding CategoryText}" Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                              </StackPanel>
+                              <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                                <TextBlock Text="{Binding PriceText}" IsVisible="{Binding HasPriceText}" Classes="officialPrice" HorizontalAlignment="Right" />
+                                <TextBlock Text="{Binding RegularPriceText}" IsVisible="{Binding HasRegularPriceText}" Classes="muted" FontSize="12" HorizontalAlignment="Right" />
+                                <TextBlock Text="{Binding SavingsText}" IsVisible="{Binding HasSavingsText}" Classes="muted" FontSize="12" HorizontalAlignment="Right" />
+                              </StackPanel>
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding OptionLines}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                  <TextBlock Text="{Binding}" TextWrapping="Wrap" />
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <ItemsControl ItemsSource="{Binding DateLines}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                  <TextBlock Text="{Binding}" Classes="muted" TextWrapping="Wrap" />
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <ItemsControl ItemsSource="{Binding WarningLines}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                  <TextBlock Text="{Binding}" Classes="fieldWarning" TextWrapping="Wrap" />
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Expander Header="Terms and details" IsVisible="{Binding HasTermLines}" Padding="4,2"
+                                      AutomationProperties.Name="{Binding Title, StringFormat='Terms and details for {0}'}">
+                              <ItemsControl ItemsSource="{Binding TermLines}">
+                                <ItemsControl.ItemTemplate>
+                                  <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{Binding}" Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="0,1" />
+                                  </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                              </ItemsControl>
+                            </Expander>
+                            <TextBlock FontSize="12" Classes="muted" TextWrapping="Wrap">
+                              <Run Text="{Binding StatusText}" />
+                              <Run Text=" · " />
+                              <Run Text="{Binding VerifiedText}" />
+                            </TextBlock>
+                            <ItemsControl ItemsSource="{Binding Links}">
+                              <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                  <WrapPanel ItemSpacing="12" />
+                                </ItemsPanelTemplate>
+                              </ItemsControl.ItemsPanel>
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:OfficialSourceLinkViewModel">
+                                  <StackPanel Spacing="1">
+                                    <Button Classes="linkAction" FontSize="12" HorizontalAlignment="Left"
+                                            Content="{Binding Label}" Command="{Binding OpenCommand}"
+                                            AutomationProperties.Name="{Binding Label}"
+                                            AutomationProperties.HelpText="{Binding HelpText}"
+                                            ToolTip.Tip="{Binding HelpText}" />
+                                    <TextBlock Text="{Binding Message}" IsVisible="{Binding HasMessage}" Classes="muted" TextWrapping="Wrap" />
+                                  </StackPanel>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </StackPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                <TextBlock Text="Upcoming offers" FontWeight="SemiBold" IsVisible="{Binding HasUpcomingDeals}" Margin="2,6,0,0" />
+                  <ItemsControl ItemsSource="{Binding UpcomingDeals}" IsVisible="{Binding HasUpcomingDeals}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:DealItemViewModel">
+                        <Border Classes="productRow" Padding="2,6,2,8">
+                          <StackPanel Spacing="2" AutomationProperties.Name="{Binding AccessibleSummary}">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                              <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                <Border Classes="sourceTag" IsVisible="{Binding HasBadge}" VerticalAlignment="Center">
+                                  <TextBlock Text="{Binding Badge}" />
+                                </Border>
+                                <TextBlock Text="{Binding CategoryText}" Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                              </StackPanel>
+                              <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                                <TextBlock Text="{Binding PriceText}" IsVisible="{Binding HasPriceText}" Classes="officialPrice" HorizontalAlignment="Right" />
+                                <TextBlock Text="{Binding RegularPriceText}" IsVisible="{Binding HasRegularPriceText}" Classes="muted" FontSize="12" HorizontalAlignment="Right" />
+                                <TextBlock Text="{Binding SavingsText}" IsVisible="{Binding HasSavingsText}" Classes="muted" FontSize="12" HorizontalAlignment="Right" />
+                              </StackPanel>
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding OptionLines}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                  <TextBlock Text="{Binding}" TextWrapping="Wrap" />
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <ItemsControl ItemsSource="{Binding DateLines}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                  <TextBlock Text="{Binding}" Classes="muted" TextWrapping="Wrap" />
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <ItemsControl ItemsSource="{Binding WarningLines}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                  <TextBlock Text="{Binding}" Classes="fieldWarning" TextWrapping="Wrap" />
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Expander Header="Terms and details" IsVisible="{Binding HasTermLines}" Padding="4,2"
+                                      AutomationProperties.Name="{Binding Title, StringFormat='Terms and details for {0}'}">
+                              <ItemsControl ItemsSource="{Binding TermLines}">
+                                <ItemsControl.ItemTemplate>
+                                  <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{Binding}" Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="0,1" />
+                                  </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                              </ItemsControl>
+                            </Expander>
+                            <TextBlock FontSize="12" Classes="muted" TextWrapping="Wrap">
+                              <Run Text="{Binding StatusText}" />
+                              <Run Text=" · " />
+                              <Run Text="{Binding VerifiedText}" />
+                            </TextBlock>
+                            <ItemsControl ItemsSource="{Binding Links}">
+                              <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                  <WrapPanel ItemSpacing="12" />
+                                </ItemsPanelTemplate>
+                              </ItemsControl.ItemsPanel>
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:OfficialSourceLinkViewModel">
+                                  <StackPanel Spacing="1">
+                                    <Button Classes="linkAction" FontSize="12" HorizontalAlignment="Left"
+                                            Content="{Binding Label}" Command="{Binding OpenCommand}"
+                                            AutomationProperties.Name="{Binding Label}"
+                                            AutomationProperties.HelpText="{Binding HelpText}"
+                                            ToolTip.Tip="{Binding HelpText}" />
+                                    <TextBlock Text="{Binding Message}" IsVisible="{Binding HasMessage}" Classes="muted" TextWrapping="Wrap" />
+                                  </StackPanel>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </StackPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                <Expander Header="{Binding PreviouslyVerifiedDealsHeaderText}" IsVisible="{Binding HasPreviouslyVerifiedDeals}" Padding="4,2"
+                          AutomationProperties.Name="{Binding PreviouslyVerifiedDealsHeaderText}">
+                  <ItemsControl ItemsSource="{Binding PreviouslyVerifiedDeals}" IsVisible="{Binding HasPreviouslyVerifiedDeals}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:DealItemViewModel">
+                        <Border Classes="productRow" Padding="2,6,2,8">
+                          <StackPanel Spacing="2" AutomationProperties.Name="{Binding AccessibleSummary}">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                              <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                <Border Classes="sourceTag" IsVisible="{Binding HasBadge}" VerticalAlignment="Center">
+                                  <TextBlock Text="{Binding Badge}" />
+                                </Border>
+                                <TextBlock Text="{Binding CategoryText}" Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                              </StackPanel>
+                              <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                                <TextBlock Text="{Binding PriceText}" IsVisible="{Binding HasPriceText}" Classes="officialPrice" HorizontalAlignment="Right" />
+                                <TextBlock Text="{Binding RegularPriceText}" IsVisible="{Binding HasRegularPriceText}" Classes="muted" FontSize="12" HorizontalAlignment="Right" />
+                                <TextBlock Text="{Binding SavingsText}" IsVisible="{Binding HasSavingsText}" Classes="muted" FontSize="12" HorizontalAlignment="Right" />
+                              </StackPanel>
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding OptionLines}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                  <TextBlock Text="{Binding}" TextWrapping="Wrap" />
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <ItemsControl ItemsSource="{Binding DateLines}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                  <TextBlock Text="{Binding}" Classes="muted" TextWrapping="Wrap" />
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <ItemsControl ItemsSource="{Binding WarningLines}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                  <TextBlock Text="{Binding}" Classes="fieldWarning" TextWrapping="Wrap" />
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Expander Header="Terms and details" IsVisible="{Binding HasTermLines}" Padding="4,2"
+                                      AutomationProperties.Name="{Binding Title, StringFormat='Terms and details for {0}'}">
+                              <ItemsControl ItemsSource="{Binding TermLines}">
+                                <ItemsControl.ItemTemplate>
+                                  <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{Binding}" Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="0,1" />
+                                  </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                              </ItemsControl>
+                            </Expander>
+                            <TextBlock FontSize="12" Classes="muted" TextWrapping="Wrap">
+                              <Run Text="{Binding StatusText}" />
+                              <Run Text=" · " />
+                              <Run Text="{Binding VerifiedText}" />
+                            </TextBlock>
+                            <ItemsControl ItemsSource="{Binding Links}">
+                              <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                  <WrapPanel ItemSpacing="12" />
+                                </ItemsPanelTemplate>
+                              </ItemsControl.ItemsPanel>
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:OfficialSourceLinkViewModel">
+                                  <StackPanel Spacing="1">
+                                    <Button Classes="linkAction" FontSize="12" HorizontalAlignment="Left"
+                                            Content="{Binding Label}" Command="{Binding OpenCommand}"
+                                            AutomationProperties.Name="{Binding Label}"
+                                            AutomationProperties.HelpText="{Binding HelpText}"
+                                            ToolTip.Tip="{Binding HelpText}" />
+                                    <TextBlock Text="{Binding Message}" IsVisible="{Binding HasMessage}" Classes="muted" TextWrapping="Wrap" />
+                                  </StackPanel>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </StackPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Expander>
+                <Expander Header="{Binding ExpiredDealsHeaderText}" IsVisible="{Binding HasExpiredDeals}" Padding="4,2"
+                          AutomationProperties.Name="{Binding ExpiredDealsHeaderText}">
+                  <ItemsControl ItemsSource="{Binding ExpiredDeals}" IsVisible="{Binding HasExpiredDeals}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:DealItemViewModel">
+                        <Border Classes="productRow" Padding="2,6,2,8">
+                          <StackPanel Spacing="2" AutomationProperties.Name="{Binding AccessibleSummary}">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                              <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                <Border Classes="sourceTag" IsVisible="{Binding HasBadge}" VerticalAlignment="Center">
+                                  <TextBlock Text="{Binding Badge}" />
+                                </Border>
+                                <TextBlock Text="{Binding CategoryText}" Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                              </StackPanel>
+                              <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                                <TextBlock Text="{Binding PriceText}" IsVisible="{Binding HasPriceText}" Classes="officialPrice" HorizontalAlignment="Right" />
+                                <TextBlock Text="{Binding RegularPriceText}" IsVisible="{Binding HasRegularPriceText}" Classes="muted" FontSize="12" HorizontalAlignment="Right" />
+                                <TextBlock Text="{Binding SavingsText}" IsVisible="{Binding HasSavingsText}" Classes="muted" FontSize="12" HorizontalAlignment="Right" />
+                              </StackPanel>
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding OptionLines}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                  <TextBlock Text="{Binding}" TextWrapping="Wrap" />
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <ItemsControl ItemsSource="{Binding DateLines}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                  <TextBlock Text="{Binding}" Classes="muted" TextWrapping="Wrap" />
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <ItemsControl ItemsSource="{Binding WarningLines}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                  <TextBlock Text="{Binding}" Classes="fieldWarning" TextWrapping="Wrap" />
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Expander Header="Terms and details" IsVisible="{Binding HasTermLines}" Padding="4,2"
+                                      AutomationProperties.Name="{Binding Title, StringFormat='Terms and details for {0}'}">
+                              <ItemsControl ItemsSource="{Binding TermLines}">
+                                <ItemsControl.ItemTemplate>
+                                  <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{Binding}" Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="0,1" />
+                                  </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                              </ItemsControl>
+                            </Expander>
+                            <TextBlock FontSize="12" Classes="muted" TextWrapping="Wrap">
+                              <Run Text="{Binding StatusText}" />
+                              <Run Text=" · " />
+                              <Run Text="{Binding VerifiedText}" />
+                            </TextBlock>
+                            <ItemsControl ItemsSource="{Binding Links}">
+                              <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                  <WrapPanel ItemSpacing="12" />
+                                </ItemsPanelTemplate>
+                              </ItemsControl.ItemsPanel>
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:OfficialSourceLinkViewModel">
+                                  <StackPanel Spacing="1">
+                                    <Button Classes="linkAction" FontSize="12" HorizontalAlignment="Left"
+                                            Content="{Binding Label}" Command="{Binding OpenCommand}"
+                                            AutomationProperties.Name="{Binding Label}"
+                                            AutomationProperties.HelpText="{Binding HelpText}"
+                                            ToolTip.Tip="{Binding HelpText}" />
+                                    <TextBlock Text="{Binding Message}" IsVisible="{Binding HasMessage}" Classes="muted" TextWrapping="Wrap" />
+                                  </StackPanel>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </StackPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Expander>
+              </StackPanel>
             </Border>
 
             <!-- Products (Part F): editable, data-driven per-category product sections. No product
@@ -1292,6 +1667,31 @@
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            <!-- Phase 31: current-catalog event products whose official season has ended and that no
+                 official check has listed since — kept for reference (stored records and price history are
+                 untouched), never shown as current and never printed. -->
+            <Border Classes="panel" IsVisible="{Binding HasPastSeasonProducts}">
+              <Expander Header="{Binding PastSeasonHeaderText}" Padding="4,2"
+                        AutomationProperties.Name="{Binding PastSeasonHeaderText}">
+                <ItemsControl ItemsSource="{Binding PastSeasonProducts}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:PastSeasonProductViewModel">
+                      <Border Classes="productRow">
+                        <Grid ColumnDefinitions="*,120">
+                          <StackPanel Grid.Column="0" Spacing="2" Margin="0,0,16,0">
+                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Note}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                          </StackPanel>
+                          <TextBlock Grid.Column="1" Text="{Binding OfficialPriceText}" Classes="muted"
+                                     HorizontalAlignment="Right" VerticalAlignment="Top" />
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </Expander>
+            </Border>
 
             <!-- Custom / internal products (Part F): draft-local only, never backed by an official id;
                  visually distinct from source-verified official products via the "Custom" tag on each row

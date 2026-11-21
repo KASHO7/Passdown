@@ -346,7 +346,9 @@ public class Phase23CAppearancePreferenceTests
         Assert.Contains("new Migration0016CreateSeasonPriceHistoryTable(),", app);
         // Phase 26 added migration 17 for synced price observations — still no appearance migration.
         Assert.Contains("new Migration0017CreateSyncedPriceObservationsTable(),", app);
-        Assert.DoesNotContain("Migration0018", app);
+        // Phase 31 added migration 18 for official reference documents — still no appearance migration.
+        Assert.Contains("new Migration0018CreateOfficialReferenceDocumentsTable(),", app);
+        Assert.DoesNotContain("Migration0019", app);
         Assert.DoesNotMatch(@"Migration\d{4}\w*Appearance", app);
     }
 

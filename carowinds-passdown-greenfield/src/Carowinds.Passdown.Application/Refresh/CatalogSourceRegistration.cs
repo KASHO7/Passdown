@@ -1,5 +1,7 @@
 using Carowinds.Passdown.Application.Catalog;
+using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Retrieval;
+using Carowinds.Passdown.Application.Seasons;
 using Carowinds.Passdown.Domain.Retrieval;
 
 namespace Carowinds.Passdown.Application.Refresh;
@@ -17,15 +19,24 @@ public sealed class CatalogSourceRegistration : SourceRegistration
 {
     private readonly IOfficialDataSource<CatalogPayload> _source;
     private readonly IProductReconciliationService _reconciliationService;
+    private readonly IOfficialReferenceDocumentRepository? _dealsDocuments;
 
+    /// <param name="dealsDocuments">
+    /// Phase 31: when supplied, a source that reports <see cref="CatalogPayload.Deals"/> also updates
+    /// the deals reference document (merged into its last-known-good copy), and a failed check records
+    /// its error there without touching the verified copy. Optional so every other catalog source is
+    /// unchanged.
+    /// </param>
     public CatalogSourceRegistration(
         IOfficialDataSource<CatalogPayload> source,
         IProductReconciliationService reconciliationService,
-        bool requiresBrowserSession = false)
+        bool requiresBrowserSession = false,
+        IOfficialReferenceDocumentRepository? dealsDocuments = null)
         : base(source.SourceId, source.Category, requiresBrowserSession)
     {
         _source = source;
         _reconciliationService = reconciliationService;
+        _dealsDocuments = dealsDocuments;
     }
 
     public override SourceScope Scope => SourceScope.Catalog;
@@ -45,9 +56,28 @@ public sealed class CatalogSourceRegistration : SourceRegistration
             await _reconciliationService.ReconcileAsync(
                     _source.Category, result.Evidence, result.Payload!.Products, cancellationToken, result.Payload.UnconfirmedProductKeys)
                 .ConfigureAwait(false);
+            await SaveDealsAsync(result.Evidence, result.Payload.Deals, cancellationToken).ConfigureAwait(false);
             return SourceOperationResult.Success(_source.SourceId, _source.Category, requestedDate: null, result.Evidence.Status, result.Evidence.Detail);
         }
 
+        if (_dealsDocuments is not null)
+        {
+            await _dealsDocuments.SaveAttemptAsync(OfficialReferenceDocumentIds.Deals, result.Evidence, cancellationToken).ConfigureAwait(false);
+        }
+
         return SourceOperationResult.Failure(_source.SourceId, _source.Category, requestedDate: null, result.Evidence.Status, result.Evidence.Detail);
+    }
+
+    private async Task SaveDealsAsync(Domain.Retrieval.SourceEvidence evidence, OfficialDealsObservation? observation, CancellationToken cancellationToken)
+    {
+        if (_dealsDocuments is null || observation is null)
+        {
+            return;
+        }
+
+        var previousRecord = await _dealsDocuments.GetAsync(OfficialReferenceDocumentIds.Deals, cancellationToken).ConfigureAwait(false);
+        var previous = OfficialSeasonJson.TryDeserialize<OfficialDealsDocument>(previousRecord?.SuccessPayloadJson) ?? OfficialDealsDocument.Empty;
+        var merged = previous.Merge(observation, evidence.TimeChecked);
+        await _dealsDocuments.SaveSuccessAsync(OfficialReferenceDocumentIds.Deals, evidence, OfficialSeasonJson.Serialize(merged), cancellationToken).ConfigureAwait(false);
     }
 }

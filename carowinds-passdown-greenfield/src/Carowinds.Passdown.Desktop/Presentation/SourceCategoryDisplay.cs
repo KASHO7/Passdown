@@ -22,6 +22,7 @@ public static class SourceCategoryDisplay
         SourceCategory.DatedBringAFriend => "Bring-A-Friend",
         SourceCategory.DatedMilitaryFirstResponder => "Military & First Responder (dated)",
         SourceCategory.ShowSchedule => "Show Schedule",
+        SourceCategory.OperatingEvents => "Event Schedule",
         _ => category.ToString(),
     };
 }

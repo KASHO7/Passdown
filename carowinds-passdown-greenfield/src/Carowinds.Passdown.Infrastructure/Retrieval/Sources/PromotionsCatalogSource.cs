@@ -1,6 +1,9 @@
 using Carowinds.Passdown.Application.Retrieval;
+using Carowinds.Passdown.Application.Seasons;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Catalog;
+using Carowinds.Passdown.Domain.Promotions;
 using Carowinds.Passdown.Domain.Retrieval;
 using Carowinds.Passdown.Infrastructure.Retrieval.Http;
 
@@ -45,25 +48,54 @@ namespace Carowinds.Passdown.Infrastructure.Retrieval.Sources;
 /// category — the same accepted multi-category duplication already established for "2027 Gold Pass"
 /// appearing under both <see cref="SourceCategory.Promotions"/> and
 /// <see cref="SourceCategory.SeasonPasses"/> (see docs/retrieval/catalog-source-inventory.md).
+///
+/// Phase 31: rebuilt around the pages' structured offer data (<see cref="OfficialOfferPageParser"/>)
+/// after the official pages began publishing offer cards that sell through payment options instead of
+/// a headline price (the 2026 "Black Friday Deal": Silver Pass $69 / Good Any Day Ticket $69). The
+/// legacy markup parser rejected such a card as malformed, which turned every Promotions refresh into
+/// an Error — so no promotion was updated, nothing was ever confirmed absent, and expired rows such as
+/// "SCarowinds Bundles" stayed current. Now: structured cards first (legacy markup only for a page
+/// without structured data); campaign pages linked from the offers page's own tabs (e.g.
+/// <c>black-friday-deal</c>) are discovered and fetched, bounded by <see cref="MaxCampaignPages"/>;
+/// a card without a readable title is reported unconfirmed instead of failing the page; prices are read
+/// strictly (<see cref="Domain.Promotions.OfficialOfferText.ParseCurrencyAmount"/>, so "3rd Night FREE"
+/// is never $3). The same check also yields the richer deals observation
+/// (<see cref="CatalogPayload.Deals"/>). The two core pages remain required: if either fails the result
+/// is an Error and nothing stored changes; a discovered campaign page failing is reported, and offers
+/// last seen only there are kept, not expired.
 /// </summary>
 public sealed class PromotionsCatalogSource(IRetrievalHttpClient httpClient, IClock clock) : IOfficialDataSource<CatalogPayload>
 {
     private const string SourceName = "Carowinds Promotions";
 
+    /// <summary>At most this many extra campaign pages per check (no crawling).</summary>
+    public const int MaxCampaignPages = 3;
+
     private static readonly Uri PageUrl = new("https://www.sixflags.com/carowinds/special-offers");
     private static readonly Uri DailyTicketsPageUrl = new("https://www.sixflags.com/carowinds/daily-tickets");
+    private static readonly Uri SiteBaseUrl = new("https://www.sixflags.com/carowinds/");
+
+    /// <summary>Offer-page tabs already covered by this or another official source — never fetched as campaign pages.</summary>
+    private static readonly HashSet<string> CoveredTabLinks = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "special-offers", "daily-tickets", "memberships-and-season-passes", "season-passes",
+        "military-discounts", "groups/tickets", "fast-lane", "add-ons", "season-pass-add-ons",
+    };
 
     public string SourceId => "promotions.official";
 
     public SourceCategory Category => SourceCategory.Promotions;
+
+    private sealed record FetchedPage(Uri Url, string Body, bool Required);
 
     public async Task<SourceResult<CatalogPayload>> RetrieveAsync(RetrievalRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
 
         var timeChecked = EasternTimeZone.ConvertFromUtc(clock.UtcNow);
+        var observedOn = DateOnly.FromDateTime(timeChecked.DateTime);
 
-        var cards = new List<ParsedProductCard>();
+        var pages = new List<FetchedPage>();
         foreach (var pageUrl in new[] { PageUrl, DailyTicketsPageUrl })
         {
             RetrievalHttpResponse response;
@@ -84,17 +116,104 @@ public sealed class PromotionsCatalogSource(IRetrievalHttpClient httpClient, ICl
                     new InvalidOperationException($"GET {pageUrl} returned {(int)response.StatusCode} {response.StatusCode}. Body: {Truncate(response.Body)}"));
             }
 
+            pages.Add(new FetchedPage(pageUrl, response.Body, Required: true));
+        }
+
+        var warnings = new List<string>();
+        var unreachable = new List<Uri>();
+        foreach (var campaignUrl in DiscoverCampaignPages(pages[0].Body))
+        {
             try
             {
-                cards.AddRange(ProductCardHtmlParser.Parse(response.Body));
+                var response = await httpClient.GetAsync(campaignUrl, cancellationToken).ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    pages.Add(new FetchedPage(campaignUrl, response.Body, Required: false));
+                    continue;
+                }
+
+                warnings.Add($"{campaignUrl} returned {(int)response.StatusCode}.");
             }
-            catch (FormatException ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                return Error(timeChecked, pageUrl, ex);
+                warnings.Add($"{campaignUrl} could not be checked: {ex.Message}");
+            }
+
+            unreachable.Add(campaignUrl);
+        }
+
+        var campaignStatements = pages
+            .SelectMany(page => OfficialOfferPageParser.ParseCampaignStatements(page.Body, observedOn))
+            .DistinctBy(statement => (statement.CampaignPhrase.ToLowerInvariant(), statement.End.Date))
+            .ToList();
+
+        var catalogCards = new List<ParsedProductCard>();
+        var promotions = new Dictionary<string, OfficialPromotion>(StringComparer.Ordinal);
+        var unreadableOfferIds = new List<string>();
+        var unconfirmedKeys = new List<CatalogProductKey>();
+
+        foreach (var page in pages)
+        {
+            var payload = NextFlightPayload.Extract(page.Body);
+            var cards = payload is not null && payload.Contains(OfficialOfferPageParser.ProductMarker, StringComparison.Ordinal)
+                ? OfficialOfferPageParser.ParseCards(payload)
+                : null;
+
+            if (cards is null)
+            {
+                IReadOnlyList<ParsedProductCard> htmlCards;
+                try
+                {
+                    htmlCards = ProductCardHtmlParser.Parse(page.Body);
+                }
+                catch (FormatException ex)
+                {
+                    if (page.Required)
+                    {
+                        return Error(timeChecked, page.Url, ex);
+                    }
+
+                    warnings.Add($"{page.Url} could not be read: {ex.Message}");
+                    unreachable.Add(page.Url);
+                    continue;
+                }
+
+                catalogCards.AddRange(htmlCards);
+                foreach (var htmlCard in htmlCards)
+                {
+                    AddPromotion(promotions, OfficialOfferMapper.FromHtmlCard(htmlCard, page.Url, timeChecked));
+                }
+
+                continue;
+            }
+
+            foreach (var card in cards)
+            {
+                if (card.Title is null)
+                {
+                    var id = card.OfficialId ?? card.Keyword;
+                    warnings.Add($"An offer card on {page.Url} could not be read{(id is null ? string.Empty : $" ({id})")}.");
+                    if (id is not null)
+                    {
+                        unreadableOfferIds.Add("offer:" + id);
+                        unconfirmedKeys.Add(CatalogProductKey.FromOfficialId(Category, id));
+                    }
+
+                    continue;
+                }
+
+                catalogCards.AddRange(OfficialOfferMapper.ToCatalogCards(card));
+                AddPromotion(promotions, OfficialOfferMapper.ToPromotion(card, page.Url, timeChecked, campaignStatements));
             }
         }
 
-        var products = CatalogCardMapper.ToObservedProducts(cards, Category, SourceName);
+        var products = CatalogCardMapper.ToObservedProducts(catalogCards, Category, SourceName);
+        var deals = new OfficialDealsObservation(promotions.Values.ToList())
+        {
+            UnreadableOfferIds = unreadableOfferIds,
+            UnreachablePageUrls = unreachable,
+            Warnings = warnings,
+        };
 
         return SourceResult<CatalogPayload>.Success(
             SourceId,
@@ -107,9 +226,29 @@ public sealed class PromotionsCatalogSource(IRetrievalHttpClient httpClient, ICl
                     ? "1 promotion confirmed."
                     : $"{products.Count} promotions confirmed.",
                 RetrievalStrategy.Html,
-                requestedDate: null),
-            new CatalogPayload(products));
+                requestedDate: null,
+                technicalDetail: warnings.Count == 0 ? null : string.Join(" ", warnings)),
+            new CatalogPayload(products) { UnconfirmedProductKeys = unconfirmedKeys, Deals = deals });
     }
+
+    private static IEnumerable<Uri> DiscoverCampaignPages(string offersPageBody)
+    {
+        var payload = NextFlightPayload.Extract(offersPageBody);
+        if (payload is null)
+        {
+            return [];
+        }
+
+        return OfficialOfferPageParser.ParseTabLinks(payload)
+            .Where(link => !CoveredTabLinks.Contains(link))
+            .Take(MaxCampaignPages)
+            .Select(link => new Uri(SiteBaseUrl, link));
+    }
+
+    private static void AddPromotion(Dictionary<string, OfficialPromotion> promotions, OfficialPromotion promotion) =>
+        promotions[promotion.PromotionId] = promotions.TryGetValue(promotion.PromotionId, out var existing)
+            ? OfficialOfferMapper.MergeDuplicate(existing, promotion)
+            : promotion;
 
     private SourceResult<CatalogPayload> Error(DateTimeOffset timeChecked, Uri pageUrl, Exception exception) =>
         SourceResult<CatalogPayload>.WithoutPayload(

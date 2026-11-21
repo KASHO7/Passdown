@@ -158,22 +158,14 @@ internal static class ProductCardHtmlParser
     }
 
     /// <summary>
-    /// Strips everything but digits and the decimal point (e.g. `"$1,299.00"` → `1299.00`); returns
-    /// null rather than a guessed number when nothing parseable remains. Internal for the same
-    /// reason as <see cref="ExtractAttributeValue"/> above.
+    /// The single explicit currency amount in a price text (e.g. `"$1,299.00"` → `1299.00`); returns
+    /// null rather than a guessed number when the text states no unambiguous amount. Internal for the
+    /// same reason as <see cref="ExtractAttributeValue"/> above.
     /// </summary>
-    internal static decimal? ParseAmount(string? displayPrice)
-    {
-        if (displayPrice is null)
-        {
-            return null;
-        }
-
-        var digitsOnly = new string(displayPrice.Where(c => char.IsAsciiDigit(c) || c == '.').ToArray());
-        return decimal.TryParse(digitsOnly, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount)
-            ? amount
-            : null;
-    }
+    internal static decimal? ParseAmount(string? displayPrice) =>
+        // Phase 31: strict — one explicit currency amount only. The previous digits-only strip turned
+        // "3rd Night FREE" into 3 and "2 for $90" into 290; non-numeric official wording now stays null.
+        Domain.Promotions.OfficialOfferText.ParseCurrencyAmount(displayPrice);
 }
 
 /// <summary>

@@ -20,6 +20,7 @@ using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Retrieval.Browser;
+using Carowinds.Passdown.Application.Seasons;
 using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Application.SpellCheck;
 using Carowinds.Passdown.Application.Time;
@@ -511,6 +512,8 @@ public partial class App : global::Avalonia.Application
             new Migration0015CreateErtDateOverridesTable(),
             new Migration0016CreateSeasonPriceHistoryTable(),
             new Migration0017CreateSyncedPriceObservationsTable(),
+            // Phase 31: official event schedule + deals last-known-good documents (additive).
+            new Migration0018CreateOfficialReferenceDocumentsTable(),
         ]);
         services.AddSingleton<MigrationRunner>();
 
@@ -604,6 +607,10 @@ public partial class App : global::Avalonia.Application
         // Phase 21C: reads one date's recorded official show schedule (local only; retrieval is the
         // refresh coordinator's job). Used by the Dashboard and Operations Calendar.
         services.AddSingleton<IShowScheduleService, ShowScheduleService>();
+        // Phase 31: official operating seasons and deals — read from the local reference-document
+        // cache only (never online on date navigation).
+        services.AddSingleton<IOperatingSeasonService, OperatingSeasonService>();
+        services.AddSingleton<IOfficialDealsService, OfficialDealsService>();
         services.AddTransient<OperationsCalendarViewModel>();
 
         // Phase 11A: the persistent Operational Notes domain/persistence/service foundation.
@@ -860,6 +867,7 @@ public partial class App : global::Avalonia.Application
         // Phase 20A: season price history, written by reconciliation in the catalog upsert's own unit
         // of work (no separate polling loop, no extra requests) and read by the Price History screen.
         services.AddSingleton<ISeasonPriceHistoryRepository, SqliteSeasonPriceHistoryRepository>();
+        services.AddSingleton<IOfficialReferenceDocumentRepository, SqliteOfficialReferenceDocumentRepository>();
         services.AddSingleton<SeasonPriceHistoryRecorder>();
         services.AddSingleton<ISeasonPriceHistoryService, SeasonPriceHistoryService>();
         services.AddSingleton<IProductReconciliationService, ProductReconciliationService>();
@@ -899,6 +907,7 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<DatedFastLaneSource>();
         services.AddSingleton<DatedHauntedSource>();
         services.AddSingleton<PromotionsCatalogSource>();
+        services.AddSingleton<OperatingEventsSource>();
         services.AddSingleton<SeasonPassCatalogSource>();
         services.AddSingleton<SeasonPassAddOnsCatalogSource>();
         services.AddSingleton<GeneralAddOnsCatalogSource>();
@@ -928,7 +937,9 @@ public partial class App : global::Avalonia.Application
                 new DatedSourceRegistration<DatedAdmissionPayload>(provider.GetRequiredService<DatedAdmissionSource>(), datedResultRepository),
                 new DatedSourceRegistration<DatedFastLanePayload>(provider.GetRequiredService<DatedFastLaneSource>(), datedResultRepository),
                 new DatedSourceRegistration<DatedHauntedPayload>(provider.GetRequiredService<DatedHauntedSource>(), datedResultRepository),
-                new CatalogSourceRegistration(provider.GetRequiredService<PromotionsCatalogSource>(), reconciliationService),
+                // Phase 31: the same Promotions check also stores the official deals document.
+                new CatalogSourceRegistration(provider.GetRequiredService<PromotionsCatalogSource>(), reconciliationService,
+                    dealsDocuments: provider.GetRequiredService<IOfficialReferenceDocumentRepository>()),
                 new CatalogSourceRegistration(provider.GetRequiredService<SeasonPassCatalogSource>(), reconciliationService),
                 new CatalogSourceRegistration(provider.GetRequiredService<SeasonPassAddOnsCatalogSource>(), reconciliationService),
                 new CatalogSourceRegistration(provider.GetRequiredService<GeneralAddOnsCatalogSource>(), reconciliationService),
@@ -939,6 +950,8 @@ public partial class App : global::Avalonia.Application
                 // Phase 21C: official show schedule — today and future dates only, so a past date's
                 // recorded schedule is never replaced.
                 new CurrentAndFutureDatedSourceRegistration<ShowSchedulePayload>(provider.GetRequiredService<ShowScheduleSource>(), datedResultRepository, provider.GetRequiredService<IClock>()),
+                // Phase 31: official event schedule (date-independent, daily cadence).
+                new OperatingEventsSourceRegistration(provider.GetRequiredService<OperatingEventsSource>(), provider.GetRequiredService<IOfficialReferenceDocumentRepository>()),
             };
         });
 

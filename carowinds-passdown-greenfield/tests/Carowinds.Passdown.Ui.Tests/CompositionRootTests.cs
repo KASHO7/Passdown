@@ -44,8 +44,20 @@ public class CompositionRootTests
         // Phase 15A added 1 more: dated-bring-a-friend.official.
         // Phase 21A added 1 more: dated-military-first-responder.official.
         // Phase 21C added 1 more: show-schedule.official.
-        Assert.Equal(13, registrations.Count);
-        Assert.Equal(13, registrations.Select(r => r.SourceId).Distinct().Count());
+        // Phase 31 added 1 more: operating-events.official (official event schedule).
+        Assert.Equal(14, registrations.Count);
+        Assert.Equal(14, registrations.Select(r => r.SourceId).Distinct().Count());
+    }
+
+    /// <summary>Phase 31: the season and deals read services resolve, and the Associate screen receives the deals service.</summary>
+    [Fact]
+    public void BuildServiceProvider_ResolvesPhase31SeasonAndDealsServices()
+    {
+        var provider = App.BuildServiceProvider();
+
+        Assert.NotNull(provider.GetRequiredService<Carowinds.Passdown.Application.Seasons.IOperatingSeasonService>());
+        Assert.NotNull(provider.GetRequiredService<Carowinds.Passdown.Application.Seasons.IOfficialDealsService>());
+        Assert.NotNull(provider.GetRequiredService<Carowinds.Passdown.Application.Persistence.IOfficialReferenceDocumentRepository>());
     }
 
     /// <summary>
@@ -84,6 +96,7 @@ public class CompositionRootTests
             {
                 SourceCategory.Promotions, SourceCategory.SeasonPasses, SourceCategory.AddOns, SourceCategory.AddOns,
                 SourceCategory.MilitaryFirstResponder,
+                SourceCategory.OperatingEvents, // Phase 31: date-independent official event schedule
             }.OrderBy(c => c),
             catalogCategories.OrderBy(c => c));
     }

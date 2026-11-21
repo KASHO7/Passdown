@@ -7,6 +7,7 @@ using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Application.Refresh;
+using Carowinds.Passdown.Application.Seasons;
 using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Presentation;
@@ -77,6 +78,8 @@ public partial class AssociateViewModel : ViewModelBase
 
     /// <summary>Phase 26: opens a validated official source page in the default browser (null in tests that do not supply one — no link is offered).</summary>
     private readonly IExternalLinkLauncher? _externalLinkLauncher;
+    private readonly IOfficialDealsService? _dealsService;
+    private int _dealsLoadGeneration;
     private readonly ILogger<AssociateViewModel>? _logger;
     private readonly TimeSpan _autosaveDebounce;
     private readonly Func<TimeSpan, CancellationToken, Task> _autosaveDelay;
@@ -632,7 +635,8 @@ public partial class AssociateViewModel : ViewModelBase
         IDataChangeNotifier? dataChangeNotifier = null,
         OfficialDataStatusViewModel? officialDataStatus = null,
         IUiDispatcher? uiDispatcher = null,
-        IExternalLinkLauncher? externalLinkLauncher = null)
+        IExternalLinkLauncher? externalLinkLauncher = null,
+        IOfficialDealsService? dealsService = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -650,6 +654,7 @@ public partial class AssociateViewModel : ViewModelBase
         _refreshCoordinator = refreshCoordinator;
         _uiDispatcher = uiDispatcher ?? new AvaloniaUiDispatcher();
         _externalLinkLauncher = externalLinkLauncher;
+        _dealsService = dealsService;
         OfficialDataStatus = officialDataStatus;
 
         // "Today" in the park's own wall-clock time (spec §6.5/§6.6 use the same Eastern
@@ -1108,6 +1113,127 @@ public partial class AssociateViewModel : ViewModelBase
     public partial string? HistoricalPricingNotice { get; set; }
 
     public bool HasHistoricalPricingNotice => HistoricalPricingNotice is not null;
+
+    // ------------------------------------------------------------------ Phase 31: seasons and deals
+
+    /// <summary>
+    /// Phase 31: the selected date's official season shown above "Include in Passdown". Rebuilt from
+    /// the composed workspace on every load (date change, Check Online, newer official data) — never
+    /// from a live edit, so unticking an option never makes it vanish mid-edit.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSeasonContext))]
+    [NotifyPropertyChangedFor(nameof(ShowHauntedOption))]
+    [NotifyPropertyChangedFor(nameof(HauntedSeasonNote))]
+    [NotifyPropertyChangedFor(nameof(HasHauntedSeasonNote))]
+    public partial SeasonContextPresentation? SeasonContext { get; private set; }
+
+    public bool HasSeasonContext => SeasonContext is not null;
+
+    /// <summary>Whether the seasonal "SCarowinds / Haunt" option is offered for the selected date (true when unknown).</summary>
+    public bool ShowHauntedOption => SeasonContext?.ShowHauntedOption ?? true;
+
+    public string? HauntedSeasonNote => SeasonContext?.HauntedNote;
+
+    public bool HasHauntedSeasonNote => HauntedSeasonNote is not null;
+
+    /// <summary>Phase 31: current-catalog products whose seasonal event has ended — listed apart, never as current, never exported.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPastSeasonProducts))]
+    [NotifyPropertyChangedFor(nameof(PastSeasonHeaderText))]
+    public partial IReadOnlyList<PastSeasonProductViewModel> PastSeasonProducts { get; private set; } = [];
+
+    public bool HasPastSeasonProducts => PastSeasonProducts.Count > 0;
+
+    public string PastSeasonHeaderText => $"Past-season offers — not current ({PastSeasonProducts.Count})";
+
+    /// <summary>Phase 31: the Deals panel is shown only when the deals service is available (the desktop app always provides it).</summary>
+    public bool HasDealsPanel => _dealsService is not null;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCurrentDeals))]
+    public partial IReadOnlyList<DealItemViewModel> CurrentDeals { get; private set; } = [];
+
+    public bool HasCurrentDeals => CurrentDeals.Count > 0;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasUpcomingDeals))]
+    public partial IReadOnlyList<DealItemViewModel> UpcomingDeals { get; private set; } = [];
+
+    public bool HasUpcomingDeals => UpcomingDeals.Count > 0;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPreviouslyVerifiedDeals))]
+    [NotifyPropertyChangedFor(nameof(PreviouslyVerifiedDealsHeaderText))]
+    public partial IReadOnlyList<DealItemViewModel> PreviouslyVerifiedDeals { get; private set; } = [];
+
+    public bool HasPreviouslyVerifiedDeals => PreviouslyVerifiedDeals.Count > 0;
+
+    public string PreviouslyVerifiedDealsHeaderText => $"Previously verified — not re-confirmed ({PreviouslyVerifiedDeals.Count})";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasExpiredDeals))]
+    [NotifyPropertyChangedFor(nameof(ExpiredDealsHeaderText))]
+    public partial IReadOnlyList<DealItemViewModel> ExpiredDeals { get; private set; } = [];
+
+    public bool HasExpiredDeals => ExpiredDeals.Count > 0;
+
+    public string ExpiredDealsHeaderText => $"Expired and past offers ({ExpiredDeals.Count})";
+
+    [ObservableProperty]
+    public partial string DealsStatusText { get; private set; } = "Deals not checked yet.";
+
+    [ObservableProperty]
+    public partial bool IsDealsStatusWarning { get; private set; } = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDealsEmptyText))]
+    public partial string? DealsEmptyText { get; private set; } = "Deals not checked yet.";
+
+    public bool HasDealsEmptyText => DealsEmptyText is not null;
+
+    /// <summary>The in-flight (or most recent) deals load, so a test can await it.</summary>
+    public Task PendingDealsLoad { get; private set; } = Task.CompletedTask;
+
+    /// <summary>Reads the cached official deals (never online) and applies them; a later load supersedes an earlier one.</summary>
+    private void StartDealsLoad()
+    {
+        if (_dealsService is null)
+        {
+            return;
+        }
+
+        var generation = ++_dealsLoadGeneration;
+        PendingDealsLoad = LoadDealsAsync(generation);
+    }
+
+    private async Task LoadDealsAsync(int generation)
+    {
+        DealsOverview overview;
+        try
+        {
+            overview = await _dealsService!.GetOverviewAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogWarning(ex, "The cached official deals could not be read.");
+            overview = DealsOverview.NotChecked;
+        }
+
+        if (generation != _dealsLoadGeneration)
+        {
+            return;
+        }
+
+        var presentation = DealsPresentation.Build(overview);
+        CurrentDeals = presentation.Current.Select(item => new DealItemViewModel(item, _externalLinkLauncher)).ToList();
+        UpcomingDeals = presentation.Upcoming.Select(item => new DealItemViewModel(item, _externalLinkLauncher)).ToList();
+        PreviouslyVerifiedDeals = presentation.PreviouslyVerified.Select(item => new DealItemViewModel(item, _externalLinkLauncher)).ToList();
+        ExpiredDeals = presentation.Expired.Select(item => new DealItemViewModel(item, _externalLinkLauncher)).ToList();
+        DealsStatusText = presentation.StatusText;
+        IsDealsStatusWarning = presentation.IsStatusWarning;
+        DealsEmptyText = presentation.EmptyStateText;
+    }
 
     /// <summary>
     /// Phase 20A: asks the app shell to open the read-only Season Price History screen — with a
@@ -2059,6 +2185,11 @@ public partial class AssociateViewModel : ViewModelBase
 
             BuildProductSections(workspace);
             BuildShowRows(workspace);
+            SeasonContext = SeasonContextPresentation.Build(
+                workspace.Season,
+                draft.SectionSelection.IncludeHauntedAttractions,
+                workspace.Products.Any(product => product.Category == SourceCategory.HauntedAttractions));
+            StartDealsLoad();
 
             _draftDateInEdit = workspace.OperatingDate;
             _draftBaseHash = workspace.DraftContentHash;
@@ -2097,7 +2228,16 @@ public partial class AssociateViewModel : ViewModelBase
             .Where(entry => entry.Section is not null)
             .ToDictionary(entry => entry.Section!.Value, entry => entry.Status);
 
-        var officialBySection = ProductDisplaySectionResolver.ResolveAll(workspace.Products.Where(product => !product.IsCustom))
+        // Phase 31: an event product whose official season has ended is listed apart, never as current.
+        PastSeasonProducts = workspace.Products
+            .Where(product => !product.IsCustom && product.IsPastSeason)
+            .Select(product => new PastSeasonProductViewModel(
+                product.DisplayName,
+                product.OfficialDisplayPrice ?? (product.OfficialPriceAmount is { } amount ? amount.ToString("C", PresentationCulture.UnitedStates) : "—"),
+                product.PastSeasonNote!))
+            .ToList();
+
+        var officialBySection = ProductDisplaySectionResolver.ResolveAll(workspace.Products.Where(product => !product.IsCustom && !product.IsPastSeason))
             .GroupBy(entry => entry.Section, entry => entry.Product)
             .ToDictionary(group => group.Key, group => (IReadOnlyList<AssociateProduct>)group.ToList());
 
@@ -2155,6 +2295,17 @@ public partial class AssociateViewModel : ViewModelBase
         var productOverrides = ProductSections
             .SelectMany(section => section.Products)
             .ToDictionary(row => row.ProductIdentity, row => new ProductDraftOverride(row.IncludeOnPdf, row.DisplayPriceOverride));
+
+        // Phase 31: a past-season product is not an editable row, but its saved choice is kept exactly
+        // as it was (so it applies again if an official check re-lists the product).
+        foreach (var product in Workspace?.Products.Where(product => product.IsPastSeason) ?? [])
+        {
+            if (!productOverrides.ContainsKey(product.ProductIdentity) &&
+                existing.ProductOverrides.TryGetValue(product.ProductIdentity, out var saved))
+            {
+                productOverrides[product.ProductIdentity] = saved;
+            }
+        }
 
         return existing with
         {

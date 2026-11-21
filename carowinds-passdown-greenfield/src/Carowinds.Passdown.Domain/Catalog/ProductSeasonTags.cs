@@ -22,4 +22,7 @@ public enum ProductSeasonTags
 
     /// <summary>The WinterFest holiday event.</summary>
     WinterFest = 4,
+
+    /// <summary>Phase 31: the Oktoberfest event.</summary>
+    Oktoberfest = 8,
 }
