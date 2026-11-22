@@ -148,9 +148,19 @@ public sealed class AssociatePassdownPdfGenerator : IAssociatePassdownPdfGenerat
         return new AssociatePassdownPdfResult(AssociatePassdownPdfStatus.Generated, bytes, preflight, pageCount);
     }
 
+    private static int s_renderStarted;
+
+    /// <summary>
+    /// Phase 34B-2: whether any document has started rendering in this process — the one-time QuestPDF
+    /// start-up cost (font registration, JIT) is then already being paid by that render, so a background
+    /// warm-up would only duplicate it.
+    /// </summary>
+    public static bool HasStartedRendering => Volatile.Read(ref s_renderStarted) != 0;
+
     private static byte[] Render(IAssociatePassdownTemplateRenderer renderer, AssociatePassdownDocumentModel model, PdfDensity density, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        Volatile.Write(ref s_renderStarted, 1);
         return Document.Create(container => container.Page(page => renderer.Compose(page, model, density, cancellationToken))).GeneratePdf();
     }
 

@@ -179,6 +179,13 @@ public partial class App : global::Avalonia.Application
             // updater and open What's New if (and only if) the update is recorded as a confirmed success.
             mainWindow.Opened += (_, _) => StartPostUpdateLaunch(services, mainViewModel, updateCoordinator, logger);
 
+            // Phase 34B-2: once the window is showing and the UI has gone idle, pay the PDF engine's one-time
+            // start-up cost on one low-priority background thread (synthetic document, nothing displayed or
+            // written), so the first preview, Create PDF or Print is not delayed by it. Skipped on shutdown.
+            var pdfWarmUp = services.GetRequiredService<PdfEngineWarmUp>();
+            mainWindow.Opened += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() => pdfWarmUp.TryStart(), Avalonia.Threading.DispatcherPriority.ApplicationIdle);
+            desktop.ShutdownRequested += (_, _) => pdfWarmUp.Cancel();
+
             desktop.MainWindow = mainWindow;
             var mainWindowAssignedMs = ElapsedSinceProcessStartMs();
 
@@ -573,6 +580,12 @@ public partial class App : global::Avalonia.Application
         // Windows print dialog + GDI spooling; Windows only — other hosts get a "use Save PDF" message),
         // and the preview's local, never-synced layout preferences (one JSON file, no migration).
         services.AddSingleton<IPdfRasterizer, PdfiumPdfRasterizer>();
+        services.AddSingleton(provider => new PdfEngineWarmUp(
+            provider.GetRequiredService<IAssociatePassdownPdfGenerator>(),
+            provider.GetRequiredService<IPdfRasterizer>(),
+            provider.GetRequiredService<IAssociatePassdownTemplatePreferenceStore>(),
+            isRasterizerWarm: () => PdfiumPdfRasterizer.IsLibraryLoaded,
+            logger: provider.GetRequiredService<ILogger<PdfEngineWarmUp>>()));
         services.AddSingleton<IPdfPrintService>(provider => OperatingSystem.IsWindows()
             ? new WindowsPdfPrintService(MainWindowHandle, provider.GetRequiredService<ILogger<WindowsPdfPrintService>>())
             : new UnsupportedPlatformPdfPrintService());
@@ -933,15 +946,21 @@ public partial class App : global::Avalonia.Application
         // Completed Phase 3 source adapters (Part A "completed sources currently include").
         // Phase 21C: park hours and the show schedule read the same official FIMS operating-hours GET;
         // giving both one coalescing client means a date's hours and shows cost one request.
+        // Phase 34B-2: the six accesso dated sources share it too, so an identical calendar POST (same
+        // endpoint, headers and body apart from accesso's per-request nonce) is sent once per refresh job.
         services.AddSingleton<CoalescingRetrievalHttpClient>(provider => new CoalescingRetrievalHttpClient(
-            provider.GetRequiredService<IRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
+            provider.GetRequiredService<IRetrievalHttpClient>(), provider.GetRequiredService<IClock>(),
+            AccessoKeywordCalendarCoalescing.KeyBody));
         services.AddSingleton<ParkHoursSource>(provider => new ParkHoursSource(
             provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
         services.AddSingleton<ShowScheduleSource>(provider => new ShowScheduleSource(
             provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
-        services.AddSingleton<DatedAdmissionSource>();
-        services.AddSingleton<DatedFastLaneSource>();
-        services.AddSingleton<DatedHauntedSource>();
+        services.AddSingleton<DatedAdmissionSource>(provider => new DatedAdmissionSource(
+            provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
+        services.AddSingleton<DatedFastLaneSource>(provider => new DatedFastLaneSource(
+            provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
+        services.AddSingleton<DatedHauntedSource>(provider => new DatedHauntedSource(
+            provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
         services.AddSingleton<PromotionsCatalogSource>();
         services.AddSingleton<OperatingEventsSource>();
         services.AddSingleton<PassPerksSource>();
@@ -950,14 +969,17 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<GeneralAddOnsCatalogSource>();
         // Phase 13C: Bring-A-Friend Duo (dated, exact per-person price) and Military/First Responder
         // (catalog, "Starting From").
-        services.AddSingleton<DatedBringAFriendDuoSource>();
+        services.AddSingleton<DatedBringAFriendDuoSource>(provider => new DatedBringAFriendDuoSource(
+            provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
         services.AddSingleton<MilitaryFirstResponderCatalogSource>();
         // Phase 15A: ordinary Bring-A-Friend's exact per-date price (anonymous, keyword
         // BAFWizardDailyTickets) — supersedes Phase 13C's passholder-login-only finding.
-        services.AddSingleton<DatedBringAFriendSource>();
+        services.AddSingleton<DatedBringAFriendSource>(provider => new DatedBringAFriendSource(
+            provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
         // Phase 21A: Military/First Responder exact per-date prices (anonymous, keyword
         // MilitaryWizardDailyTickets) — the store calendar shown before ID.me.
-        services.AddSingleton<DatedMilitaryFirstResponderSource>();
+        services.AddSingleton<DatedMilitaryFirstResponderSource>(provider => new DatedMilitaryFirstResponderSource(
+            provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
 
         // Refresh-orchestrator source registrations (Part A) — every adapter above, paired with
         // how its successful payload is persisted (dated) or reconciled (catalog). None of the

@@ -23,7 +23,10 @@ internal static partial class PdfiumNative
     public const uint FPDF_ERR_FORMAT = 3;
     public const uint FPDF_ERR_PASSWORD = 4;
 
-    private static bool _initialized;
+    private static volatile bool _initialized;
+
+    /// <summary>Phase 34B-2: whether the native library has been loaded and initialized in this process (read without the lock; only ever goes false → true).</summary>
+    public static bool IsInitialized => _initialized;
 
     /// <summary>Initializes PDFium once per process. Caller holds <see cref="Sync"/>.</summary>
     public static void EnsureInitialized()
@@ -63,6 +66,13 @@ internal static partial class PdfiumNative
 
     [LibraryImport(Library)]
     public static partial IntPtr FPDFBitmap_Create(int width, int height, int alpha);
+
+    /// <summary>PDFium's 32-bit BGRA bitmap format (the same layout <see cref="FPDFBitmap_Create"/> uses with alpha).</summary>
+    public const int FPDFBitmap_BGRA = 4;
+
+    /// <summary>Phase 34B-2: wraps caller-owned pixel memory; PDFium never frees it. The memory must stay valid until <see cref="FPDFBitmap_Destroy"/>.</summary>
+    [LibraryImport(Library)]
+    public static partial IntPtr FPDFBitmap_CreateEx(int width, int height, int format, IntPtr firstScan, int stride);
 
     [LibraryImport(Library)]
     public static partial void FPDFBitmap_Destroy(IntPtr bitmap);

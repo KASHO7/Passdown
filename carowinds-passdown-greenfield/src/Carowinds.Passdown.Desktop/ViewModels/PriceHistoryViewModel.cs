@@ -52,6 +52,14 @@ public partial class PriceHistoryViewModel : ObservableObject
     private readonly IExternalLinkLauncher? _linkLauncher;
     private IReadOnlyList<PriceHistoryProductOption> _allProducts = [];
     private int _historyLoadVersion;
+    private int _productsLoadVersion;
+
+    /// <summary>
+    /// Phase 34B-2: the synced observations read once per open (or refresh), so switching products does not re-read
+    /// the whole synced table. Replaced on every open and every refresh — which happens whenever Personal Sync merges
+    /// price observations or an official refresh changes the catalog — and dropped when the screen closes.
+    /// </summary>
+    private ISeasonPriceHistoryReader? _reader;
 
     /// <param name="dataChangeNotifier">Phase 26: when Personal Sync merges official price observations, an open screen refreshes in place.</param>
     /// <param name="linkLauncher">Phase 26: opens the selected product's verified official page (no link is offered without one).</param>
@@ -72,7 +80,9 @@ public partial class PriceHistoryViewModel : ObservableObject
             var dispatcher = uiDispatcher ?? new AvaloniaUiDispatcher();
             dataChangeNotifier.Changed += (_, change) =>
             {
-                if (change.Kind == DataChangeKind.OfficialPriceHistory)
+                // Phase 34B-2: OfficialData too — an official refresh can change the Season Pass catalog the legacy
+                // identity fold and the product list are built from, so the open screen re-reads (keeping selection).
+                if (change.Kind is DataChangeKind.OfficialPriceHistory or DataChangeKind.OfficialData)
                 {
                     dispatcher.Post(() => PendingRefresh = RefreshAsync());
                 }
@@ -172,14 +182,29 @@ public partial class PriceHistoryViewModel : ObservableObject
 
     private async Task LoadProductsAsync(string? productKey, bool revealRetired)
     {
+        var version = ++_productsLoadVersion;
+        _reader = null; // never answer from observations older than this load
         try
         {
-            var products = await _service.ListTrackedProductsAsync();
+            var reader = await _service.OpenReaderAsync();
+            var products = await reader.ListTrackedProductsAsync();
+            if (version != _productsLoadVersion)
+            {
+                return; // a newer open or refresh superseded this one
+            }
+
+            _reader = IsOpen ? reader : null;
             _allProducts = products.Select(p => new PriceHistoryProductOption(p)).ToList();
         }
         catch (Exception ex)
         {
+            if (version != _productsLoadVersion)
+            {
+                return;
+            }
+
             _logger.LogWarning(ex, "Season price history product list could not be loaded.");
+            _reader = null;
             _allProducts = [];
             Products = [];
             SelectedProduct = null;
@@ -202,6 +227,14 @@ public partial class PriceHistoryViewModel : ObservableObject
 
     [RelayCommand]
     private void Close() => IsOpen = false;
+
+    partial void OnIsOpenChanged(bool value)
+    {
+        if (!value)
+        {
+            _reader = null; // release the cached observations; the next open reads fresh data
+        }
+    }
 
     partial void OnIncludeInactiveChanged(bool value) => ApplyFilter(SelectedProduct?.ProductKey);
 
@@ -247,7 +280,10 @@ public partial class PriceHistoryViewModel : ObservableObject
 
         try
         {
-            var entries = await _service.GetHistoryAsync(product.ProductKey);
+            var reader = _reader;
+            var entries = reader is null
+                ? await _service.GetHistoryAsync(product.ProductKey)
+                : await reader.GetHistoryAsync(product.ProductKey);
             if (version != _historyLoadVersion)
             {
                 return; // a newer selection superseded this load

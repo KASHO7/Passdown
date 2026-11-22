@@ -66,6 +66,47 @@ internal static class AccessoKeywordCalendarRequest
 }
 
 /// <summary>
+/// Phase 34B-2: decides when two accesso calendar POSTs are the same question, for
+/// <see cref="Http.CoalescingRetrievalHttpClient"/>. Every body built by
+/// <see cref="AccessoKeywordCalendarRequest.BuildBody"/> carries a fresh <c>request_token</c> — a
+/// client-generated per-request nonce (docs/retrieval/dated-admission-source.md) — so byte comparison
+/// would never match. This drops that one field and nothing else: keyword, display_zero_capacity, the
+/// start and end dates and every other field still have to be identical. Only the accesso calendar
+/// endpoint is normalized, and only a flat JSON object of strings; anything else is compared byte for byte.
+/// </summary>
+public static class AccessoKeywordCalendarCoalescing
+{
+    private const string NonceField = "request_token";
+
+    public static string KeyBody(Uri requestUri, string jsonBody)
+    {
+        ArgumentNullException.ThrowIfNull(requestUri);
+        ArgumentNullException.ThrowIfNull(jsonBody);
+        if (requestUri != AccessoKeywordCalendarRequest.Endpoint)
+        {
+            return jsonBody;
+        }
+
+        Dictionary<string, string>? fields;
+        try
+        {
+            fields = JsonSerializer.Deserialize<Dictionary<string, string>>(jsonBody);
+        }
+        catch (JsonException)
+        {
+            return jsonBody;
+        }
+
+        if (fields is null || !fields.Remove(NonceField))
+        {
+            return jsonBody;
+        }
+
+        return JsonSerializer.Serialize(new SortedDictionary<string, string>(fields, StringComparer.Ordinal));
+    }
+}
+
+/// <summary>
 /// Deserialization shape for the `getkeywordcalendar` response envelope — proven identical (same
 /// field names, same single-object-or-array `D` behavior) across both keywords investigated.
 /// Product-specific interpretation (grouping, comparison-price/qualifier rules, status decisions)

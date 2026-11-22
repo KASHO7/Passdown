@@ -1127,7 +1127,7 @@ public sealed partial class PassdownPdfPreviewViewModel : ViewModelBase
                         _ => zoom,
                     };
                     var pixelsPerPoint = Math.Min(effectiveZoom * PdfPreviewZoom.DipsPerPoint * renderScaling, MaxRenderedPixelWidth / Math.Max(1, size.WidthPoints));
-                    image = _imageFactory.Create(raster.RenderPage(pageIndex, pixelsPerPoint));
+                    image = _imageFactory.Render(raster, pageIndex, pixelsPerPoint);
                     return new DisplayResult(raster, image, pageIndex, size, effectiveZoom, pixelsPerPoint);
                 }
                 catch
@@ -1206,7 +1206,7 @@ public sealed partial class PassdownPdfPreviewViewModel : ViewModelBase
         IImage image;
         try
         {
-            image = await _scheduler.Run(() => _imageFactory.Create(raster.RenderPage(pageIndex, pixelsPerPoint))).ConfigureAwait(true);
+            image = await _scheduler.Run(() => _imageFactory.Render(raster, pageIndex, pixelsPerPoint)).ConfigureAwait(true);
         }
         catch (ObjectDisposedException)
         {

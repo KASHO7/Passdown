@@ -67,6 +67,35 @@ public interface ISeasonPriceHistoryService
 
     /// <summary>One product's intervals, oldest first, each with its change from the previous interval.</summary>
     Task<IReadOnlyList<PriceHistoryEntry>> GetHistoryAsync(string productKey, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 34B-2: a reader for a screen that will show several products in a row (the Price History overlay).
+    /// It reads the observations merged in through Personal Sync — and folds legacy Season Pass identities — once,
+    /// then answers <see cref="ISeasonPriceHistoryReader.ListTrackedProductsAsync"/> and every
+    /// <see cref="ISeasonPriceHistoryReader.GetHistoryAsync"/> from that, so switching products no longer re-reads the
+    /// whole synced table. This computer's own intervals are still read fresh for every product. The caller
+    /// discards the reader whenever synced observations or the official catalog change, and when the screen closes.
+    /// The default reads nothing in advance and simply forwards to this service.
+    /// </summary>
+    Task<ISeasonPriceHistoryReader> OpenReaderAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<ISeasonPriceHistoryReader>(new ForwardingSeasonPriceHistoryReader(this));
+}
+
+/// <summary>Phase 34B-2: see <see cref="ISeasonPriceHistoryService.OpenReaderAsync"/>. Safe to use from several threads.</summary>
+public interface ISeasonPriceHistoryReader
+{
+    Task<IReadOnlyList<PriceHistoryProduct>> ListTrackedProductsAsync(CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<PriceHistoryEntry>> GetHistoryAsync(string productKey, CancellationToken cancellationToken = default);
+}
+
+internal sealed class ForwardingSeasonPriceHistoryReader(ISeasonPriceHistoryService service) : ISeasonPriceHistoryReader
+{
+    public Task<IReadOnlyList<PriceHistoryProduct>> ListTrackedProductsAsync(CancellationToken cancellationToken = default) =>
+        service.ListTrackedProductsAsync(cancellationToken);
+
+    public Task<IReadOnlyList<PriceHistoryEntry>> GetHistoryAsync(string productKey, CancellationToken cancellationToken = default) =>
+        service.GetHistoryAsync(productKey, cancellationToken);
 }
 
 /// <summary>
@@ -89,8 +118,37 @@ public sealed class SeasonPriceHistoryService(
 {
     public async Task<IReadOnlyList<PriceHistoryProduct>> ListTrackedProductsAsync(CancellationToken cancellationToken = default)
     {
-        var localKeys = await historyRepository.GetTrackedProductKeysAsync(cancellationToken).ConfigureAwait(false);
         var importedByProduct = await LoadImportedByProductAsync(cancellationToken).ConfigureAwait(false);
+        return await ListTrackedProductsAsync(importedByProduct, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<ISeasonPriceHistoryReader> OpenReaderAsync(CancellationToken cancellationToken = default)
+    {
+        var importedByProduct = await LoadImportedByProductAsync(cancellationToken).ConfigureAwait(false);
+        return new Reader(this, importedByProduct);
+    }
+
+    /// <summary>
+    /// Phase 34B-2: holds one folded, read-only copy of the synced observations. Nothing in it is ever mutated after
+    /// <see cref="LoadImportedByProductAsync"/> builds it, so concurrent reads are safe.
+    /// </summary>
+    private sealed class Reader(SeasonPriceHistoryService service, Dictionary<string, List<OfficialPriceObservation>> importedByProduct) : ISeasonPriceHistoryReader
+    {
+        public Task<IReadOnlyList<PriceHistoryProduct>> ListTrackedProductsAsync(CancellationToken cancellationToken = default) =>
+            service.ListTrackedProductsAsync(importedByProduct, cancellationToken);
+
+        public Task<IReadOnlyList<PriceHistoryEntry>> GetHistoryAsync(string productKey, CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(productKey);
+            return service.GetHistoryAsync(productKey, importedByProduct, cancellationToken);
+        }
+    }
+
+    private async Task<IReadOnlyList<PriceHistoryProduct>> ListTrackedProductsAsync(
+        IReadOnlyDictionary<string, List<OfficialPriceObservation>> importedByProduct,
+        CancellationToken cancellationToken)
+    {
+        var localKeys = await historyRepository.GetTrackedProductKeysAsync(cancellationToken).ConfigureAwait(false);
         var trackedKeys = new HashSet<string>(localKeys, StringComparer.Ordinal);
         trackedKeys.UnionWith(importedByProduct.Keys);
         var products = new List<PriceHistoryProduct>();

@@ -13,6 +13,9 @@ public sealed class PdfiumPdfRasterizer : IPdfRasterizer
     /// <summary>Upper bound on either rendered dimension, so a runaway zoom can never allocate an enormous bitmap.</summary>
     public const int MaxPixelDimension = 8192;
 
+    /// <summary>Phase 34B-2: whether PDFium is already loaded in this process (its one-time native library load has been paid).</summary>
+    public static bool IsLibraryLoaded => PdfiumNative.IsInitialized;
+
     public IPdfRasterDocument Open(byte[] pdfBytes)
     {
         ArgumentNullException.ThrowIfNull(pdfBytes);
@@ -72,7 +75,7 @@ public sealed class PdfiumPdfRasterizer : IPdfRasterizer
         }
     }
 
-    internal sealed class PdfiumRasterDocument : IPdfRasterDocument
+    internal sealed class PdfiumRasterDocument : IPdfDirectRasterDocument
     {
         private IntPtr _document;
         private IntPtr _buffer;
@@ -141,7 +144,7 @@ public sealed class PdfiumPdfRasterizer : IPdfRasterizer
             return _pageSizes[pageIndex];
         }
 
-        public PdfRasterImage RenderPage(int pageIndex, double pixelsPerPoint, PdfRenderPurpose purpose = PdfRenderPurpose.Display, CancellationToken cancellationToken = default)
+        public PdfPixelSize GetRenderPixelSize(int pageIndex, double pixelsPerPoint)
         {
             var size = GetPageSize(pageIndex);
             if (!double.IsFinite(pixelsPerPoint) || pixelsPerPoint <= 0)
@@ -149,8 +152,62 @@ public sealed class PdfiumPdfRasterizer : IPdfRasterizer
                 throw new ArgumentOutOfRangeException(nameof(pixelsPerPoint));
             }
 
-            var width = Math.Clamp((int)Math.Round(size.WidthPoints * pixelsPerPoint), 1, MaxPixelDimension);
-            var height = Math.Clamp((int)Math.Round(size.HeightPoints * pixelsPerPoint), 1, MaxPixelDimension);
+            return new PdfPixelSize(
+                Math.Clamp((int)Math.Round(size.WidthPoints * pixelsPerPoint), 1, MaxPixelDimension),
+                Math.Clamp((int)Math.Round(size.HeightPoints * pixelsPerPoint), 1, MaxPixelDimension));
+        }
+
+        public void RenderPageInto(int pageIndex, double pixelsPerPoint, IntPtr destination, int destinationStride, PdfRenderPurpose purpose = PdfRenderPurpose.Display, CancellationToken cancellationToken = default)
+        {
+            var (width, height) = GetRenderPixelSize(pageIndex, pixelsPerPoint);
+            if (destination == IntPtr.Zero)
+            {
+                throw new ArgumentNullException(nameof(destination));
+            }
+
+            ArgumentOutOfRangeException.ThrowIfLessThan(destinationStride, width * 4);
+            var flags = PdfiumNative.FPDF_ANNOT | (purpose == PdfRenderPurpose.Print ? PdfiumNative.FPDF_PRINTING : 0);
+
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (PdfiumNative.Sync)
+            {
+                ObjectDisposedException.ThrowIf(_document == IntPtr.Zero, this);
+                var page = PdfiumNative.FPDF_LoadPage(_document, pageIndex);
+                if (page == IntPtr.Zero)
+                {
+                    throw new PdfRasterizationException($"Page {pageIndex + 1} could not be loaded.");
+                }
+
+                try
+                {
+                    // The PDFium bitmap only wraps the caller's memory (never frees it) and is destroyed before
+                    // this returns, so nothing refers to that memory after the call.
+                    var bitmap = PdfiumNative.FPDFBitmap_CreateEx(width, height, PdfiumNative.FPDFBitmap_BGRA, destination, destinationStride);
+                    if (bitmap == IntPtr.Zero)
+                    {
+                        throw new PdfRasterizationException("Not enough memory to render the page.");
+                    }
+
+                    try
+                    {
+                        PdfiumNative.FPDFBitmap_FillRect(bitmap, 0, 0, width, height, 0xFFFFFFFF);
+                        PdfiumNative.FPDF_RenderPageBitmap(bitmap, page, 0, 0, width, height, 0, flags);
+                    }
+                    finally
+                    {
+                        PdfiumNative.FPDFBitmap_Destroy(bitmap);
+                    }
+                }
+                finally
+                {
+                    PdfiumNative.FPDF_ClosePage(page);
+                }
+            }
+        }
+
+        public PdfRasterImage RenderPage(int pageIndex, double pixelsPerPoint, PdfRenderPurpose purpose = PdfRenderPurpose.Display, CancellationToken cancellationToken = default)
+        {
+            var (width, height) = GetRenderPixelSize(pageIndex, pixelsPerPoint);
             var flags = PdfiumNative.FPDF_ANNOT | (purpose == PdfRenderPurpose.Print ? PdfiumNative.FPDF_PRINTING : 0);
 
             cancellationToken.ThrowIfCancellationRequested();
