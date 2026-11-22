@@ -107,4 +107,4 @@ EXECUTED** if no printer is available. Do not mark printing passed from anything
 
 | Item | Result | Notes |
 |---|---|---|
-| (fill in) | | |
+| A–J (all) | USER-VERIFIED ON WINDOWS | Product owner reported on 2026-11-22 that all tests passed. No per-item notes; whether a physical printer (H11/H12), each display scale and Narrator were covered was not stated. Released as RC.12 — see `rc12-release-readiness.md`. |
