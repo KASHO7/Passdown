@@ -3,6 +3,7 @@
              xmlns:controls="using:Carowinds.Passdown.Desktop.Controls"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
+             xmlns:views="using:Carowinds.Passdown.Desktop.Views"
              xmlns:presentation="using:Carowinds.Passdown.Desktop.Presentation"
              xmlns:converters="using:Carowinds.Passdown.Desktop.Converters"
              xmlns:documents="using:Carowinds.Passdown.Documents.Associate"
@@ -308,7 +309,7 @@
     </Style>
 
     <!-- One height for every action on the bar. -->
-    <Style Selector="StackPanel#PassdownActions > Button">
+    <Style Selector="WrapPanel#PassdownActions > Button">
       <Setter Property="Height" Value="34" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
@@ -583,7 +584,8 @@
                visible, never automatic), a divider, then the passdown outputs — Create PDF is the one
                accent button, Copy sits beside it, occasional actions live in More. Administrative
                actions (Export Diagnostics) stay in Settings → Diagnostics. -->
-          <StackPanel x:Name="PassdownActions" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <!-- Phase 33: wraps (rather than overflowing) now that Print and Show/Hide Preview sit here too. -->
+          <WrapPanel x:Name="PassdownActions" Orientation="Horizontal" ItemSpacing="8" LineSpacing="8" VerticalAlignment="Center">
             <Button Content="Check Online"
                     Command="{Binding CheckOnlineCommand}"
                     Classes="toolbarButton"
@@ -605,6 +607,16 @@
                 <TextBlock Text="{Binding SelectedTemplateOption.Label}" Classes="buttonDetail" />
               </StackPanel>
             </Button>
+
+            <!-- Phase 33: Print is always here, so it works with the preview hidden; it is the same
+                 command (and the same generated document) as the preview toolbar's Print. -->
+            <Button x:Name="AssociatePrintButton"
+                    Content="Print"
+                    Classes="secondaryAction"
+                    Command="{Binding Preview.PrintCommand}"
+                    AutomationProperties.Name="Print Passdown"
+                    AutomationProperties.HelpText="{Binding Preview.PrintHelpText}"
+                    ToolTip.Tip="{Binding Preview.PrintHelpText}" />
 
             <!-- Phase 18F: one compact Copy menu for pasting into Microsoft Teams. Enter/Space opens it,
                  arrow keys move between items; nothing is hover-only. Copies only what is already on
@@ -637,6 +649,16 @@
             <!-- More: occasional passdown actions, each clearly labeled. Nothing destructive lives
                  here (Associate has no delete/reset-all/finalize button — finalization stays
                  automatic, Phase 9). -->
+            <!-- Phase 33: Show / Hide the live PDF preview (remembered on this computer). -->
+            <Button x:Name="TogglePreviewButton"
+                    Classes="toolbarButton"
+                    Content="{Binding Preview.TogglePreviewLabel}"
+                    Command="{Binding Preview.TogglePreviewCommand}"
+                    IsVisible="{Binding Preview.IsAvailable}"
+                    AutomationProperties.Name="{Binding Preview.TogglePreviewLabel}"
+                    AutomationProperties.HelpText="{Binding Preview.TogglePreviewHelpText}"
+                    ToolTip.Tip="{Binding Preview.TogglePreviewHelpText}" />
+
             <Button Content="More ▾" Classes="toolbarButton"
                     AutomationProperties.Name="More passdown actions"
                     ToolTip.Tip="More passdown actions">
@@ -671,7 +693,7 @@
                 </MenuFlyout>
               </Button.Flyout>
             </Button>
-          </StackPanel>
+          </WrapPanel>
         </WrapPanel>
 
         <ProgressBar IsIndeterminate="True" Height="3"
@@ -703,6 +725,15 @@
           <TextBlock Text="{Binding PdfExportMessage}"
                      IsVisible="{Binding PdfExportMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                      TextWrapping="Wrap" />
+
+          <!-- Phase 33: Print / Save PDF results (from either Print button or the preview's Save PDF). -->
+          <TextBlock x:Name="PreviewActionMessageText"
+                     Text="{Binding Preview.ActionMessage}"
+                     IsVisible="{Binding Preview.ActionMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                     Classes.muted="{Binding !Preview.ActionMessageIsError}"
+                     Classes.copyError="{Binding Preview.ActionMessageIsError}"
+                     TextWrapping="Wrap"
+                     AutomationProperties.LiveSetting="Polite" />
 
           <!-- Phase 18F: subtle Copy feedback — muted on success, error color on a clipboard failure. -->
           <TextBlock Text="{Binding CopyMessage}"
@@ -737,7 +768,12 @@
     <!-- Main content: a section rail + section body (Parts 2/3) so the most important information
          (Park Hours, attendance, Early Ride, Daily Feature) sits above the fold on "Overview", while
          Products and full Notes editing live in their own sections instead of one long page scroll. -->
-    <Grid Grid.Row="1" ColumnDefinitions="140,*">
+    <!-- Phase 33: editor | divider | live PDF preview. The preview column persists across Overview,
+         Products, Shows and Notes (only the editor's section body changes); widths are applied by the
+         code-behind from Preview's clamped layout, and the divider's final width is remembered locally. -->
+    <Grid Grid.Row="1" x:Name="AssociateBodyGrid" ColumnDefinitions="*,Auto,Auto">
+    <Grid Grid.Column="0" x:Name="AssociateEditorPane" ColumnDefinitions="140,*"
+          IsVisible="{Binding Preview.IsEditorShown}">
 
       <Border Grid.Column="0" Background="{DynamicResource PassdownSurfaceBrush}"
               BorderThickness="0,0,1,0" BorderBrush="{DynamicResource PassdownDividerBrush}">
@@ -1740,6 +1776,20 @@
         </StackPanel>
       </ScrollViewer>
 
+    </Grid>
+
+    <GridSplitter Grid.Column="1" x:Name="PreviewSplitter"
+                  Width="6" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                  Background="Transparent"
+                  Focusable="True"
+                  IsVisible="{Binding Preview.IsSplitLayout}"
+                  AutomationProperties.Name="Resize the PDF preview"
+                  AutomationProperties.HelpText="Drag, or use the Left and Right arrow keys, to change how much room the preview takes."
+                  ToolTip.Tip="Drag to resize the preview" />
+
+    <Panel Grid.Column="2" x:Name="PreviewPaneHost" IsVisible="{Binding Preview.IsPreviewPaneShown}">
+      <views:PassdownPdfPreviewView x:Name="PreviewPane" DataContext="{Binding Preview}" />
+    </Panel>
     </Grid>
 
   </Grid>

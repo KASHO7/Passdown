@@ -3,7 +3,9 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using System.ComponentModel;
 using Avalonia.VisualTree;
+using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Desktop.ViewModels;
 
 namespace Carowinds.Passdown.Desktop.Views;
@@ -19,6 +21,104 @@ public partial class AssociateView : UserControl
         // the day button and Calendar already mark these events handled by the time they bubble here).
         DateCalendar.AddHandler(PointerReleasedEvent, DateCalendar_OnPointerReleased, RoutingStrategies.Bubble, handledEventsToo: true);
         DateCalendar.AddHandler(KeyDownEvent, DateCalendar_OnPreviewKeyDown, RoutingStrategies.Tunnel);
+
+        // Phase 33: editor | divider | preview sizing — view glue only; the rules live in PdfPreviewLayout.
+        AssociateBodyGrid.SizeChanged += (_, e) =>
+        {
+            _preview?.UpdateAvailableWidth(e.NewSize.Width);
+            ApplyPreviewLayout();
+        };
+        PreviewSplitter.DragCompleted += (_, _) => CommitSplitterWidth();
+        PreviewSplitter.AddHandler(KeyUpEvent, (_, e) =>
+        {
+            if (e.Key is Key.Left or Key.Right)
+            {
+                CommitSplitterWidth();
+            }
+        }, RoutingStrategies.Bubble, handledEventsToo: true);
+    }
+
+    private PassdownPdfPreviewViewModel? _preview;
+
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+        if (_preview is not null)
+        {
+            _preview.PropertyChanged -= Preview_OnPropertyChanged;
+        }
+
+        _preview = (DataContext as AssociateViewModel)?.Preview;
+        if (_preview is not null)
+        {
+            _preview.PropertyChanged += Preview_OnPropertyChanged;
+            if (AssociateBodyGrid.Bounds.Width > 0)
+            {
+                _preview.UpdateAvailableWidth(AssociateBodyGrid.Bounds.Width);
+            }
+        }
+
+        ApplyPreviewLayout();
+    }
+
+    private void Preview_OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(PassdownPdfPreviewViewModel.PaneMode) or nameof(PassdownPdfPreviewViewModel.Layout)
+            or nameof(PassdownPdfPreviewViewModel.EffectivePreviewPaneWidth) or nameof(PassdownPdfPreviewViewModel.IsPreviewPaneShown))
+        {
+            ApplyPreviewLayout();
+        }
+    }
+
+    /// <summary>Applies the view model's resolved pane layout to the three body columns.</summary>
+    private void ApplyPreviewLayout()
+    {
+        var columns = AssociateBodyGrid.ColumnDefinitions;
+        if (columns.Count != 3)
+        {
+            return;
+        }
+
+        var editor = columns[0];
+        var preview = columns[2];
+        var layout = _preview?.Layout ?? new PdfPreviewLayoutState(PdfPreviewPaneMode.EditorOnly, 0, 0);
+        switch (layout.Mode)
+        {
+            case PdfPreviewPaneMode.Split:
+                editor.MinWidth = PdfPreviewLayout.MinEditorWidth;
+                editor.Width = new GridLength(1, GridUnitType.Star);
+                preview.MinWidth = PdfPreviewLayout.MinPreviewWidth;
+                preview.MaxWidth = Math.Max(PdfPreviewLayout.MinPreviewWidth, layout.MaxPreviewWidth);
+                preview.Width = new GridLength(layout.PreviewWidth, GridUnitType.Pixel);
+                break;
+
+            case PdfPreviewPaneMode.PreviewOnly:
+                editor.MinWidth = 0;
+                editor.Width = new GridLength(0, GridUnitType.Pixel);
+                preview.MinWidth = 0;
+                preview.MaxWidth = double.PositiveInfinity;
+                preview.Width = new GridLength(1, GridUnitType.Star);
+                break;
+
+            default:
+                editor.MinWidth = 0;
+                editor.Width = new GridLength(1, GridUnitType.Star);
+                preview.MinWidth = 0;
+                preview.MaxWidth = double.PositiveInfinity;
+                preview.Width = new GridLength(0, GridUnitType.Pixel);
+                break;
+        }
+    }
+
+    private void CommitSplitterWidth()
+    {
+        if (_preview is null || AssociateBodyGrid.ColumnDefinitions.Count != 3)
+        {
+            return;
+        }
+
+        _preview.CommitPreviewPaneWidth(AssociateBodyGrid.ColumnDefinitions[2].ActualWidth);
+        ApplyPreviewLayout(); // normalize: the splitter may have rewritten the editor column as a weighted star
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)

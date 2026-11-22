@@ -183,3 +183,22 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+14. PDFium (pdfium.dll)
+-----------------------
+Component:  PDFium chromium/8138 (version 159.0.8138), pre-compiled by the
+            pdfium-binaries project and shipped via the NuGet package
+            bblanchon.PDFium.Win32 159.0.8138 (win-x64 native library only).
+            Used offline to display the Associate Passdown PDF preview and
+            to print it. Built without V8/JavaScript and without XFA.
+License:    BSD-3-Clause (PDFium); bundled third-party code under the
+            licenses listed in licenses\PDFium-dependencies (Apache-2.0,
+            BSD, MIT, FreeType License, IJG, libpng, zlib, ICU and others)
+Copyright:  Copyright 2014 The PDFium Authors
+Full text:  licenses\PDFium-LICENSE.txt
+Notices:    licenses\PDFium-dependencies\*.txt (copied unchanged from the
+            pdfium-binaries chromium/8138 release archive, whose pdfium.dll
+            is byte-identical to the one in the NuGet package);
+            licenses\pdfium-binaries-LICENSE.txt (MIT, build scripts:
+            Copyright 2014-2025 Benoit Blanchon)

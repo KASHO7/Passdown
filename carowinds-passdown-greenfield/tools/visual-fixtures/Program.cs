@@ -7,12 +7,14 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Carowinds.Passdown.Application.Diagnostics;
 using Carowinds.Passdown.Application.OperationalNotes;
+using Carowinds.Passdown.Application.PdfOutput;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Desktop;
 using Carowinds.Passdown.Desktop.Services;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
+using Carowinds.Passdown.Infrastructure.PdfOutput;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
 
 // Phase 22F synthetic-fixture screenshot harness. Usage: README.md.
@@ -123,6 +125,27 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
     ("Calendar-PassPerksGrid", () => new Fixture(), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Other); ScrollBy(f.Window, 420); }),
     ("Settings-CalendarDisplay", () => new Fixture(), f => { Go(f, AppSection.Settings); Pump(6); ScrollToName(f.Window, "Calendar"); }),
     ("Associate-Notes", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowNotesSectionCommand.Execute(null); Pump(8); }),
+    // Phase 33: the live PDF preview (real QuestPDF bytes rendered by PDFium) beside the editor.
+    ("Preview-Hidden", () => new Fixture(preview: PdfPreviewLayoutPreferences.BuiltIn with { IsPreviewVisible = false }), f => { Go(f, AppSection.AssociatePassdown); Pump(8); }),
+    ("Preview-Modern", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.SelectTemplateCommand.Execute(AssociatePassdownTemplate.Modern); Pump(12); }),
+    ("Preview-Compact", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.SelectTemplateCommand.Execute(AssociatePassdownTemplate.Compact); Pump(12); }),
+    ("Preview-FitPage", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.Preview.FitPageCommand.Execute(null); Pump(12); }),
+    ("Preview-Zoomed", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.Preview.ZoomInCommand.Execute(null); f.Vm.Associate.Preview.ZoomInCommand.Execute(null); Pump(12); }),
+    ("Preview-LongNotesMultiPage", () => new Fixture(), f =>
+    {
+        Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowNotesSectionCommand.Execute(null); Pump(6);
+        f.Vm.Associate.OperationalNotesText = string.Join(Environment.NewLine, Enumerable.Range(1, 60).Select(i => $"Synthetic operational note {i}: a deliberately long line so the passdown continues onto another page rather than truncating anything."));
+        Pump(12); f.Vm.Associate.Preview.NextPageCommand.Execute(null); Pump(12);
+    }),
+    ("Preview-WideLayout", () => new Fixture(preview: PdfPreviewLayoutPreferences.BuiltIn with { PreviewPaneWidth = 760 }), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(12); }),
+    ("Preview-NarrowPreviewFirst", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.Preview.ShowPreviewCommand.Execute(null); Pump(12); }),
+    // A date change held mid-load: the previous date's page is gone at once; the pane says it is loading.
+    ("Preview-SwitchingDates", () => new Fixture(), f =>
+    {
+        Go(f, AppSection.AssociatePassdown); Pump(6);
+        f.AssociateService.LoadGate = new TaskCompletionSource<bool>();
+        f.Vm.Associate.NextDayCommand.Execute(null); Pump(8);
+    }),
     ("Associate-SaveFailed", () => new Fixture(), f =>
     {
         Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowOverviewSectionCommand.Execute(null); Pump(8);
@@ -242,6 +265,7 @@ foreach (var (w, h) in sizes)
             Shot(fixture.Window, shot);
             report.Add($"{shot}: {Geometry(fixture.Window)}");
             fixture.CalendarService.Gate?.TrySetResult(true);
+            fixture.AssociateService.LoadGate?.TrySetResult(true);
             fixture.Window.Close();
             Pump(2);
         }
@@ -411,7 +435,8 @@ internal sealed class Fixture
     public MainViewModel Vm { get; }
     public MainWindow Window { get; }
 
-    public Fixture(bool emptyNotes = false, bool emptyHistory = false, SyncFixture sync = SyncFixture.Off, Carowinds.Passdown.Application.Shows.ShowScheduleView? dashboardShows = null, bool showPassPerks = true)
+    public Fixture(bool emptyNotes = false, bool emptyHistory = false, SyncFixture sync = SyncFixture.Off, Carowinds.Passdown.Application.Shows.ShowScheduleView? dashboardShows = null, bool showPassPerks = true,
+        PdfPreviewLayoutPreferences? preview = null)
     {
         var clock = new FakeClock(Fixtures.Now);
         var passPerks = Phase32Fixtures.Service();
@@ -438,7 +463,17 @@ internal sealed class Fixture
             new OperationsDashboardViewModel(dashboard),
             new OperationsCalendarViewModel(CalendarService, clock, passPerksService: passPerks, calendarDisplay: calendarDisplay),
             new AssociateViewModel(AssociateService, clock, autosaveDelay: (_, _) => Task.CompletedTask,
-                externalLinkLauncher: new Phase31CFixtures.NoOpLinkLauncher(), dealsService: Phase31CFixtures.Deals(), importantDetailsService: Phase31CFixtures.Details(), passPerksService: passPerks),
+                externalLinkLauncher: new Phase31CFixtures.NoOpLinkLauncher(), dealsService: Phase31CFixtures.Deals(), importantDetailsService: Phase31CFixtures.Details(), passPerksService: passPerks,
+                // Phase 33: the real QuestPDF export (the default) rendered by the real PDFium rasterizer, inline and
+                // undebounced so a capture shows the finished preview. In-memory layout preferences only.
+                // Never the real profile's associate-passdown-template.json: the Preview-Modern/Compact
+                // scenarios change the PDF style.
+                templatePreferenceStore: new FakeAssociatePassdownTemplatePreferenceStore(),
+                pdfRasterizer: new PdfiumPdfRasterizer(),
+                pdfPrintService: new FakePdfPrintService(),
+                pdfPreviewLayoutStore: new InMemoryPdfPreviewLayoutPreferenceStore(preview),
+                previewWorkScheduler: new InlinePreviewWorkScheduler(),
+                previewDelay: (_, _) => Task.CompletedTask),
             new OperationalNotesViewModel(notes, clock),
             new PassdownHistoryViewModel(history, new FakeFinalizedPassdownPdfRetrievalService()),
             new PersonalSyncSettingsViewModel(settingsService, new FakeSyncFolderPicker(), conflicts, coordinator, buildIdentity: build, diagnostics: diagnostics,

@@ -9,6 +9,7 @@ using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.ProductDetails;
 using Carowinds.Passdown.Application.PassPerks;
+using Carowinds.Passdown.Application.PdfOutput;
 using Carowinds.Passdown.Application.Seasons;
 using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Application.Time;
@@ -662,7 +663,14 @@ public partial class AssociateViewModel : ViewModelBase
         IExternalLinkLauncher? externalLinkLauncher = null,
         IOfficialDealsService? dealsService = null,
         IProductImportantDetailsService? importantDetailsService = null,
-        IPassPerksService? passPerksService = null)
+        IPassPerksService? passPerksService = null,
+        IPdfRasterizer? pdfRasterizer = null,
+        IPdfPrintService? pdfPrintService = null,
+        IPdfPreviewLayoutPreferenceStore? pdfPreviewLayoutStore = null,
+        IPdfPageImageFactory? pdfPageImageFactory = null,
+        IPreviewWorkScheduler? previewWorkScheduler = null,
+        TimeSpan? previewDebounce = null,
+        Func<TimeSpan, CancellationToken, Task>? previewDelay = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -675,6 +683,23 @@ public partial class AssociateViewModel : ViewModelBase
         _autosaveDelay = autosaveDelay ?? Task.Delay;
         _pdfExportService = pdfExportService ?? new AssociatePassdownPdfExportService(new AssociatePassdownPdfGenerator());
         _pdfSavePicker = pdfSavePicker ?? new UnavailablePdfSaveFilePicker();
+
+        // Phase 33: the live PDF preview / Print / Save PDF. Built from the same export service as Create
+        // PDF. Without a rasterizer (tests, or a renderer that failed to compose) the pane never shows and
+        // nothing is generated in the background; Print and Save PDF still generate on demand.
+        Preview = new PassdownPdfPreviewViewModel(
+            CapturePreviewRequest,
+            () => HasWorkspace && !IsBusy,
+            _pdfExportService,
+            pdfRasterizer,
+            pdfPrintService ?? new UnsupportedPlatformPdfPrintService(),
+            _pdfSavePicker,
+            pdfPreviewLayoutStore ?? new InMemoryPdfPreviewLayoutPreferenceStore(),
+            pdfPageImageFactory,
+            previewWorkScheduler,
+            previewDebounce,
+            previewDelay,
+            logger: logger);
         _templatePreferenceStore = templatePreferenceStore ?? new FileAssociatePassdownTemplatePreferenceStore(FileAssociatePassdownTemplatePreferenceStore.DefaultPath);
         _clipboardService = clipboardService ?? new UnavailableClipboardService();
         _refreshCoordinator = refreshCoordinator;
@@ -1003,6 +1028,9 @@ public partial class AssociateViewModel : ViewModelBase
     /// </summary>
     partial void OnSelectedTemplateOptionChanged(AssociatePassdownTemplateOption value)
     {
+        // Phase 33: the preview, Print and Save PDF always use the template Create PDF uses.
+        Preview.NotifyContentChanged();
+
         if (_isLoadingTemplatePreference)
         {
             return;
@@ -1012,6 +1040,41 @@ public partial class AssociateViewModel : ViewModelBase
     }
 
     public bool IsBusy => IsLoadingDate || IsCheckingOnline;
+
+    /// <summary>Phase 33: the live PDF preview, Print and Save PDF for the selected date.</summary>
+    public PassdownPdfPreviewViewModel Preview { get; }
+
+    private bool _suppressPreviewNotification;
+
+    partial void OnWorkspaceChanged(AssociateWorkspace? value)
+    {
+        if (!_suppressPreviewNotification)
+        {
+            Preview.NotifyContentChanged();
+        }
+
+        Preview.RefreshCommandStates();
+    }
+
+    partial void OnIsLoadingDateChanged(bool value) => Preview.RefreshCommandStates();
+
+    partial void OnIsCheckingOnlineChanged(bool value) => Preview.RefreshCommandStates();
+
+    /// <summary>
+    /// Phase 33: what the preview, Print and Save PDF build from — the editor's current fields applied to
+    /// the loaded workspace in memory (exactly what Copy for Teams reads), so unsaved edits are included
+    /// without saving them. Nothing while the selected date's workspace is not loaded yet.
+    /// </summary>
+    private PassdownPdfCapture CapturePreviewRequest()
+    {
+        if (Workspace is not { } workspace || workspace.OperatingDate != SelectedDate)
+        {
+            return PassdownPdfCapture.Waiting("Loading this date's preview…");
+        }
+
+        var effective = _draftDateInEdit == workspace.OperatingDate ? WithDraftApplied(workspace, BuildDraft()) : workspace;
+        return PassdownPdfCapture.Ready(new PassdownPdfRequest(effective, workspace.OperatingDate, SelectedTemplateOption.Value));
+    }
 
     /// <summary>
     /// A <see cref="DateTime"/>-shaped view of <see cref="SelectedDate"/> for Avalonia's
@@ -1439,8 +1502,13 @@ public partial class AssociateViewModel : ViewModelBase
 
     partial void OnSelectedDateChanged(DateOnly value)
     {
+        // Phase 33: the page on screen belongs to the previous date — cleared at once, never shown as this one's.
+        Preview.NotifySelectedDateChanged();
+        Preview.ClearActionMessage();
+
         if (_isRestoringSelectedDate)
         {
+            Preview.NotifyContentChanged(); // the restored date's workspace is still loaded — rebuild its preview.
             return; // Phase 23A: a blocked switch putting the date back — the editor never left it.
         }
 
@@ -1626,7 +1694,7 @@ public partial class AssociateViewModel : ViewModelBase
                 return;
             }
 
-            var fileName = string.Create(CultureInfo.InvariantCulture, $"Carowinds-Operations-{workspace.OperatingDate:yyyy-MM-dd}.pdf");
+            var fileName = PassdownPdfPreviewViewModel.SuggestedFileName(workspace.OperatingDate); // Phase 33: shared with Save PDF
             var saveResult = await _pdfSavePicker.SaveAsync(pdfBytes, fileName).ConfigureAwait(true);
 
             PdfExportMessage = saveResult.Outcome switch
@@ -2479,6 +2547,9 @@ public partial class AssociateViewModel : ViewModelBase
             return;
         }
 
+        // Phase 33: every editor change funnels through here — the preview debounces its own refresh.
+        Preview.NotifyContentChanged();
+
         _isDirty = true;
         if (AutosaveState != AssociateAutosaveState.SaveFailed)
         {
@@ -2552,7 +2623,17 @@ public partial class AssociateViewModel : ViewModelBase
 
             if (Workspace is { } current && current.OperatingDate == date)
             {
-                Workspace = WithDraftApplied(current, draft) with { SaveStatus = status, DraftContentHash = saveResult.ContentHash };
+                // Phase 33: the preview was already built from these edits (draft applied in memory) — a save
+                // changes no PDF content, so it does not trigger a regeneration.
+                _suppressPreviewNotification = true;
+                try
+                {
+                    Workspace = WithDraftApplied(current, draft) with { SaveStatus = status, DraftContentHash = saveResult.ContentHash };
+                }
+                finally
+                {
+                    _suppressPreviewNotification = false;
+                }
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

@@ -33,6 +33,7 @@ public sealed class AvaloniaPdfSaveFilePicker : IPdfSaveFilePicker
                 SuggestedFileName = suggestedFileName,
                 DefaultExtension = "pdf",
                 FileTypeChoices = [PdfFileType],
+                ShowOverwritePrompt = true, // Phase 33: replacing an existing file is always confirmed by the native dialog.
             });
 
             if (file is null)
@@ -46,6 +47,15 @@ public sealed class AvaloniaPdfSaveFilePicker : IPdfSaveFilePicker
             }
 
             return PdfSaveResult.Saved(file.TryGetLocalPath() ?? file.Name);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Phase 33: say why, so the associate can pick somewhere that works.
+            return PdfSaveResult.Failed("The PDF could not be saved there — Windows did not allow writing to that folder or file. Choose another location.");
+        }
+        catch (IOException)
+        {
+            return PdfSaveResult.Failed("The PDF could not be saved — the file may be open in another program, or the location (such as a network or removable drive) is unavailable. Close the file or choose another location.");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

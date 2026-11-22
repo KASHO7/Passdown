@@ -20,4 +20,20 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
   </ItemGroup>
+  <!--
+    Phase 33: PDFium (BSD-3-Clause; NuGet packaging by bblanchon/pdfium-binaries, Apache-2.0) renders
+    the application's own generated Passdown PDF bytes for the live preview and for Windows printing.
+    Native, offline, no network or web renderer. Only the host RID's native library is copied by a
+    RID-specific (win-x64) publish; the macOS/Linux packages exist so tests and local development on
+    the Fedora/macOS hosts exercise the same renderer. See docs/phase33-live-pdf-preview-printing.md.
+  -->
+  <PropertyGroup>
+    <PdfiumVersion>159.0.8138</PdfiumVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="bblanchon.PDFium.Win32" Version="$(PdfiumVersion)" />
+    <PackageReference Include="bblanchon.PDFium.macOS" Version="$(PdfiumVersion)" />
+    <PackageReference Include="bblanchon.PDFium.Linux" Version="$(PdfiumVersion)" />
+  </ItemGroup>
 </Project>
