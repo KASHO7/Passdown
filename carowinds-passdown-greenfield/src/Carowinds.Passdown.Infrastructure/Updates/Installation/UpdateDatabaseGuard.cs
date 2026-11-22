@@ -48,7 +48,7 @@ public sealed class SqliteUpdateDatabaseGuard(string databasePath, string backup
     {
         try
         {
-            schemaVersion = SqliteDatabaseBackup.ReadSchemaVersion(DatabasePath);
+            schemaVersion = SqliteDatabaseBackup.ReadSchemaVersion(DatabasePath, _backup.BusyTimeoutSeconds);
             return true;
         }
         catch (Exception ex) when (ex is SqliteException or IOException or UnauthorizedAccessException or InvalidOperationException)

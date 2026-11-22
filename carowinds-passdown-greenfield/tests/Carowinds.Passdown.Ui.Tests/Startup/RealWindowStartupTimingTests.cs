@@ -29,8 +29,9 @@ namespace Carowinds.Passdown.Ui.Tests.Startup;
 /// end-to-end timer covering the same steps <c>App.OnFrameworkInitializationCompleted</c> runs in
 /// production — migrations, real production-type repositories/services, the same five child view
 /// models, a real <see cref="MainWindow"/>, <c>Show()</c> — for both a fresh (never-migrated) database
-/// and an already-migrated (schema 11) database, mirroring how a first run differs from every
-/// subsequent one. Never touches the real per-user <c>AppPaths</c> database.
+/// and a database already migrated to the latest schema, mirroring how a first run differs from every
+/// subsequent one. Never touches the real per-user <c>AppPaths</c> database. (Phase 34C renamed the second
+/// scenario: it was written when the latest schema was 11, but it has always pre-migrated to the latest.)
 /// </summary>
 public class RealWindowStartupTimingTests
 {
@@ -77,6 +78,7 @@ public class RealWindowStartupTimingTests
         if (preMigrate)
         {
             new MigrationRunner(connectionFactory, allMigrations, NullLogger<MigrationRunner>.Instance).Run();
+            Assert.Equal(allMigrations.Max(m => m.Version), SqliteDatabaseBackup.ReadSchemaVersion(dbPath));
         }
 
         var stopwatch = Stopwatch.StartNew();
@@ -130,6 +132,16 @@ public class RealWindowStartupTimingTests
         return openedAtMs ?? shownAtMs;
     }
 
+    /// <summary>
+    /// Phase 34C: samples per scenario. Always 1 in the deterministic suite (see the Phase 15D note below); an
+    /// opt-in timing run can set <c>CAROWINDS_STARTUP_TIMING_SAMPLES</c> (1–25) to report a median over more
+    /// samples. Nothing is ever asserted about the times themselves.
+    /// </summary>
+    private static int Iterations =>
+        int.TryParse(Environment.GetEnvironmentVariable("CAROWINDS_STARTUP_TIMING_SAMPLES"), out var samples) && samples is >= 1 and <= 25
+            ? samples
+            : 1;
+
     // Phase 15D §20: kept to 1 iteration (unlike StartupProfilingTests' 5) — this codebase's
     // documented headless real-Window thread-affinity flake (see HeadlessTestSetup) means every real
     // Window constructed here is one more roll of the dice against that pre-existing race; a single
@@ -138,7 +150,6 @@ public class RealWindowStartupTimingTests
     [Fact]
     public async Task ColdStartToWindowOpened_FreshNeverMigratedDatabase()
     {
-        const int Iterations = 1;
         var samples = new List<double>();
 
         for (var i = 0; i < Iterations; i++)
@@ -161,9 +172,8 @@ public class RealWindowStartupTimingTests
     }
 
     [Fact]
-    public async Task ColdStartToWindowOpened_ExistingSchema11Database()
+    public async Task ColdStartToWindowOpened_DatabaseAlreadyAtLatestSchema()
     {
-        const int Iterations = 1;
         var samples = new List<double>();
 
         for (var i = 0; i < Iterations; i++)
@@ -182,7 +192,7 @@ public class RealWindowStartupTimingTests
             }
         }
 
-        Report("Existing (already schema 11) DB: PRAGMA-only migration check + real services + MainWindow.Opened", samples);
+        Report("Existing DB already at the latest schema: PRAGMA-only migration check + real services + MainWindow.Opened", samples);
     }
 
     private static void SqliteConnectionOnDisposeCleanup(string dbPath)

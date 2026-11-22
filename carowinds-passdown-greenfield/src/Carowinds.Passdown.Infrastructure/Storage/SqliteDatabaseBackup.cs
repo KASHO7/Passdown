@@ -42,7 +42,13 @@ public sealed record DatabaseBackupResult(DatabaseBackupStatus Status, string? B
 /// leaves nothing behind. Backups are kept until the user deletes them.
 /// </para>
 /// </summary>
-public sealed class SqliteDatabaseBackup(Func<string, long?>? availableFreeSpace = null)
+/// <param name="availableFreeSpace">Free-space probe for the backup folder (tests inject a small value).</param>
+/// <param name="busyTimeoutSeconds">
+/// Phase 34C: how long a connection opened by this instance waits on a locked database before SQLite reports it
+/// busy. Production always uses <see cref="DefaultBusyTimeoutSeconds"/>; a test that holds a real lock on purpose
+/// can pass a shorter (at least one second) value so it does not wait out the full production timeout.
+/// </param>
+public sealed class SqliteDatabaseBackup(Func<string, long?>? availableFreeSpace = null, int busyTimeoutSeconds = SqliteDatabaseBackup.DefaultBusyTimeoutSeconds)
 {
     /// <summary><c>%LOCALAPPDATA%\Carowinds Passdown\backups</c> in production: beside the database, never beside the program files.</summary>
     public const string BackupDirectoryName = "backups";
@@ -51,7 +57,13 @@ public sealed class SqliteDatabaseBackup(Func<string, long?>? availableFreeSpace
 
     public const long FreeSpaceMarginBytes = 16L * 1024 * 1024;
 
-    private const int BusyTimeoutSeconds = 5;
+    /// <summary>The production busy timeout, in seconds, for every connection this class opens.</summary>
+    public const int DefaultBusyTimeoutSeconds = 5;
+
+    /// <summary>The busy timeout this instance's connections use (<see cref="DefaultBusyTimeoutSeconds"/> unless a test injected another).</summary>
+    public int BusyTimeoutSeconds { get; } = busyTimeoutSeconds >= 1
+        ? busyTimeoutSeconds
+        : throw new ArgumentOutOfRangeException(nameof(busyTimeoutSeconds), busyTimeoutSeconds, "The busy timeout must be at least one second.");
 
     private readonly Func<string, long?> _availableFreeSpace = availableFreeSpace ?? DriveFreeSpace;
 
@@ -79,9 +91,9 @@ public sealed class SqliteDatabaseBackup(Func<string, long?>? availableFreeSpace
             partial = final + ".partial";
 
             int schemaVersion;
-            using (var source = Open(databasePath, SqliteOpenMode.ReadWrite))
+            using (var source = Open(databasePath, SqliteOpenMode.ReadWrite, BusyTimeoutSeconds))
             {
-                using (var destination = Open(partial, SqliteOpenMode.ReadWriteCreate))
+                using (var destination = Open(partial, SqliteOpenMode.ReadWriteCreate, BusyTimeoutSeconds))
                 {
                     source.BackupDatabase(destination);
 
@@ -126,26 +138,26 @@ public sealed class SqliteDatabaseBackup(Func<string, long?>? availableFreeSpace
     /// a hot journal left by a process that was stopped mid-transaction, so the answer is the committed version.
     /// Throws <see cref="SqliteException"/>/<see cref="IOException"/> when it cannot be determined.
     /// </summary>
-    public static int? ReadSchemaVersion(string databasePath)
+    public static int? ReadSchemaVersion(string databasePath, int busyTimeoutSeconds = DefaultBusyTimeoutSeconds)
     {
         if (!File.Exists(databasePath))
         {
             return null;
         }
 
-        using var connection = Open(databasePath, SqliteOpenMode.ReadWrite);
+        using var connection = Open(databasePath, SqliteOpenMode.ReadWrite, busyTimeoutSeconds);
         return UserVersion(connection);
     }
 
     /// <summary>Opens without pooling, so no handle outlives the call (Windows cannot rename or replace an open file).</summary>
-    internal static SqliteConnection Open(string path, SqliteOpenMode mode)
+    internal static SqliteConnection Open(string path, SqliteOpenMode mode, int busyTimeoutSeconds = DefaultBusyTimeoutSeconds)
     {
         var connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
             DataSource = path,
             Mode = mode,
             Pooling = false,
-            DefaultTimeout = BusyTimeoutSeconds,
+            DefaultTimeout = busyTimeoutSeconds,
         }.ToString());
         connection.Open();
         return connection;
