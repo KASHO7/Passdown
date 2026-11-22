@@ -2,6 +2,7 @@ using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.ProductDetails;
 using Carowinds.Passdown.Desktop.Services;
 using Carowinds.Passdown.Desktop.Presentation;
+using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Catalog;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -24,6 +25,7 @@ public partial class ProductRowViewModel : ObservableObject
 {
     private readonly Action _notifyChanged;
     private readonly Action<string>? _openPriceHistory;
+    private readonly Action<OfficialDetailsPresentation>? _openDetails;
     private decimal? _displayPriceOverride;
 
     public string ProductIdentity { get; }
@@ -167,15 +169,73 @@ public partial class ProductRowViewModel : ObservableObject
     {
         ImportantDetails = details is null ? null : ProductImportantDetailsPresentation.Build(details);
         ImportantDetailsSourceLink = details is null ? null : OfficialSourceLinkViewModel.TryCreate(details.Source.PrimarySourceUrl, linkLauncher);
+        OnPropertyChanged(nameof(CompactDeadlineText));
+        OnPropertyChanged(nameof(HasCompactDeadline));
+        OnPropertyChanged(nameof(HasViewDetails));
     }
 
-    public ProductRowViewModel(AssociateProduct product, Action notifyChanged, Action<string>? openPriceHistory = null)
+    /// <summary>Phase 31C: the section heading this row is listed under (used as the dialog's subtitle).</summary>
+    internal string SectionName { get; set; } = string.Empty;
+
+    /// <summary>Phase 31C: a confirmed purchase deadline short enough for the row, or null.</summary>
+    public string? CompactDeadlineText => ImportantDetails?.CompactDeadlineText;
+
+    public bool HasCompactDeadline => CompactDeadlineText is not null;
+
+    /// <summary>
+    /// Phase 31C: the small "View details" link — on every row with official Important Details, and on
+    /// the pass, membership, military/first responder, promotional, seasonal and add-on rows (which then
+    /// say plainly when no further terms are recorded). Dated admission and Fast Lane rows have none.
+    /// </summary>
+    public bool HasViewDetails => _openDetails is not null && (HasImportantDetails || IsDetailsCategory(Product));
+
+    public string ViewDetailsAutomationName => $"View details for {DisplayName}";
+
+    private static bool IsDetailsCategory(AssociateProduct product) => !product.IsCustom && product.Category is
+        SourceCategory.SeasonPasses or SourceCategory.AddOns or SourceCategory.Promotions or SourceCategory.HauntedAttractions or
+        SourceCategory.MilitaryFirstResponder or SourceCategory.DatedMilitaryFirstResponder or
+        SourceCategory.BringAFriendDuo or SourceCategory.DatedBringAFriend;
+
+    /// <summary>Phase 31C: what the View details dialog shows for this row (built from this row's own values only).</summary>
+    public OfficialDetailsPresentation BuildDetails()
+    {
+        var notes = new[]
+        {
+            HasCompareAtLine ? $"Compare at {ComparisonPriceText}" : null,
+            ReferencePriceNoteText,
+            RenewalNoteText,
+            InitiationFeeNoteText,
+            HasPriceQualifier ? PriceQualifier : null,
+            BundleNoteText,
+        }.OfType<string>().ToList();
+
+        var verifiedAt = Product.Verification.LastVerifiedAt;
+        var verified = verifiedAt is { } at
+            ? $"Official price last verified {EasternTimestampFormat.DateYearAndTime(at)}"
+            : "Official price not verified yet";
+
+        return OfficialDetailsPresentation.ForProduct(
+            DisplayName,
+            SectionName,
+            OfficialPriceText,
+            notes,
+            VerificationNoteText,
+            verified,
+            ImportantDetails,
+            Product.OfficialSourceUrl);
+    }
+
+    [RelayCommand]
+    private void ViewDetails() => _openDetails?.Invoke(BuildDetails());
+
+    public ProductRowViewModel(AssociateProduct product, Action notifyChanged, Action<string>? openPriceHistory = null, Action<OfficialDetailsPresentation>? openDetails = null)
     {
         ArgumentNullException.ThrowIfNull(product);
         ArgumentNullException.ThrowIfNull(notifyChanged);
         Product = product;
         _notifyChanged = notifyChanged;
         _openPriceHistory = openPriceHistory;
+        _openDetails = openDetails;
         PriceHistoryProductKey = product.PriceHistoryProductKey;
 
         ProductIdentity = product.ProductIdentity;

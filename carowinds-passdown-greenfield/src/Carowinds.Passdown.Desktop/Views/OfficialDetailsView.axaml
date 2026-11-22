@@ -1,0 +1,123 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
+             xmlns:presentation="using:Carowinds.Passdown.Desktop.Presentation"
+             x:Class="Carowinds.Passdown.Desktop.Views.OfficialDetailsView"
+             x:DataType="vm:OfficialDetailsDialogViewModel">
+
+  <!-- Escape closes only while focus is inside the dialog (not a window-wide hot key). -->
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="Escape" Command="{Binding CloseCommand}" />
+  </UserControl.KeyBindings>
+
+  <UserControl.DataTemplates>
+    <!-- One official line: the wording as stored, then its status and deadline, then why it is not current. -->
+    <DataTemplate DataType="presentation:OfficialDetailsLine" x:DataType="presentation:OfficialDetailsLine">
+      <StackPanel Spacing="1" Margin="0,2,0,4" AutomationProperties.Name="{Binding AutomationName}">
+        <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Classes.muted="{Binding IsMuted}" />
+        <TextBlock FontSize="12" TextWrapping="Wrap" IsVisible="{Binding HasStatus}">
+          <Run Text="{Binding StatusLabel, Mode=OneWay}" FontWeight="SemiBold" />
+          <Run Text="{Binding DeadlineSuffix, Mode=OneWay}" />
+        </TextBlock>
+        <TextBlock Text="{Binding DeadlineText}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"
+                   IsVisible="{Binding ShowsPlainDeadline}" />
+        <TextBlock Text="{Binding Note}" IsVisible="{Binding HasNote}" Classes="muted" FontStyle="Italic" TextWrapping="Wrap" />
+      </StackPanel>
+    </DataTemplate>
+
+    <!-- One compact, headed group (Eligibility, Fees, Official sources disagree, …). -->
+    <DataTemplate DataType="presentation:OfficialDetailsSection" x:DataType="presentation:OfficialDetailsSection">
+      <StackPanel Spacing="2">
+        <TextBlock Text="{Binding Heading}" Classes="subsectionTitle" Classes.fieldWarning="{Binding IsWarning}"
+                   Margin="0,0,0,2" AutomationProperties.HeadingLevel="2" />
+        <ItemsControl ItemsSource="{Binding Lines}" />
+      </StackPanel>
+    </DataTemplate>
+  </UserControl.DataTemplates>
+
+  <!-- Phase 31C: the in-app View details dialog. A centered surface over the shell's scrim (the same
+       pattern as Season Price History); Tab cycles inside it, Escape or Close returns focus to the link
+       that opened it. Content is read-only and comes only from stored, verified data. -->
+  <Border x:Name="DialogSurface" MaxWidth="720" MaxHeight="660" Margin="24" CornerRadius="8" BorderThickness="1"
+          BorderBrush="{DynamicResource PassdownDividerBrush}"
+          Background="{DynamicResource PassdownPopupSurfaceBrush}"
+          VerticalAlignment="Center"
+          KeyboardNavigation.TabNavigation="Cycle">
+    <Grid RowDefinitions="Auto,*,Auto">
+
+      <!-- Header: name, category, official price and status. -->
+      <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="16" Margin="20,16,20,10">
+        <StackPanel Grid.Column="0" Spacing="2">
+          <TextBlock x:Name="TitleText" Text="{Binding Details.Title}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"
+                     AutomationProperties.HeadingLevel="1" />
+          <TextBlock Text="{Binding Details.Subtitle}" IsVisible="{Binding Details.HasSubtitle}" Classes="muted" TextWrapping="Wrap" />
+          <WrapPanel ItemSpacing="12" Margin="0,6,0,0" IsVisible="{Binding Details.HasPriceText}">
+            <TextBlock Text="{Binding Details.PriceText}" Classes="officialPrice" FontSize="16" VerticalAlignment="Center"
+                       AutomationProperties.Name="{Binding Details.PriceText, StringFormat='Official price {0}'}" />
+            <ItemsControl ItemsSource="{Binding Details.PriceNotes}" VerticalAlignment="Center">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel ItemSpacing="12" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <TextBlock Text="{Binding}" Classes="muted" VerticalAlignment="Center" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </WrapPanel>
+          <TextBlock Text="{Binding Details.StatusText}" IsVisible="{Binding Details.HasStatusText}"
+                     Classes="muted" Classes.fieldWarning="{Binding Details.IsStatusWarning}" TextWrapping="Wrap" Margin="0,4,0,0" />
+        </StackPanel>
+        <Button x:Name="CloseButton" Grid.Column="1" Content="Close" Classes="secondaryAction" VerticalAlignment="Top"
+                Command="{Binding CloseCommand}"
+                AutomationProperties.Name="{Binding Details.Title, StringFormat='Close details for {0}'}" />
+      </Grid>
+
+      <!-- Body: grouped official terms (scrolls for long terms). -->
+      <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+        <StackPanel Spacing="12" Margin="20,4,20,12">
+          <ItemsControl ItemsSource="{Binding Details.Sections}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Spacing="12" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+          </ItemsControl>
+          <TextBlock Text="{Binding Details.EmptyTermsText}" IsVisible="{Binding Details.HasEmptyTermsText}"
+                     Classes="muted" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding Details.InferredDatesNote}" IsVisible="{Binding Details.HasInferredDatesNote}"
+                     Classes="muted" FontStyle="Italic" TextWrapping="Wrap" />
+        </StackPanel>
+      </ScrollViewer>
+
+      <!-- Footer: provenance and the official source links (shown once, here, not under every row). -->
+      <Border Grid.Row="2" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource PassdownDividerBrush}" Padding="20,10,20,14">
+        <StackPanel Spacing="2">
+          <TextBlock Text="{Binding Details.VerifiedText}" Classes="muted" TextWrapping="Wrap" />
+          <ItemsControl ItemsSource="{Binding Links}" IsVisible="{Binding HasLinks}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel ItemSpacing="12" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:OfficialSourceLinkViewModel">
+                <StackPanel Spacing="1">
+                  <Button Classes="linkAction" FontSize="12" Padding="4,2" Margin="-4,0,0,0" HorizontalAlignment="Left"
+                          Content="{Binding Label}" Command="{Binding OpenCommand}"
+                          AutomationProperties.Name="{Binding Label}"
+                          AutomationProperties.HelpText="{Binding HelpText}"
+                          ToolTip.Tip="{Binding HelpText}" />
+                  <TextBlock Text="{Binding Message}" IsVisible="{Binding HasMessage}" Classes="fieldWarning" TextWrapping="Wrap" />
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Text="{Binding UnlinkedSourceText}" IsVisible="{Binding HasUnlinkedSourceText}" Classes="muted" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Border>
+</UserControl>

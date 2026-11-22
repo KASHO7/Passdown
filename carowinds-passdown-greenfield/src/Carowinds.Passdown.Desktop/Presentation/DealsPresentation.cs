@@ -19,7 +19,40 @@ public sealed record DealItemPresentation(
     IReadOnlyList<string> WarningLines,
     string StatusText,
     string VerifiedText,
-    IReadOnlyList<Uri> SourceUrls);
+    IReadOnlyList<Uri> SourceUrls)
+{
+    // Phase 31C: compact-row fields (the full detail stays in the lists above and the View details dialog).
+
+    /// <summary>The row's price: the advertised price or official benefit wording, "From $x" across several priced options, or null.</summary>
+    public string? RowPriceText { get; init; }
+
+    /// <summary>One short official description (the card's subtitle, or its purchase options), or null.</summary>
+    public string? ShortDescription { get; init; }
+
+    /// <summary>A confirmed (never inferred) key date for the row: "Buy by …", or "On sale …" for an upcoming offer.</summary>
+    public string? KeyDeadlineText { get; init; }
+
+    /// <summary>Short status word for rows outside Current Deals ("Upcoming", "Previously verified", "Expired"); null when current.</summary>
+    public string? RowStatusLabel { get; init; }
+
+    /// <summary>A one-line pointer to something the dialog explains (sources disagree, unreadable last check), or null.</summary>
+    public string? NoticeText { get; init; }
+
+    public string? Subtitle { get; init; }
+
+    public IReadOnlyList<string> PurchaseDateLines { get; init; } = [];
+
+    public IReadOnlyList<string> VisitLines { get; init; } = [];
+
+    public IReadOnlyList<string> RestrictionLines { get; init; } = [];
+
+    public IReadOnlyList<string> FeeLines { get; init; } = [];
+
+    /// <summary>Contradictions between official sources (a subset of <see cref="WarningLines"/>).</summary>
+    public IReadOnlyList<string> DiscrepancyLines { get; init; } = [];
+
+    public bool HasInferredDates { get; init; }
+}
 
 /// <summary>
 /// Phase 31: the Products screen's Deals panel — Current Deals, Upcoming, Previously verified (not
@@ -86,6 +119,7 @@ public sealed record DealsPresentation(
             .ToList();
 
         var dates = new List<string>();
+        var visit = new List<string>();
         if (p.PurchaseStart is { } start)
         {
             dates.Add($"On sale from {Date(start.Date)} (\"{start.SourceText}\")");
@@ -103,15 +137,20 @@ public sealed record DealsPresentation(
             dates.Add($"Page banner (inferred end date, not stated in this offer's own terms): \"{campaign.SourceText}\"{(campaign.YearInferred ? $" — read as {Date(campaign.Date)}, year not stated" : string.Empty)}");
         }
 
-        if (p.RedemptionWindow is { } window)
-        {
-            dates.Add($"Use/visit window: {Date(window.Start)} – {Date(window.End)} (\"{window.SourceText}\")");
-        }
-
         if (p.PurchaseDeadline is null && p.CampaignEnd is null)
         {
             dates.Add("No purchase deadline is stated on the official page.");
         }
+
+        var purchaseDates = dates.ToList();
+        if (p.RedemptionWindow is { } window)
+        {
+            var line = $"Use/visit window: {Date(window.Start)} – {Date(window.End)} (\"{window.SourceText}\")";
+            dates.Insert(dates.Count - (p.PurchaseDeadline is null && p.CampaignEnd is null ? 1 : 0), line);
+            visit.Add(line);
+        }
+
+        visit.AddRange(p.ValidityNotes);
 
         var terms = p.ValidityNotes.Concat(p.Terms).Concat(p.FeeDisclosures).Distinct(StringComparer.Ordinal).ToList();
 
@@ -120,6 +159,14 @@ public sealed record DealsPresentation(
         {
             warnings.Add("The latest official check could not read this offer; details are from its last successful verification.");
         }
+
+        var rowStatus = entry.Assessment.Status switch
+        {
+            PromotionStatus.Expired => "Expired",
+            PromotionStatus.Unknown => "Previously verified",
+            PromotionStatus.Upcoming => "Upcoming",
+            _ => (string?)null,
+        };
 
         var statusText = entry.Assessment.Status switch
         {
@@ -142,7 +189,71 @@ public sealed record DealsPresentation(
             warnings,
             statusText,
             $"Last verified {SeasonContextPresentation.When(p.LastVerifiedAt)}",
-            p.SourceUrls.Count > 0 ? p.SourceUrls : [p.PrimarySourceUrl]);
+            p.SourceUrls.Count > 0 ? p.SourceUrls : [p.PrimarySourceUrl])
+        {
+            RowPriceText = price ?? FromPrice(p.PriceOptions),
+            ShortDescription = ShortDescription(p),
+            KeyDeadlineText = KeyDeadline(p, entry.Assessment.Status),
+            RowStatusLabel = rowStatus,
+            NoticeText = p.Discrepancies.Count > 0
+                ? "Official sources disagree — see details."
+                : p.LastCheckUnreadable ? "The latest check could not read this offer — see details." : null,
+            Subtitle = p.Subtitle,
+            PurchaseDateLines = purchaseDates,
+            VisitLines = visit,
+            RestrictionLines = p.Terms.Distinct(StringComparer.Ordinal).ToList(),
+            FeeLines = p.FeeDisclosures.Distinct(StringComparer.Ordinal).ToList(),
+            DiscrepancyLines = p.Discrepancies,
+            HasInferredDates = p.CampaignEnd is not null || p.PurchaseDeadline?.IsInferred() == true || p.PurchaseStart?.IsInferred() == true,
+        };
+    }
+
+    /// <summary>
+    /// Phase 31C: one price for several purchase options — the single option's own price text, or
+    /// "From" the lowest explicit amount when two or more options carry one. Never computed from fees
+    /// or guessed; null when the source states no amount.
+    /// </summary>
+    internal static string? FromPrice(IReadOnlyList<PromotionPriceOption> options)
+    {
+        var priced = options.Where(o => o.PriceAmount is not null && !string.IsNullOrWhiteSpace(o.PriceText)).ToList();
+        if (priced.Count == 0)
+        {
+            return null;
+        }
+
+        if (priced.Count == 1)
+        {
+            return priced[0].PriceText;
+        }
+
+        var lowest = priced.MinBy(o => o.PriceAmount!.Value)!;
+        return priced.All(o => o.PriceAmount == lowest.PriceAmount) ? lowest.PriceText : "From " + lowest.PriceText;
+    }
+
+    private static string? ShortDescription(OfficialPromotion p)
+    {
+        if (!string.IsNullOrWhiteSpace(p.Subtitle))
+        {
+            return p.Subtitle.Trim();
+        }
+
+        return p.PriceOptions.Count switch
+        {
+            0 => null,
+            1 => string.Join(" — ", new[] { p.PriceOptions[0].Title, p.PriceOptions[0].Subtitle }.Where(s => !string.IsNullOrWhiteSpace(s))),
+            _ => $"{p.PriceOptions.Count} purchase options: {string.Join(", ", p.PriceOptions.Select(o => o.Title))}",
+        };
+    }
+
+    /// <summary>Only a date stated in full in the offer's own terms is promoted to the row.</summary>
+    private static string? KeyDeadline(OfficialPromotion p, PromotionStatus status)
+    {
+        if (status == PromotionStatus.Upcoming && p.PurchaseStart is { } start && !start.IsInferred())
+        {
+            return "On sale " + Date(start.Date);
+        }
+
+        return p.PurchaseDeadline is { } deadline && !deadline.IsInferred() ? "Buy by " + Date(deadline.Date) : null;
     }
 
     private static string Date(DateOnly date) => date.ToString("MMM d, yyyy", Us);

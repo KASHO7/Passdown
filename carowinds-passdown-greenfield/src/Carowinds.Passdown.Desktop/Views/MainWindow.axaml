@@ -136,6 +136,11 @@
         <views:PriceHistoryView DataContext="{Binding PriceHistory}" />
     </Border>
 
+    <!-- Phase 31C: View details for a product or official deal, opened from Associate → Products. -->
+    <Border IsVisible="{Binding Associate.OfficialDetails.IsOpen}" Background="{DynamicResource PassdownOverlayScrimBrush}">
+        <views:OfficialDetailsView DataContext="{Binding Associate.OfficialDetails}" />
+    </Border>
+
     <!-- Phase 23D: What's New — opened once after a confirmed in-app update, or from Settings → About this build. -->
     <Border IsVisible="{Binding IsWhatsNewOpen}" Background="{DynamicResource PassdownOverlayScrimBrush}">
         <views:WhatsNewView DataContext="{Binding WhatsNew}" />

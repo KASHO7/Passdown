@@ -5,11 +5,11 @@ Date: 2026-11-21
 ## Seasons and deals
 
 - The selected date now knows which official Carowinds season or event it falls in, so seasonal options such as SCarowinds only appear when they apply.
-- Products shows Current Deals from the official Carowinds pages, with purchase deadlines, visit windows, terms and fees. Offers that were verified before but not re-confirmed, and expired offers, are listed separately.
+- Products shows Current Deals from the official Carowinds pages as a compact list: each offer's name, price or benefit, a short description and any confirmed deadline. Select **View details** to see purchase deadlines, visit windows, terms, fees and the official page. Upcoming offers, offers verified before but not re-confirmed, and expired offers are listed separately.
 
 ## Important Details & Deadlines
 
-- Each matching product row can be expanded to show its official terms: eligibility, Bring-A-Friend and other incentives, restrictions, fees, and separate "Buy by" and "Use by" dates.
+- Select **View details** on a season pass, membership, Military/First Responder, promotional or add-on row to see its official terms in one window: eligibility, Bring-A-Friend and other incentives, restrictions, fees, and separate "Buy by" and "Use by" dates. Press Esc or Close to return to the list.
 - A date that is not stated in full as the item's own deadline (for example, a page-wide banner date, or a date written without a year) is marked "inferred". It is never used on its own to mark something expired.
 
 ## Price history and Military products

@@ -358,7 +358,7 @@ public class Phase31SeasonsAndDealsUiTests
     [InlineData("Text=\"{Binding DealsEmptyText}\"")]
     [InlineData("Header=\"{Binding ExpiredDealsHeaderText}\"")]
     [InlineData("Header=\"{Binding PastSeasonHeaderText}\"")]
-    [InlineData("Command=\"{Binding OpenCommand}\"")]
+    [InlineData("Command=\"{Binding ViewDetailsCommand}\"")] // Phase 31C: official links moved into the View details dialog
     public void AssociateView_BindsTheNewSeasonAndDealsSurfaces(string binding) =>
         Assert.Contains(binding, AssociateViewMarkup(), StringComparison.Ordinal);
 

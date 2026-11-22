@@ -1,16 +1,21 @@
 using Carowinds.Passdown.Application.Links;
 using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Desktop.Services;
+using CommunityToolkit.Mvvm.Input;
 
 namespace Carowinds.Passdown.Desktop.ViewModels;
 
 /// <summary>Phase 31: one official deal row on the Products screen, with a clickable link per official page it was verified on.</summary>
-public sealed class DealItemViewModel
+public sealed partial class DealItemViewModel
 {
-    public DealItemViewModel(DealItemPresentation presentation, IExternalLinkLauncher? launcher)
+    private readonly Action<OfficialDetailsPresentation>? _openDetails;
+
+    public DealItemViewModel(DealItemPresentation presentation, IExternalLinkLauncher? launcher, Action<OfficialDetailsPresentation>? openDetails = null)
     {
         ArgumentNullException.ThrowIfNull(presentation);
         Presentation = presentation;
+        _openDetails = openDetails;
+        Details = OfficialDetailsPresentation.ForDeal(presentation);
         Links = presentation.SourceUrls
             .Select(url => OfficialSourceLinkViewModel.TryCreate(url, launcher, "Official page: " + OfficialSourceLinkPolicy.DisplayAddress(url)))
             .OfType<OfficialSourceLinkViewModel>()
@@ -59,7 +64,40 @@ public sealed class DealItemViewModel
 
     public IReadOnlyList<OfficialSourceLinkViewModel> Links { get; }
 
-    public string AccessibleSummary => string.Join(". ", new[] { Title, PriceText, StatusText }.Where(s => !string.IsNullOrWhiteSpace(s)));
+    public string AccessibleSummary => string.Join(". ", new[] { Title, RowPriceText, ShortDescription, KeyDeadlineText, RowStatusLabel ?? StatusText, NoticeText }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    // Phase 31C: compact row.
+
+    public string? RowPriceText => Presentation.RowPriceText;
+
+    public bool HasRowPriceText => RowPriceText is not null;
+
+    public string? ShortDescription => Presentation.ShortDescription;
+
+    public bool HasShortDescription => ShortDescription is not null;
+
+    public string? KeyDeadlineText => Presentation.KeyDeadlineText;
+
+    public string? RowStatusLabel => Presentation.RowStatusLabel;
+
+    /// <summary>Deadline and status as one muted meta line ("Buy by Nov 30, 2026 · Upcoming"), or empty.</summary>
+    public string MetaText => string.Join(" · ", new[] { KeyDeadlineText, RowStatusLabel }.Where(s => s is not null));
+
+    public bool HasMetaText => MetaText.Length > 0;
+
+    public string? NoticeText => Presentation.NoticeText;
+
+    public bool HasNoticeText => NoticeText is not null;
+
+    /// <summary>The full content of this offer's View details dialog.</summary>
+    public OfficialDetailsPresentation Details { get; }
+
+    public bool CanViewDetails => _openDetails is not null;
+
+    public string ViewDetailsAutomationName => $"View details for {Title}";
+
+    [RelayCommand]
+    private void ViewDetails() => _openDetails?.Invoke(Details);
 }
 
 /// <summary>Phase 31: a current-catalog product shown under past-season offers (not current, not exported).</summary>

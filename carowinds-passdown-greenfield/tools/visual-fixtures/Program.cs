@@ -93,6 +93,17 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
     ("Associate-Products", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8); }),
     // Phase 25: the Season Passes and Memberships groups (scrolled into view).
     ("Associate-Memberships", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8); ScrollToEnd(f.Window); }),
+    // Phase 31C: the compact Current Deals list and product rows further down the Products page.
+    ("Associate-Products-Scroll700", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8); ScrollBy(f.Window, 700); }),
+    ("Associate-Products-Scroll1400", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8); ScrollBy(f.Window, 1400); }),
+    ("Associate-Details-Deal", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8);
+        f.Vm.Associate.PendingDealsLoad.Wait(2000); Pump(4); f.Vm.Associate.CurrentDeals.First(d => d.Title.Contains("Bundle")).ViewDetailsCommand.Execute(null); Pump(10); }),
+    ("Associate-Details-Resort", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8);
+        f.Vm.Associate.PendingDealsLoad.Wait(2000); Pump(4); f.Vm.Associate.CurrentDeals.First(d => d.Title.Contains("Resort")).ViewDetailsCommand.Execute(null); Pump(10); }),
+    ("Associate-Details-GoldPass", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8);
+        f.Vm.Associate.ProductSections.SelectMany(s => s.Products).First(r => r.DisplayName.StartsWith("Gold Season", StringComparison.Ordinal)).ViewDetailsCommand.Execute(null); Pump(10); }),
+    ("Associate-Details-NoTerms", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8);
+        f.Vm.Associate.ProductSections.SelectMany(s => s.Products).First(r => r.DisplayName.StartsWith("All Season Dining", StringComparison.Ordinal)).ViewDetailsCommand.Execute(null); Pump(10); }),
     ("Associate-Notes", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowNotesSectionCommand.Execute(null); Pump(8); }),
     ("Associate-Shows", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowNotesSectionCommand.Execute(null); Pump(8); ScrollToName(f.Window, "Shows"); }),
     ("Associate-SaveFailed", () => new Fixture(), f =>
@@ -269,6 +280,16 @@ static void ExpandFirstShowTimes(Window window)
     }
 }
 
+static void ScrollBy(Window window, double y)
+{
+    var scroll = window.GetVisualDescendants().OfType<ScrollViewer>().Where(s => s.IsEffectivelyVisible).OrderByDescending(s => s.Extent.Height).FirstOrDefault();
+    if (scroll is not null)
+    {
+        scroll.Offset = new Vector(0, Math.Min(y, Math.Max(0, scroll.Extent.Height - scroll.Viewport.Height)));
+        Pump(8);
+    }
+}
+
 static void ScrollToEnd(Window window)
 {
     var scroll = window.GetVisualDescendants().OfType<ScrollViewer>().Where(s => s.IsEffectivelyVisible).OrderByDescending(s => s.Extent.Height).FirstOrDefault();
@@ -396,7 +417,8 @@ internal sealed class Fixture
         Vm = new MainViewModel(
             new OperationsDashboardViewModel(dashboard),
             new OperationsCalendarViewModel(CalendarService, clock),
-            new AssociateViewModel(AssociateService, clock, autosaveDelay: (_, _) => Task.CompletedTask),
+            new AssociateViewModel(AssociateService, clock, autosaveDelay: (_, _) => Task.CompletedTask,
+                externalLinkLauncher: new Phase31CFixtures.NoOpLinkLauncher(), dealsService: Phase31CFixtures.Deals(), importantDetailsService: Phase31CFixtures.Details()),
             new OperationalNotesViewModel(notes, clock),
             new PassdownHistoryViewModel(history, new FakeFinalizedPassdownPdfRetrievalService()),
             new PersonalSyncSettingsViewModel(settingsService, new FakeSyncFolderPicker(), conflicts, coordinator, buildIdentity: build, diagnostics: diagnostics,

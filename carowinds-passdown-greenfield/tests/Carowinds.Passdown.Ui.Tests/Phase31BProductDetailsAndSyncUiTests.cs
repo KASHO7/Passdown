@@ -251,12 +251,13 @@ public class Phase31BProductDetailsAndSyncUiTests
     }
 
     [Fact]
-    public void TheInferredDatesNote_IsBoundInTheProductRowTemplate()
+    public void TheInferredDatesNote_IsBoundInTheViewDetailsDialog()
     {
-        var xaml = File.ReadAllText(FindRepoFile("src/Carowinds.Passdown.Desktop/Views/AssociateView.axaml"));
+        // Phase 31C: Important Details moved from an inline expander into the View details dialog.
+        var xaml = File.ReadAllText(FindRepoFile("src/Carowinds.Passdown.Desktop/Views/OfficialDetailsView.axaml"));
 
-        Assert.Contains("{Binding ImportantDetails.InferredDatesNote}", xaml, StringComparison.Ordinal);
-        Assert.Contains("{Binding ImportantDetails.HasInferredDatesNote}", xaml, StringComparison.Ordinal);
+        Assert.Contains("{Binding Details.InferredDatesNote}", xaml, StringComparison.Ordinal);
+        Assert.Contains("{Binding Details.HasInferredDatesNote}", xaml, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -374,17 +375,21 @@ public class Phase31BProductDetailsAndSyncUiTests
     }
 
     [Fact]
-    public void ProductRows_DeclareTheExpandableImportantDetailsSection()
+    public void ProductRows_DeclareTheViewDetailsLink_AndTheDialogShowsTheImportantDetails()
     {
-        var markup = Markup("src/Carowinds.Passdown.Desktop/Views/AssociateView.axaml");
+        // Phase 31C: the row keeps one quiet line (confirmed deadline + View details); the dialog shows the rest.
+        var row = Markup("src/Carowinds.Passdown.Desktop/Views/AssociateView.axaml");
+        Assert.Contains("IsVisible=\"{Binding HasViewDetails}\"", row, StringComparison.Ordinal);
+        Assert.Contains("Command=\"{Binding ViewDetailsCommand}\"", row, StringComparison.Ordinal);
+        Assert.Contains("{Binding CompactDeadlineText}", row, StringComparison.Ordinal);
+        Assert.DoesNotContain("ImportantDetails.Lines", row, StringComparison.Ordinal);
 
-        Assert.Contains("IsVisible=\"{Binding HasImportantDetails}\"", markup, StringComparison.Ordinal);
-        Assert.Contains("{Binding ImportantDetails.SummaryText}", markup, StringComparison.Ordinal);
-        Assert.Contains("ItemsSource=\"{Binding ImportantDetails.Lines}\"", markup, StringComparison.Ordinal);
-        Assert.Contains("<DataTemplate DataType=\"presentation:ProductDetailLinePresentation\"", markup, StringComparison.Ordinal);
-        Assert.Contains("{Binding StatusLabel}", markup, StringComparison.Ordinal);
-        Assert.Contains("Important details and deadlines for {0}", markup, StringComparison.Ordinal);
-        Assert.Contains("{Binding ImportantDetails.ProvenanceText}", markup, StringComparison.Ordinal);
+        var dialog = Markup("src/Carowinds.Passdown.Desktop/Views/OfficialDetailsView.axaml");
+        Assert.Contains("ItemsSource=\"{Binding Details.Sections}\"", dialog, StringComparison.Ordinal);
+        Assert.Contains("ItemsSource=\"{Binding Lines}\"", dialog, StringComparison.Ordinal);
+        Assert.Contains("<DataTemplate DataType=\"presentation:OfficialDetailsLine\"", dialog, StringComparison.Ordinal);
+        Assert.Contains("{Binding StatusLabel, Mode=OneWay}", dialog, StringComparison.Ordinal);
+        Assert.Contains("{Binding Details.VerifiedText}", dialog, StringComparison.Ordinal);
     }
 
     [Fact]

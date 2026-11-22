@@ -661,6 +661,7 @@ public partial class AssociateViewModel : ViewModelBase
         _dealsService = dealsService;
         _importantDetailsService = importantDetailsService;
         OfficialDataStatus = officialDataStatus;
+        OfficialDetails = new OfficialDetailsDialogViewModel(externalLinkLauncher);
 
         // "Today" in the park's own wall-clock time (spec §6.5/§6.6 use the same Eastern
         // convention for "today") rather than the host machine's arbitrary local time zone.
@@ -1268,10 +1269,10 @@ public partial class AssociateViewModel : ViewModelBase
         }
 
         var presentation = DealsPresentation.Build(overview);
-        CurrentDeals = presentation.Current.Select(item => new DealItemViewModel(item, _externalLinkLauncher)).ToList();
-        UpcomingDeals = presentation.Upcoming.Select(item => new DealItemViewModel(item, _externalLinkLauncher)).ToList();
-        PreviouslyVerifiedDeals = presentation.PreviouslyVerified.Select(item => new DealItemViewModel(item, _externalLinkLauncher)).ToList();
-        ExpiredDeals = presentation.Expired.Select(item => new DealItemViewModel(item, _externalLinkLauncher)).ToList();
+        CurrentDeals = presentation.Current.Select(item => new DealItemViewModel(item, _externalLinkLauncher, OfficialDetails.Open)).ToList();
+        UpcomingDeals = presentation.Upcoming.Select(item => new DealItemViewModel(item, _externalLinkLauncher, OfficialDetails.Open)).ToList();
+        PreviouslyVerifiedDeals = presentation.PreviouslyVerified.Select(item => new DealItemViewModel(item, _externalLinkLauncher, OfficialDetails.Open)).ToList();
+        ExpiredDeals = presentation.Expired.Select(item => new DealItemViewModel(item, _externalLinkLauncher, OfficialDetails.Open)).ToList();
         DealsStatusText = presentation.StatusText;
         IsDealsStatusWarning = presentation.IsStatusWarning;
         DealsEmptyText = presentation.EmptyStateText;
@@ -1283,6 +1284,9 @@ public partial class AssociateViewModel : ViewModelBase
     /// general entry point (which also reaches retired products). Navigation only; no retrieval.
     /// </summary>
     public event EventHandler<string?>? PriceHistoryRequested;
+
+    /// <summary>Phase 31C: the in-app View details dialog shared by every product and deal row (display only).</summary>
+    public OfficialDetailsDialogViewModel OfficialDetails { get; }
 
     [RelayCommand]
     private void OpenPriceHistory() => PriceHistoryRequested?.Invoke(this, null);
@@ -2298,14 +2302,16 @@ public partial class AssociateViewModel : ViewModelBase
                 continue;
             }
 
-            var rows = products.Select(product => new ProductRowViewModel(product, ScheduleAutosave, RequestPriceHistory)).ToList();
+            var sectionName = ProductDisplaySectionDisplay.FriendlyName(section);
+            var rows = products.Select(product => new ProductRowViewModel(product, ScheduleAutosave, RequestPriceHistory, OfficialDetails.Open)).ToList();
             foreach (var row in rows)
             {
+                row.SectionName = sectionName;
                 row.ApplyImportantDetails(_importantDetailsIndex.Find(row.Product), _externalLinkLauncher);
             }
 
             result.Add(new ProductCategorySectionViewModel(
-                ProductDisplaySectionDisplay.FriendlyName(section), status, rows, PassSourcePresentation.SourceNote(section, products),
+                sectionName, status, rows, PassSourcePresentation.SourceNote(section, products),
                 OfficialSourceLinkViewModel.TryCreate(PassSourcePresentation.SourceUrl(section, products), _externalLinkLauncher)));
         }
 

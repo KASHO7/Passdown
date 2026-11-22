@@ -41,6 +41,7 @@ or button rectangles inside the panel overlap.
 | Dashboard Shows (Phase 23B) | `DashboardShows-*`: typical and busy days (page top and scrolled to the panel), busy with one list expanded, one show, no shows, not published, stale, failed latest check with last-known-good — 10:45 AM ET on the operating date |
 | Calendar | busy day with Shows collapsed and expanded, WinterFest (Dec 5, noon–9 PM), New Year's Eve (3 PM–1 AM), historical (Sep 12), Not Published (Mar 2027), stale hours, show check failed, a date change held mid-load, a failed local read |
 | Associate | Overview, Products (exact, From, Military/First Responder, override, stale), Notes, Shows, autosave failure, Season Price History overlay |
+| Products compact (Phase 31C) | `Associate-Products-Scroll700`/`-Scroll1400` (synthetic Current/Upcoming/Expired deals and Important Details from `Phase31CFixtures.cs`), `Associate-Details-*`: the View details dialog for a bundle deal, a deal whose sources disagree, the Gold pass (grouped terms, inferred date) and an add-on with no recorded terms |
 | Popups | date picker, Copy menu, More menu, Math picker |
 | Notes / History | populated and empty |
 | Settings | sync off, syncing and up to date, conflict review, folder unavailable with sync error and a Diagnostics export failure |

@@ -46,6 +46,13 @@ public sealed record ProductImportantDetailsPresentation(
 
     public bool HasSummary => SummaryText is not null;
 
+    /// <summary>
+    /// Phase 31C: the one deadline short enough for a compact product row — the next open purchase
+    /// deadline stated in full in the item's own terms ("Buy by …", or "Bring-A-Friend: buy by …").
+    /// Inferred dates never appear here; they stay, labeled, in the View details dialog.
+    /// </summary>
+    public string? CompactDeadlineText { get; init; }
+
     public bool HasDiscrepancies => Discrepancies.Count > 0;
 
     public bool HasFreshnessWarning => FreshnessWarning is not null;
@@ -88,7 +95,24 @@ public sealed record ProductImportantDetailsPresentation(
             freshness,
             previous,
             source.PrimarySourceUrl,
-            details.Lines.Any(l => HasInferredDate(l.Statement)) ? InferredDatesNoteText : null);
+            details.Lines.Any(l => HasInferredDate(l.Statement)) ? InferredDatesNoteText : null)
+        {
+            CompactDeadlineText = CompactDeadline(details),
+        };
+    }
+
+    private static string? CompactDeadline(ProductImportantDetails details)
+    {
+        var line = details.Deadlines
+            .Where(l => l.Assessment.Status == ProductDetailStatus.Current)
+            .FirstOrDefault(l => l.Statement.PurchaseDeadline is { } buy && !buy.IsInferred());
+        if (line is null)
+        {
+            return null;
+        }
+
+        var date = string.Create(Us, $"{line.Statement.PurchaseDeadline!.Date:MMMM d, yyyy}");
+        return line.Kind == ProductDetailKind.Purchase ? "Buy by " + date : $"{KindLabel(line.Kind)}: buy by {date}";
     }
 
     /// <summary>The next open deadline, shown under the header ("Buy by Nov 27, 2026 · Use by Jan 3, 2027"), or null.</summary>
