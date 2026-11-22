@@ -1,20 +1,25 @@
-# RC12-Phase32-LOCALTEST — local Windows test candidate
+# RC12 local Windows test candidates (Phase 32 / 32A)
 
 **LOCAL-ONLY. Not a release.** Not pushed, tagged, signed, or published; no update manifest. RC.11
 (published prerelease `v0.1.0-rc.11`, tag → `573d17c`) and its frozen files are unchanged.
 
-| | |
-|---|---|
-| Source commit | `a409290` (Phase 32 app source = `0e115f9`, plus the `-LocalTestVersion` packaging option) |
-| Label | `RC12-Phase32-LOCALTEST` |
-| Version shown in the app | `0.1.0-rc.12-LOCALTEST.phase32` (Settings → About this build) |
-| Assembly / file version | `0.1.0.11` (source `<Version>` is still `0.1.0-rc.11`; not bumped) |
-| Database schema | 18 (no migration — opening with this build does not change the schema) |
-| Package | `artifacts/local-test/RC12-Phase32-LOCALTEST/LOCAL-ONLY-RC12-Phase32-LOCALTEST-win-x64.zip` |
-| ZIP size | 76,777,380 bytes (73.2 MB); 288 files, 161.1 MB extracted |
-| ZIP SHA-256 | `2972a346c8263f9ec2d53d45585bcb6a0ca58fa9b7a3cf4559c0c54cd9680987` |
-| EXE inside the ZIP | `LOCAL-ONLY-RC12-Phase32-LOCALTEST-win-x64\Carowinds.Passdown.Desktop.exe` |
-| Mac verification | Full suite 5,237 passed; clean Release build 0 warnings / 0 errors; release-content validation passed on folder and ZIP; `RealReleaseZip` test passed; stamped version read from the DLLs; no update manifest or signature produced; RC.10/RC.11 frozen files re-hashed unchanged |
+**Test the current candidate: `RC12-Phase32A-LOCALTEST`.** It supersedes `RC12-Phase32-LOCALTEST` (kept for
+comparison only).
+
+| | Current: RC12-Phase32A-LOCALTEST | Superseded: RC12-Phase32-LOCALTEST |
+|---|---|---|
+| Source commit | `9de3569` (Phase 32 + 32A typed Calendar markers) | `a409290` (Phase 32) |
+| Version shown in the app | `0.1.0-rc.12-LOCALTEST.phase32a` | `0.1.0-rc.12-LOCALTEST.phase32` |
+| Package | `artifacts/local-test/RC12-Phase32A-LOCALTEST/LOCAL-ONLY-RC12-Phase32A-LOCALTEST-win-x64.zip` | `artifacts/local-test/RC12-Phase32-LOCALTEST/LOCAL-ONLY-RC12-Phase32-LOCALTEST-win-x64.zip` |
+| ZIP size | 76,786,217 bytes (73.2 MB); 288 files | 76,777,380 bytes (73.2 MB); 288 files |
+| ZIP SHA-256 | `68dbe7feb05f7612f95028cbc386f81e1d78d25206949eb7a2f792499b167190` | `2972a346c8263f9ec2d53d45585bcb6a0ca58fa9b7a3cf4559c0c54cd9680987` |
+| EXE inside the ZIP | `LOCAL-ONLY-RC12-Phase32A-LOCALTEST-win-x64\Carowinds.Passdown.Desktop.exe` | `LOCAL-ONLY-RC12-Phase32-LOCALTEST-win-x64\Carowinds.Passdown.Desktop.exe` |
+| Mac verification | Full suite 5,252 passed; clean Release build 0/0; content validation on folder and ZIP; `RealReleaseZip` passed; stamped version read from DLLs; no manifest/signature; RC.10/RC.11 re-hashed unchanged | Same checks; suite 5,237 |
+
+Both: assembly/file version `0.1.0.11` (source `<Version>` still `0.1.0-rc.11`, not bumped); database schema 18
+(no migration). Both test identities sort above RC.11 and a future RC.12, so the updater never offers a
+release over them. To switch candidates in the test account, extract the new ZIP to a new folder; the data
+folder is shared by both within that account (same schema, no migration).
 
 ## Data isolation — use a separate Windows account
 
@@ -45,7 +50,7 @@ actually performed.
 
 ### A. Startup and safety
 - [ ] A1 The EXE launches from Explorer in the CarowindsTest account.
-- [ ] A2 Settings → About this build shows `0.1.0-rc.12-LOCALTEST.phase32 (a409290…)`; the extracted folder
+- [ ] A2 Settings → About this build shows `0.1.0-rc.12-LOCALTEST.phase32a (9de3569…)`; the extracted folder
       contains `LOCAL-ONLY-TEST-BUILD.txt`. Expected: "What's New in this version" says no notes are bundled
       (this build carries the RC.11 notes, which are never shown as another version's), and the packaged
       TESTER-GUIDE.txt / README still describe RC.11 — both are normal for a local test build.
@@ -72,16 +77,27 @@ actually performed.
       been verified …" — never "no rewards".
 - [ ] B9 No month before November 2026 appears with invented rewards.
 
-### C. Calendar
-- [ ] C1 November shows small gift markers on Nov 22 (last day for qualifying visits), Nov 27 (Hot Chocolate
-      Mug begins), Nov 30 (last day to book Camp Wilderness) and Dec 5 (Bring-A-Friend redemption begins).
-- [ ] C2 January 2027: Jan 3 shows one marker with "2"; clicking it lists both perks as "Last day to redeem".
-- [ ] C3 Clicking a marked date lists its perks with the reason and View details.
-- [ ] C4 Ordinary November days have no marker; the selected-date panel shows a collapsed "Valid all
+### C. Calendar (Phase 32A typed markers)
+Shapes: check-in-circle = qualifying visit, gift = redemption / use, clock = booking deadline.
+- [ ] C1 November: check-circle on Nov 22 (last day for qualifying visits); gift on Nov 27 (Hot Chocolate Mug
+      begins); clock on Nov 30 (last day to book Camp Wilderness); gift on Dec 5 (Bring-A-Friend redemption begins).
+- [ ] C2 January 2027: Jan 3 shows one gift with a small "2" badge; clicking it lists both perks as
+      "Redemption / use · Last day to redeem".
+- [ ] C3 Markers sit at the same top-right spot in every marked cell; the day number and the lines below it
+      are at the same position in marked and unmarked cells, including near month boundaries.
+- [ ] C4 Hover a marker: tooltip reads "Pass perk qualifying visit date: …" / "Pass perk redemption date: …" /
+      "Pass perk booking deadline: …". Narrator on a marked cell reads the same after the cell's details.
+- [ ] C5 Clicking a marked date lists its perks, each starting with the type icon and label ("Qualifying visit ·
+      …", "Redemption / use · …", "Booking deadline · …"), with View details.
+- [ ] C6 The legend under the grid ("Pass Perks: Qualifying visit · Redemption / use · Booking deadline") shows
+      while markers are on; it disappears when the setting is off.
+- [ ] C7 Ordinary November days have no marker; the selected-date panel shows a collapsed "Valid all
       November (4)".
-- [ ] C5 Settings → Calendar → Show Pass Perks on Calendar off hides markers at once; on restores them.
-- [ ] C6 Turn it off, close and reopen the app: it is still off. Turn it back on.
-- [ ] C7 Hours, shows, notes and passdown status in day cells are unchanged.
+- [ ] C8 Settings → Calendar → Show Pass Perks on Calendar off hides markers at once; on restores them; the
+      choice survives closing and reopening the app.
+- [ ] C9 Hours, shows, notes and passdown status in day cells are unchanged.
+- [ ] C10 At the narrowest window width you use, markers are not cut off (they shrink slightly only if a date
+      ever has all three types — none do in November's official data).
 
 ### D. Refresh
 - [ ] D1 Check Online updates the Pass Perks "checked …" time.
