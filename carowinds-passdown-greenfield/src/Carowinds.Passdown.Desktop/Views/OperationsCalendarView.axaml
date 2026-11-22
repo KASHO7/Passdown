@@ -61,7 +61,10 @@
       <Setter Property="Height" Value="132" />
       <Setter Property="ClipToBounds" Value="True" />
       <Setter Property="HorizontalAlignment" Value="Stretch" />
-      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <!-- Phase 32A: Stretch (was Left) so every cell's content spans the full cell width. With Left, the
+           top row was only as wide as that cell's widest text line, so the Pass Perks markers landed at a
+           different distance from the day number in each cell. Text still reads left-aligned. -->
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
       <Setter Property="VerticalContentAlignment" Value="Top" />
     </Style>
     <Style Selector="Button.calendarDay.outOfMonth">
@@ -153,13 +156,34 @@
     <Style Selector="PathIcon.passPerkMarker">
       <Setter Property="Width" Value="12" />
       <Setter Property="Height" Value="12" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="VerticalAlignment" Value="Bottom" />
       <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
     </Style>
-    <Style Selector="TextBlock.passPerkCount">
-      <Setter Property="FontSize" Value="10" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+    <!-- Phase 32A: count badge in the marker slot's top-right corner (inside the slot, so it never moves the icon). -->
+    <Style Selector="Border.passPerkCountBadge">
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="MinWidth" Value="8" />
+      <Setter Property="Height" Value="8" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="1,0" />
+      <Setter Property="Background" Value="{DynamicResource PassdownAccentBrush}" />
+    </Style>
+    <Style Selector="Border.passPerkCountBadge > TextBlock">
+      <Setter Property="FontSize" Value="7" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="LineHeight" Value="8" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
       <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextOnAccentBrush}" />
+    </Style>
+    <Style Selector="PathIcon.passPerkLegendIcon">
+      <Setter Property="Width" Value="12" />
+      <Setter Property="Height" Value="12" />
+      <Setter Property="Margin" Value="0,0,4,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
     </Style>
   </UserControl.Styles>
 
@@ -169,8 +193,19 @@
     <DataTemplate DataType="vm:PassPerkItemViewModel" x:DataType="vm:PassPerkItemViewModel">
       <Border Classes="calendarShowRow">
         <StackPanel Spacing="1" AutomationProperties.Name="{Binding AccessibleSummary}">
-          <TextBlock Text="{Binding ContextText}" IsVisible="{Binding HasContextText}" FontSize="11" FontWeight="SemiBold"
-                     Foreground="{DynamicResource PassdownAccentForegroundBrush}" TextWrapping="Wrap" />
+          <!-- Phase 32A: the marker type first (same icon as the day cell), then what the date means. -->
+          <StackPanel Orientation="Horizontal" IsVisible="{Binding HasHeadlineText}">
+            <Panel IsVisible="{Binding MarkerKind, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <PathIcon Classes="passPerkLegendIcon" Data="{StaticResource PassdownCheckCircleIconGeometry}" IsVisible="{Binding IsQualifyingVisit}"
+                        AutomationProperties.AccessibilityView="Raw" />
+              <PathIcon Classes="passPerkLegendIcon" Data="{StaticResource PassdownGiftIconGeometry}" IsVisible="{Binding IsRedemption}"
+                        AutomationProperties.AccessibilityView="Raw" />
+              <PathIcon Classes="passPerkLegendIcon" Data="{StaticResource PassdownClockIconGeometry}" IsVisible="{Binding IsDeadline}"
+                        AutomationProperties.AccessibilityView="Raw" />
+            </Panel>
+            <TextBlock Text="{Binding HeadlineText}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"
+                       Foreground="{DynamicResource PassdownAccentForegroundBrush}" TextWrapping="Wrap" />
+          </StackPanel>
           <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" Classes.muted="{Binding IsNotCurrent}" />
           <TextBlock Text="{Binding MetaText}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
           <TextBlock Text="{Binding NoticeText}" IsVisible="{Binding HasNoticeText}" Classes="fieldWarning" FontSize="12" TextWrapping="Wrap" />
@@ -270,18 +305,45 @@
                                 Classes.outOfMonth="{Binding !IsInDisplayedMonth}"
                                 Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AutomationName}">
                           <StackPanel Spacing="3">
-                            <!-- Phase 32: the day number, with one small gift marker (plus a count when several
-                                 perks apply) for a confirmed date-specific Pass Perks entry. Tooltip and the
-                                 cell's AutomationName say what it is; the marker is never the only signal. -->
-                            <Grid ColumnDefinitions="*,Auto">
-                              <TextBlock Grid.Column="0" Text="{Binding DayNumber}" FontWeight="SemiBold" FontSize="14" />
-                              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center"
-                                          IsVisible="{Binding HasPassPerks}"
-                                          ToolTip.Tip="{Binding PassPerkAccessibilityText}">
-                                <PathIcon Classes="passPerkMarker" Data="{StaticResource PassdownGiftIconGeometry}"
-                                          AutomationProperties.AccessibilityView="Raw" />
-                                <TextBlock Text="{Binding PassPerkCountText}" Classes="passPerkCount" />
-                              </StackPanel>
+                            <!-- Phase 32A: a fixed-height top row — the day number pinned top-left and the Pass Perks
+                                 markers in a fixed top-right strip. The row is the same height whether or not a
+                                 cell has markers, so the number and everything below it sit at the same place in
+                                 every cell. Markers keep a fixed order (qualifying visit, redemption, deadline), a
+                                 fixed 15×14 slot each and a 3px gap; a count badge sits inside the slot, so a
+                                 count never shifts the icon. Tooltip and the cell's AutomationName name each type. -->
+                            <Grid ColumnDefinitions="Auto,*" Height="18" Classes="dayTopRow">
+                              <TextBlock Grid.Column="0" Text="{Binding DayNumber}" FontWeight="SemiBold" FontSize="14"
+                                         VerticalAlignment="Top" LineHeight="18" />
+                              <!-- Compact fallback: when a narrow cell can't fit every marker at full size (in practice
+                                   only three types on one date at ~960 px), the Viewbox shrinks the whole strip
+                                   proportionally (DownOnly) — never clipped, never reordered, still right-aligned. -->
+                              <Viewbox Grid.Column="1" Stretch="Uniform" StretchDirection="DownOnly"
+                                       HorizontalAlignment="Right" VerticalAlignment="Top" Margin="4,2,0,0"
+                                       IsVisible="{Binding HasPassPerks}">
+                              <ItemsControl ItemsSource="{Binding PassPerkMarkers}" Classes="passPerkMarkers"
+                                            ToolTip.Tip="{Binding PassPerkAccessibilityText}">
+                                <ItemsControl.ItemsPanel>
+                                  <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="3" />
+                                  </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                  <DataTemplate x:DataType="vm:PassPerkDayMarker">
+                                    <Panel Width="15" Height="14" ToolTip.Tip="{Binding AccessibilityText}">
+                                      <PathIcon Classes="passPerkMarker" Data="{StaticResource PassdownCheckCircleIconGeometry}"
+                                                IsVisible="{Binding IsQualifyingVisit}" AutomationProperties.AccessibilityView="Raw" />
+                                      <PathIcon Classes="passPerkMarker" Data="{StaticResource PassdownGiftIconGeometry}"
+                                                IsVisible="{Binding IsRedemption}" AutomationProperties.AccessibilityView="Raw" />
+                                      <PathIcon Classes="passPerkMarker" Data="{StaticResource PassdownClockIconGeometry}"
+                                                IsVisible="{Binding IsDeadline}" AutomationProperties.AccessibilityView="Raw" />
+                                      <Border Classes="passPerkCountBadge" IsVisible="{Binding HasCount}">
+                                        <TextBlock Text="{Binding CountText}" />
+                                      </Border>
+                                    </Panel>
+                                  </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                              </ItemsControl>
+                              </Viewbox>
                             </Grid>
 
                             <!-- Operating-state/hours/passdown-status/notes overlay (spec Phase 12B
@@ -313,6 +375,25 @@
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            <!-- Phase 32A: a one-line legend for the Pass Perks marker shapes, only while markers are shown and
+                 the month has any. Text labels, so the meaning never relies on the icon alone. -->
+            <WrapPanel x:Name="PassPerkLegend" ItemSpacing="16" Margin="2,2,0,0" IsVisible="{Binding HasPassPerkLegend}"
+                       AutomationProperties.Name="Pass Perks markers: check mark, qualifying visit date; gift, redemption date; clock, booking deadline">
+              <TextBlock Text="Pass Perks:" Classes="muted" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+              <StackPanel Orientation="Horizontal">
+                <PathIcon Classes="passPerkLegendIcon" Data="{StaticResource PassdownCheckCircleIconGeometry}" AutomationProperties.AccessibilityView="Raw" />
+                <TextBlock Text="Qualifying visit" Classes="muted" FontSize="12" VerticalAlignment="Center" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal">
+                <PathIcon Classes="passPerkLegendIcon" Data="{StaticResource PassdownGiftIconGeometry}" AutomationProperties.AccessibilityView="Raw" />
+                <TextBlock Text="Redemption / use" Classes="muted" FontSize="12" VerticalAlignment="Center" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal">
+                <PathIcon Classes="passPerkLegendIcon" Data="{StaticResource PassdownClockIconGeometry}" AutomationProperties.AccessibilityView="Raw" />
+                <TextBlock Text="Booking deadline" Classes="muted" FontSize="12" VerticalAlignment="Center" />
+              </StackPanel>
+            </WrapPanel>
 
           </StackPanel>
 

@@ -119,6 +119,8 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
     ("Calendar-PassPerksMonthLong", () => new Fixture(), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Today);
         foreach (var e in f.Window.GetVisualDescendants().OfType<Expander>().Where(e => (e.Header as string)?.StartsWith("Valid all", StringComparison.Ordinal) == true)) e.IsExpanded = true; Pump(6); }),
     ("Calendar-PassPerksOff", () => new Fixture(showPassPerks: false), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Other); }),
+    // Phase 32A: the grid's last rows (Oct 24: two redemption perks; Oct 25: all three marker types) and the legend.
+    ("Calendar-PassPerksGrid", () => new Fixture(), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Other); ScrollBy(f.Window, 420); }),
     ("Settings-CalendarDisplay", () => new Fixture(), f => { Go(f, AppSection.Settings); Pump(6); ScrollToName(f.Window, "Calendar"); }),
     ("Associate-Notes", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowNotesSectionCommand.Execute(null); Pump(8); }),
     ("Associate-SaveFailed", () => new Fixture(), f =>

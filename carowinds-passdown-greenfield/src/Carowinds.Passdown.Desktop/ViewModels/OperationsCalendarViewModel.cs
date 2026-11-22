@@ -356,8 +356,9 @@ public partial class OperationsCalendarViewModel : ViewModelBase
             day,
             day.Date == SelectedDate,
             SelectDate,
-            markers.TryGetValue(day.Date, out var titles) ? titles : null)).ToList() ?? [];
+            markers.TryGetValue(day.Date, out var dayMarkers) ? dayMarkers : null)).ToList() ?? [];
         Weeks = Days.Chunk(7).Select(week => new OperationsCalendarWeekViewModel(week)).ToList();
+        OnPropertyChanged(nameof(HasPassPerkLegend));
         RebuildSelectedPassPerks();
     }
 
@@ -390,6 +391,9 @@ public partial class OperationsCalendarViewModel : ViewModelBase
 
     public bool HasPassPerksSection => ShowPassPerks && (HasSelectedDatePassPerks || HasMonthLongPassPerks);
 
+    /// <summary>Phase 32A: the small marker legend under the grid — shown only while markers are on and the month has any.</summary>
+    public bool HasPassPerkLegend => ShowPassPerks && Days.Any(d => d.HasPassPerks);
+
     private async Task<PassPerksOverview?> LoadPassPerksOverviewAsync()
     {
         if (_passPerksService is null)
@@ -408,16 +412,23 @@ public partial class OperationsCalendarViewModel : ViewModelBase
         }
     }
 
-    private Dictionary<DateOnly, IReadOnlyList<string>> PassPerkMarkers(OperationsCalendarSnapshot? snapshot)
+    private Dictionary<DateOnly, IReadOnlyList<PassPerkDayMarker>> PassPerkMarkers(OperationsCalendarSnapshot? snapshot)
     {
         if (!ShowPassPerks || _passPerksOverview is null || snapshot is not { Days.Count: > 0 })
         {
             return [];
         }
 
+        // Phase 32A: one marker per type per date, in a fixed type order; each lists its perks once.
         return _passPerksOverview.CalendarEntries(snapshot.Days[0].Date, snapshot.Days[^1].Date)
             .GroupBy(e => e.Entry.Date)
-            .ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(e => e.Entry.Perk.Title).Distinct(StringComparer.Ordinal).ToList());
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<PassPerkDayMarker>)g
+                    .GroupBy(e => e.Entry.MarkerKind)
+                    .OrderBy(k => k.Key)
+                    .Select(k => new PassPerkDayMarker(k.Key, k.Select(e => e.Entry.Perk.Title).Distinct(StringComparer.Ordinal).ToList()))
+                    .ToList());
     }
 
     private void RebuildSelectedPassPerks()
@@ -431,12 +442,17 @@ public partial class OperationsCalendarViewModel : ViewModelBase
         }
 
         var terms = overview.ProgramTerms;
+        // Phase 32A: one row per perk per marker type, qualifying visits first, then redemption, then deadlines;
+        // each row names its type, so a date with both a qualifying and a redemption entry reads unambiguously.
         SelectedDatePassPerks = overview.CalendarEntries(SelectedDate, SelectedDate)
-            .GroupBy(e => e.Entry.Perk.PerkId, StringComparer.Ordinal)
+            .GroupBy(e => (e.Entry.MarkerKind, e.Entry.Perk.PerkId))
+            .OrderBy(g => g.Key.MarkerKind)
+            .ThenBy(g => g.First().Entry.Perk.Title, StringComparer.Ordinal)
             .Select(g => new PassPerkItemViewModel(
                 PassPerksPresentation.Item(new PassPerkEntry(g.First().Entry.Perk, g.First().Assessment), terms),
                 OpenPassPerkDetails,
-                string.Join(" · ", g.Select(e => PassPerksPresentation.CalendarKindText(e.Entry.Kind)).Distinct(StringComparer.Ordinal))))
+                string.Join(" · ", g.Select(e => PassPerksPresentation.CalendarKindText(e.Entry.Kind)).Distinct(StringComparer.Ordinal)),
+                g.Key.MarkerKind))
             .ToList();
         MonthLongPassPerks = overview.MonthLongEntries(SelectedDate.Year, SelectedDate.Month)
             .Select(e => new PassPerkItemViewModel(PassPerksPresentation.Item(e, terms), OpenPassPerkDetails))

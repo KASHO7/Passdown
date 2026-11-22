@@ -17,13 +17,43 @@ public sealed partial class PassPerkItemViewModel
 {
     private readonly Action<OfficialDetailsPresentation>? _openDetails;
 
-    public PassPerkItemViewModel(PassPerkItemPresentation presentation, Action<OfficialDetailsPresentation>? openDetails, string? contextText = null)
+    public PassPerkItemViewModel(
+        PassPerkItemPresentation presentation,
+        Action<OfficialDetailsPresentation>? openDetails,
+        string? contextText = null,
+        Domain.PassPerks.PassPerkMarkerKind? markerKind = null)
     {
         ArgumentNullException.ThrowIfNull(presentation);
         Presentation = presentation;
         _openDetails = openDetails;
         ContextText = contextText;
+        MarkerKind = markerKind;
     }
+
+    /// <summary>Phase 32A: Calendar only — the marker type this row belongs to (null in Products).</summary>
+    public Domain.PassPerks.PassPerkMarkerKind? MarkerKind { get; }
+
+    public bool IsQualifyingVisit => MarkerKind == Domain.PassPerks.PassPerkMarkerKind.QualifyingVisit;
+
+    public bool IsRedemption => MarkerKind == Domain.PassPerks.PassPerkMarkerKind.Redemption;
+
+    public bool IsDeadline => MarkerKind == Domain.PassPerks.PassPerkMarkerKind.Deadline;
+
+    /// <summary>Phase 32A: "Qualifying visit", "Redemption / use" or "Booking deadline" (Calendar rows only).</summary>
+    public string? MarkerKindText => MarkerKind switch
+    {
+        Domain.PassPerks.PassPerkMarkerKind.QualifyingVisit => "Qualifying visit",
+        Domain.PassPerks.PassPerkMarkerKind.Redemption => "Redemption / use",
+        Domain.PassPerks.PassPerkMarkerKind.Deadline => "Booking deadline",
+        _ => null,
+    };
+
+    /// <summary>"Qualifying visit · Last day for qualifying visits" — type first, then the exact meaning.</summary>
+    public string? HeadlineText => MarkerKindText is { } kind
+        ? (ContextText is null ? kind : $"{kind} · {ContextText}")
+        : ContextText;
+
+    public bool HasHeadlineText => HeadlineText is not null;
 
     public PassPerkItemPresentation Presentation { get; }
 
@@ -44,7 +74,7 @@ public sealed partial class PassPerkItemViewModel
 
     public bool IsNotCurrent => Presentation.RowStatusLabel is not null;
 
-    public string AccessibleSummary => ContextText is null ? Presentation.AccessibleSummary : $"{ContextText}: {Presentation.AccessibleSummary}";
+    public string AccessibleSummary => HeadlineText is null ? Presentation.AccessibleSummary : $"{HeadlineText}: {Presentation.AccessibleSummary}";
 
     public bool CanViewDetails => _openDetails is not null;
 

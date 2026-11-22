@@ -114,8 +114,28 @@ public enum PassPerkCalendarEntryKind
     QualifyingEnds,
 }
 
+/// <summary>
+/// Phase 32A: what a Calendar marker means — the three visual marker types. Derived only from
+/// <see cref="PassPerkCalendarEntryKind"/>; no new data is stored.
+/// </summary>
+public enum PassPerkMarkerKind
+{
+    /// <summary>Earning: a date about qualifying visits (today, the last day for required visits).</summary>
+    QualifyingVisit,
+
+    /// <summary>Using the reward: redeemable that day, redemption begins, or last day to redeem.</summary>
+    Redemption,
+
+    /// <summary>A booking/purchase deadline ("Book by …").</summary>
+    Deadline,
+}
+
 /// <summary>Phase 32: one perk on one Calendar date.</summary>
-public sealed record PassPerkCalendarEntry(DateOnly Date, PassPerkCalendarEntryKind Kind, OfficialPassPerk Perk, PassPerkDateWindow Window);
+public sealed record PassPerkCalendarEntry(DateOnly Date, PassPerkCalendarEntryKind Kind, OfficialPassPerk Perk, PassPerkDateWindow Window)
+{
+    /// <summary>Phase 32A: which marker type this entry shows as.</summary>
+    public PassPerkMarkerKind MarkerKind => PassPerkCalendar.MarkerKindOf(Kind);
+}
 
 /// <summary>
 /// Phase 32: Calendar marker rules. A marker needs a perk-specific official date — never a month heading,
@@ -127,6 +147,18 @@ public sealed record PassPerkCalendarEntry(DateOnly Date, PassPerkCalendarEntryK
 public static class PassPerkCalendar
 {
     public const int DailyMarkerMaxDays = 14;
+
+    /// <summary>
+    /// Phase 32A marker rules: the last qualifying day is a qualifying-visit marker; a short redemption window's
+    /// days, redemption begins and last day to redeem are redemption markers; a booking deadline is a deadline
+    /// marker. A stay window never places a marker (unchanged from Phase 32).
+    /// </summary>
+    public static PassPerkMarkerKind MarkerKindOf(PassPerkCalendarEntryKind kind) => kind switch
+    {
+        PassPerkCalendarEntryKind.QualifyingEnds => PassPerkMarkerKind.QualifyingVisit,
+        PassPerkCalendarEntryKind.BookingDeadline => PassPerkMarkerKind.Deadline,
+        _ => PassPerkMarkerKind.Redemption,
+    };
 
     public static IReadOnlyList<PassPerkCalendarEntry> EntriesBetween(IEnumerable<OfficialPassPerk> perks, DateOnly first, DateOnly last)
     {

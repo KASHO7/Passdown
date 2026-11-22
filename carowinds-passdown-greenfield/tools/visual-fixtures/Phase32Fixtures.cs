@@ -29,7 +29,10 @@ internal static class Phase32Fixtures
                 "Passholders and members can redeem one (1) 20% Off Synthetic Game Play by scanning your season pass or membership at any participating location. Offer valid at your home park."),
             Perk("Synthetic Passholder Appreciation Weekend", "October 24 - October 25",
                 "Passholders and members can redeem one (1) synthetic appreciation gift at Guest Relations. Offer valid at your home park. While supplies last."),
-            Perk("BOGO 50% Off Second Night at Synthetic Campground", "Book by October 31",
+            Perk("Synthetic Treat Trail Weekend", "October 24 - October 25",
+                "Passholders and members can redeem one (1) synthetic treat bag at any participating location. Offer valid at your home park."),
+            // Oct 25 carries all three marker types (qualifying, two redemptions, a booking deadline): the worst case for the cell's marker strip.
+            Perk("BOGO 50% Off Second Night at Synthetic Campground", "Book by October 25",
                 "New Reservations. BOGO 50% Off Second Night when you stay at the Synthetic Campground from October 1 to March 31. Promo code SYNPASS."),
         ];
 

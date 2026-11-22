@@ -166,4 +166,28 @@ public class Phase32PassPerkScheduleTests
 
         Assert.Equal([new DateOnly(2026, 11, 27)], entries.Select(e => e.Date)); // last listed Nov 30; the Jan 3 end is not shown
     }
+
+    [Theory]
+    [InlineData(PassPerkCalendarEntryKind.QualifyingEnds, PassPerkMarkerKind.QualifyingVisit)]
+    [InlineData(PassPerkCalendarEntryKind.RedeemableThisDay, PassPerkMarkerKind.Redemption)]
+    [InlineData(PassPerkCalendarEntryKind.RedemptionBegins, PassPerkMarkerKind.Redemption)]
+    [InlineData(PassPerkCalendarEntryKind.RedemptionEnds, PassPerkMarkerKind.Redemption)]
+    [InlineData(PassPerkCalendarEntryKind.BookingDeadline, PassPerkMarkerKind.Deadline)]
+    public void Phase32A_MarkerKind_FollowsTheDateMeaning(PassPerkCalendarEntryKind kind, PassPerkMarkerKind expected) =>
+        Assert.Equal(expected, PassPerkCalendar.MarkerKindOf(kind));
+
+    [Fact]
+    public void Phase32A_EveryEntryKindHasAMarkerKind() =>
+        Assert.All(Enum.GetValues<PassPerkCalendarEntryKind>(), k => Assert.True(Enum.IsDefined(PassPerkCalendar.MarkerKindOf(k))));
+
+    [Fact]
+    public void Phase32A_VisitBasedPerk_QualifyingEndIsAVisitMarker_RedemptionStartIsARedemptionMarker()
+    {
+        var bring = Bring;
+        var entries = PassPerkCalendar.EntriesBetween([bring], new DateOnly(2026, 11, 1), new DateOnly(2027, 1, 31));
+
+        Assert.Equal(
+            [(new DateOnly(2026, 11, 22), PassPerkMarkerKind.QualifyingVisit), (new DateOnly(2026, 12, 5), PassPerkMarkerKind.Redemption), (new DateOnly(2027, 1, 3), PassPerkMarkerKind.Redemption)],
+            entries.Select(e => (e.Date, e.MarkerKind)));
+    }
 }

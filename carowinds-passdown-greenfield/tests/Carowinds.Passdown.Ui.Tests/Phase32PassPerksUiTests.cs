@@ -284,8 +284,8 @@ public class Phase32PassPerksUiTests
         // Qualifying ends Nov 22, the mug window begins Nov 27, booking deadline Nov 30, Bring-A-Friend redemption begins Dec 5 (in the grid's trailing week).
         Assert.Equal([new DateOnly(2026, 11, 22), new DateOnly(2026, 11, 27), new DateOnly(2026, 11, 30), new DateOnly(2026, 12, 5)], marked);
         Assert.DoesNotContain(calendar.Days, d => d.Date == new DateOnly(2026, 11, 15) && d.HasPassPerks); // month-long pretzel is not a daily marker
-        Assert.Equal("Pass Perk date: Buy Two, Get One FREE Hot Chocolate Mug", calendar.Days.Single(d => d.Date == new DateOnly(2026, 11, 27)).PassPerkAccessibilityText);
-        Assert.Contains("Pass Perk date", calendar.Days.Single(d => d.Date == new DateOnly(2026, 11, 27)).AutomationName, StringComparison.Ordinal);
+        Assert.Equal("Pass perk redemption date: Buy Two, Get One FREE Hot Chocolate Mug", calendar.Days.Single(d => d.Date == new DateOnly(2026, 11, 27)).PassPerkAccessibilityText);
+        Assert.Contains("Pass perk redemption date", calendar.Days.Single(d => d.Date == new DateOnly(2026, 11, 27)).AutomationName, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -295,14 +295,16 @@ public class Phase32PassPerksUiTests
 
         var jan3 = calendar.Days.Single(d => d.Date == new DateOnly(2027, 1, 3));
         Assert.True(jan3.HasPassPerks);
-        Assert.Equal("2", jan3.PassPerkCountText);
-        Assert.StartsWith("2 Pass Perk dates:", jan3.PassPerkAccessibilityText, StringComparison.Ordinal);
+        var marker = Assert.Single(jan3.PassPerkMarkers); // both are redemption: one marker, with a count
+        Assert.True(marker.IsRedemption);
+        Assert.Equal("2", marker.CountText);
+        Assert.StartsWith("Pass perk redemption dates (2):", jan3.PassPerkAccessibilityText, StringComparison.Ordinal);
 
         calendar.SelectDateCommand.Execute(new DateOnly(2027, 1, 3));
         await calendar.PendingLoad;
 
         Assert.Equal(2, calendar.SelectedDatePassPerks.Count);
-        Assert.All(calendar.SelectedDatePassPerks, p => Assert.Equal("Last day to redeem", p.ContextText));
+        Assert.All(calendar.SelectedDatePassPerks, p => Assert.Equal("Redemption / use · Last day to redeem", p.HeadlineText));
     }
 
     [Fact]
@@ -314,7 +316,8 @@ public class Phase32PassPerksUiTests
         await calendar.PendingLoad;
 
         var camp = Assert.Single(calendar.SelectedDatePassPerks);
-        Assert.Equal("Last day to book", camp.ContextText);
+        Assert.Equal("Booking deadline · Last day to book", camp.HeadlineText);
+        Assert.True(camp.IsDeadline);
         Assert.Equal(["BOGO 50% Off Soft Pretzel"], calendar.MonthLongPassPerks.Select(p => p.Title));
         Assert.Equal("Valid all November (1)", calendar.MonthLongPassPerksHeaderText);
         Assert.True(calendar.HasPassPerksSection);
@@ -371,6 +374,80 @@ public class Phase32PassPerksUiTests
         Assert.DoesNotContain("Pass Perk", calendar.Days[10].AutomationName, StringComparison.Ordinal);
     }
 
+    // ------------------------------------------------------------------ Phase 32A: marker types and layout
+
+    [Fact]
+    public async Task Calendar_MarkerTypes_QualifyingRedemptionAndDeadline()
+    {
+        var (calendar, _) = await CalendarAsync(new DateOnly(2026, 11, 21));
+        PassPerkDayMarker Only(int month, int day) => Assert.Single(calendar.Days.Single(d => d.Date == new DateOnly(2026, month, day)).PassPerkMarkers);
+
+        Assert.True(Only(11, 22).IsQualifyingVisit);   // last day for the Bring-A-Friend qualifying visits
+        Assert.True(Only(11, 27).IsRedemption);        // Hot Chocolate Mug redemption begins
+        Assert.True(Only(11, 30).IsDeadline);          // Camp Wilderness: last day to book
+        Assert.True(Only(12, 5).IsRedemption);         // earned Bring-A-Friend tickets redeemable from Dec 5
+        Assert.Equal("Pass perk qualifying visit date: Earn 2 FREE Bring-A-Friend Tickets", Only(11, 22).AccessibilityText);
+        Assert.Equal("Pass perk booking deadline: BOGO 50% Off Second Night at Carowinds Camp Wilderness", Only(11, 30).AccessibilityText);
+        Assert.Contains("Pass perk qualifying visit date", calendar.Days.Single(d => d.Date == new DateOnly(2026, 11, 22)).AutomationName, StringComparison.Ordinal);
+        Assert.True(calendar.HasPassPerkLegend);
+    }
+
+    [Fact]
+    public async Task Calendar_DateWithSeveralTypes_ShowsOneMarkerPerTypeInAFixedOrder_AndTypedRows()
+    {
+        // A short "redeemable" window ending on the qualifying deadline puts both types on Nov 22.
+        var weekend = Perk("Passholder Weekend Treat", "November 21 - November 22", "Passholders and members can redeem one (1) treat.");
+        var document = PassPerksDocument.Empty.Merge(new PassPerksObservation(November, [Pretzel, Camp, Bring, weekend]) { ProgramTerms = Terms }, Checked);
+        var settings = new CalendarDisplaySettingsViewModel(new MemoryCalendarStore(null));
+        await settings.PendingLoad;
+        var calendar = new OperationsCalendarViewModel(
+            new FakeOperationsCalendarService(),
+            new FakeClock(NowUtc),
+            uiDispatcher: new ImmediateUiDispatcher(),
+            passPerksService: new StubPassPerksService(Overview(new DateOnly(2026, 11, 21), document: document)),
+            calendarDisplay: settings);
+        await calendar.PendingLoad;
+
+        var nov22 = calendar.Days.Single(d => d.Date == new DateOnly(2026, 11, 22));
+        Assert.Equal([PassPerkMarkerKind.QualifyingVisit, PassPerkMarkerKind.Redemption], nov22.PassPerkMarkers.Select(m => m.Kind));
+        Assert.All(nov22.PassPerkMarkers, m => Assert.False(m.HasCount));
+        Assert.Equal(
+            "Pass perk qualifying visit date: Earn 2 FREE Bring-A-Friend Tickets. Pass perk redemption date: Passholder Weekend Treat",
+            nov22.PassPerkAccessibilityText);
+
+        calendar.SelectDateCommand.Execute(new DateOnly(2026, 11, 22));
+        await calendar.PendingLoad;
+
+        Assert.Equal(
+            ["Qualifying visit · Last day for qualifying visits", "Redemption / use · Redeemable this day"],
+            calendar.SelectedDatePassPerks.Select(p => p.HeadlineText));
+        Assert.StartsWith("Qualifying visit · Last day for qualifying visits: Earn 2 FREE", calendar.SelectedDatePassPerks[0].AccessibleSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProductsRows_HaveNoCalendarMarkerType()
+    {
+        var row = new PassPerkItemViewModel(Item(Pretzel, new DateOnly(2026, 11, 21)), _ => { });
+
+        Assert.Null(row.MarkerKind);
+        Assert.False(row.HasHeadlineText);
+        Assert.Equal(Item(Pretzel, new DateOnly(2026, 11, 21)).AccessibleSummary, row.AccessibleSummary); // Products unchanged
+    }
+
+    [Fact]
+    public void CellLayout_FixedTopRow_FixedSlots_StretchedContent_AndShrinkOnlyFallback()
+    {
+        var view = Markup("src/Carowinds.Passdown.Desktop/Views/OperationsCalendarView.axaml");
+
+        Assert.Contains("<Grid ColumnDefinitions=\"Auto,*\" Height=\"18\" Classes=\"dayTopRow\">", view, StringComparison.Ordinal);
+        Assert.Contains("<Panel Width=\"15\" Height=\"14\" ToolTip.Tip=\"{Binding AccessibilityText}\">", view, StringComparison.Ordinal);
+        Assert.Contains("<StackPanel Orientation=\"Horizontal\" Spacing=\"3\" />", view, StringComparison.Ordinal);
+        Assert.Contains("<Viewbox Grid.Column=\"1\" Stretch=\"Uniform\" StretchDirection=\"DownOnly\"", view, StringComparison.Ordinal);
+        Assert.Contains("<Setter Property=\"HorizontalContentAlignment\" Value=\"Stretch\" />", view, StringComparison.Ordinal);
+        // The count badge lives inside the fixed slot, so a count never moves its icon.
+        Assert.True(view.IndexOf("<Border Classes=\"passPerkCountBadge\"", StringComparison.Ordinal) < view.IndexOf("</Panel>", view.IndexOf("<Panel Width=\"15\"", StringComparison.Ordinal), StringComparison.Ordinal));
+    }
+
     // ------------------------------------------------------------------ Setting
 
     [Fact]
@@ -414,7 +491,11 @@ public class Phase32PassPerksUiTests
 
     [Theory]
     [InlineData("Data=\"{StaticResource PassdownGiftIconGeometry}\"")]
+    [InlineData("Data=\"{StaticResource PassdownCheckCircleIconGeometry}\"")]
+    [InlineData("Data=\"{StaticResource PassdownClockIconGeometry}\"")]
     [InlineData("ToolTip.Tip=\"{Binding PassPerkAccessibilityText}\"")]
+    [InlineData("ToolTip.Tip=\"{Binding AccessibilityText}\"")]
+    [InlineData("IsVisible=\"{Binding HasPassPerkLegend}\"")]
     [InlineData("IsVisible=\"{Binding HasPassPerksSection}\"")]
     [InlineData("Header=\"{Binding MonthLongPassPerksHeaderText}\"")]
     [InlineData("AutomationProperties.Name=\"{Binding ViewDetailsAutomationName}\"")]
@@ -435,7 +516,10 @@ public class Phase32PassPerksUiTests
     {
         var tokens = Markup("src/Carowinds.Passdown.Desktop/Themes/PassdownTokens.axaml");
 
-        Assert.Single(tokens.Split("x:Key=\"PassdownGiftIconGeometry\"").Skip(1));
+        foreach (var key in new[] { "PassdownGiftIconGeometry", "PassdownCheckCircleIconGeometry", "PassdownClockIconGeometry" })
+        {
+            Assert.Single(tokens.Split($"x:Key=\"{key}\"").Skip(1));
+        }
     }
 
     private static string Markup(string relative)

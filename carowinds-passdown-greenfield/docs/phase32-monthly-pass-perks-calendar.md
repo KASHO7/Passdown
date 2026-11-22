@@ -198,3 +198,52 @@ Mac renders (light/dark, 960–1920 px) showed no clipping, horizontal overflow 
 * Individual guests' rewards (Six Flags app wallet) are intentionally out of scope.
 * Only the Carowinds park page is read for rewards; other parks' perks are ignored.
 * Windows DPI scaling and Narrator are untested until the checklist above is run on Windows.
+
+## 14. Phase 32A — Calendar marker refinement
+
+Requested after Windows review of the Phase 32 Calendar: consistent marker placement and separate marker
+types. No data-model, schema or sync change: the type is a pure mapping from the existing Calendar entry
+kinds (`PassPerkCalendar.MarkerKindOf`).
+
+**Marker types and rules**
+
+| Marker | Shape | Calendar entries | Accessible name / tooltip |
+|---|---|---|---|
+| Qualifying visit | check in a circle | last day for qualifying visits | "Pass perk qualifying visit date: {perk}" |
+| Redemption / use | gift | each day of a short window (≤ 14 days), redemption begins, last day to redeem / "valid through" | "Pass perk redemption date: {perk}" |
+| Booking deadline | clock | "Book by …" (booking/purchase deadline) | "Pass perk booking deadline: {perk}" |
+
+All Phase 32 placement rules are unchanged: only perk-specific confirmed dates, month-long perks only in the
+"Valid all {month}" summary, stay windows never marked, nothing after a perk stopped being listed. Shapes
+differ, so meaning never relies on colour (all use the theme accent).
+
+**Cell layout**
+
+* Root cause of the uneven spacing: the day button left-aligned its content, so each cell's top row was only
+  as wide as its widest text line and the marker landed at a different distance in each cell. Content now
+  stretches to the full cell width (text still reads left).
+* Fixed-height (18 px) top row: day number pinned top-left, markers in a right-aligned strip top-right.
+* One marker per type, always in the order qualifying → redemption → deadline; fixed 15×14 slots with a 3 px
+  gap. Several perks of the same type on one date show a small count badge inside that slot (it never moves
+  the icon).
+* Compact fallback: if a narrow cell cannot fit every marker at full size (in practice only all three types
+  on one date at about 960 px), the strip shrinks proportionally (`Viewbox`, shrink-only) — never clipped or
+  reordered. Wider windows always show full size.
+* A one-line legend under the grid ("Pass Perks: ✓ Qualifying visit · gift Redemption / use · clock Booking
+  deadline"), shown only while markers are on and the month has any.
+
+**Selected-date panel**: one row per perk per marker type, qualifying first, then redemption, then deadlines;
+each row starts with the type icon and "Qualifying visit · Last day for qualifying visits", "Redemption / use
+· Redemption begins", "Booking deadline · Last day to book", so a date with both a qualifying and a
+redemption entry reads unambiguously. Products is unchanged (its rows carry no Calendar type).
+
+**Taxonomy note**: qualifying / redemption / deadline covers every date the official pages publish today.
+A possible later split — "redemption begins" vs "last day to redeem" as separate shapes — was not added: the
+side panel already states which, and more shapes would make cells busier.
+
+**Tests**: Domain marker-kind mapping and visit-based sequencing; UI marker types per date, fixed order and
+Narrator text for a date with two types, typed side-panel rows, Products unchanged, cell-layout markup
+(fixed row, slots, stretch, shrink-only fallback), new icons defined once. Visual harness: synthetic Oct 24
+(two redemption perks, badge "2") and Oct 25 (all three types), scenario `Calendar-PassPerksGrid`; renders
+checked light/dark at 960, 1280×690, 1280×860 and 1920 with no clipping or horizontal overflow.
+Windows (DPI scaling, Narrator) still to be checked on Windows.

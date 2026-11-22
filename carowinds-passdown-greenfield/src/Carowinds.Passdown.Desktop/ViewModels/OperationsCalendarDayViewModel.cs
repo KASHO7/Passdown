@@ -115,30 +115,24 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
         + (PassPerkAccessibilityText is { } perks ? ". " + perks : string.Empty);
 
     /// <summary>
-    /// Phase 32: the perks with a confirmed date-specific entry on this date (begins, last day, deadline, or a
-    /// short window) — one gift marker per cell however many apply; the selected-date panel lists them all.
+    /// Phase 32A: this date's Pass Perks markers — at most one per marker type, always in the order qualifying
+    /// visit, redemption, deadline, so the same type sits in the same place every time. Empty when none apply.
     /// </summary>
-    public IReadOnlyList<string> PassPerkTitles { get; }
+    public IReadOnlyList<PassPerkDayMarker> PassPerkMarkers { get; }
 
-    public bool HasPassPerks => PassPerkTitles.Count > 0;
+    public bool HasPassPerks => PassPerkMarkers.Count > 0;
 
-    /// <summary>"2" beside the marker when more than one perk applies; empty for one (the marker alone says it).</summary>
-    public string PassPerkCountText => PassPerkTitles.Count > 1 ? PassPerkTitles.Count.ToString(PresentationCulture.UnitedStates) : string.Empty;
+    /// <summary>Tooltip and Narrator text for every marker on the date — never icon-only.</summary>
+    public string? PassPerkAccessibilityText => PassPerkMarkers.Count == 0
+        ? null
+        : string.Join(". ", PassPerkMarkers.Select(m => m.AccessibilityText));
 
-    /// <summary>Tooltip and Narrator text for the marker — never icon-only.</summary>
-    public string? PassPerkAccessibilityText => PassPerkTitles.Count switch
-    {
-        0 => null,
-        1 => "Pass Perk date: " + PassPerkTitles[0],
-        _ => $"{PassPerkTitles.Count} Pass Perk dates: {string.Join(", ", PassPerkTitles)}",
-    };
-
-    public OperationsCalendarDayViewModel(OperationsCalendarDay day, bool isSelected, Action<DateOnly> onSelect, IReadOnlyList<string>? passPerkTitles = null)
+    public OperationsCalendarDayViewModel(OperationsCalendarDay day, bool isSelected, Action<DateOnly> onSelect, IReadOnlyList<PassPerkDayMarker>? passPerkMarkers = null)
     {
         ArgumentNullException.ThrowIfNull(day);
         ArgumentNullException.ThrowIfNull(onSelect);
         _onSelect = onSelect;
-        PassPerkTitles = passPerkTitles ?? [];
+        PassPerkMarkers = passPerkMarkers ?? [];
 
         Date = day.Date;
         IsInDisplayedMonth = day.IsInDisplayedMonth;
@@ -206,4 +200,39 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
 
         return string.Join(". ", parts);
     }
+}
+
+/// <summary>
+/// Phase 32A: one Pass Perks marker in a day cell — its type (shape), the perks it stands for, a small count
+/// badge when several perks share the type, and its accessible name/tooltip.
+/// </summary>
+public sealed record PassPerkDayMarker(Domain.PassPerks.PassPerkMarkerKind Kind, IReadOnlyList<string> Titles)
+{
+    public bool IsQualifyingVisit => Kind == Domain.PassPerks.PassPerkMarkerKind.QualifyingVisit;
+
+    public bool IsRedemption => Kind == Domain.PassPerks.PassPerkMarkerKind.Redemption;
+
+    public bool IsDeadline => Kind == Domain.PassPerks.PassPerkMarkerKind.Deadline;
+
+    /// <summary>"2" when more than one perk shares this marker type on the date; empty otherwise.</summary>
+    public string CountText => Titles.Count > 1 ? Titles.Count.ToString(PresentationCulture.UnitedStates) : string.Empty;
+
+    public bool HasCount => Titles.Count > 1;
+
+    /// <summary>"Pass perk redemption date", "Pass perk qualifying visit date" or "Pass perk booking deadline".</summary>
+    public string Label => LabelFor(Kind);
+
+    /// <summary>"Pass perk redemption date: Buy Two, Get One FREE Hot Chocolate Mug" (tooltip and Narrator).</summary>
+    public string AccessibilityText => Titles.Count switch
+    {
+        1 => $"{Label}: {Titles[0]}",
+        _ => $"{Label}s ({Titles.Count}): {string.Join(", ", Titles)}",
+    };
+
+    public static string LabelFor(Domain.PassPerks.PassPerkMarkerKind kind) => kind switch
+    {
+        Domain.PassPerks.PassPerkMarkerKind.QualifyingVisit => "Pass perk qualifying visit date",
+        Domain.PassPerks.PassPerkMarkerKind.Deadline => "Pass perk booking deadline",
+        _ => "Pass perk redemption date",
+    };
 }
