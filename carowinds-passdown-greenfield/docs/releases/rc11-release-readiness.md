@@ -74,7 +74,7 @@ real operational database on the build Mac (`~/Library/Application Support/Carow
 | Failed migration 18 rolls back to 17 with every row intact, keeps the backup; a later start succeeds | PASS |
 | Insufficient disk space for the backup stops at 17 and changes nothing | PASS |
 | The Desktop app registers exactly migrations 1–18 | PASS |
-| Same on Windows with a real RC.10 profile | NOT EXECUTED — Windows checklist items 2, 3, 14 |
+| Same on Windows with a real RC.10 profile | USER-VERIFIED ON WINDOWS (§6 items 2, 3, 14) |
 
 ## 4. Package, manifest and signature
 
@@ -92,8 +92,8 @@ real operational database on the build Mac (`~/Library/Application Support/Carow
 
 ## 5. Decision so far
 
-Automated and build-host checks: **all PASS, nothing FAIL.** Windows validation: **NOT EXECUTED.**
-**Publication is BLOCKED until the Windows checklist below is completed with no FAIL.** If anything fails, the
+Automated and build-host checks: **all PASS, nothing FAIL.** Windows validation: **14 / 14 USER-VERIFIED ON
+WINDOWS, 0 FAIL** (§6). The gate is passed; publication proceeds as authorised (§7). If anything fails, the
 candidate is kept as-is for diagnosis and a fix ships as `0.1.0-rc.12`; these signed files are never rebuilt.
 
 ## 6. Windows validation checklist (RC.11)
@@ -112,22 +112,27 @@ so your real `%LOCALAPPDATA%\Carowinds Passdown` and real sync folder are never 
 
 | # | Check | Expected | Result |
 |---|---|---|---|
-| 1 | Version and startup | Opens in seconds, no .NET/admin prompt. Settings → About this build: `0.1.0-rc.11 (573d17c)` and the new folder | NOT EXECUTED |
-| 2 | Schema 17 → 18 migration | Starts normally. `%LOCALAPPDATA%\Carowinds Passdown\backups` contains a new `…pre-migration-schema-17-to-18….db`. Optional: starting RC.10 again afterwards does **not** open the upgraded database — RC.10 closes at startup without changing it, and its newest log says "newer than this application supports" (RC.10 has no friendlier message; see §9). Then go back to RC.11 | NOT EXECUTED |
-| 3 | Data preserved | The RC.10 draft (attendance, Operational Notes still **unchecked**), the note and Season Price History rows are all there | NOT EXECUTED |
-| 4 | Official pricing and Current Deals | Check Online; Products shows official prices and a compact Current Deals list (Black Friday deals if currently offered) | NOT EXECUTED |
-| 5 | Military Gold Pass | Listed with its price, or "Availability unconfirmed" — never "Retired" | NOT EXECUTED |
-| 6 | View details windows | On a deal and on a pass: terms, Buy by / Use by dates, official link; Esc/Close returns; inferred dates labelled | NOT EXECUTED |
-| 7 | Dynamic seasonal information | Include in Passdown shows the date's official event (e.g. WinterFest on a December weekend); SCarowinds appears only in its season | NOT EXECUTED |
-| 8 | Shows in left navigation | Sidebar reads Overview, Products, Shows, Notes; Overview has no Shows list | NOT EXECUTED |
-| 9 | Shows selection and PDF inclusion | Select two shows on Shows; with Shows checked under Include in Passdown they print; unchecked they do not print but stay selected; re-checked they print again | NOT EXECUTED |
-| 10 | Operational Notes default | A date never opened before has Operational Notes checked; Settings → Passdown Preferences changes survive a restart; the RC.10 date from item 3 keeps its own choice | NOT EXECUTED |
-| 11 | Classic and Modern PDFs | Both create, open and look right (prices, attendance, notes, shows) | NOT EXECUTED |
-| 12 | ERT conflicts and Personal Sync | With a **new empty** sync folder: Sync Now OK; if a second test PC is available, the same rides in a different order are not a conflict, different rides offer merge/edit | NOT EXECUTED |
-| 13 | Restart and clean shutdown | Close (X); app leaves Task Manager; reopen — everything still there; newest log in `logs\` has no unexpected `Exception` | NOT EXECUTED |
-| 14 | Backup and recovery evidence | `backups\` holds the pre-migration copy and `README.txt`; a copy of that `.db` opens in RC.10 when placed in a separate test profile (optional) | NOT EXECUTED |
+| 1 | Version and startup | Opens in seconds, no .NET/admin prompt. Settings → About this build: `0.1.0-rc.11 (573d17c)` and the new folder | USER-VERIFIED ON WINDOWS |
+| 2 | Schema 17 → 18 migration | Starts normally. `%LOCALAPPDATA%\Carowinds Passdown\backups` contains a new `…pre-migration-schema-17-to-18….db`. Optional: starting RC.10 again afterwards does **not** open the upgraded database — RC.10 closes at startup without changing it, and its newest log says "newer than this application supports" (RC.10 has no friendlier message; see §9). Then go back to RC.11 | USER-VERIFIED ON WINDOWS |
+| 3 | Data preserved | The RC.10 draft (attendance, Operational Notes still **unchecked**), the note and Season Price History rows are all there | USER-VERIFIED ON WINDOWS |
+| 4 | Official pricing and Current Deals | Check Online; Products shows official prices and a compact Current Deals list (Black Friday deals if currently offered) | USER-VERIFIED ON WINDOWS |
+| 5 | Military Gold Pass | Listed with its price, or "Availability unconfirmed" — never "Retired" | USER-VERIFIED ON WINDOWS |
+| 6 | View details windows | On a deal and on a pass: terms, Buy by / Use by dates, official link; Esc/Close returns; inferred dates labelled | USER-VERIFIED ON WINDOWS |
+| 7 | Dynamic seasonal information | Include in Passdown shows the date's official event (e.g. WinterFest on a December weekend); SCarowinds appears only in its season | USER-VERIFIED ON WINDOWS |
+| 8 | Shows in left navigation | Sidebar reads Overview, Products, Shows, Notes; Overview has no Shows list | USER-VERIFIED ON WINDOWS |
+| 9 | Shows selection and PDF inclusion | Select two shows on Shows; with Shows checked under Include in Passdown they print; unchecked they do not print but stay selected; re-checked they print again | USER-VERIFIED ON WINDOWS |
+| 10 | Operational Notes default | A date never opened before has Operational Notes checked; Settings → Passdown Preferences changes survive a restart; the RC.10 date from item 3 keeps its own choice | USER-VERIFIED ON WINDOWS |
+| 11 | Classic and Modern PDFs | Both create, open and look right (prices, attendance, notes, shows) | USER-VERIFIED ON WINDOWS |
+| 12 | ERT conflicts and Personal Sync | With a **new empty** sync folder: Sync Now OK; if a second test PC is available, the same rides in a different order are not a conflict, different rides offer merge/edit | USER-VERIFIED ON WINDOWS |
+| 13 | Restart and clean shutdown | Close (X); app leaves Task Manager; reopen — everything still there; newest log in `logs\` has no unexpected `Exception` | USER-VERIFIED ON WINDOWS |
+| 14 | Backup and recovery evidence | `backups\` holds the pre-migration copy and `README.txt`; a copy of that `.db` opens in RC.10 when placed in a separate test profile (optional) | USER-VERIFIED ON WINDOWS |
 
 Report each item as PASS / FAIL with a short note (and a screenshot for any FAIL).
+
+**Reported by the product owner on 2026-11-21: "all of them pass" — 14 / 14 USER-VERIFIED ON WINDOWS, 0 FAIL.**
+Only the overall result was reported, not per-item notes. Not claimed from this report: which optional parts were
+run (RC.10 reopening in item 2, a second PC in item 12, opening the backup in RC.10 in item 14), display scaling,
+and Narrator.
 
 ## 7. Publication plan (only after §6 has no FAIL)
 
