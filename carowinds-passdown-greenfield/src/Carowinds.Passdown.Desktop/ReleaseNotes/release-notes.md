@@ -1,37 +1,30 @@
-Version: 0.1.0-rc.11
-Title: Seasons, official deals and important product details
-Date: 2026-11-21
+Version: 0.1.0-rc.12
+Title: Pass Perks, live PDF preview and direct printing
+Date: 2026-11-22
 ---
-## Seasons and deals
+## Pass Perks and Calendar
 
-- The selected date now knows which official Carowinds season or event it falls in (Oktoberfest, SCarowinds, WinterFest and others, read from the official event schedule), so seasonal options such as SCarowinds only appear when they apply.
-- Products shows Current Deals from the official Carowinds pages, including promotions such as the Black Friday deals, as a compact list: each offer's name, price or benefit, a short description and any confirmed deadline. Select **View details** to see purchase deadlines, visit windows, terms, fees and the official page. Upcoming offers, offers verified before but not re-confirmed, and expired offers are listed separately.
+- View the monthly Pass Perks that Carowinds officially advertises, with their eligibility, visit requirements and restrictions. This is the public program list: it does not mean a particular guest has earned a reward or that one has been loaded onto their pass.
+- The Calendar shows separate markers for qualifying visits, redemption / use dates and booking deadlines, always in the same place in the day cell, with a count when a day has more than one of a kind. A legend under the grid explains them, and each marker has a description for hover and screen readers.
+- Select **View details** on a perk to open its requirements and official terms.
+- Turn the Calendar markers on or off in **Settings ▸ Calendar ▸ Show Pass Perks on Calendar**. The choice is kept on this computer.
 
-## Important Details & Deadlines
+## Live PDF Preview
 
-- Select **View details** on a season pass, membership, Military/First Responder, promotional or add-on row to see its official terms in one window: eligibility, Bring-A-Friend and other incentives, restrictions, fees, and separate "Buy by" and "Use by" dates. Press Esc or Close to return to the list.
-- A date that is not stated in full as the item's own deadline (for example, a page-wide banner date, or a date written without a year) is marked "inferred". It is never used on its own to mark something expired.
+- Edit a Passdown while the actual PDF is shown beside your work. It refreshes a moment after each change.
+- The preview stays visible while you switch between Overview, Products, Shows and Notes.
+- Drag the divider to resize the preview, or use **Hide Preview** / **Show Preview**. Your layout and zoom are remembered on this computer.
+- Move between pages and zoom in, zoom out, fit the width or fit the page.
 
-## Price history and Military products
+## Direct Printing
 
-- The 2027 Military Gold Pass and the Military & First Responder Ticket are read correctly from the redesigned official page and keep their earlier price history.
-- A product sold only through a verified channel (such as ID.me) is shown as "Availability unconfirmed" instead of "Retired".
-- Season Price History combines matching checks from all your computers into one row. A brief reading from another computer no longer changes how the next price change is shown.
+- **Print** sends the Passdown to a printer through the standard Windows print dialog. Nothing prints unless you press Print in that dialog.
+- **Save PDF** in the preview saves the document you are looking at.
+- Preview, printing and Save PDF work with the Classic, Compact and Modern PDF styles.
 
-## Passdown choices
+## Reliability
 
-- **Shows** has its own section in the Passdown sidebar (Overview, Products, Shows, Notes), so Overview is less crowded. Pick the shows for the date there; Select all and Clear work as before.
-- Whether Shows prints is now a checkbox under **Overview ▸ Include in Passdown**, with the other sections. Turning it off only stops shows from printing — your selected shows are kept and print again when you turn it back on.
-- New: **Settings ▸ Passdown Preferences** chooses which sections are already checked when you start a new Passdown. **Operational Notes** is now checked by default.
-- A Passdown you have already started always keeps its own choices, including sections you unchecked, after a restart or an update.
-
-## Early Ride Time sync
-
-- The same rides listed in a different order on two computers are no longer a conflict.
-- When rides really differ, Settings lets you merge or edit the ride list before resolving the conflict.
-
-## Your data
-
-- The first time this version starts, the database is updated with one new table for official reference pages. A checked copy is saved in the backups folder inside %LOCALAPPDATA%\Carowinds Passdown first.
+- Your Passdown drafts, Notes, Price History, Personal Sync and Early Ride Time sync work as before. This version does not change the database: coming from rc.11, nothing is upgraded.
+- Calendar markers line up consistently and have accessible labels.
 
 Your drafts, notes, History PDFs, Personal Sync settings and appearance choice are kept.

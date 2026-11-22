@@ -122,6 +122,10 @@ database, so going back means restoring a backup — see backups\README.txt.
 Upgrade every computer that shares a Personal Sync folder. Upgrading straight
 from rc.8 or older performs both upgrades, each with its own backup.
 
+Version 0.1.0-rc.12 uses the same database format as rc.11: upgrading from rc.11
+changes nothing in the database. Upgrading from rc.10 or older performs the
+rc.11 upgrade described above.
+
 Passdown History
 -----------------
 Next to "Associate Passdown" at the top of the window is a "History" section. Each
