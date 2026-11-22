@@ -136,8 +136,12 @@ public sealed class InterfaceMotionController : IDisposable
     /// detected. The default for view models built without the composition root (tests, fixtures), so headless
     /// layout assertions never observe a mid-transition value and nothing writes a settings file.
     /// </summary>
-    public static InterfaceMotionController CreateDetached(InterfaceAnimationPreference initial = InterfaceAnimationPreference.Off) =>
-        new(new InMemoryStore(initial), new NotDetectedReader());
+    public static InterfaceMotionController CreateDetached(InterfaceAnimationPreference initial = InterfaceAnimationPreference.Off)
+    {
+        var controller = new InterfaceMotionController(new InMemoryStore(initial), new NotDetectedReader());
+        controller.Initialize(); // in memory only, so its state is final from the start
+        return controller;
+    }
 
     private sealed class InMemoryStore(InterfaceAnimationPreference value) : IInterfaceAnimationPreferenceStore
     {

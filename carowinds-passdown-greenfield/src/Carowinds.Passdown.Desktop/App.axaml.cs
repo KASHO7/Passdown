@@ -816,6 +816,9 @@ public partial class App : global::Avalonia.Application
             FileInterfaceAnimationPreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FileInterfaceAnimationPreferenceStore>>()));
         services.AddSingleton<ISystemReducedMotionReader, WindowsAnimationEffectsReader>();
         services.AddSingleton<InterfaceMotionController>();
+        // Phase 35A: the sidebar's expanded/collapsed state — one local file, never synced.
+        services.AddSingleton<INavigationSidebarPreferenceStore>(provider => new FileNavigationSidebarPreferenceStore(
+            FileNavigationSidebarPreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FileNavigationSidebarPreferenceStore>>()));
         services.AddTransient<AppearanceSettingsViewModel>();
         services.AddTransient<PersonalSyncSettingsViewModel>();
         // Phase 26: the one system-browser launcher for allowlisted official source pages.

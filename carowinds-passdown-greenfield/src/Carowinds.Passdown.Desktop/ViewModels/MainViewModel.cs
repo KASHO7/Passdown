@@ -1,3 +1,4 @@
+using Carowinds.Passdown.Application.Preferences;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -42,7 +43,8 @@ public partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>Phase 23D: <paramref name="whatsNew"/> is the What's New overlay (defaults to the Settings updates panel's own).</summary>
-    public MainViewModel(OperationsDashboardViewModel dashboard, OperationsCalendarViewModel calendar, AssociateViewModel associate, OperationalNotesViewModel notes, PassdownHistoryViewModel history, PersonalSyncSettingsViewModel settings, PriceHistoryViewModel? priceHistory, WhatsNewViewModel? whatsNew)
+    /// <param name="sidebarStore">Phase 35A: where the sidebar's expanded/collapsed state is kept on this computer; null keeps it in memory only (tests, fixtures).</param>
+    public MainViewModel(OperationsDashboardViewModel dashboard, OperationsCalendarViewModel calendar, AssociateViewModel associate, OperationalNotesViewModel notes, PassdownHistoryViewModel history, PersonalSyncSettingsViewModel settings, PriceHistoryViewModel? priceHistory, WhatsNewViewModel? whatsNew, INavigationSidebarPreferenceStore? sidebarStore = null)
     {
         ArgumentNullException.ThrowIfNull(dashboard);
         ArgumentNullException.ThrowIfNull(calendar);
@@ -59,6 +61,21 @@ public partial class MainViewModel : ViewModelBase
         Settings = settings;
         PriceHistory = priceHistory;
         WhatsNew = whatsNew ?? settings.Updates.WhatsNew;
+
+        // Phase 35A: the sidebar starts in the state saved on this computer (Expanded when nothing is saved).
+        _sidebarStore = sidebarStore;
+        IsNavigationCollapsed = sidebarStore?.Load() == NavigationSidebarState.Collapsed;
+
+        // Phase 35A: the window shows cosmetic transitions only while motion is effective (Settings → Appearance →
+        // Interface animations, overridden off by the operating system's reduced-motion setting).
+        Settings.Appearance.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AppearanceSettingsViewModel.IsMotionEffective))
+            {
+                OnPropertyChanged(nameof(IsInterfaceMotionEnabled));
+                OnPropertyChanged(nameof(IsInterfaceMotionDisabled));
+            }
+        };
 
         // Phase 31D: changed Passdown defaults show at once on an open date that has never been saved;
         // a saved date always keeps its own saved selections.
@@ -222,6 +239,60 @@ public partial class MainViewModel : ViewModelBase
 
     /// <summary>The gear's help text, so Narrator announces the indicator too (its name stays "Settings").</summary>
     public string? SettingsNavigationHelpText => HasUpdateNotification ? "Update available" : null;
+
+    private readonly INavigationSidebarPreferenceStore? _sidebarStore;
+
+    /// <summary>
+    /// Phase 35A: icons-only sidebar. Pure presentation — it changes no section, page, date, draft or refresh, and
+    /// is available even while an Operational Note is being edited (it navigates nowhere).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsNavigationExpanded))]
+    [NotifyPropertyChangedFor(nameof(NavigationToggleName))]
+    public partial bool IsNavigationCollapsed { get; set; }
+
+    public bool IsNavigationExpanded => !IsNavigationCollapsed;
+
+    /// <summary>The toggle's accessible name and tooltip: what pressing it will do.</summary>
+    public string NavigationToggleName => IsNavigationCollapsed ? "Expand navigation" : "Collapse navigation";
+
+    /// <summary>The last sidebar save; tests await it. A failed save keeps the state for this session.</summary>
+    public Task PendingNavigationSave { get; private set; } = Task.CompletedTask;
+
+    [RelayCommand]
+    private void ToggleNavigation()
+    {
+        IsNavigationCollapsed = !IsNavigationCollapsed; // applies at once; the save never delays it
+        if (_sidebarStore is { } store)
+        {
+            PendingNavigationSave = SaveNavigationAsync(store, IsNavigationCollapsed ? NavigationSidebarState.Collapsed : NavigationSidebarState.Expanded, PendingNavigationSave);
+        }
+    }
+
+    private static async Task SaveNavigationAsync(INavigationSidebarPreferenceStore store, NavigationSidebarState state, Task previous)
+    {
+        try
+        {
+            await previous.ConfigureAwait(true); // writes in order, so the file ends on the last state
+            await store.SaveAsync(state).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Local convenience only: the sidebar keeps its state for this session.
+        }
+    }
+
+    /// <summary>Phase 35A: true while cosmetic interface transitions should run (bound to the window's <c>motion</c> class).</summary>
+    public bool IsInterfaceMotionEnabled => Settings.Appearance.IsMotionEffective;
+
+    /// <summary>Phase 35A: the inverse, bound to the window's <c>noMotion</c> class (which also removes Fluent's own button transitions).</summary>
+    public bool IsInterfaceMotionDisabled => !IsInterfaceMotionEnabled;
+
+    /// <summary>
+    /// Phase 35A: the main window was activated. Re-reads the operating system's reduced-motion setting (changing it
+    /// in Windows Settings means leaving this app). Never navigates, saves or refreshes anything.
+    /// </summary>
+    public void OnWindowActivated() => Settings.Appearance.RefreshSystemMotion();
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDashboardSectionSelected))]
