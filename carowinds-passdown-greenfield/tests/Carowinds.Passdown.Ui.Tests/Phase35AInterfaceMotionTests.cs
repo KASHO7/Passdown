@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Desktop.Services;
 using Carowinds.Passdown.Desktop.ViewModels;
@@ -303,5 +304,57 @@ public class Phase35AInterfaceMotionTests
     private sealed class ThrowingReader : ISystemReducedMotionReader
     {
         public SystemReducedMotion Read() => throw new InvalidOperationException("no platform");
+    }
+
+    // ---------------------------------------------------------------- Settings markup
+
+    private static string AnimationsMarkup()
+    {
+        var markup = File.ReadAllText(MarkupFiles.Find("src/Carowinds.Passdown.Desktop/Views/PersonalSyncSettingsView.axaml"));
+        var start = markup.IndexOf("x:Name=\"InterfaceAnimationsLabel\"", StringComparison.Ordinal);
+        var end = markup.IndexOf("</Border>", start, StringComparison.Ordinal);
+        Assert.True(start > 0 && end > start);
+        return markup[start..end];
+    }
+
+    [Fact]
+    public void SettingsMarkup_IsInsideAppearance_WithOnThenOff_InOneAccessibleGroup()
+    {
+        var markup = File.ReadAllText(MarkupFiles.Find("src/Carowinds.Passdown.Desktop/Views/PersonalSyncSettingsView.axaml"));
+        var appearance = markup.IndexOf("x:Name=\"AppearanceSection\"", StringComparison.Ordinal);
+        var animations = markup.IndexOf("x:Name=\"InterfaceAnimationsLabel\"", StringComparison.Ordinal);
+        var nextPanel = markup.IndexOf("x:Name=\"PassdownPreferencesSection\"", StringComparison.Ordinal);
+        Assert.True(appearance < animations && animations < nextPanel, "Interface animations sits in Settings → Appearance");
+
+        var section = AnimationsMarkup();
+        Assert.Contains("Text=\"Interface animations\"", section);
+        Assert.Equal(2, Regex.Matches(section, "<RadioButton ").Count);
+        Assert.True(section.IndexOf("Content=\"On\"", StringComparison.Ordinal) < section.IndexOf("Content=\"Off\"", StringComparison.Ordinal));
+        Assert.Contains("IsChecked=\"{Binding Appearance.IsAnimationsOnSelected}\"", section);
+        Assert.Contains("IsChecked=\"{Binding Appearance.IsAnimationsOffSelected}\"", section);
+        Assert.Contains("AutomationProperties.Name=\"Interface animations\"", section);
+        Assert.Contains("AutomationProperties.Name=\"Interface animations on\"", section);
+        Assert.Contains("AutomationProperties.Name=\"Interface animations off\"", section);
+        Assert.Contains("KeyboardNavigation.TabNavigation=\"Once\"", section);
+        Assert.Contains("XYFocus.NavigationModes=\"Keyboard\"", section);
+    }
+
+    [Fact]
+    public void SettingsMarkup_ExplainsTheWindowsOverride_AndSaveFailures_AsPoliteLiveText()
+    {
+        var section = AnimationsMarkup();
+        Assert.Contains("Text=\"{Binding Appearance.MotionSystemText}\"", section);
+        Assert.Contains("Text=\"{Binding Appearance.MotionSaveMessage}\"", section);
+        Assert.Equal(2, Regex.Matches(section, "AutomationProperties.LiveSetting=\"Polite\"").Count);
+        Assert.Contains("Saved on this computer only.", section);
+        Assert.Contains("never delayed", section);
+    }
+
+    [Fact]
+    public void Texts_NameTheRealWindowsSetting_AndNeverClaimDetectionWhereThereIsNone()
+    {
+        Assert.Contains("Animation effects", AppearanceSettingsViewModel.MotionOverriddenByWindowsText);
+        Assert.Contains("choice here is kept", AppearanceSettingsViewModel.MotionOverriddenByWindowsText);
+        Assert.Contains("can't be read", AppearanceSettingsViewModel.MotionSystemNotDetectedText);
     }
 }

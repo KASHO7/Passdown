@@ -1817,7 +1817,11 @@ public class Phase15ERealWindowLayoutTests
 
         window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        Assert.IsNotType<RadioButton>(window.FocusManager!.GetFocusedElement()); // one Tab stop for the group
+        // One Tab stop for the group: Tab leaves the theme options. Since Phase 35A the next stop is the Interface
+        // animations group, on its own checked option.
+        var next = window.FocusManager!.GetFocusedElement();
+        Assert.False(next is RadioButton { GroupName: "Appearance" }, "Tab must leave the theme group");
+        Assert.True(next is RadioButton { GroupName: "InterfaceAnimations", IsChecked: true }, "Tab lands on the checked Interface animations option");
         Assert.Equal(Application.Preferences.AppearancePreference.Light, harness.Controller.Preference); // Tab never changes it
 
         window.Close();
@@ -1834,9 +1838,13 @@ public class Phase15ERealWindowLayoutTests
         viewModel.SelectedSection = AppSection.Settings;
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        // Shift+Tab back from the next control on the page (Phase 31D: the first Passdown Preferences
-        // checkbox, which now sits between Appearance and Personal Sync).
+        // Shift+Tab back from the next stop on the page. Phase 31D put the Passdown Preferences checkboxes after
+        // Appearance; Phase 35A put the Interface animations group (one Tab stop) between them, so Shift+Tab goes
+        // checkbox → animations group → theme group.
         window.GetVisualDescendants().OfType<CheckBox>().Single(c => AutomationProperties.GetName(c) == "Select Daily Admission automatically for a new Passdown").Focus();
+        window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.Shift);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(window.FocusManager!.GetFocusedElement() is RadioButton { GroupName: "InterfaceAnimations", IsChecked: true });
         window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.Shift);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
@@ -2466,6 +2474,50 @@ public class Phase15ERealWindowLayoutTests
 
         Assert.Equal(AppSection.Settings, viewModel.SelectedSection); // 59 % 6 == 5
         Assert.Contains("noMotion", window.Classes);
+        window.Close();
+    }
+
+    [Theory]
+    [InlineData(1280d, 860d)]
+    [InlineData(960d, 640d)]
+    public void Settings_InterfaceAnimations_KeyboardOperable_AppliesLive_AndExplainsTheWindowsOverride(double width, double height)
+    {
+        var (controller, store, os) = Phase35AInterfaceMotionTests.Create();
+        var viewModel = CreateShellMainViewModel(motion: controller);
+        var window = ShowMainWindow(viewModel, width, height);
+        viewModel.SelectedSection = AppSection.Settings;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        RadioButton Option(string name) => window.GetVisualDescendants().OfType<RadioButton>().Single(r => r.Name == name);
+        var on = Option("InterfaceAnimationsOnOption");
+        var off = Option("InterfaceAnimationsOffOption");
+        var note = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "InterfaceAnimationsSystemNote");
+        Assert.True(on.IsChecked);
+        Assert.True(on.IsEffectivelyVisible && AbsoluteBounds(on, window).Right <= window.ClientSize.Width);
+        Assert.False(note.IsEffectivelyVisible); // Windows allows animation: nothing to explain
+        Assert.Contains("motion", window.Classes);
+
+        // Arrow key from the checked option selects Off, applies at once and saves locally.
+        Assert.True(on.Focus(NavigationMethod.Tab));
+        window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+        window.KeyReleaseQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(viewModel.Settings.Appearance.PendingMotionSave.IsCompletedSuccessfully); // the fake store saves synchronously
+        Assert.True(off.IsChecked);
+        Assert.DoesNotContain("motion", window.Classes);
+        Assert.Equal(Application.Preferences.InterfaceAnimationPreference.Off, store.Stored);
+
+        // Back On, then Windows turns Animation effects off: motion off, choice kept, the note explains it.
+        on.IsChecked = true;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        os.Value = Application.Preferences.SystemReducedMotion.Requested;
+        viewModel.OnWindowActivated();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(on.IsChecked);
+        Assert.True(note.IsEffectivelyVisible);
+        Assert.Equal(AppearanceSettingsViewModel.MotionOverriddenByWindowsText, note.Text);
+        Assert.Contains("noMotion", window.Classes);
+        Assert.Equal(AppSection.Settings, viewModel.SelectedSection);
         window.Close();
     }
 }

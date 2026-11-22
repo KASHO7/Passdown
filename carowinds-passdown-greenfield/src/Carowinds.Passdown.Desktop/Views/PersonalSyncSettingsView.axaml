@@ -96,6 +96,39 @@
                        Text="{Binding Appearance.SaveMessage}"
                        IsVisible="{Binding Appearance.SaveMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                        AutomationProperties.LiveSetting="Polite" />
+
+            <!-- Phase 35A: Interface animations — On / Off, its own radio group (one Tab stop, arrow keys). Applies
+                 at once and saves on this computer only (never Personal Sync). Windows "Animation effects" off
+                 turns motion off without changing this choice; the note under the options says so. -->
+            <Border Classes="divider" />
+            <TextBlock x:Name="InterfaceAnimationsLabel" Text="Interface animations" Classes="fieldLabel" Margin="0" />
+            <TextBlock x:Name="InterfaceAnimationsIntro" Classes="muted" TextWrapping="Wrap"
+                       Text="Short, subtle transitions in navigation and controls. Typing, saving, refreshing, previews and printing are never delayed by them. Saved on this computer only." />
+            <StackPanel x:Name="InterfaceAnimationOptions" Spacing="2"
+                        KeyboardNavigation.TabNavigation="Once"
+                        XYFocus.NavigationModes="Keyboard"
+                        GotFocus="OnAppearanceOptionGotFocus"
+                        AutomationProperties.Name="Interface animations"
+                        AutomationProperties.HelpText="Turn short interface transitions on or off on this computer">
+              <RadioButton x:Name="InterfaceAnimationsOnOption" GroupName="InterfaceAnimations"
+                           Content="On"
+                           IsChecked="{Binding Appearance.IsAnimationsOnSelected}"
+                           IsCheckedChanged="OnRadioGroupOptionCheckedChanged"
+                           AutomationProperties.Name="Interface animations on" />
+              <RadioButton x:Name="InterfaceAnimationsOffOption" GroupName="InterfaceAnimations"
+                           Content="Off"
+                           IsChecked="{Binding Appearance.IsAnimationsOffSelected}"
+                           IsCheckedChanged="OnRadioGroupOptionCheckedChanged"
+                           AutomationProperties.Name="Interface animations off" />
+            </StackPanel>
+            <TextBlock x:Name="InterfaceAnimationsSystemNote" Classes="muted" TextWrapping="Wrap"
+                       Text="{Binding Appearance.MotionSystemText}"
+                       IsVisible="{Binding Appearance.MotionSystemText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       AutomationProperties.LiveSetting="Polite" />
+            <TextBlock Classes="statusError" TextWrapping="Wrap"
+                       Text="{Binding Appearance.MotionSaveMessage}"
+                       IsVisible="{Binding Appearance.MotionSaveMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       AutomationProperties.LiveSetting="Polite" />
           </StackPanel>
         </Border>
 

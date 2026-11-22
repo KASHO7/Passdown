@@ -34,4 +34,16 @@ public partial class PersonalSyncSettingsView : UserControl
             KeyboardNavigation.SetTabOnceActiveElement(AppearanceOptions, option);
         }
     }
+
+    /// <summary>
+    /// Phase 35A: the same native radio-group behavior for any other one-Tab-stop group (Interface animations):
+    /// Tab into the group lands on its checked option.
+    /// </summary>
+    private void OnRadioGroupOptionCheckedChanged(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is RadioButton { IsChecked: true, Parent: InputElement group } option)
+        {
+            KeyboardNavigation.SetTabOnceActiveElement(group, option);
+        }
+    }
 }

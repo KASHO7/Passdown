@@ -534,9 +534,12 @@ public class Phase23CAppearancePreferenceTests
     {
         var section = AppearanceSectionMarkup();
 
+        // Phase 35A: the Appearance panel also holds the two-option Interface animations group; the theme
+        // selector itself is still exactly three options in one group.
         var radios = Regex.Matches(section, "<RadioButton ");
-        Assert.Equal(3, radios.Count);
+        Assert.Equal(3 + 2, radios.Count);
         Assert.Equal(3, Regex.Matches(section, "GroupName=\"Appearance\"").Count);
+        Assert.Equal(2, Regex.Matches(section, "GroupName=\"InterfaceAnimations\"").Count);
 
         var system = section.IndexOf("Content=\"Use Windows setting\"", StringComparison.Ordinal);
         var light = section.IndexOf("Content=\"Light\"", StringComparison.Ordinal);

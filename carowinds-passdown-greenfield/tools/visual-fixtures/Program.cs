@@ -66,6 +66,11 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
     ("Shell-Expanded-Settings", () => new Fixture(), f => Go(f, AppSection.Settings)),
     ("Shell-FocusNavigation", () => new Fixture(), f => { Go(f, AppSection.Dashboard); FocusNavigation(f.Window, "Operations Calendar section"); }),
     ("Shell-FocusNavigationCollapsed", () => new Fixture(), f => { Go(f, AppSection.Dashboard); Collapse(f); FocusNavigation(f.Window, "Operations Calendar section"); }),
+    // Phase 35A: Settings → Appearance → Interface animations in its three effective states (in-memory choice,
+    // simulated Windows "Animation effects"; never interface-animations.json).
+    ("Settings-AnimationsOn", () => new Fixture(motion: ShellMotion.Create(InterfaceAnimationPreference.On, SystemReducedMotion.NotRequested)), f => { Go(f, AppSection.Settings); ScrollToName(f.Window, "Interface animations"); }),
+    ("Settings-AnimationsOff", () => new Fixture(motion: ShellMotion.Create(InterfaceAnimationPreference.Off, SystemReducedMotion.NotRequested)), f => { Go(f, AppSection.Settings); ScrollToName(f.Window, "Interface animations"); }),
+    ("Settings-AnimationsWindowsReduced", () => new Fixture(motion: ShellMotion.Create(InterfaceAnimationPreference.On, SystemReducedMotion.Requested)), f => { Go(f, AppSection.Settings); ScrollToName(f.Window, "Interface animations"); }),
     ("Dashboard", () => new Fixture(), f => Go(f, AppSection.Dashboard)),
     // Phase 23B: Today's Shows density/overlap. "-Top" keeps the page at the top (above-the-fold view);
     // the others scroll the Shows panel into view.
@@ -456,6 +461,35 @@ static void Pump(int n)
 internal enum SyncFixture { Off, UpToDate, Conflict, Error }
 
 /// <summary>One isolated app shell over fakes — no database, no network, no real profile.</summary>
+/// <summary>Phase 35A: an Interface animations controller with an in-memory choice and a simulated OS setting.</summary>
+internal static class ShellMotion
+{
+    public static InterfaceMotionController Create(InterfaceAnimationPreference choice, SystemReducedMotion os)
+    {
+        var controller = new InterfaceMotionController(new MemoryStore(choice), new FixedReader(os));
+        controller.Initialize();
+        return controller;
+    }
+
+    private sealed class MemoryStore(InterfaceAnimationPreference value) : IInterfaceAnimationPreferenceStore
+    {
+        private InterfaceAnimationPreference _value = value;
+
+        public InterfaceAnimationPreference Load() => _value;
+
+        public Task SaveAsync(InterfaceAnimationPreference preference, CancellationToken cancellationToken = default)
+        {
+            _value = preference;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FixedReader(SystemReducedMotion value) : ISystemReducedMotionReader
+    {
+        public SystemReducedMotion Read() => value;
+    }
+}
+
 internal sealed class Fixture
 {
     /// <summary>Phase 23C: the harness-wide appearance controller (in-memory store, simulated OS).</summary>
@@ -467,7 +501,7 @@ internal sealed class Fixture
     public MainWindow Window { get; }
 
     public Fixture(bool emptyNotes = false, bool emptyHistory = false, SyncFixture sync = SyncFixture.Off, Carowinds.Passdown.Application.Shows.ShowScheduleView? dashboardShows = null, bool showPassPerks = true,
-        PdfPreviewLayoutPreferences? preview = null)
+        PdfPreviewLayoutPreferences? preview = null, InterfaceMotionController? motion = null)
     {
         var clock = new FakeClock(Fixtures.Now);
         var passPerks = Phase32Fixtures.Service();
@@ -508,7 +542,7 @@ internal sealed class Fixture
             new OperationalNotesViewModel(notes, clock),
             new PassdownHistoryViewModel(history, new FakeFinalizedPassdownPdfRetrievalService()),
             new PersonalSyncSettingsViewModel(settingsService, new FakeSyncFolderPicker(), conflicts, coordinator, buildIdentity: build, diagnostics: diagnostics,
-                appearance: new AppearanceSettingsViewModel(Appearance), calendarDisplay: calendarDisplay),
+                appearance: new AppearanceSettingsViewModel(Appearance, motion), calendarDisplay: calendarDisplay),
             new PriceHistoryViewModel(priceHistory));
         Window = new MainWindow { DataContext = Vm };
     }

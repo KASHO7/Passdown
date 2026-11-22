@@ -163,6 +163,12 @@
     <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
     <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
   </Style>
+  <!-- Phase 35A: a hairline that separates two groups inside one panel (e.g. Appearance → Interface animations). -->
+  <Style Selector="Border.divider">
+    <Setter Property="Height" Value="1" />
+    <Setter Property="Background" Value="{DynamicResource PassdownDividerBrush}" />
+    <Setter Property="Margin" Value="0,6,0,2" />
+  </Style>
   <!-- Category heading strip inside a list (Products, History). -->
   <Style Selector="Border.categoryBand">
     <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
