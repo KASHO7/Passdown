@@ -1,6 +1,6 @@
 # Phase 35 — Unified Desktop UI/UX Modernization
 
-Status: **35A (shared shell and design tokens) in progress — plan below. 35B–35G planned only, not started.**
+Status: **35A (shared shell and design tokens) implemented locally — awaiting Windows visual and functional review (§15). 35B–35G planned only, not started.**
 
 Design input: `carowinds-next-phase-uiux-handoff.md` (2026-11-22, outside the repository; read in full).
 This is an incremental Avalonia modernization of the existing application, not a rewrite. The HTML
@@ -85,8 +85,8 @@ essential and missing stops at that point rather than inventing a design.
 
 1. **Title area: keep the native Windows title bar** (original icon + "Carowinds Operations", nothing else) and
    remove the 72 px photo banner. The native bar guarantees minimize / maximize / restore / close, Snap Layouts,
-   drag, double-click-maximize and per-monitor DPI with no custom code, and Avalonia already switches it to
-   dark when the app theme is dark (`SetFrameThemeVariant`). A custom extended-client title bar cannot be
+   drag, double-click-maximize and per-monitor DPI with no custom code. A dark title bar in Dark appearance is
+   expected (Avalonia.Win32 implements `SetFrameThemeVariant`) but is unverified until the Windows checklist (item A4). A custom extended-client title bar cannot be
    validated on the macOS build host and risks exactly the behaviors the brief requires to stay native. The
    name is not repeated inside the window (no second wordmark). If the Windows review wants the title merged
    into the app surface, that is a separate, Windows-tested change.
@@ -191,3 +191,80 @@ Each has its own implementation and review gate and needs its approved reference
   Open / Save Copy; grouped Settings sections.
 - **35G Consistency and readiness** — cross-screen accessibility, DPI, dark mode and motion-off audit, Windows
   performance measurements, remove the unused Fury asset, release preparation through the normal RC process.
+
+## 14. Test changes (35A) — nothing weakened silently
+
+Deterministic total **5,512 → 5,619** (+107): Application 1,369 → 1,378, Infrastructure 1,281 → 1,309,
+Ui mixed 1,751 → 1,804, Phase15ERealWindowLayout 117 → 134; Domain, Documents and the other run-alone classes unchanged.
+No test was skipped or deleted without a replacement that keeps its intent:
+
+| Earlier test (phase) | Replaced by / changed to | Why |
+|---|---|---|
+| 22B `SettingsGear_IsATrailingAccessibleIconItem…` | `Settings_IsPinnedToTheBottomRow…`, `Toggle_IsAnAccessibleIconAction…` | Settings moved to the sidebar bottom with a label |
+| 22B `Navigation_IsAWrappingLandmark…` | `Navigation_IsOneLandmark_WithNoScrollingOrDecorativeHeading` | vertical list; same single landmark, adds "no heading / role label" |
+| 22B `Banner_ShowsOneWordmark…`, 23B `Banner_IsTitleOnly…` | `TitleArea_IsTheNativeTitleBar…`, `TitleArea_IsTheNameOnly…` | banner removed; still "name only, no duplicate" |
+| 22B `BannerImage_IsABundledRelativeResource…` | `ShellMarkup_NeverReferencesAUrlOrDeveloperPath` | same no-URL / no-developer-path rule |
+| 22B `BannerPhotograph_IsDecorative…` | `EveryItem_HasADecorativeIcon_AnIndicatorSlot_AndOneLabel` | icons are the decorative elements now |
+| 22B `BannerTokens_KeepTheHeaderCompact` | `SidebarTokens_KeepTheShellCompact`, `MotionTokens_StayWithinTheApprovedUpperBounds` | new shell geometry |
+| 22B `BannerOverlay_GuaranteesWordmarkContrast…` | `NavigationColours_MeetContrastTargets` (Light, Dark) | contrast measured for the sidebar's text and indicator |
+| 22B `BannerBrushes_AreThemeInvariant…` (×3) | `BrandNavy_IsThemeInvariantIdentity` | retired banner brushes; brand navy is the identity colour |
+| 22B `ItemLabels_ReserveTheSemiBoldWidth…` | `ItemLabels_TrimRatherThanWrap…` | a vertical list cannot move neighbours sideways; it must not grow taller |
+| 15E strip/banner geometry, keyboard, theme, photo, title, content-host tests (10 methods) | sidebar equivalents in the same class (reachability at 6 sizes, fixed geometry, active state with indicator, Tab order incl. toggle and `:focus-visible`, Settings at bottom, theme tokens, native title bar, content beside sidebar, labels only, live appearance switch) | same contracts in the new geometry |
+| 22A token lists | banner/strip keys → sidebar, control-size and brand-navy keys | retired tokens |
+| 23C `Controller_DependsOnlyOn…` | allowed dependency list + `InterfaceMotionController` (local, device-only) | still no sync / database / refresh dependency |
+| 23C selector count, two Tab/Shift+Tab tests | theme group still exactly 3 options; Tab now reaches the adjacent Interface animations group on its checked option | new adjacent radio group |
+| Release `MainWindow_ShellRetains…Passdown…Label`, 22C section marker | label is now a sidebar `TextBlock`; renamed style section | markup moved |
+
+New coverage: interface-animations store and Windows reader (Infrastructure), resolver truth table (Application),
+controller/settings view model (`Phase35AInterfaceMotionTests`), shell state (`Phase35AShellStateTests`), and real-window
+collapse/expand, focus, narrow-window compaction, resize at 1920/1536/1280/1100/960, motion On/Off/reduced, rapid
+navigation, immediacy and the Settings control (`Phase15ERealWindowLayoutTests`, Phase 35A section).
+
+## 15. 35A results
+
+| Gate | Result |
+|---|---|
+| Commits | `296807e` plan · `4e49f8f` motion preference · `355d3c2` sidebar state · `25a8ade` shell · `552904f` Settings |
+| Deterministic suite (Release, LiveSmoke excluded, six run-alone classes) | **5,619 / 5,619, 0 failed, 0 skipped** |
+| Clean Release build (bin/obj removed, `--no-incremental`) | 0 warnings, 0 errors |
+| Database schema / Personal Sync / document templates / version | unchanged — no file under migrations, sync payloads, `Carowinds.Passdown.Documents` or `Directory.Build.props` changed since `cfebdc9`; schema 18, `SyncSchemaVersion` 1, `0.1.0-rc.13` |
+| New local files | `interface-animations.json`, `navigation-sidebar.json` beside `appearance.json` (atomic, never synced, never exported) |
+| Icon | repository `logo.ico` is byte-identical to the supplied original; unchanged as window, taskbar and EXE icon |
+| Real profile during renders/benchmarks | file timestamps compared before/after every run: unchanged |
+
+**Performance (macOS Arm64, headless Skia — development evidence, not Windows results).** Baseline = `cfebdc9`
+exported with `git archive`; two alternating rounds each, second round shown.
+
+| Measure | Baseline | 35A |
+|---|---|---|
+| Window build + show + first frame, 1280×860 (cold / warm median) | 897 / 148 ms | 888 / 140 ms |
+| Navigate to a section + first frame (median, Dashboard · Calendar · Passdown · Notes · History · Settings) | 2.4 · 3.0 · 6.4 · 1.8 · 1.6 · 1.8 ms | 2.6 · 2.9 · 3.9 · 1.9 · 1.7 · 2.2 ms |
+| Sidebar toggle + first frame (Dashboard / Passdown with PDF preview) | — | 4.4 / 9.9 ms (one layout; width never animated) |
+| Preview edit → page image (busy / 80 notes, median, both rounds) | 16.6, 16.4 / 41.0, 39.5 ms | 16.7, 16.1 / 40.9, 41.8 ms |
+| PDF page render, direct path (busy / 80 notes) | 0.64 / 2.53 ms | 0.64 / 2.60 ms |
+
+**Visual review renders** (real Avalonia views, Skia headless, synthetic data; `tools/visual-fixtures`, size mode
+`shell`): expanded and collapsed sidebar on Dashboard and Passdown, Calendar, Settings, keyboard focus on a destination
+(expanded and collapsed), and Settings → Interface animations On / Off / Windows reduced — each in Light and Dark at
+1920×1080, 1536×960, 1280×720 and 960×640. Geometry report: no horizontal overflow and no button past the window edge
+in any capture. Headless renders show the client area only (no title bar) and are not Windows DPI evidence.
+
+**Differences from the approved references.** The refined HTML prototypes and review PNGs were not available (§4), so
+35A follows the handoff's written contracts. Known differences to review on Windows: (1) the title area is the native
+Windows title bar rather than a custom in-window bar (§6.1); (2) the sidebar has no in-window brand mark; (3) below a
+1,100 px window width the sidebar shows icons only and its toggle is unavailable; (4) the Passdown page still has its own
+Overview / Products / Shows / Notes rail beside the sidebar — the handoff assigns that to 35B; (5) page headers are each
+page's existing header, unchanged until their milestones.
+
+**Known limitations.** Windows reduced motion is re-read when the main window is activated (Avalonia 12.1.1 offers no
+public window-message hook); a change made while the app stays focused is picked up on the next activation. On
+non-Windows hosts it is not detected and Settings says the in-app choice alone decides. Fluent's built-in scroll-bar
+expansion transitions are not removed by Off. Hover transitions are covered for nav, icon, primary, secondary and link
+buttons; other screen-specific controls gain motion only in their own milestones.
+
+**Windows test build** (local only, not a release): `artifacts/local-test/RC14-Phase35A-LOCALTEST/LOCAL-ONLY-RC14-Phase35A-LOCALTEST-win-x64.zip`,
+75,990,322 bytes, SHA-256 `4b39cfcd7572345a566b00b019dca5f00097c708c15bcac47d7ada21e0cb54af`, 308 files, built from
+`552904f`, shown as `0.1.0-rc.14-LOCALTEST.phase35a`. `RealReleaseZip` validation passed; all 152 earlier release and
+local-test artifacts re-hashed unchanged. Checklist: `docs/releases/rc14-phase35a-localtest-windows-checklist.md`.
+
+**Windows validation: NOT EXECUTED.** 35A is not Windows-validated until the product owner runs the checklist.

@@ -21,6 +21,7 @@ dotnet run -c Release --project tools/visual-fixtures -- <outDir> [label] [scena
 - `scenarioFilter`: case-insensitive substring of a scenario name, such as `Calendar` or `Settings`.
   Use `*` for all scenarios.
 - `all` (default) renders 960×640, 1280×690, 1280×860 and 1920×1000. `main` renders only 1280×860.
+  `shell` (Phase 35A) renders 1920×1080, 1536×960, 1280×720 and 960×640.
   Every size is rendered in both Light and Dark.
 - Appearance (Phase 23C): `forced` (default) renders the Light and Dark preferences, each against the
   opposite simulated OS appearance, and keeps the `Light`/`Dark` file names. `system` renders the System
@@ -45,6 +46,7 @@ or button rectangles inside the panel overlap.
 | Popups | date picker, Copy menu, More menu, Math picker |
 | Notes / History | populated and empty |
 | Settings | sync off, syncing and up to date, conflict review, folder unavailable with sync error and a Diagnostics export failure |
+| Shell (Phase 35A) | `Shell-*`: sidebar expanded / collapsed on Dashboard and Passdown, Calendar, Settings, keyboard focus on a destination (expanded and collapsed); `Settings-Animations*`: Interface animations On, Off and Windows reduced motion. Sidebar state and motion choice are in memory only |
 | Appearance (Phase 23C) | `Appearance-Settings`, `Appearance-SaveFailed`; `LiveSwitch-*`: the theme flipped with Settings, Dashboard Shows expanded, Calendar Shows expanded, Products, Season Price History, date picker, Copy, More or Math picker already open (captured after the switch), and a simulated OS switch |
 
 To compare against an earlier commit, export that commit with `git archive` into a scratch folder,
