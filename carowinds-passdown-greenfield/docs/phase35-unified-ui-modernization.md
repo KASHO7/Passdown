@@ -1,6 +1,6 @@
 # Phase 35 — Unified Desktop UI/UX Modernization
 
-Status: **35A (shared shell and design tokens) implemented locally — awaiting Windows visual and functional review (§15). 35B–35G planned only, not started.**
+Status: **35A (shared shell and design tokens) approved by the product owner after Windows testing. 35B (Passdown workspace) implemented locally — awaiting Windows review; record: `docs/phase35b-passdown-workspace-redesign.md`. 35C–35G planned only, not started.**
 
 Design input: `carowinds-next-phase-uiux-handoff.md` (2026-11-22, outside the repository; read in full).
 This is an incremental Avalonia modernization of the existing application, not a rewrite. The HTML
@@ -175,7 +175,7 @@ add only new local files that older builds ignore. No schema, sync or document c
 
 Each has its own implementation and review gate and needs its approved reference first.
 
-- **35B Passdown workspace** — compact header (date, quiet Draft/Saved state, one primary Create PDF, one Actions
+- **35B Passdown workspace** (implemented locally — `docs/phase35b-passdown-workspace-redesign.md`) — compact header (date, quiet Draft/Saved state, one primary Create PDF, one Actions
   menu after a workflow check of high-frequency actions), Overview as one surface with subtle dividers, section
   tabs, real PDF companion pane (existing resizable divider, view modes, zoom, page navigation). All Copy options,
   Print, Save PDF and the Phase 33/34 preview pipeline unchanged; no second debounce.
