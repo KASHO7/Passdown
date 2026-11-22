@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.Json;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain;
@@ -44,9 +43,12 @@ public sealed class DatedAdmissionSource(IRetrievalHttpClient httpClient, IClock
     /// </summary>
     private static readonly Uri OfficialPageUrl = new("https://www.sixflags.com/carowinds/daily-tickets");
 
-    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+    private const string Id = "dated-admission.official";
 
-    public string SourceId => "dated-admission.official";
+    /// <summary>Phase 34C: the shared evidence construction for this source's payload-less results (<see cref="AccessoDatedResults{TPayload}"/>); wording stays here.</summary>
+    private static readonly AccessoDatedResults<DatedAdmissionPayload> Results = new(Id, "Carowinds Dated Admission Tickets", OfficialPageUrl);
+
+    public string SourceId => Id;
 
     public SourceCategory Category => SourceCategory.DatedAdmissionTickets;
 
@@ -74,43 +76,14 @@ public sealed class DatedAdmissionSource(IRetrievalHttpClient httpClient, IClock
         var windowEnd = requestedDate > today.AddDays(HorizonPaddingDays) ? requestedDate : today.AddDays(HorizonPaddingDays);
         var body = AccessoKeywordCalendarRequest.BuildBody(Keyword, DisplayZeroCapacity, today, windowEnd);
 
-        RetrievalHttpResponse response;
-        try
+        var call = await AccessoKeywordCalendarCall.PostAsync(httpClient, body, cancellationToken).ConfigureAwait(false);
+        if (call.Failure is { } failure)
         {
-            response = await httpClient.PostJsonAsync(AccessoKeywordCalendarRequest.Endpoint, body, AccessoKeywordCalendarRequest.Headers, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return Error(timeChecked, requestedDate, ex);
+            return Error(timeChecked, requestedDate, failure);
         }
 
-        if (!response.IsSuccessStatusCode)
-        {
-            return Error(
-                timeChecked,
-                requestedDate,
-                new InvalidOperationException(
-                    $"POST {AccessoKeywordCalendarRequest.Endpoint} returned {(int)response.StatusCode} {response.StatusCode}. Body: {Truncate(response.Body)}"));
-        }
-
-        AccessoKeywordCalendarApiResponse? parsed;
-        try
-        {
-            parsed = JsonSerializer.Deserialize<AccessoKeywordCalendarApiResponse>(response.Body, JsonOptions);
-        }
-        catch (JsonException ex)
-        {
-            return Error(timeChecked, requestedDate, ex);
-        }
-
-        var service = parsed?.Service;
-        if (service is null)
-        {
-            return Error(
-                timeChecked,
-                requestedDate,
-                new InvalidOperationException($"Unexpected response shape from {AccessoKeywordCalendarRequest.Endpoint}: no SERVICE object. Body: {Truncate(response.Body)}"));
-        }
+        var service = call.Service!;
+        var responseBody = call.Body!;
 
         // Phase 19B: the endpoint's own "no dates found" answer for a window starting today is a
         // successful "nothing published from today onward" check, never a retrieval failure
@@ -144,7 +117,7 @@ public sealed class DatedAdmissionSource(IRetrievalHttpClient httpClient, IClock
                 return Error(
                     timeChecked,
                     requestedDate,
-                    new InvalidOperationException($"Unparseable date '{entry.Date}' in calendar response. Body: {Truncate(response.Body)}"));
+                    new InvalidOperationException($"Unparseable date '{entry.Date}' in calendar response. Body: {AccessoKeywordCalendarCall.Truncate(responseBody)}"));
             }
 
             parsedEntries.Add((entryDate, entry));
@@ -155,7 +128,7 @@ public sealed class DatedAdmissionSource(IRetrievalHttpClient httpClient, IClock
             return Error(
                 timeChecked,
                 requestedDate,
-                new InvalidOperationException($"SERVICE.status was 'OK' but DATES.D contained no entries. Body: {Truncate(response.Body)}"));
+                new InvalidOperationException($"SERVICE.status was 'OK' but DATES.D contained no entries. Body: {AccessoKeywordCalendarCall.Truncate(responseBody)}"));
         }
 
         var match = parsedEntries.Find(e => e.Date == requestedDate);
@@ -174,7 +147,7 @@ public sealed class DatedAdmissionSource(IRetrievalHttpClient httpClient, IClock
             return Error(
                 timeChecked,
                 requestedDate,
-                new InvalidOperationException($"Matched date entry for {requestedDate:yyyy-MM-dd} had no usable packages. Body: {Truncate(response.Body)}"));
+                new InvalidOperationException($"Matched date entry for {requestedDate:yyyy-MM-dd} had no usable packages. Body: {AccessoKeywordCalendarCall.Truncate(responseBody)}"));
         }
 
         return SourceResult<DatedAdmissionPayload>.Success(
@@ -272,44 +245,18 @@ public sealed class DatedAdmissionSource(IRetrievalHttpClient httpClient, IClock
         $"Dated admission tickets are not available for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}.";
 
     private SourceResult<DatedAdmissionPayload> NotPublished(DateTimeOffset timeChecked, DateOnly requestedDate) =>
-        SourceResult<DatedAdmissionPayload>.WithoutPayload(
-            SourceId,
-            new SourceEvidence(
-                "Carowinds Dated Admission Tickets",
-                OfficialPageUrl,
-                timeChecked,
-                RetrievalStatus.NotPublished,
-                $"Dated admission tickets for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)} have not been published yet.",
-                RetrievalStrategy.DirectApi,
-                requestedDate: requestedDate));
+        Results.NotPublished(
+            timeChecked,
+            requestedDate,
+            $"Dated admission tickets for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)} have not been published yet.");
 
     private SourceResult<DatedAdmissionPayload> Unavailable(DateTimeOffset timeChecked, DateOnly requestedDate, string detail) =>
-        SourceResult<DatedAdmissionPayload>.WithoutPayload(
-            SourceId,
-            new SourceEvidence(
-                "Carowinds Dated Admission Tickets",
-                OfficialPageUrl,
-                timeChecked,
-                RetrievalStatus.Unavailable,
-                detail,
-                RetrievalStrategy.DirectApi,
-                requestedDate: requestedDate));
+        Results.Unavailable(timeChecked, requestedDate, detail);
 
     private SourceResult<DatedAdmissionPayload> Error(
         DateTimeOffset timeChecked,
         DateOnly requestedDate,
         Exception exception,
         string userFacingDetail = "We couldn't check dated admission tickets right now.") =>
-        SourceResult<DatedAdmissionPayload>.WithoutPayload(
-            SourceId,
-            RetrievalDiagnostics.Error(
-                "Carowinds Dated Admission Tickets",
-                OfficialPageUrl,
-                timeChecked,
-                RetrievalStrategy.DirectApi,
-                userFacingDetail,
-                exception,
-                requestedDate));
-
-    private static string Truncate(string value) => value.Length <= 500 ? value : value[..500] + "…";
+        Results.Error(timeChecked, requestedDate, exception, userFacingDetail);
 }

@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.Json;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain;
@@ -44,9 +43,12 @@ public sealed class DatedHauntedSource(IRetrievalHttpClient httpClient, IClock c
 
     private static readonly Uri OfficialPageUrl = new("https://www.sixflags.com/carowinds/events/scarowinds");
 
-    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+    private const string Id = "dated-haunted.official";
 
-    public string SourceId => "dated-haunted.official";
+    /// <summary>Phase 34C: the shared evidence construction for this source's payload-less results (<see cref="AccessoDatedResults{TPayload}"/>); wording stays here.</summary>
+    private static readonly AccessoDatedResults<DatedHauntedPayload> Results = new(Id, "Carowinds Dated Haunted Attractions", OfficialPageUrl);
+
+    public string SourceId => Id;
 
     public SourceCategory Category => SourceCategory.HauntedAttractions;
 
@@ -70,10 +72,10 @@ public sealed class DatedHauntedSource(IRetrievalHttpClient httpClient, IClock c
         }
 
         var primaryBody = AccessoKeywordCalendarRequest.BuildBody(Keyword, DisplayZeroCapacity, requestedDate, requestedDate);
-        var primaryResult = await CallCalendarAsync(primaryBody, timeChecked, requestedDate, cancellationToken).ConfigureAwait(false);
-        if (primaryResult.IsError)
+        var primaryResult = await AccessoKeywordCalendarCall.PostAsync(httpClient, primaryBody, cancellationToken).ConfigureAwait(false);
+        if (primaryResult.Failure is { } primaryFailure)
         {
-            return primaryResult.Error!;
+            return Error(timeChecked, requestedDate, primaryFailure);
         }
 
         var products = new List<DatedHauntedProduct>();
@@ -91,10 +93,10 @@ public sealed class DatedHauntedSource(IRetrievalHttpClient httpClient, IClock c
         // transport/shape failure fails the whole category so a partial result never overwrites
         // last-known-good; a plain "No dates found" just means no Conjuring that night.
         var conjuringBody = AccessoKeywordCalendarRequest.BuildBody(ConjuringKeyword, DisplayZeroCapacity, requestedDate, requestedDate);
-        var conjuringResult = await CallCalendarAsync(conjuringBody, timeChecked, requestedDate, cancellationToken).ConfigureAwait(false);
-        if (conjuringResult.IsError)
+        var conjuringResult = await AccessoKeywordCalendarCall.PostAsync(httpClient, conjuringBody, cancellationToken).ConfigureAwait(false);
+        if (conjuringResult.Failure is { } conjuringFailure)
         {
-            return conjuringResult.Error!;
+            return Error(timeChecked, requestedDate, conjuringFailure);
         }
 
         var conjuringRead = ReadExactDateProducts(conjuringResult.Service!, timeChecked, requestedDate);
@@ -126,10 +128,10 @@ public sealed class DatedHauntedSource(IRetrievalHttpClient httpClient, IClock c
         // season has started at all — a second, wider request is needed to tell (docs).
         var windowEnd = requestedDate > today.AddDays(HorizonPaddingDays) ? requestedDate : today.AddDays(HorizonPaddingDays);
         var horizonBody = AccessoKeywordCalendarRequest.BuildBody(Keyword, DisplayZeroCapacity, today, windowEnd);
-        var horizonResult = await CallCalendarAsync(horizonBody, timeChecked, requestedDate, cancellationToken).ConfigureAwait(false);
-        if (horizonResult.IsError)
+        var horizonResult = await AccessoKeywordCalendarCall.PostAsync(httpClient, horizonBody, cancellationToken).ConfigureAwait(false);
+        if (horizonResult.Failure is { } horizonFailure)
         {
-            return horizonResult.Error!;
+            return Error(timeChecked, requestedDate, horizonFailure);
         }
 
         var horizonService = horizonResult.Service!;
@@ -239,60 +241,6 @@ public sealed class DatedHauntedSource(IRetrievalHttpClient httpClient, IClock c
     }
 
     /// <summary>
-    /// Shared transport/parse handling for both the primary and horizon calls: transport failure,
-    /// non-success status code, malformed JSON, and a missing <c>SERVICE</c> object all become the
-    /// same <see cref="RetrievalStatus.Error"/> shape regardless of which call produced them.
-    /// </summary>
-    private async Task<CalendarCallResult> CallCalendarAsync(
-        string body,
-        DateTimeOffset timeChecked,
-        DateOnly requestedDate,
-        CancellationToken cancellationToken)
-    {
-        RetrievalHttpResponse response;
-        try
-        {
-            response = await httpClient
-                .PostJsonAsync(AccessoKeywordCalendarRequest.Endpoint, body, AccessoKeywordCalendarRequest.Headers, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return CalendarCallResult.Failed(Error(timeChecked, requestedDate, ex));
-        }
-
-        if (!response.IsSuccessStatusCode)
-        {
-            return CalendarCallResult.Failed(Error(
-                timeChecked,
-                requestedDate,
-                new InvalidOperationException(
-                    $"POST {AccessoKeywordCalendarRequest.Endpoint} returned {(int)response.StatusCode} {response.StatusCode}. Body: {Truncate(response.Body)}")));
-        }
-
-        AccessoKeywordCalendarApiResponse? parsed;
-        try
-        {
-            parsed = JsonSerializer.Deserialize<AccessoKeywordCalendarApiResponse>(response.Body, JsonOptions);
-        }
-        catch (JsonException ex)
-        {
-            return CalendarCallResult.Failed(Error(timeChecked, requestedDate, ex));
-        }
-
-        if (parsed?.Service is null)
-        {
-            return CalendarCallResult.Failed(Error(
-                timeChecked,
-                requestedDate,
-                new InvalidOperationException(
-                    $"Unexpected response shape from {AccessoKeywordCalendarRequest.Endpoint}: no SERVICE object. Body: {Truncate(response.Body)}")));
-        }
-
-        return CalendarCallResult.Succeeded(parsed.Service);
-    }
-
-    /// <summary>
     /// One <see cref="DatedHauntedProduct"/> per package, read directly with no by-name grouping —
     /// like <see cref="DatedFastLaneSource"/> and unlike <see cref="DatedAdmissionSource"/>, no live
     /// `HAPWizard` response has ever shown two packages sharing one name on one date, so there is
@@ -332,46 +280,20 @@ public sealed class DatedHauntedSource(IRetrievalHttpClient httpClient, IClock c
         $"Haunted attractions are not available for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}.";
 
     private SourceResult<DatedHauntedPayload> NotPublished(DateTimeOffset timeChecked, DateOnly requestedDate) =>
-        SourceResult<DatedHauntedPayload>.WithoutPayload(
-            SourceId,
-            new SourceEvidence(
-                "Carowinds Dated Haunted Attractions",
-                OfficialPageUrl,
-                timeChecked,
-                RetrievalStatus.NotPublished,
-                $"Haunted attractions for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)} have not been published yet.",
-                RetrievalStrategy.DirectApi,
-                requestedDate: requestedDate));
+        Results.NotPublished(
+            timeChecked,
+            requestedDate,
+            $"Haunted attractions for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)} have not been published yet.");
 
     private SourceResult<DatedHauntedPayload> Unavailable(DateTimeOffset timeChecked, DateOnly requestedDate, string detail) =>
-        SourceResult<DatedHauntedPayload>.WithoutPayload(
-            SourceId,
-            new SourceEvidence(
-                "Carowinds Dated Haunted Attractions",
-                OfficialPageUrl,
-                timeChecked,
-                RetrievalStatus.Unavailable,
-                detail,
-                RetrievalStrategy.DirectApi,
-                requestedDate: requestedDate));
+        Results.Unavailable(timeChecked, requestedDate, detail);
 
     private SourceResult<DatedHauntedPayload> Error(
         DateTimeOffset timeChecked,
         DateOnly requestedDate,
         Exception exception,
         string userFacingDetail = "We couldn't check haunted-attraction availability right now.") =>
-        SourceResult<DatedHauntedPayload>.WithoutPayload(
-            SourceId,
-            RetrievalDiagnostics.Error(
-                "Carowinds Dated Haunted Attractions",
-                OfficialPageUrl,
-                timeChecked,
-                RetrievalStrategy.DirectApi,
-                userFacingDetail,
-                exception,
-                requestedDate));
-
-    private static string Truncate(string value) => value.Length <= 500 ? value : value[..500] + "…";
+        Results.Error(timeChecked, requestedDate, exception, userFacingDetail);
 
     /// <summary>Products read from one single-night response, or an already-built <see cref="RetrievalStatus.Error"/> result to return as-is.</summary>
     private readonly record struct ExactDateRead(IReadOnlyList<DatedHauntedProduct> Products, SourceResult<DatedHauntedPayload>? Error)
@@ -381,25 +303,5 @@ public sealed class DatedHauntedSource(IRetrievalHttpClient httpClient, IClock c
         public bool IsError => Error is not null;
 
         public static ExactDateRead Failed(SourceResult<DatedHauntedPayload> error) => new([], error);
-    }
-
-    /// <summary>Result of one raw <c>getkeywordcalendar</c> call: either a parsed <see cref="AccessoKeywordCalendarService"/> to interpret, or an already-built <see cref="RetrievalStatus.Error"/> result to return as-is.</summary>
-    private readonly struct CalendarCallResult
-    {
-        private CalendarCallResult(AccessoKeywordCalendarService? service, SourceResult<DatedHauntedPayload>? error)
-        {
-            Service = service;
-            Error = error;
-        }
-
-        public AccessoKeywordCalendarService? Service { get; }
-
-        public SourceResult<DatedHauntedPayload>? Error { get; }
-
-        public bool IsError => Error is not null;
-
-        public static CalendarCallResult Succeeded(AccessoKeywordCalendarService service) => new(service, null);
-
-        public static CalendarCallResult Failed(SourceResult<DatedHauntedPayload> error) => new(null, error);
     }
 }

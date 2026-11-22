@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.Json;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain;
@@ -48,9 +47,12 @@ public sealed class DatedBringAFriendSource(IRetrievalHttpClient httpClient, ICl
 
     private static readonly Uri OfficialPageUrl = new("https://www.sixflags.com/carowinds/special-offers");
 
-    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+    private const string Id = "dated-bring-a-friend.official";
 
-    public string SourceId => "dated-bring-a-friend.official";
+    /// <summary>Phase 34C: the shared evidence construction for this source's payload-less results (<see cref="AccessoDatedResults{TPayload}"/>); wording stays here.</summary>
+    private static readonly AccessoDatedResults<DatedBringAFriendPayload> Results = new(Id, "Carowinds Dated Bring-A-Friend", OfficialPageUrl);
+
+    public string SourceId => Id;
 
     public SourceCategory Category => SourceCategory.DatedBringAFriend;
 
@@ -71,10 +73,10 @@ public sealed class DatedBringAFriendSource(IRetrievalHttpClient httpClient, ICl
         }
 
         var primaryBody = AccessoKeywordCalendarRequest.BuildBody(Keyword, DisplayZeroCapacity, requestedDate, requestedDate);
-        var primaryResult = await CallCalendarAsync(primaryBody, timeChecked, requestedDate, cancellationToken).ConfigureAwait(false);
-        if (primaryResult.IsError)
+        var primaryResult = await AccessoKeywordCalendarCall.PostAsync(httpClient, primaryBody, cancellationToken).ConfigureAwait(false);
+        if (primaryResult.Failure is { } primaryFailure)
         {
-            return primaryResult.Error!;
+            return Error(timeChecked, requestedDate, primaryFailure);
         }
 
         var primaryService = primaryResult.Service!;
@@ -134,10 +136,10 @@ public sealed class DatedBringAFriendSource(IRetrievalHttpClient httpClient, ICl
 
         var windowEnd = requestedDate > today.AddDays(HorizonPaddingDays) ? requestedDate : today.AddDays(HorizonPaddingDays);
         var horizonBody = AccessoKeywordCalendarRequest.BuildBody(Keyword, DisplayZeroCapacity, today, windowEnd);
-        var horizonResult = await CallCalendarAsync(horizonBody, timeChecked, requestedDate, cancellationToken).ConfigureAwait(false);
-        if (horizonResult.IsError)
+        var horizonResult = await AccessoKeywordCalendarCall.PostAsync(httpClient, horizonBody, cancellationToken).ConfigureAwait(false);
+        if (horizonResult.Failure is { } horizonFailure)
         {
-            return horizonResult.Error!;
+            return Error(timeChecked, requestedDate, horizonFailure);
         }
 
         var horizonService = horizonResult.Service!;
@@ -190,55 +192,6 @@ public sealed class DatedBringAFriendSource(IRetrievalHttpClient httpClient, ICl
             : Unavailable(timeChecked, requestedDate, DefaultUnavailableDetail(requestedDate));
     }
 
-    private async Task<CalendarCallResult> CallCalendarAsync(
-        string body,
-        DateTimeOffset timeChecked,
-        DateOnly requestedDate,
-        CancellationToken cancellationToken)
-    {
-        RetrievalHttpResponse response;
-        try
-        {
-            response = await httpClient
-                .PostJsonAsync(AccessoKeywordCalendarRequest.Endpoint, body, AccessoKeywordCalendarRequest.Headers, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return CalendarCallResult.Failed(Error(timeChecked, requestedDate, ex));
-        }
-
-        if (!response.IsSuccessStatusCode)
-        {
-            return CalendarCallResult.Failed(Error(
-                timeChecked,
-                requestedDate,
-                new InvalidOperationException(
-                    $"POST {AccessoKeywordCalendarRequest.Endpoint} returned {(int)response.StatusCode} {response.StatusCode}. Body: {Truncate(response.Body)}")));
-        }
-
-        AccessoKeywordCalendarApiResponse? parsed;
-        try
-        {
-            parsed = JsonSerializer.Deserialize<AccessoKeywordCalendarApiResponse>(response.Body, JsonOptions);
-        }
-        catch (JsonException ex)
-        {
-            return CalendarCallResult.Failed(Error(timeChecked, requestedDate, ex));
-        }
-
-        if (parsed?.Service is null)
-        {
-            return CalendarCallResult.Failed(Error(
-                timeChecked,
-                requestedDate,
-                new InvalidOperationException(
-                    $"Unexpected response shape from {AccessoKeywordCalendarRequest.Endpoint}: no SERVICE object. Body: {Truncate(response.Body)}")));
-        }
-
-        return CalendarCallResult.Succeeded(parsed.Service);
-    }
-
     /// <summary>
     /// Selects the one package officially named "Bring-A-Friend Ticket" from whatever this keyword's
     /// response returned — every live response observed also carried a "Celebrate America!
@@ -283,63 +236,18 @@ public sealed class DatedBringAFriendSource(IRetrievalHttpClient httpClient, ICl
         $"Bring-A-Friend is not available for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}.";
 
     private SourceResult<DatedBringAFriendPayload> NotPublished(DateTimeOffset timeChecked, DateOnly requestedDate) =>
-        SourceResult<DatedBringAFriendPayload>.WithoutPayload(
-            SourceId,
-            new SourceEvidence(
-                "Carowinds Dated Bring-A-Friend",
-                OfficialPageUrl,
-                timeChecked,
-                RetrievalStatus.NotPublished,
-                $"Bring-A-Friend for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)} has not been published yet.",
-                RetrievalStrategy.DirectApi,
-                requestedDate: requestedDate));
+        Results.NotPublished(
+            timeChecked,
+            requestedDate,
+            $"Bring-A-Friend for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)} has not been published yet.");
 
     private SourceResult<DatedBringAFriendPayload> Unavailable(DateTimeOffset timeChecked, DateOnly requestedDate, string detail) =>
-        SourceResult<DatedBringAFriendPayload>.WithoutPayload(
-            SourceId,
-            new SourceEvidence(
-                "Carowinds Dated Bring-A-Friend",
-                OfficialPageUrl,
-                timeChecked,
-                RetrievalStatus.Unavailable,
-                detail,
-                RetrievalStrategy.DirectApi,
-                requestedDate: requestedDate));
+        Results.Unavailable(timeChecked, requestedDate, detail);
 
     private SourceResult<DatedBringAFriendPayload> Error(
         DateTimeOffset timeChecked,
         DateOnly requestedDate,
         Exception exception,
         string userFacingDetail = "We couldn't check Bring-A-Friend availability right now.") =>
-        SourceResult<DatedBringAFriendPayload>.WithoutPayload(
-            SourceId,
-            RetrievalDiagnostics.Error(
-                "Carowinds Dated Bring-A-Friend",
-                OfficialPageUrl,
-                timeChecked,
-                RetrievalStrategy.DirectApi,
-                userFacingDetail,
-                exception,
-                requestedDate));
-
-    private static string Truncate(string value) => value.Length <= 500 ? value : value[..500] + "…";
-
-    private readonly struct CalendarCallResult
-    {
-        private CalendarCallResult(AccessoKeywordCalendarService? service, SourceResult<DatedBringAFriendPayload>? error)
-        {
-            Service = service;
-            Error = error;
-        }
-
-        public AccessoKeywordCalendarService? Service { get; }
-
-        public SourceResult<DatedBringAFriendPayload>? Error { get; }
-
-        public bool IsError => Error is not null;
-
-        public static CalendarCallResult Succeeded(AccessoKeywordCalendarService service) => new(service, null);
-
-        public static CalendarCallResult Failed(SourceResult<DatedBringAFriendPayload> error) => new(null, error);
-    }
+        Results.Error(timeChecked, requestedDate, exception, userFacingDetail);
 }
