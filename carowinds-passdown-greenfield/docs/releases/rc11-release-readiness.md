@@ -1,7 +1,7 @@
 # RC.11 release readiness — 0.1.0-rc.11
 
 Date: 2026-11-21 · Branch `feature/passdown-redesign` · Build commit **`573d17c`**. Built on macOS.
-**Nothing uploaded, tagged, pushed or merged.** Publication is gated on the Windows validation below (§6).
+Windows gate passed 14 / 14 (§6); **published 2026-11-22 as a GitHub prerelease (§8)**. Not merged to `main`.
 
 Result values: **PASS** · **USER-VERIFIED ON WINDOWS** · **FAIL** · **NOT EXECUTED** · **BLOCKED**. "PASS" means an
 automated or build-host check; **USER-VERIFIED ON WINDOWS** means the product owner ran the step by hand on
@@ -140,12 +140,19 @@ Push `feature/passdown-redesign` (no force, no merge to `main`); annotated tag `
 public prerelease "Carowinds Operations v0.1.0-rc.11" with exactly the three files above; then anonymous download,
 hash, signature and tag checks. RC.10's release and assets stay as they are.
 
-## 8. Post-publication
+## 8. Publication and post-publication
 
 | Check | Result |
 |---|---|
-| Release page, anonymous downloads, hashes, signature, tag → `573d17c` | NOT EXECUTED |
-| In-app update RC.10 → RC.11 on Windows (discover, download, backup, install, launch, What's New, data intact) | NOT EXECUTED |
+| Branch `feature/passdown-redesign` pushed `f5469d1..83dfc30` (fast-forward, no force, not merged to `main`) | PASS |
+| Tag `v0.1.0-rc.11` (annotated) → **`573d17c`**, the binary source commit (verified through the public API) | PASS |
+| Release https://github.com/KASHO7/Passdown/releases/tag/v0.1.0-rc.11 — "Carowinds Operations v0.1.0-rc.11", prerelease, not a draft, not marked latest, published 2026-11-22T03:05:19Z; page opens without authentication (HTTP 200) | PASS |
+| Assets: exactly the three files above, original names; anonymous downloads byte-identical (SHA-256 and size) to the signed local files; GitHub digests match | PASS |
+| Downloaded manifest: signature VERIFIED (`carowinds-release-1`), advertises `0.1.0-rc.11` / `release-candidate` / `Carowinds-Operations-0.1.0-rc.11-win-x64.zip` / package `ab34110b…8e0d` | PASS |
+| RC.10 release unchanged: still a prerelease with its three original assets (digests match the frozen files); RC.8/RC.9/RC.10 local files byte-identical | PASS |
+| In-app update RC.10 → RC.11 on Windows (discover, download, pre-update backup, install, launch, What's New, data intact) | NOT EXECUTED |
+
+Published assets and tag must never be replaced; any change ships as `0.1.0-rc.12`.
 
 ## 9. Known limitations
 
