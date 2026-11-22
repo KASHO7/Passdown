@@ -172,12 +172,14 @@
           </Border>
         </ScrollViewer>
 
-        <!-- Updating: the current date's previous page stays visible beneath a small chip. -->
+        <!-- Updating: the current date's previous page stays visible beneath a small chip. Phase 34B-1: shown
+             only when a refresh is still running after ~150 ms, so quick refreshes never flash it or make a
+             screen reader re-announce it on every keystroke. -->
         <Border x:Name="UpdatingChip" Classes="chip"
                 HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,10,22,0"
                 Background="{DynamicResource PassdownSurfaceElevatedBrush}"
                 BorderBrush="{DynamicResource PassdownBorderBrush}" BorderThickness="1"
-                IsVisible="{Binding IsUpdating}">
+                IsVisible="{Binding IsUpdatingIndicatorVisible}">
           <TextBlock Text="Updating…" FontSize="12" AutomationProperties.LiveSetting="Polite" />
         </Border>
 

@@ -98,9 +98,10 @@ public class Phase33PdfPreviewViewModelTests
         Assert.Same(preview.CurrentDocument.Bytes, harness.Rasterizer.Opened.Single());
     }
 
-    // 10. Rapid edits produce one generation after the debounce, not one per keystroke.
+    // 10. Rapid edits never generate per keystroke. Phase 34B-1: the first change after idle refreshes at
+    // once (leading edge); the rest are coalesced into one trailing refresh of the final state.
     [Fact]
-    public async Task RapidChanges_AreDebounced_IntoOneGeneration()
+    public async Task RapidChanges_AreCoalesced_IntoLeadingAndTrailingGenerations()
     {
         var harness = new Harness();
         var preview = harness.Create();
@@ -111,12 +112,14 @@ public class Phase33PdfPreviewViewModelTests
             preview.NotifyContentChanged();
         }
 
-        Assert.Empty(harness.Export.Calls); // nothing yet: still debouncing
-        Assert.Equal(6, harness.Debounce.ScheduleCount);
+        var leading = Assert.Single(harness.Export.Calls); // only the leading refresh so far
+        Assert.Equal(1, leading.Workspace.Draft.ProjectedAttendance);
+        Assert.Equal(6, harness.Debounce.ScheduleCount); // the quiet window restarted on every change
         await SettleAsync(preview, harness);
 
-        var call = Assert.Single(harness.Export.Calls);
-        Assert.Equal(6, call.Workspace.Draft.ProjectedAttendance);
+        Assert.Equal(2, harness.Export.Calls.Count);
+        Assert.Equal(6, harness.Export.Calls.Last().Workspace.Draft.ProjectedAttendance);
+        Assert.Contains("attendance=6", System.Text.Encoding.UTF8.GetString(preview.CurrentDocument!.Bytes));
     }
 
     // Duplicate requests for an unchanged state never regenerate.
@@ -162,19 +165,20 @@ public class Phase33PdfPreviewViewModelTests
 
         var slowGate = harness.Scheduler.HoldNext();
         harness.Workspace = harness.WithAttendance(100);
-        preview.NotifyContentChanged();
-        harness.Debounce.ElapseLatest();
-        var slow = preview.PendingRefresh; // generation for 100, held
+        preview.NotifyContentChanged(); // leading-edge refresh for 100, held
+        var slow = preview.PendingRefresh;
 
+        // Phase 34B-1: scheduled refreshes never overlap each other, but Print / Save PDF can generate while
+        // one is in flight — a newer generation (for 200) that completes first.
         harness.Workspace = harness.WithAttendance(200);
         preview.NotifyContentChanged();
-        await SettleAsync(preview, harness); // generation for 200 completes first
+        await preview.EnsureLatestDocumentAsync().WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal(200, harness.Export.Calls.Last().Workspace.Draft.ProjectedAttendance);
         var newest = preview.CurrentDocument;
 
         slowGate.SetResult();
-        await slow;
+        await slow.WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Same(newest, preview.CurrentDocument);
         Assert.Contains("attendance=200", System.Text.Encoding.UTF8.GetString(preview.CurrentDocument!.Bytes));

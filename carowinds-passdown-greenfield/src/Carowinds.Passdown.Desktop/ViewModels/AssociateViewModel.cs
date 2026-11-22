@@ -1050,7 +1050,9 @@ public partial class AssociateViewModel : ViewModelBase
     {
         if (!_suppressPreviewNotification)
         {
-            Preview.NotifyContentChanged();
+            // Phase 34B-1: a replaced workspace (date loaded, Check Online, reload) refreshes immediately —
+            // the preview's capture still refuses until the selected date's workspace is the one loaded.
+            Preview.NotifyWorkspaceReplaced();
         }
 
         Preview.RefreshCommandStates();
@@ -1508,7 +1510,7 @@ public partial class AssociateViewModel : ViewModelBase
 
         if (_isRestoringSelectedDate)
         {
-            Preview.NotifyContentChanged(); // the restored date's workspace is still loaded — rebuild its preview.
+            Preview.NotifyWorkspaceReplaced(); // the restored date's workspace is still loaded — rebuild its preview now.
             return; // Phase 23A: a blocked switch putting the date back — the editor never left it.
         }
 
@@ -2547,7 +2549,8 @@ public partial class AssociateViewModel : ViewModelBase
             return;
         }
 
-        // Phase 33: every editor change funnels through here — the preview debounces its own refresh.
+        // Phase 33: every editor change funnels through here — the preview schedules its own refresh
+        // (Phase 34B-1: leading edge + trailing quiet window). Autosave below never waits on the preview.
         Preview.NotifyContentChanged();
 
         _isDirty = true;

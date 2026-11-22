@@ -69,12 +69,24 @@ public sealed class ThreadPoolPreviewWorkScheduler : IPreviewWorkScheduler
 /// regenerates first only when the editor changed since).
 /// </para>
 /// <para>
-/// <b>Refresh.</b> Every editor change bumps a content version (<see cref="NotifyContentChanged"/>); while
-/// the preview is shown, a debounce (<see cref="DefaultDebounce"/>) restarts on each change, so typing
-/// never regenerates per keystroke. Each generation carries a token; a result whose token is no longer
-/// the latest is discarded, so an older render can never replace a newer one. Changing the date clears
-/// the page immediately (<see cref="NotifySelectedDateChanged"/>) — another date's PDF is never shown as
-/// this one's. Generation and rasterization run off the UI thread; at most one rasterized page is held.
+/// <b>Refresh (Phase 34B-1: leading edge + trailing quiet window).</b> Every editor change bumps a
+/// content version (<see cref="NotifyContentChanged"/>). While the preview is shown:
+/// <list type="bullet">
+/// <item>a change that arrives when no quiet window is open refreshes <b>at once</b> (leading edge) and
+/// opens a quiet window of <see cref="DefaultDebounce"/>;</item>
+/// <item>a change while the window is open restarts the window and marks a trailing refresh; when the
+/// window finally elapses with no further change, one trailing refresh builds the latest state.</item>
+/// </list>
+/// So a click refreshes immediately, and a typing burst gives at most two generations (the first key and
+/// the final state). Scheduled refreshes never overlap: a request while one is generating is folded into
+/// a single follow-up pass that captures the newest state. A workspace replacement (date load, Check
+/// Online, reload — <see cref="NotifyWorkspaceReplaced"/>) refreshes immediately without a window.
+/// Each generation carries a token; a result whose token is no longer the latest is discarded, so an
+/// older render can never replace a newer one. Changing the date clears the page immediately
+/// (<see cref="NotifySelectedDateChanged"/>) — another date's PDF is never shown as this one's.
+/// Generation and rasterization run off the UI thread; at most one rasterized page is held. The
+/// "Updating…" chip appears only when a generation is still running after
+/// <see cref="UpdatingIndicatorDelay"/>, so quick refreshes never flash it or re-announce it.
 /// </para>
 /// <para>
 /// <b>Never mutates the draft.</b> The preview only reads a captured request; Print/Save never save,
@@ -83,7 +95,15 @@ public sealed class ThreadPoolPreviewWorkScheduler : IPreviewWorkScheduler
 /// </summary>
 public sealed partial class PassdownPdfPreviewViewModel : ViewModelBase
 {
-    public static readonly TimeSpan DefaultDebounce = TimeSpan.FromMilliseconds(450);
+    /// <summary>
+    /// Phase 34B-1: the trailing quiet window. A change with no window open refreshes immediately; changes
+    /// inside the window restart it, and the final state is refreshed once it elapses (was a 450 ms
+    /// trailing-only debounce in Phase 33).
+    /// </summary>
+    public static readonly TimeSpan DefaultDebounce = TimeSpan.FromMilliseconds(200);
+
+    /// <summary>Phase 34B-1: how long a generation must keep running before the "Updating…" chip is shown.</summary>
+    public static readonly TimeSpan UpdatingIndicatorDelay = TimeSpan.FromMilliseconds(150);
 
     /// <summary>Delay before re-rasterizing after a zoom/resize (the old page is scaled meanwhile).</summary>
     public static readonly TimeSpan PageRenderDebounce = TimeSpan.FromMilliseconds(150);
@@ -101,6 +121,7 @@ public sealed partial class PassdownPdfPreviewViewModel : ViewModelBase
     private readonly IPdfPageImageFactory _imageFactory;
     private readonly IPreviewWorkScheduler _scheduler;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
+    private readonly Func<TimeSpan, CancellationToken, Task> _indicatorDelay;
     private readonly Func<DateTimeOffset> _now;
     private readonly TimeSpan _debounce;
     private readonly ILogger? _logger;
@@ -108,7 +129,14 @@ public sealed partial class PassdownPdfPreviewViewModel : ViewModelBase
     private long _contentVersion;
     private int _generation;
     private int _pageRenderToken;
-    private CancellationTokenSource? _debounceCts;
+
+    // Phase 34B-1 scheduling state (UI thread only).
+    private CancellationTokenSource? _quietWindowCts; // non-null while a quiet window is open
+    private bool _trailingRefreshPending;             // a change arrived inside the open window
+    private Task? _activeRefresh;                     // the scheduled refresh pass in flight, if any
+    private bool _refreshAgain;                       // a request arrived while _activeRefresh was generating
+    private CancellationTokenSource? _indicatorCts;
+    private long _minimumInstallVersion;              // documents built before the last date change are never installed
     private CancellationTokenSource? _pageRenderCts;
     private PassdownPdfDocument? _document;
     private bool _documentDisplayed;
@@ -135,6 +163,7 @@ public sealed partial class PassdownPdfPreviewViewModel : ViewModelBase
         TimeSpan? debounce = null,
         Func<TimeSpan, CancellationToken, Task>? delay = null,
         Func<DateTimeOffset>? now = null,
+        Func<TimeSpan, CancellationToken, Task>? updatingIndicatorDelay = null,
         ILogger? logger = null)
     {
         _capture = capture ?? throw new ArgumentNullException(nameof(capture));
@@ -148,6 +177,10 @@ public sealed partial class PassdownPdfPreviewViewModel : ViewModelBase
         _scheduler = scheduler ?? new ThreadPoolPreviewWorkScheduler();
         _debounce = debounce ?? DefaultDebounce;
         _delay = delay ?? Task.Delay;
+
+        // A test that injects a fake debounce but no indicator delay gets an indicator delay that never
+        // elapses (it still honours cancellation), so the chip can never depend on real time in a test.
+        _indicatorDelay = updatingIndicatorDelay ?? (delay is null ? Task.Delay : NeverElapses);
         _now = now ?? (() => DateTimeOffset.Now);
         _logger = logger;
 
@@ -202,7 +235,28 @@ public sealed partial class PassdownPdfPreviewViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsUpdating), nameof(IsWaiting), nameof(HasError), nameof(HasNoDocument), nameof(ShowsStatusOverlay))]
     public partial PdfPreviewStatus Status { get; private set; } = PdfPreviewStatus.Idle;
 
+    /// <summary>A generation for the shown preview is in progress (may be very brief — see <see cref="IsUpdatingIndicatorVisible"/>).</summary>
     public bool IsUpdating => Status == PdfPreviewStatus.Updating;
+
+    /// <summary>
+    /// Phase 34B-1: the "Updating…" chip. True only once a generation has stayed in progress for
+    /// <see cref="UpdatingIndicatorDelay"/>, so ordinary fast refreshes never flash it (or make a screen
+    /// reader announce it on every keystroke). Cleared as soon as the status leaves Updating.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsUpdatingIndicatorVisible { get; private set; }
+
+    partial void OnStatusChanged(PdfPreviewStatus value)
+    {
+        if (value == PdfPreviewStatus.Updating)
+        {
+            StartUpdatingIndicatorDelay();
+        }
+        else
+        {
+            StopUpdatingIndicator();
+        }
+    }
 
     public bool IsWaiting => Status == PdfPreviewStatus.Waiting;
 
@@ -295,8 +349,17 @@ public sealed partial class PassdownPdfPreviewViewModel : ViewModelBase
 
     public Task PendingPreferenceSave { get; private set; } = Task.CompletedTask;
 
-    /// <summary>The in-flight (or last) debounced refresh, so tests can await it.</summary>
+    /// <summary>
+    /// Everything scheduled so far — the in-flight refresh pass and the open quiet window, including the
+    /// trailing refresh it may start — so tests can await it (after elapsing the window).
+    /// </summary>
     public Task PendingRefresh { get; private set; } = Task.CompletedTask;
+
+    /// <summary>Phase 34B-1: a quiet window is open (a change inside it will be refreshed when it elapses).</summary>
+    public bool IsQuietWindowOpen => _quietWindowCts is not null;
+
+    /// <summary>Phase 34B-1: a trailing refresh is due when the open quiet window elapses.</summary>
+    public bool IsTrailingRefreshPending => _trailingRefreshPending;
 
     /// <summary>The in-flight (or last) page re-render after navigation/zoom.</summary>
     public Task PendingPageRender { get; private set; } = Task.CompletedTask;
@@ -308,7 +371,10 @@ public sealed partial class PassdownPdfPreviewViewModel : ViewModelBase
 
     // ---------------------------------------------------------------- editor notifications
 
-    /// <summary>Anything that can change the PDF changed (an edit, a load, the template). Debounced; never renders while hidden.</summary>
+    /// <summary>
+    /// Anything that can change the PDF changed (an edit, the template). Leading edge + trailing quiet
+    /// window (see the class remarks); never renders while hidden.
+    /// </summary>
     public void NotifyContentChanged()
     {
         _contentVersion++;
@@ -319,6 +385,23 @@ public sealed partial class PassdownPdfPreviewViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Phase 34B-1: the editor's whole workspace was replaced (the selected date finished loading, Check
+    /// Online applied, official data or notes reloaded). Refreshes immediately — no quiet window — once the
+    /// capture reports the selected date's workspace; while it is still loading, the preview keeps waiting.
+    /// </summary>
+    public void NotifyWorkspaceReplaced()
+    {
+        _contentVersion++;
+        if (!ShouldAutoRender)
+        {
+            return;
+        }
+
+        CancelQuietWindow(); // this refresh captures the newest state; a trailing one would only duplicate it
+        PendingRefresh = RequestRefreshPass();
+    }
+
+    /// <summary>
     /// The selected date changed: the page shown belongs to the old date, so it is cleared at once and any
     /// in-flight render is invalidated. The new date's preview follows once its workspace has loaded.
     /// </summary>
@@ -326,7 +409,9 @@ public sealed partial class PassdownPdfPreviewViewModel : ViewModelBase
     {
         _contentVersion++;
         _generation++;
-        _debounceCts?.Cancel();
+        CancelQuietWindow();
+        _refreshAgain = false;
+        _minimumInstallVersion = _contentVersion; // a late generation for the previous date is never installed
         _document = null;
         ReleaseDisplay();
         DocumentCaption = null;
@@ -488,7 +573,8 @@ public sealed partial class PassdownPdfPreviewViewModel : ViewModelBase
         {
             // Hidden: stop pending work and free the rasterized page; the generated document is kept so a
             // later Print/Save of an unchanged Passdown reuses it.
-            _debounceCts?.Cancel();
+            CancelQuietWindow();
+            _refreshAgain = false;
             _generation++;
             ReleaseDisplay();
             Status = PdfPreviewStatus.Idle;
@@ -729,48 +815,176 @@ public sealed partial class PassdownPdfPreviewViewModel : ViewModelBase
     /// </summary>
     public async Task<PassdownPdfDocument?> EnsureLatestDocumentAsync()
     {
-        _debounceCts?.Cancel();
+        // This generation captures the editor's state right now, so a pending trailing refresh is moot.
+        CancelQuietWindow();
         return await GenerateLatestAsync(display: ShouldAutoRender).ConfigureAwait(true);
     }
 
+    /// <summary>
+    /// Phase 34B-1 scheduling policy. No quiet window open → leading-edge refresh now, then open a window.
+    /// Window open → restart it and mark a trailing refresh. The status is not touched here: the
+    /// "Updating" state begins only when a generation actually starts.
+    /// </summary>
     private void ScheduleRefresh()
     {
-        _debounceCts?.Cancel();
+        var windowWasOpen = _quietWindowCts is not null;
+        _quietWindowCts?.Cancel();
         var cts = new CancellationTokenSource();
-        _debounceCts = cts;
-        if (Status is PdfPreviewStatus.Ready or PdfPreviewStatus.Idle)
+        _quietWindowCts = cts;
+
+        Task pass;
+        if (windowWasOpen)
         {
-            Status = PdfPreviewStatus.Updating;
-            StatusText = "Updating preview…";
+            _trailingRefreshPending = true;
+            pass = _activeRefresh ?? Task.CompletedTask;
+        }
+        else
+        {
+            _trailingRefreshPending = false;
+            LeadingRefreshCount++;
+            pass = RequestRefreshPass();
         }
 
-        PendingRefresh = DebouncedRefreshAsync(cts.Token);
+        var window = QuietWindowAsync(cts);
+        PendingRefresh = Task.WhenAll(pass, window);
     }
 
-    private async Task DebouncedRefreshAsync(CancellationToken token)
+    private async Task QuietWindowAsync(CancellationTokenSource cts)
     {
         try
         {
-            await _delay(_debounce, token).ConfigureAwait(true);
+            await _delay(_debounce, cts.Token).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {
-            return; // superseded by a newer change
+            return; // restarted by a newer change, or cancelled (hidden, date change, workspace replaced)
         }
 
-        if (token.IsCancellationRequested || !ShouldAutoRender)
+        if (cts.IsCancellationRequested || !ReferenceEquals(cts, _quietWindowCts))
         {
             return;
         }
 
-        await GenerateLatestAsync(display: true).ConfigureAwait(true);
+        _quietWindowCts = null;
+        cts.Dispose();
+        var trailing = _trailingRefreshPending;
+        _trailingRefreshPending = false;
+        if (!trailing || !ShouldAutoRender)
+        {
+            return;
+        }
+
+        TrailingRefreshCount++;
+        await RequestRefreshPass().ConfigureAwait(true);
     }
 
-    private async Task RefreshNowAsync()
+    private void CancelQuietWindow()
     {
-        _debounceCts?.Cancel();
-        await GenerateLatestAsync(display: ShouldAutoRender).ConfigureAwait(true);
+        _trailingRefreshPending = false;
+        if (_quietWindowCts is { } cts)
+        {
+            _quietWindowCts = null;
+            cts.Cancel();
+        }
     }
+
+    /// <summary>
+    /// Starts a refresh pass, or — when one is already generating — asks it to run once more afterwards
+    /// so it captures the newest state. Scheduled preview generations therefore never overlap or pile up.
+    /// </summary>
+    private Task RequestRefreshPass()
+    {
+        if (_activeRefresh is { IsCompleted: false } active)
+        {
+            _refreshAgain = true;
+            return active;
+        }
+
+        _refreshAgain = false;
+        var pass = RunRefreshPassAsync();
+        _activeRefresh = pass;
+        return pass;
+    }
+
+    private async Task RunRefreshPassAsync()
+    {
+        do
+        {
+            _refreshAgain = false;
+            if (!ShouldAutoRender)
+            {
+                return;
+            }
+
+            await GenerateLatestAsync(display: true).ConfigureAwait(true);
+        }
+        while (_refreshAgain);
+    }
+
+    private Task RefreshNowAsync()
+    {
+        CancelQuietWindow();
+        return RequestRefreshPass();
+    }
+
+    /// <summary>Phase 34B-1 diagnostics: leading-edge refreshes started by <see cref="NotifyContentChanged"/>.</summary>
+    public int LeadingRefreshCount { get; private set; }
+
+    /// <summary>Phase 34B-1 diagnostics: trailing refreshes started when a quiet window elapsed.</summary>
+    public int TrailingRefreshCount { get; private set; }
+
+    // ---------------------------------------------------------------- "Updating…" chip
+
+    private void StartUpdatingIndicatorDelay()
+    {
+        if (_indicatorCts is not null || IsUpdatingIndicatorVisible)
+        {
+            return; // already counting down (or shown) for this stretch of Updating
+        }
+
+        var cts = new CancellationTokenSource();
+        _indicatorCts = cts;
+        _ = ShowUpdatingIndicatorAfterDelayAsync(cts);
+    }
+
+    private async Task ShowUpdatingIndicatorAfterDelayAsync(CancellationTokenSource cts)
+    {
+        try
+        {
+            await _indicatorDelay(UpdatingIndicatorDelay, cts.Token).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (cts.IsCancellationRequested || !ReferenceEquals(cts, _indicatorCts))
+        {
+            return;
+        }
+
+        _indicatorCts = null;
+        cts.Dispose();
+        if (Status == PdfPreviewStatus.Updating && ShouldAutoRender && HasPage)
+        {
+            // Without a page the centered status message already says what is happening.
+            IsUpdatingIndicatorVisible = true;
+        }
+    }
+
+    private void StopUpdatingIndicator()
+    {
+        if (_indicatorCts is { } cts)
+        {
+            _indicatorCts = null;
+            cts.Cancel();
+        }
+
+        IsUpdatingIndicatorVisible = false;
+    }
+
+    private static Task NeverElapses(TimeSpan delay, CancellationToken cancellationToken) =>
+        Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
 
     private async Task<PassdownPdfDocument?> GenerateLatestAsync(bool display)
     {
@@ -841,7 +1055,16 @@ public sealed partial class PassdownPdfPreviewViewModel : ViewModelBase
 
         var document = new PassdownPdfDocument(bytes, request.Date, request.Template, Math.Max(1, result.PageCount), version, generatedAt, PdfContentFingerprint.Compute(bytes));
 
-        // Install as the current document unless a newer state's document is already installed.
+        // Install as the current document unless a newer state's document is already installed, or it was
+        // built before the last date change (Phase 34B-1: a late previous-date result is never installed).
+        if (document.ContentVersion < _minimumInstallVersion)
+        {
+            // Print / Save PDF clicked just before the date changed: refuse rather than hand on the previous
+            // date's PDF after the editor has moved on. Never installed or displayed.
+            _lastFailureMessage = "The selected date changed while the Passdown was being prepared. Nothing was printed or saved — try again.";
+            return null;
+        }
+
         if (_document is null || document.ContentVersion >= _document.ContentVersion)
         {
             var sameAsShown = _documentDisplayed && HasPage && _document is { } shown
