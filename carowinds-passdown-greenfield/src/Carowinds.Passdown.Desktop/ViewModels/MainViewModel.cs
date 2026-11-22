@@ -248,18 +248,43 @@ public partial class MainViewModel : ViewModelBase
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsNavigationExpanded))]
+    [NotifyPropertyChangedFor(nameof(IsNavigationShownCollapsed))]
     [NotifyPropertyChangedFor(nameof(NavigationToggleName))]
     public partial bool IsNavigationCollapsed { get; set; }
 
-    public bool IsNavigationExpanded => !IsNavigationCollapsed;
+    /// <summary>Phase 35A: below this window width the sidebar shows icons only, so pages keep their working width.</summary>
+    public const double NavigationCompactBelowWidth = 1100;
 
-    /// <summary>The toggle's accessible name and tooltip: what pressing it will do.</summary>
-    public string NavigationToggleName => IsNavigationCollapsed ? "Expand navigation" : "Collapse navigation";
+    /// <summary>
+    /// Phase 35A: the window is narrower than <see cref="NavigationCompactBelowWidth"/>. The sidebar then shows icons
+    /// only without changing the saved Expanded/Collapsed choice, which applies again once the window is wider.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsNavigationExpanded))]
+    [NotifyPropertyChangedFor(nameof(IsNavigationShownCollapsed))]
+    [NotifyPropertyChangedFor(nameof(NavigationToggleName))]
+    [NotifyCanExecuteChangedFor(nameof(ToggleNavigationCommand))]
+    public partial bool IsNavigationCompactForWidth { get; private set; }
+
+    /// <summary>What the sidebar actually shows: icons only when collapsed by choice or by a narrow window.</summary>
+    public bool IsNavigationShownCollapsed => IsNavigationCollapsed || IsNavigationCompactForWidth;
+
+    public bool IsNavigationExpanded => !IsNavigationShownCollapsed;
+
+    /// <summary>The toggle's accessible name and tooltip: what pressing it will do (or why it is unavailable).</summary>
+    public string NavigationToggleName => IsNavigationCompactForWidth
+        ? "Navigation labels need a wider window"
+        : IsNavigationCollapsed ? "Expand navigation" : "Collapse navigation";
+
+    /// <summary>Phase 35A: the window's client width changed (forwarded by the view). Presentation only.</summary>
+    public void UpdateShellWidth(double width) => IsNavigationCompactForWidth = width > 0 && width < NavigationCompactBelowWidth;
 
     /// <summary>The last sidebar save; tests await it. A failed save keeps the state for this session.</summary>
     public Task PendingNavigationSave { get; private set; } = Task.CompletedTask;
 
-    [RelayCommand]
+    private bool CanToggleNavigation() => !IsNavigationCompactForWidth;
+
+    [RelayCommand(CanExecute = nameof(CanToggleNavigation))]
     private void ToggleNavigation()
     {
         IsNavigationCollapsed = !IsNavigationCollapsed; // applies at once; the save never delays it

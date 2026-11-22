@@ -33,9 +33,13 @@ Fixture.Appearance = appearance;
 var outDir = args.Length > 0 ? args[0] : "visual-fixtures-out";
 var label = args.Length > 1 ? args[1] : "shot";
 var filter = args.Length > 2 && args[2] != "*" ? args[2] : null;
-var sizes = args.Length > 3 && args[3] == "main"
-    ? new (int W, int H)[] { (1280, 860) }
-    : new (int W, int H)[] { (960, 640), (1280, 690), (1280, 860), (1920, 1000) };
+// Phase 35A: "shell" renders the four desktop sizes named in the shell review checklist.
+var sizes = (args.Length > 3 ? args[3] : "all") switch
+{
+    "main" => new (int W, int H)[] { (1280, 860) },
+    "shell" => new (int W, int H)[] { (1920, 1080), (1536, 960), (1280, 720), (960, 640) },
+    _ => new (int W, int H)[] { (960, 640), (1280, 690), (1280, 860), (1920, 1000) },
+};
 // Forced modes run against the opposite simulated OS, proving the preference (not the OS) decides.
 var appearanceModes = (args.Length > 4 ? args[4] : "forced") switch
 {
@@ -52,6 +56,16 @@ var report = new List<string>();
 
 var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arrange)>
 {
+    // Phase 35A: the shared shell — sidebar expanded / collapsed on representative pages, and keyboard focus on a
+    // destination. The sidebar state is in memory only (no navigation-sidebar.json is read or written).
+    ("Shell-Expanded-Dashboard", () => new Fixture(), f => Go(f, AppSection.Dashboard)),
+    ("Shell-Collapsed-Dashboard", () => new Fixture(), f => { Go(f, AppSection.Dashboard); Collapse(f); }),
+    ("Shell-Expanded-Passdown", () => new Fixture(), f => Go(f, AppSection.AssociatePassdown)),
+    ("Shell-Collapsed-Passdown", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); Collapse(f); }),
+    ("Shell-Expanded-Calendar", () => new Fixture(), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Busy); }),
+    ("Shell-Expanded-Settings", () => new Fixture(), f => Go(f, AppSection.Settings)),
+    ("Shell-FocusNavigation", () => new Fixture(), f => { Go(f, AppSection.Dashboard); FocusNavigation(f.Window, "Operations Calendar section"); }),
+    ("Shell-FocusNavigationCollapsed", () => new Fixture(), f => { Go(f, AppSection.Dashboard); Collapse(f); FocusNavigation(f.Window, "Operations Calendar section"); }),
     ("Dashboard", () => new Fixture(), f => Go(f, AppSection.Dashboard)),
     // Phase 23B: Today's Shows density/overlap. "-Top" keeps the page at the top (above-the-fold view);
     // the others scroll the Shows panel into view.
@@ -279,6 +293,23 @@ void Shot(Window window, string name)
 {
     using var frame = window.CaptureRenderedFrame();
     frame?.Save(Path.Combine(outDir, $"{label}-{name}.png"));
+}
+
+static void Collapse(Fixture f)
+{
+    if (f.Vm.ToggleNavigationCommand.CanExecute(null) && !f.Vm.IsNavigationCollapsed)
+    {
+        f.Vm.ToggleNavigationCommand.Execute(null);
+    }
+
+    Pump(8);
+}
+
+static void FocusNavigation(Window window, string automationName)
+{
+    var item = window.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => AutomationProperties.GetName(b) == automationName);
+    item?.Focus(Avalonia.Input.NavigationMethod.Tab);
+    Pump(8);
 }
 
 static void Go(Fixture f, AppSection section)

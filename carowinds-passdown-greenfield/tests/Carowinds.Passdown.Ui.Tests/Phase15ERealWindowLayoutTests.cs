@@ -98,30 +98,29 @@ public class Phase15ERealWindowLayoutTests
         return new MainViewModel(dashboard, calendar, associate, notes, history, settings);
     }
 
+    // Phase 35A: the sidebar replaced the Phase 22B horizontal strip (whose wrap fix this test guarded). Same
+    // guarantee in the new geometry: every destination and the toggle is realized inside the window at every
+    // supported size, including the 960×640 minimum.
     [Theory]
+    [InlineData(1920d, 1080d)]
+    [InlineData(1536d, 960d)]
+    [InlineData(1280d, 720d)]
     [InlineData(1280d, 860d)]
     [InlineData(960d, 640d)]
     [InlineData(1280d, 690d)]
-    public void MainWindow_SectionStrip_EveryButtonReachableWithinWindowBounds(double width, double height)
+    public void MainWindow_Sidebar_EveryDestinationReachableWithinWindowBounds(double width, double height)
     {
-        // MainWindow is itself a Window (unlike every other view under test here, which is a
-        // UserControl hosted inside a plain diagnostic Window) — show it directly rather than
-        // nesting it as another Window's Content, which Avalonia rejects.
-        var window = new MainWindow { DataContext = CreateMainViewModel(), Width = width, Height = height };
-        window.Show();
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var window = ShowMainWindow(CreateMainViewModel(), width, height);
 
-        var sectionButtons = window.GetVisualDescendants().OfType<Button>()
-            .Where(b => b.Classes.Contains("appSectionItem")).ToList();
-        Assert.Equal(6, sectionButtons.Count);
-
-        var clientWidth = window.ClientSize.Width;
-        foreach (var button in sectionButtons)
+        var items = SectionButtons(window).Cast<Control>().Append(Named(window, "NavigationToggle")).ToList();
+        Assert.Equal(7, items.Count);
+        foreach (var item in items)
         {
-            var bounds = AbsoluteBounds(button, window);
-            Assert.True(bounds.Width > 0, $"section button '{button.Content}' realized with zero width.");
-            Assert.True(bounds.Right <= clientWidth + 1.0,
-                $"section button '{button.Content}' right edge {bounds.Right} exceeds window client width {clientWidth}.");
+            var bounds = AbsoluteBounds(item, window);
+            var label = AutomationProperties.GetName(item);
+            Assert.True(bounds.Width > 0 && bounds.Height > 0, $"'{label}' realized with zero size.");
+            Assert.True(bounds.Right <= window.ClientSize.Width + 1.0, $"'{label}' right edge {bounds.Right} exceeds {window.ClientSize.Width}.");
+            Assert.True(bounds.Bottom <= window.ClientSize.Height + 1.0, $"'{label}' bottom {bounds.Bottom} exceeds {window.ClientSize.Height}.");
         }
 
         window.Close();
@@ -139,41 +138,39 @@ public class Phase15ERealWindowLayoutTests
         return window;
     }
 
+    // Phase 35A: the six sidebar destinations (Settings last); the toggle is an iconAction, not a navItem.
     private static List<Button> SectionButtons(Window window) =>
-        window.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("appSectionItem")).ToList();
+        window.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("navItem")).ToList();
+
+    private static TextBlock NavLabel(Button item) =>
+        item.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("navLabel"));
+
+    private static Border NavIndicator(Button item) =>
+        item.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("navIndicator"));
 
     private static Control Named(Window window, string name) =>
         window.GetVisualDescendants().OfType<Control>().Single(c => c.Name == name);
 
+    // Phase 35A (replaces the Phase 22B banner/strip geometry test): the sidebar spans the full client height,
+    // has the expanded width at normal widths and the icon width below the compaction threshold, and its items
+    // never move, overlap or change size when the selected section changes.
     [Theory]
-    [InlineData(1280d, 860d)]
-    [InlineData(960d, 640d)]
-    [InlineData(1280d, 690d)]
-    [InlineData(1920d, 1040d)]
-    public void MainWindow_Shell_IsCompactAndGeometryStaysFixedAcrossEverySection(double width, double height)
+    [InlineData(1920d, 1040d, 208d)]
+    [InlineData(1536d, 960d, 208d)]
+    [InlineData(1280d, 860d, 208d)]
+    [InlineData(1280d, 690d, 208d)]
+    [InlineData(960d, 640d, 56d)]
+    public void MainWindow_Sidebar_GeometryStaysFixedAcrossEverySection(double width, double height, double sidebarWidth)
     {
         var viewModel = CreateMainViewModel();
         var window = ShowMainWindow(viewModel, width, height);
-
-        var banner = Named(window, "BrandBanner");
         var navigation = Named(window, "AppNavigation");
-        Assert.Equal(72, banner.Bounds.Height, 1);
-        Assert.Equal(window.ClientSize.Width, banner.Bounds.Width, 1);
-        // This assembly's headless platform measures text with fake metrics (wider than real fonts),
-        // so the strip may wrap here where Skia/Windows fonts fit one row (see
-        // docs/phase22b-fury-banner-navigation.md §13). Assert the per-row budget, not a row count.
-        var rows = SectionButtons(window).Select(b => Math.Round(AbsoluteBounds(b, window).Top)).Distinct().Count();
-        Assert.InRange(rows, 1, 2);
-        Assert.InRange(navigation.Bounds.Height / rows, 28, 40);
-        var shellHeight = banner.Bounds.Height + navigation.Bounds.Height;
-        Assert.True(shellHeight <= 72 + 40 * rows, $"shell is {shellHeight}px tall for {rows} navigation row(s)");
 
-        var wordmark = Named(window, "BrandWordmark");
-        var wordmarkBounds = AbsoluteBounds(wordmark, window);
-        Assert.True(wordmarkBounds.Top >= 0 && wordmarkBounds.Bottom <= banner.Bounds.Height, "wordmark clipped vertically");
-        Assert.True(wordmarkBounds.Right < window.ClientSize.Width, "wordmark clipped horizontally");
+        Assert.Equal(sidebarWidth, navigation.Bounds.Width, 1);
+        Assert.Equal(window.ClientSize.Height, navigation.Bounds.Height, 1);
+        Assert.Equal(0, AbsoluteBounds(navigation, window).Left, 1);
 
-        var firstLeft = new List<double>();
+        List<Rect>? first = null;
         foreach (var section in Enum.GetValues<AppSection>())
         {
             viewModel.SelectedSection = section;
@@ -183,18 +180,17 @@ public class Phase15ERealWindowLayoutTests
             Assert.Equal(6, buttons.Count);
             Assert.Single(buttons, b => b.Classes.Contains("active"));
             var positions = buttons.Select(b => AbsoluteBounds(b, window)).ToList();
-            Assert.Equal(rows, positions.Select(p => Math.Round(p.Top)).Distinct().Count());
             for (var i = 1; i < positions.Count; i++)
             {
                 Assert.False(positions[i].Intersects(positions[i - 1]), $"navigation items {i - 1} and {i} overlap");
+                Assert.True(positions[i].Top > positions[i - 1].Top, "destinations run top to bottom in the established order");
             }
-            Assert.Equal(72, banner.Bounds.Height, 1);
-            Assert.Equal(shellHeight, banner.Bounds.Height + navigation.Bounds.Height, 1);
 
-            // Selecting a section (SemiBold) never moves any item.
-            var lefts = positions.Select(p => p.Left).ToList();
-            if (firstLeft.Count == 0) firstLeft = lefts;
-            Assert.Equal(firstLeft, lefts);
+            Assert.All(positions, p => Assert.InRange(p.Height, 32, 44));
+            Assert.All(positions, p => Assert.True(p.Right <= sidebarWidth + 0.5, "an item extends past the sidebar"));
+            Assert.Equal(sidebarWidth, navigation.Bounds.Width, 1);
+            first ??= positions;
+            Assert.Equal(first, positions); // selecting a section (SemiBold, fill) never moves or resizes any item
         }
 
         window.Close();
@@ -205,11 +201,15 @@ public class Phase15ERealWindowLayoutTests
     {
         var viewModel = CreateMainViewModel();
         var window = ShowMainWindow(viewModel, 1280, 860);
+        // Brush assertions need a resolved theme; an earlier test in this run-alone class can leave the
+        // application variant unresolved for new windows (the theme-switch test pins it the same way).
+        window.RequestedThemeVariant = ThemeVariant.Light;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         var expected = new Dictionary<AppSection, string>
         {
-            // Phase 22C: short visible labels; Settings is the gear (identified by its accessible name).
+            // Phase 35A: sidebar labels (the sidebar has room for "Operational Notes"; Settings is labelled too).
             [AppSection.Dashboard] = "Dashboard", [AppSection.OperationsCalendar] = "Calendar",
-            [AppSection.AssociatePassdown] = "Passdown", [AppSection.OperationalNotes] = "Notes",
+            [AppSection.AssociatePassdown] = "Passdown", [AppSection.OperationalNotes] = "Operational Notes",
             [AppSection.History] = "History", [AppSection.Settings] = "Settings",
         };
 
@@ -219,10 +219,13 @@ public class Phase15ERealWindowLayoutTests
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             var active = Assert.Single(SectionButtons(window), b => b.Classes.Contains("active"));
             Assert.Same(button, active);
-            Assert.Equal(expected[viewModel.SelectedSection], active.Content as string ?? AutomationProperties.GetName(active));
+            Assert.Equal(expected[viewModel.SelectedSection], NavLabel(active).Text);
             Assert.Equal("Current page", AutomationProperties.GetItemStatus(active));
             Assert.All(SectionButtons(window).Where(b => b != active), b => Assert.Null(AutomationProperties.GetItemStatus(b)));
             Assert.Equal(FontWeight.SemiBold, active.FontWeight);
+            Assert.Equal(3, NavIndicator(active).Bounds.Width, 0.5); // shape, not colour alone
+            Assert.True(NavIndicator(active).Background is ISolidColorBrush { Color.A: 255 }, "the active indicator is drawn");
+            Assert.All(SectionButtons(window).Where(b => b != active), b => Assert.True(NavIndicator(b).Background is ISolidColorBrush { Color.A: 0 }, "inactive indicators are invisible"));
         }
 
         window.Close();
@@ -234,15 +237,18 @@ public class Phase15ERealWindowLayoutTests
         var viewModel = CreateMainViewModel();
         var window = ShowMainWindow(viewModel, 1280, 860);
         var buttons = SectionButtons(window);
-        Assert.All(buttons, b => Assert.True(b.Focusable && b.IsTabStop && b.IsEffectivelyEnabled, $"{b.Content} not keyboard reachable"));
+        var toggle = (Button)Named(window, "NavigationToggle");
+        Assert.All(buttons, b => Assert.True(b.Focusable && b.IsTabStop && b.IsEffectivelyEnabled, $"{AutomationProperties.GetName(b)} not keyboard reachable"));
 
-        Assert.True(buttons[0].Focus(NavigationMethod.Tab));
-        for (var i = 1; i < buttons.Count; i++)
+        // Phase 35A: Tab runs toggle → Dashboard → … → History → Settings.
+        Assert.True(toggle.Focus(NavigationMethod.Tab));
+        foreach (var expected in buttons)
         {
             window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None);
             window.KeyReleaseQwerty(PhysicalKey.Tab, RawInputModifiers.None);
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-            Assert.Same(buttons[i], window.FocusManager!.GetFocusedElement());
+            Assert.Same(expected, window.FocusManager!.GetFocusedElement());
+            Assert.Contains(":focus-visible", ((Avalonia.Controls.Primitives.TemplatedControl)expected).Classes); // visible keyboard focus
         }
 
         Assert.True(buttons[4].Focus(NavigationMethod.Tab)); // History
@@ -255,12 +261,12 @@ public class Phase15ERealWindowLayoutTests
         window.Close();
     }
 
-    // Phase 22C: Settings is a trailing gear — right edge of the strip, after History, reachable by Tab
-    // from History, activated by Space, and announced as the current page when selected.
+    // Phase 35A: Settings is pinned to the bottom of the sidebar (gear + label), after History in Tab order,
+    // activated by Space, and announced as the current page when selected.
     [Theory]
     [InlineData(1280d, 860d)]
     [InlineData(960d, 640d)]
-    public void MainWindow_SettingsGear_IsTrailing_KeyboardOperable_AndShowsTheSelectedState(double width, double height)
+    public void MainWindow_Settings_IsPinnedToTheBottom_KeyboardOperable_AndShowsTheSelectedState(double width, double height)
     {
         var viewModel = CreateMainViewModel();
         var window = ShowMainWindow(viewModel, width, height);
@@ -271,12 +277,12 @@ public class Phase15ERealWindowLayoutTests
         Assert.Equal("SettingsNavigationItem", gear.Name);
         Assert.Equal("Settings", AutomationProperties.GetName(gear));
         Assert.Equal("Settings", ToolTip.GetTip(gear));
-        Assert.IsType<PathIcon>(gear.Content);
+        Assert.Single(gear.GetVisualDescendants().OfType<PathIcon>());
         var gearBounds = AbsoluteBounds(gear, window);
         var navigation = AbsoluteBounds(Named(window, "AppNavigation"), window);
-        Assert.Equal(navigation.Right - 10, gearBounds.Right, 1); // strip padding (PassdownNavigationStripPadding) on the right
-        Assert.True(gearBounds.Left >= AbsoluteBounds(history, window).Right, "gear must sit after History");
-        Assert.True(gearBounds.Height <= AbsoluteBounds(history, window).Height + 0.5, "gear must not make the strip taller");
+        Assert.True(navigation.Bottom - gearBounds.Bottom <= 16, "Settings must sit at the bottom of the sidebar");
+        Assert.True(gearBounds.Top > AbsoluteBounds(history, window).Bottom + 8, "Settings must be separated from the destinations");
+        Assert.Equal(AbsoluteBounds(history, window).Height, gearBounds.Height, 0.5);
 
         Assert.True(history.Focus(NavigationMethod.Tab));
         window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None);
@@ -296,12 +302,11 @@ public class Phase15ERealWindowLayoutTests
     }
 
     [Fact]
-    public void MainWindow_ThemeSwitch_RestylesNavigation_WhileTheBannerStaysDark()
+    public void MainWindow_ThemeSwitch_RestylesTheSidebar_WithItsSemanticTokens()
     {
         var viewModel = CreateMainViewModel();
         var window = ShowMainWindow(viewModel, 1280, 860);
         var navigation = (Border)Named(window, "AppNavigation");
-        var banner = (Border)Named(window, "BrandBanner");
 
         foreach (var variant in new[] { ThemeVariant.Light, ThemeVariant.Dark, ThemeVariant.Light })
         {
@@ -311,54 +316,56 @@ public class Phase15ERealWindowLayoutTests
             IBrush Token(string key) => window.TryFindResource(key, variant, out var value) ? (IBrush)value! : throw new Xunit.Sdk.XunitException(key);
             var buttons = SectionButtons(window);
             var active = Assert.Single(buttons, b => b.Classes.Contains("active"));
-            Assert.Same(Token("PassdownSurfaceBrush"), navigation.Background);
+            Assert.Same(Token("PassdownNavigationBackgroundBrush"), navigation.Background);
             Assert.Same(Token("PassdownDividerBrush"), navigation.BorderBrush);
             Assert.Same(Token("PassdownTextPrimaryBrush"), active.Foreground);
-            Assert.Same(Token("PassdownAccentForegroundBrush"), active.BorderBrush);
+            Assert.Same(Token("PassdownNavigationActiveBackgroundBrush"), active.Background);
+            Assert.Same(Token("PassdownNavigationActiveIndicatorBrush"), NavIndicator(active).Background);
             Assert.All(buttons.Where(b => b != active), b => Assert.Same(Token("PassdownTextSecondaryBrush"), b.Foreground));
-            Assert.Same(Token("PassdownBrandDarkBrush"), banner.Background);
         }
 
         window.Close();
     }
 
+    // Phase 35A (replaces the Phase 22B banner-photograph test): the compact title area is the native title bar —
+    // the original icon and "Carowinds Operations" — with standard window decorations; nothing in the client area
+    // repeats the title or shows a photograph.
     [Fact]
-    public void MainWindow_BannerPhotograph_LoadsFromTheBundledResource_AndFillsTheBanner()
+    public void MainWindow_TitleArea_IsTheNativeTitleBar_WithTheOriginalIcon_AndNoBanner()
     {
         var window = ShowMainWindow(CreateMainViewModel(), 960, 640);
-        var image = (Image)Named(window, "BrandBannerImage");
-        // A decoded Bitmap from the avares resource (pixel size is not asserted: this assembly's
-        // headless drawing platform uses stub bitmaps; the asset's 1920×320 header is checked by
-        // Phase22BShellNavigationTests).
-        Assert.IsAssignableFrom<Avalonia.Media.Imaging.Bitmap>(image.Source);
-        Assert.Equal(Stretch.UniformToFill, image.Stretch);
-        Assert.Equal(window.ClientSize.Width, image.Bounds.Width, 1);
-        Assert.Equal(72, image.Bounds.Height, 1);
-        Assert.False(image.IsHitTestVisible);
+
+        Assert.Equal("Carowinds Operations", window.Title);
+        Assert.NotNull(window.Icon);
+        Assert.False(window.ExtendClientAreaToDecorationsHint);
+        Assert.Equal(WindowDecorations.Full, window.WindowDecorations);
+        Assert.DoesNotContain(window.GetVisualDescendants().OfType<Control>(), c => c.Name is "BrandBanner" or "BrandWordmark" or "BrandBannerImage");
+        Assert.Empty(Named(window, "AppNavigation").GetVisualDescendants().OfType<Image>());
         window.Close();
     }
 
+    // Phase 35A: each page fills everything to the right of the sidebar — full client height, no shell band above.
     [Theory]
     [InlineData(960d, 640d)]
     [InlineData(1280d, 690d)]
-    public void MainWindow_SectionContent_StartsDirectlyBelowTheShell_AndKeepsUsableHeight(double width, double height)
+    [InlineData(1536d, 960d)]
+    public void MainWindow_SectionContent_FillsTheAreaBesideTheSidebar(double width, double height)
     {
         var viewModel = CreateMainViewModel();
         var window = ShowMainWindow(viewModel, width, height);
-        var navigation = Named(window, "AppNavigation");
-        var shellBottom = AbsoluteBounds(navigation, window).Bottom;
+        var sidebarRight = AbsoluteBounds(Named(window, "AppNavigation"), window).Right;
 
         foreach (var section in Enum.GetValues<AppSection>())
         {
             viewModel.SelectedSection = section;
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             var host = window.GetVisualDescendants().OfType<Border>()
-                .Single(b => b.IsVisible && b.Child is UserControl && b.GetVisualParent() is Grid g && g.GetVisualParent() is DockPanel);
+                .Single(b => b.IsVisible && b.Child is UserControl && b.GetVisualParent() is Grid { Name: "SectionHost" });
             var bounds = AbsoluteBounds(host, window);
-            Assert.Equal(shellBottom, bounds.Top, 1);
-            Assert.Equal(window.ClientSize.Width, bounds.Width, 1);
-            Assert.Equal(window.ClientSize.Height - shellBottom, bounds.Height, 1);
-            Assert.True(bounds.Height >= height * 0.75, $"{section}: only {bounds.Height}px of content height");
+            Assert.Equal(0, bounds.Top, 1);
+            Assert.Equal(sidebarRight, bounds.Left, 1);
+            Assert.Equal(window.ClientSize.Width - sidebarRight, bounds.Width, 1);
+            Assert.Equal(window.ClientSize.Height, bounds.Height, 1);
         }
 
         window.Close();
@@ -1603,25 +1610,20 @@ public class Phase15ERealWindowLayoutTests
         window.Close();
     }
 
+    // Phase 35A (replaces the Phase 23B title-only banner test): no role label, decorative heading or repeated
+    // title — the sidebar's only text is the six destination labels, each on one line.
     [Theory]
-    [InlineData(960d, 640d)]
     [InlineData(1280d, 690d)]
     [InlineData(1920d, 1000d)]
-    public void MainWindow_Banner_IsTitleOnly_AlignedToTheContentMargin_OnOneLine(double width, double height)
+    public void MainWindow_Sidebar_HasOnlyDestinationLabels_NoHeadingOrRoleLabel(double width, double height)
     {
         var window = ShowMainWindow(CreateMainViewModel(), width, height);
-        var banner = Named(window, "BrandBanner");
-        var wordmark = (TextBlock)Named(window, "BrandWordmark");
-        var bounds = AbsoluteBounds(wordmark, window);
+        var texts = Named(window, "AppNavigation").GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).ToList();
 
-        Assert.Equal(24, bounds.Left, 1);
-        Assert.Single(wordmark.TextLayout.TextLines);
-        Assert.Empty(banner.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Shape>());
-        Assert.Empty(banner.GetVisualDescendants().OfType<PathIcon>());
-        Assert.Equal(72, banner.Bounds.Height, 1);
-        Assert.True(bounds.Top >= 0 && bounds.Bottom <= banner.Bounds.Height);
-        Assert.Equal(banner.Bounds.Height / 2, (bounds.Top + bounds.Bottom) / 2, 2); // vertically centered
-        Assert.NotNull(window.Icon); // the window/taskbar icon is a separate asset, unchanged
+        Assert.Equal(["Dashboard", "Calendar", "Passdown", "Operational Notes", "History", "Settings"], texts.Select(t => t.Text));
+        Assert.All(texts, t => Assert.Contains("navLabel", t.Classes));
+        Assert.All(texts, t => Assert.Single(t.TextLayout.TextLines));
+        Assert.DoesNotContain(window.GetVisualDescendants().OfType<TextBlock>(), t => t.Text is "Carowinds Operations" or "CAROWINDS OPERATIONS" or "Admissions Supervision" or "ADMISSIONS" or "OPERATIONS");
         window.Close();
     }
 
@@ -2031,31 +2033,33 @@ public class Phase15ERealWindowLayoutTests
         window.Close();
     }
 
+    // Phase 35A (replaces the Phase 23C banner-invariance test, the banner is gone): the sidebar follows a live
+    // appearance switch in both states, with no brush left from the other theme.
     [Fact]
-    public void Appearance_FuryBanner_IsIdenticalInBothThemes()
+    public void Appearance_Sidebar_FollowsALiveSwitch_ExpandedAndCollapsed()
     {
         using var harness = new AppearanceHarness();
-        var window = ShowMainWindow(CreateAppearanceMainViewModel(harness.Controller), 1280, 860);
-        var banner = (Border)Named(window, "BrandBanner");
-        var image = (Image)Named(window, "BrandBannerImage");
-        var wordmark = (TextBlock)Named(window, "BrandWordmark");
-        var overlay = banner.GetVisualDescendants().OfType<Border>().Single(b => b != banner && b.Background is not null);
+        var viewModel = CreateAppearanceMainViewModel(harness.Controller);
+        var window = ShowMainWindow(viewModel, 1280, 860);
+        var navigation = Named(window, "AppNavigation");
 
-        (object? Source, IBrush? Overlay, IBrush? Text, double Height, Stretch Stretch) Snapshot() =>
-            (image.Source, overlay.Background, wordmark.Foreground, banner.Bounds.Height, image.Stretch);
+        foreach (var (preference, shown) in new[] { (Application.Preferences.AppearancePreference.Dark, ThemeVariant.Dark), (Application.Preferences.AppearancePreference.Light, ThemeVariant.Light) })
+        {
+            harness.Controller.SetPreferenceAsync(preference);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            foreach (var collapsed in new[] { false, true, false })
+            {
+                if (viewModel.IsNavigationCollapsed != collapsed)
+                {
+                    viewModel.ToggleNavigationCommand.Execute(null);
+                    Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                }
 
-        var light = Snapshot();
-        harness.Controller.SetPreferenceAsync(Application.Preferences.AppearancePreference.Dark);
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        var dark = Snapshot();
+                Assert.Equal(shown, window.ActualThemeVariant);
+                Assert.Empty(WrongThemeBrushes(shown, navigation));
+            }
+        }
 
-        Assert.Equal(ThemeVariant.Dark, window.ActualThemeVariant);
-        Assert.Same(light.Source, dark.Source);
-        Assert.Same(light.Overlay, dark.Overlay);
-        Assert.Same(light.Text, dark.Text);
-        Assert.Equal(72, dark.Height, 1);
-        Assert.Equal(light.Stretch, dark.Stretch);
-        Assert.Empty(banner.GetVisualDescendants().OfType<PathIcon>()); // title-only (Phase 23B)
         window.Close();
     }
 
@@ -2202,5 +2206,266 @@ public class Phase15ERealWindowLayoutTests
     private sealed class UpdateNotesSource(Application.Updates.ReleaseNotesContent content) : Application.Updates.IBundledReleaseNotesSource
     {
         public Application.Updates.ReleaseNotesContent? LoadCurrent() => content;
+    }
+
+    // ==================================================================================
+    // Phase 35A — sidebar collapse/expand, narrow-window compaction, resize and interface motion on real
+    // windows. Motion tests inject an InterfaceMotionController with fakes; nothing reads the real profile.
+    // ==================================================================================
+
+    private static MainViewModel CreateShellMainViewModel(Phase35AShellStateTests.FakeSidebarStore? sidebar = null, Desktop.Services.InterfaceMotionController? motion = null)
+    {
+        var baseline = CreateMainViewModel();
+        var settings = new PersonalSyncSettingsViewModel(new FakePersonalSyncSettingsService(), new FakeSyncFolderPicker(), new FakePersonalSyncConflictResolutionService(), new FakePersonalSyncCoordinator(),
+            appearance: new AppearanceSettingsViewModel(motion: motion));
+        return new MainViewModel(baseline.Dashboard, baseline.Calendar, baseline.Associate, baseline.Notes, baseline.History, settings, baseline.PriceHistory, whatsNew: null, sidebarStore: sidebar ?? new Phase35AShellStateTests.FakeSidebarStore());
+    }
+
+    private static Avalonia.Controls.Presenters.ContentPresenter TemplatePresenter(Button button) =>
+        button.GetVisualDescendants().OfType<Avalonia.Controls.Presenters.ContentPresenter>().First(p => p.Name == "PART_ContentPresenter");
+
+    [Fact]
+    public void Sidebar_CollapseAndExpand_ChangesOnlyTheSidebar_KeepingNamesTooltipsAndPages()
+    {
+        var viewModel = CreateShellMainViewModel();
+        var window = ShowMainWindow(viewModel, 1536, 960);
+        var navigation = Named(window, "AppNavigation");
+        var hosts = window.GetVisualDescendants().OfType<Border>().Where(b => b.GetVisualParent() is Grid { Name: "SectionHost" }).ToList();
+        var pages = hosts.Select(h => h.Child).ToList();
+        var names = SectionButtons(window).Select(b => AutomationProperties.GetName(b)).ToList();
+
+        Assert.Equal(208, navigation.Bounds.Width, 1);
+        Assert.All(SectionButtons(window), b => Assert.True(NavLabel(b).IsEffectivelyVisible));
+        Assert.All(SectionButtons(window), b => Assert.False(ToolTip.GetServiceEnabled(b)));
+
+        viewModel.ToggleNavigationCommand.Execute(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(56, navigation.Bounds.Width, 1);
+        foreach (var item in SectionButtons(window))
+        {
+            Assert.False(NavLabel(item).IsEffectivelyVisible, "collapsed labels leave the layout");
+            var icon = item.GetVisualDescendants().OfType<PathIcon>().First();
+            var bounds = AbsoluteBounds(icon, window);
+            Assert.True(icon.IsEffectivelyVisible && bounds.Width > 0);
+            Assert.True(bounds.Left >= 0 && bounds.Right <= 56, $"icon of '{AutomationProperties.GetName(item)}' clipped in the collapsed sidebar");
+            Assert.Equal(28, (bounds.Left + bounds.Right) / 2, 1.5); // icons centred
+            Assert.True(ToolTip.GetServiceEnabled(item), "collapsed items show their label as a tooltip");
+            Assert.False(string.IsNullOrWhiteSpace(ToolTip.GetTip(item) as string));
+        }
+
+        Assert.Equal(names, SectionButtons(window).Select(b => AutomationProperties.GetName(b)));
+        Assert.Equal(pages, hosts.Select(h => h.Child)); // the same page instances — nothing recreated
+        Assert.Equal(56, AbsoluteBounds(hosts.Single(h => h.IsVisible), window).Left, 1);
+
+        viewModel.ToggleNavigationCommand.Execute(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(208, navigation.Bounds.Width, 1);
+        Assert.All(SectionButtons(window), b => Assert.True(NavLabel(b).IsEffectivelyVisible));
+        window.Close();
+    }
+
+    [Fact]
+    public void Sidebar_TogglingFromTheKeyboard_KeepsFocusOnTheToggle_AndAnnouncesItsAction()
+    {
+        var viewModel = CreateShellMainViewModel();
+        var window = ShowMainWindow(viewModel, 1280, 860);
+        var toggle = (Button)Named(window, "NavigationToggle");
+        Assert.Equal("Collapse navigation", AutomationProperties.GetName(toggle));
+
+        Assert.True(toggle.Focus(NavigationMethod.Tab));
+        foreach (var expectedName in new[] { "Expand navigation", "Collapse navigation", "Expand navigation" })
+        {
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            window.KeyReleaseQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.Same(toggle, window.FocusManager!.GetFocusedElement());
+            Assert.Equal(expectedName, AutomationProperties.GetName(toggle));
+            Assert.Equal(expectedName, ToolTip.GetTip(toggle));
+        }
+
+        Assert.Equal(AppSection.Dashboard, viewModel.SelectedSection);
+        window.Close();
+    }
+
+    [Fact]
+    public void Sidebar_FocusedDestination_KeepsFocusWhenTheSidebarCollapses()
+    {
+        var viewModel = CreateShellMainViewModel();
+        var window = ShowMainWindow(viewModel, 1280, 860);
+        var history = SectionButtons(window)[4];
+        Assert.True(history.Focus(NavigationMethod.Tab));
+
+        viewModel.ToggleNavigationCommand.Execute(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Same(history, window.FocusManager!.GetFocusedElement());
+        Assert.True(history.IsEffectivelyVisible);
+        window.Close();
+    }
+
+    [Fact]
+    public void Sidebar_NarrowWindow_ShowsIconsOnly_WithoutChangingTheSavedChoice()
+    {
+        var store = new Phase35AShellStateTests.FakeSidebarStore();
+        var viewModel = CreateShellMainViewModel(store);
+        var window = ShowMainWindow(viewModel, 960, 640);
+        var navigation = Named(window, "AppNavigation");
+        var toggle = (Button)Named(window, "NavigationToggle");
+
+        Assert.Equal(56, navigation.Bounds.Width, 1);
+        Assert.False(toggle.IsEffectivelyEnabled);
+        Assert.Equal("Navigation labels need a wider window", AutomationProperties.GetName(toggle));
+        Assert.False(viewModel.IsNavigationCollapsed);
+
+        window.Width = 1280;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(208, navigation.Bounds.Width, 1);
+        Assert.True(toggle.IsEffectivelyEnabled);
+
+        window.Width = 1000;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(56, navigation.Bounds.Width, 1);
+        Assert.Empty(store.Saves); // resizing never writes the preference
+        window.Close();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Sidebar_ResizingAcrossDesktopSizes_NeverClipsAnyPageHorizontally(bool collapsed)
+    {
+        var viewModel = CreateShellMainViewModel(new Phase35AShellStateTests.FakeSidebarStore { Stored = collapsed ? Application.Preferences.NavigationSidebarState.Collapsed : Application.Preferences.NavigationSidebarState.Expanded });
+        var window = ShowMainWindow(viewModel, 1920, 1080);
+
+        foreach (var (width, height) in new[] { (1920d, 1080d), (960d, 640d), (1536d, 960d), (1280d, 720d), (1100d, 700d) })
+        {
+            window.Width = width;
+            window.Height = height;
+            foreach (var section in Enum.GetValues<AppSection>())
+            {
+                viewModel.SelectedSection = section;
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                // Only what is showing: hidden pages keep the bounds of their last (wider) layout.
+                foreach (var control in window.GetVisualDescendants().OfType<Control>().Where(c => c is Button or TextBox && c.IsEffectivelyVisible && c.Bounds.Width > 0))
+                {
+                    Assert.True(AbsoluteBounds(control, window).Right <= window.ClientSize.Width + 1.0,
+                        $"{section} at {width}x{height}: '{AutomationProperties.GetName(control)}' exceeds the window");
+                }
+
+                var host = window.GetVisualDescendants().OfType<Border>().Single(b => b.IsVisible && b.GetVisualParent() is Grid { Name: "SectionHost" });
+                Assert.True(AbsoluteBounds(host, window).Right <= window.ClientSize.Width + 1, $"{section} at {width}: page wider than the window");
+            }
+        }
+
+        window.Close();
+    }
+
+    [Fact]
+    public void Motion_Off_LeavesNoTransitionInTheShell_IncludingFluentsButtonPress()
+    {
+        var (controller, _, _) = Phase35AInterfaceMotionTests.Create(stored: Application.Preferences.InterfaceAnimationPreference.Off);
+        var window = ShowMainWindow(CreateShellMainViewModel(motion: controller), 1280, 860);
+
+        Assert.Contains("noMotion", window.Classes);
+        Assert.DoesNotContain("motion", window.Classes);
+        foreach (var item in SectionButtons(window))
+        {
+            Assert.True(NavLabel(item).Transitions is null || NavLabel(item).Transitions!.Count == 0);
+            Assert.True(TemplatePresenter(item).Transitions is null || TemplatePresenter(item).Transitions!.Count == 0);
+        }
+
+        Assert.All(window.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible),
+            b => Assert.True(b.Transitions is null || b.Transitions.Count == 0, $"'{AutomationProperties.GetName(b)}' still animates with motion off"));
+        window.Close();
+    }
+
+    [Fact]
+    public void Motion_On_UsesShortCosmeticTransitions_AndTurningItOffRemovesThemLive()
+    {
+        var (controller, _, _) = Phase35AInterfaceMotionTests.Create();
+        var viewModel = CreateShellMainViewModel(motion: controller);
+        var window = ShowMainWindow(viewModel, 1280, 860);
+        var item = SectionButtons(window)[1];
+
+        Assert.Contains("motion", window.Classes);
+        Assert.DoesNotContain("noMotion", window.Classes);
+        var label = Assert.IsType<Avalonia.Animation.DoubleTransition>(Assert.Single(NavLabel(item).Transitions!));
+        Assert.Equal(Visual.OpacityProperty, label.Property);
+        Assert.InRange(label.Duration.TotalMilliseconds, 100, 180);
+        var hover = Assert.IsType<Avalonia.Animation.BrushTransition>(Assert.Single(TemplatePresenter(item).Transitions!));
+        Assert.InRange(hover.Duration.TotalMilliseconds, 80, 140);
+
+        viewModel.Settings.Appearance.IsAnimationsOffSelected = true;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.DoesNotContain("motion", window.Classes);
+        Assert.True(NavLabel(item).Transitions is null || NavLabel(item).Transitions!.Count == 0);
+        Assert.True(TemplatePresenter(item).Transitions is null || TemplatePresenter(item).Transitions!.Count == 0);
+        window.Close();
+    }
+
+    [Fact]
+    public void Motion_WindowsReducedMotion_DisablesTransitions_AndRemovingItRestoresThemOnActivation()
+    {
+        var (controller, store, os) = Phase35AInterfaceMotionTests.Create(os: Application.Preferences.SystemReducedMotion.Requested);
+        var viewModel = CreateShellMainViewModel(motion: controller);
+        var window = ShowMainWindow(viewModel, 1280, 860);
+
+        Assert.Contains("noMotion", window.Classes);
+        Assert.True(viewModel.Settings.Appearance.IsAnimationsOnSelected); // the saved choice is untouched
+
+        os.Value = Application.Preferences.SystemReducedMotion.NotRequested;
+        viewModel.OnWindowActivated();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Contains("motion", window.Classes);
+        Assert.Empty(store.Saves);
+        window.Close();
+    }
+
+    [Fact]
+    public void Motion_On_StateChangesTakeEffectImmediately_NothingWaitsForATransition()
+    {
+        var (controller, _, _) = Phase35AInterfaceMotionTests.Create();
+        var viewModel = CreateShellMainViewModel(motion: controller);
+        var window = ShowMainWindow(viewModel, 1280, 860);
+        var navigation = Named(window, "AppNavigation");
+
+        viewModel.ToggleNavigationCommand.Execute(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(56, navigation.Bounds.Width, 1); // width snaps; no layout animation
+        Assert.All(SectionButtons(window), b => Assert.False(NavLabel(b).IsEffectivelyVisible));
+
+        viewModel.ShowHistorySectionCommand.Execute(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Contains("active", SectionButtons(window)[4].Classes);
+        Assert.True(window.GetVisualDescendants().OfType<HistoryView>().Single().IsEffectivelyVisible);
+        window.Close();
+    }
+
+    [Fact]
+    public void Motion_ReducedMotion_DuringRapidNavigation_EndsOnTheLastSection_WithOneActiveItem()
+    {
+        var (controller, _, _) = Phase35AInterfaceMotionTests.Create(os: Application.Preferences.SystemReducedMotion.Requested);
+        var viewModel = CreateShellMainViewModel(motion: controller);
+        var window = ShowMainWindow(viewModel, 1280, 860);
+        var buttons = SectionButtons(window);
+
+        for (var i = 0; i < 60; i++)
+        {
+            buttons[i % buttons.Count].Command!.Execute(null);
+            if (i % 5 == 0)
+            {
+                viewModel.ToggleNavigationCommand.Execute(null);
+            }
+
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.Single(SectionButtons(window), b => b.Classes.Contains("active"));
+        }
+
+        Assert.Equal(AppSection.Settings, viewModel.SelectedSection); // 59 % 6 == 5
+        Assert.Contains("noMotion", window.Classes);
+        window.Close();
     }
 }

@@ -234,6 +234,45 @@ public class Phase35AShellStateTests
         Assert.Single(flags, f => f);
     }
 
+    [Theory]
+    [InlineData(959, true)]
+    [InlineData(1099, true)]
+    [InlineData(1100, false)]
+    [InlineData(1920, false)]
+    public void NarrowWindow_ShowsIconsOnly_WithoutChangingTheSavedChoice(double width, bool compact)
+    {
+        var store = new FakeSidebarStore();
+        var shell = Create(store);
+
+        shell.Main.UpdateShellWidth(width);
+
+        Assert.Equal(compact, shell.Main.IsNavigationCompactForWidth);
+        Assert.Equal(compact, shell.Main.IsNavigationShownCollapsed);
+        Assert.False(shell.Main.IsNavigationCollapsed); // the saved choice is untouched
+        Assert.Equal(!compact, shell.Main.ToggleNavigationCommand.CanExecute(null));
+        Assert.Empty(store.Saves);
+    }
+
+    [Fact]
+    public void NarrowWindow_TheToggleExplainsWhyItIsUnavailable_AndWideningRestoresTheChoice()
+    {
+        var shell = Create(new FakeSidebarStore());
+        shell.Main.UpdateShellWidth(960);
+        Assert.Equal("Navigation labels need a wider window", shell.Main.NavigationToggleName);
+
+        shell.Main.UpdateShellWidth(1280);
+        Assert.Equal("Collapse navigation", shell.Main.NavigationToggleName);
+        Assert.True(shell.Main.IsNavigationExpanded);
+    }
+
+    [Fact]
+    public void UnknownWidth_NeverCompacts()
+    {
+        var shell = Create(new FakeSidebarStore());
+        shell.Main.UpdateShellWidth(0);
+        Assert.False(shell.Main.IsNavigationCompactForWidth);
+    }
+
     // ---------------------------------------------------------------- motion
 
     [Fact]

@@ -15,33 +15,39 @@
        Theme-invariant: brand band, typography, spacing, radii
        =================================================================================== -->
 
-  <!-- The brand band (deep navy + white text) is identity, not a surface: it does not invert with
-       the OS light/dark theme. PassdownBrandDarkBrush is also the banner's fallback fill underneath
-       the photograph. -->
-  <Color x:Key="PassdownBrandDarkColor">#0B2A4A</Color>
-  <SolidColorBrush x:Key="PassdownBrandDarkBrush" Color="{StaticResource PassdownBrandDarkColor}" />
-  <SolidColorBrush x:Key="PassdownHeaderForegroundBrush" Color="#FFFFFF" />
-  <SolidColorBrush x:Key="PassdownHeaderMutedForegroundBrush" Color="#B9CBDE" />
+  <!-- Phase 35A: the brand navy (handoff colour direction #17324D). Identity, not a surface: it does not invert
+       with the theme. Used for the light theme's active-navigation indicator. The Phase 22B banner colours
+       (PassdownBrandDark*, PassdownHeader*Foreground) retired with the banner. -->
+  <Color x:Key="PassdownBrandNavyColor">#17324D</Color>
+  <SolidColorBrush x:Key="PassdownBrandNavyBrush" Color="{StaticResource PassdownBrandNavyColor}" />
 
   <!-- Phase 33: the PDF preview's sheet of paper stays white in both themes — it shows the printed page,
        not an app surface. -->
   <SolidColorBrush x:Key="PassdownPdfPaperBrush" Color="#FFFFFF" />
 
-  <!-- Phase 22B app shell (docs/phase22b-fury-banner-navigation.md). The Fury 325 banner stays dark
-       in both themes. The overlay is a charcoal-navy left-to-right scrim measured in absolute pixels
-       (not % of width), so it is the same behind the wordmark at every window width: ≥ 0.78 opacity
-       across the first ~306px (the wordmark ends at x≈299), which keeps white text ≥ 4.5:1 even over
-       a pure-white cloud pixel, then easing to 0.32 by x=900 so the ride stays visible. -->
-  <sys:Double x:Key="PassdownBannerHeight">72</sys:Double>
-  <sys:Double x:Key="PassdownFontSizeWordmark">16</sys:Double>
-  <LinearGradientBrush x:Key="PassdownBannerOverlayBrush" StartPoint="0,0" EndPoint="900,0">
-    <GradientStop Offset="0" Color="#E60C1724" />
-    <GradientStop Offset="0.34" Color="#C70C1724" />
-    <GradientStop Offset="0.55" Color="#800C1724" />
-    <GradientStop Offset="1" Color="#520C1724" />
-  </LinearGradientBrush>
-  <Thickness x:Key="PassdownNavigationStripPadding">10,0</Thickness>
-  <Thickness x:Key="PassdownNavigationItemPadding">14,8</Thickness>
+  <!-- Phase 35A application shell (docs/phase35-unified-ui-modernization.md): a left sidebar replaces the
+       Phase 22B photo banner and horizontal strip. Expanded = icon + label; collapsed = icon only. The
+       collapsed width centres a 16px icon (4px item margin + 3px indicator + 13px inset + 16 + 20). -->
+  <sys:Double x:Key="PassdownSidebarExpandedWidth">208</sys:Double>
+  <sys:Double x:Key="PassdownSidebarCollapsedWidth">56</sys:Double>
+  <sys:Double x:Key="PassdownNavigationItemHeight">36</sys:Double>
+  <Thickness x:Key="PassdownNavigationItemMargin">4,1</Thickness>
+  <Thickness x:Key="PassdownNavigationContentInset">13,0,12,0</Thickness>
+  <Thickness x:Key="PassdownSidebarPadding">0,8</Thickness>
+
+  <!-- Phase 35A control dimensions. Heights are minimums (text scaling may grow them, never clip). -->
+  <sys:Double x:Key="PassdownControlHeight">32</sys:Double>
+  <sys:Double x:Key="PassdownControlHeightCompact">28</sys:Double>
+  <sys:Double x:Key="PassdownIconButtonSize">32</sys:Double>
+  <sys:Double x:Key="PassdownIconSize">16</sys:Double>
+
+  <!-- Phase 35A motion. Upper bounds from the approved motion table; used only by styles scoped under the main
+       window's "motion" class, so with Interface animations Off (or Windows reduced motion) no transition exists.
+       Nothing waits on these: commands, saves, refreshes, previews and printing are never delayed. -->
+  <sys:TimeSpan x:Key="PassdownMotionFast">0:0:0.12</sys:TimeSpan>
+  <sys:TimeSpan x:Key="PassdownMotionPanel">0:0:0.17</sys:TimeSpan>
+  <sys:TimeSpan x:Key="PassdownMotionOverlay">0:0:0.15</sys:TimeSpan>
+  <CubicEaseOut x:Key="PassdownMotionEasing" />
 
   <!-- Phase 22C icon geometries (Avalonia's built-in PathIcon; no icon package). The Settings gear is
        an original 8-tooth outline drawn on a 24-unit grid (even-odd fill leaves the center hole);
@@ -53,6 +59,14 @@
   <StreamGeometry x:Key="PassdownCheckCircleIconGeometry">F0 M12,2 A10,10 0 1 0 12,22 A10,10 0 1 0 12,2 Z M10.3,16.6 L5.9,12.2 L7.8,10.3 L10.3,12.8 L16.2,6.9 L18.1,8.8 Z</StreamGeometry>
   <StreamGeometry x:Key="PassdownClockIconGeometry">F0 M12,2 A10,10 0 1 0 12,22 A10,10 0 1 0 12,2 Z M10.8,5.5 L13.2,5.5 L13.2,11.3 L17,13.5 L15.8,15.6 L10.8,12.7 Z</StreamGeometry>
   <StreamGeometry x:Key="PassdownGiftIconGeometry">F1 M3,8 L11.1,8 L11.1,12 L3,12 Z M12.9,8 L21,8 L21,12 L12.9,12 Z M4.5,13.4 L11.1,13.4 L11.1,21 L4.5,21 Z M12.9,13.4 L19.5,13.4 L19.5,21 L12.9,21 Z M12,7.4 C10.2,3.2 5.8,3.1 6.3,5.9 C6.6,7.2 9.4,7.4 12,7.4 Z M12,7.4 C13.8,3.2 18.2,3.1 17.7,5.9 C17.4,7.2 14.6,7.4 12,7.4 Z</StreamGeometry>
+  <!-- Phase 35A navigation icons: original geometries on the same 24-unit grid, even-odd outlines in the gear's
+       visual weight. Decorative (each item has a text label or accessible name). -->
+  <StreamGeometry x:Key="PassdownDashboardIconGeometry">F0 M3,3 H10.5 V10.5 H3 Z M4.8,4.8 V8.7 H8.7 V4.8 Z M13.5,3 H21 V10.5 H13.5 Z M15.3,4.8 V8.7 H19.2 V4.8 Z M3,13.5 H10.5 V21 H3 Z M4.8,15.3 V19.2 H8.7 V15.3 Z M13.5,13.5 H21 V21 H13.5 Z M15.3,15.3 V19.2 H19.2 V15.3 Z</StreamGeometry>
+  <StreamGeometry x:Key="PassdownCalendarIconGeometry">F0 M3,5 H21 V21 H3 Z M4.8,10.2 V19.2 H19.2 V10.2 Z M6.6,2.5 H8.4 V5 H6.6 Z M15.6,2.5 H17.4 V5 H15.6 Z M7,12.4 H10.2 V15.6 H7 Z</StreamGeometry>
+  <StreamGeometry x:Key="PassdownPassdownIconGeometry">F0 M5,2.5 H15 L19,6.5 V21.5 H5 Z M6.8,4.3 V19.7 H17.2 V7.3 H14.2 V4.3 Z M8.5,10 H15.5 V11.6 H8.5 Z M8.5,13.4 H15.5 V15 H8.5 Z M8.5,16.8 H13 V18.4 H8.5 Z</StreamGeometry>
+  <StreamGeometry x:Key="PassdownNotesIconGeometry">F0 M3.5,3.5 H20.5 V14.5 L14.5,20.5 H3.5 Z M5.3,5.3 V18.7 H13.7 V13.7 H18.7 V5.3 Z M7.5,8.5 H16.5 V10.1 H7.5 Z M7.5,12 H12 V13.6 H7.5 Z</StreamGeometry>
+  <StreamGeometry x:Key="PassdownHistoryIconGeometry">F0 M3,4 H21 V8.6 H3 Z M4.5,9.8 H19.5 V20.5 H4.5 Z M6.3,11.6 V18.7 H17.7 V11.6 Z M9.5,13 H14.5 V14.6 H9.5 Z</StreamGeometry>
+  <StreamGeometry x:Key="PassdownSidebarToggleIconGeometry">F0 M3,4.5 H21 V19.5 H3 Z M4.8,6.3 V17.7 H19.2 V6.3 Z M8.4,6.3 H10.2 V17.7 H8.4 Z</StreamGeometry>
   <StreamGeometry x:Key="PassdownChevronDownGeometry">M1.4,3.6 L2.6,2.4 L6,5.8 L9.4,2.4 L10.6,3.6 L6,8.2 Z</StreamGeometry>
   <sys:Double x:Key="PassdownNavigationIconSize">16</sys:Double>
 
@@ -138,6 +152,12 @@
       <SolidColorBrush x:Key="PassdownHoverBackgroundBrush" Color="#EEF0F3" />
       <SolidColorBrush x:Key="PassdownPressedBackgroundBrush" Color="#E3E6EA" />
 
+      <!-- Phase 35A navigation sidebar: a quiet surface one step off the page, a soft selected fill and a
+           brand-navy indicator bar (shape, not colour alone, marks the current page). -->
+      <SolidColorBrush x:Key="PassdownNavigationBackgroundBrush" Color="#FAFBFC" />
+      <SolidColorBrush x:Key="PassdownNavigationActiveBackgroundBrush" Color="#E7EEF7" />
+      <SolidColorBrush x:Key="PassdownNavigationActiveIndicatorBrush" Color="#17324D" />
+
       <!-- Tags/chips: neutral metadata chip, and the emphasized (read-only / today / saved) chip. -->
       <SolidColorBrush x:Key="PassdownChipBrush" Color="#EAECEF" />
       <!-- Phase 33: the desk behind the preview page, and the page edge. -->
@@ -215,6 +235,10 @@
       <SolidColorBrush x:Key="PassdownSelectedForegroundBrush" Color="#B5D2F4" />
       <SolidColorBrush x:Key="PassdownHoverBackgroundBrush" Color="#2A2E35" />
       <SolidColorBrush x:Key="PassdownPressedBackgroundBrush" Color="#31363E" />
+
+      <SolidColorBrush x:Key="PassdownNavigationBackgroundBrush" Color="#1A1D21" />
+      <SolidColorBrush x:Key="PassdownNavigationActiveBackgroundBrush" Color="#243449" />
+      <SolidColorBrush x:Key="PassdownNavigationActiveIndicatorBrush" Color="#8DB9EB" />
 
       <SolidColorBrush x:Key="PassdownChipBrush" Color="#2D3239" />
       <!-- Phase 33: the desk behind the preview page, and the page edge. -->
