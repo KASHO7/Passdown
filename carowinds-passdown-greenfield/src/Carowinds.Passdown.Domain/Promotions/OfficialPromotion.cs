@@ -26,6 +26,35 @@ public enum DeadlineSource
 /// </summary>
 public sealed record OfficialDateStatement(DateOnly Date, string SourceText, DeadlineSource Source, bool YearInferred = false);
 
+/// <summary>
+/// Phase 31B finalization: confirmed vs inferred official dates. A date is <em>inferred</em> when the
+/// official text does not state it, in full, as this item's own deadline — it was taken from a
+/// page-level campaign banner, or written without a year. An inferred date is shown labeled as such
+/// and is never, on its own, authoritative evidence that something has expired. (A method rather than
+/// a record property so stored and synced JSON shapes are unchanged.)
+/// </summary>
+public static class OfficialDateStatementCertainty
+{
+    public static bool IsInferred(this OfficialDateStatement statement)
+    {
+        ArgumentNullException.ThrowIfNull(statement);
+        return statement.YearInferred || statement.Source == DeadlineSource.CampaignBanner;
+    }
+
+    /// <summary>Why the date is inferred, for labels ("inferred from the page's campaign end date; year not stated"), or null when confirmed.</summary>
+    public static string? InferenceNote(this OfficialDateStatement statement)
+    {
+        ArgumentNullException.ThrowIfNull(statement);
+        return (statement.Source == DeadlineSource.CampaignBanner, statement.YearInferred) switch
+        {
+            (true, true) => "inferred from the page's campaign end date; year not stated",
+            (true, false) => "inferred from the page's campaign end date",
+            (false, true) => "year not stated; inferred",
+            _ => null,
+        };
+    }
+}
+
 /// <summary>Phase 31: an official date range for when the offer can be used/visited (distinct from when it can be bought).</summary>
 public sealed record OfficialDateRange(DateOnly Start, DateOnly End, string SourceText);
 
@@ -112,10 +141,11 @@ public sealed record PromotionStatusAssessment(PromotionStatus Status, string Re
 
 /// <summary>
 /// Phase 31: pure status rules for an official offer. Inputs are the offer, the Eastern "today", and
-/// the time of the latest successful deals check. An offer is expired when its own purchase deadline
-/// has passed, when a later successful check no longer lists it, or when a campaign banner's end date
-/// has passed and no successful check has re-listed it since. Caching never keeps an expired offer
-/// current, and staleness never makes an offer look newly confirmed.
+/// the time of the latest successful deals check. An offer is expired when its own confirmed purchase
+/// deadline has passed or when a later successful check no longer lists it. An inferred end date (a
+/// campaign banner's, or one written without a year) that has passed with no re-listing since makes the
+/// offer Unknown ("not confirmed"), never Expired. Caching never keeps an expired offer current, and
+/// staleness never makes an offer look newly confirmed.
 /// </summary>
 public static class PromotionStatusEvaluator
 {
@@ -126,7 +156,8 @@ public static class PromotionStatusEvaluator
     {
         ArgumentNullException.ThrowIfNull(promotion);
 
-        if (promotion.PurchaseDeadline is { } deadline && deadline.Date < today)
+        // Only a confirmed date (stated in full in the offer's own terms) can expire an offer by itself.
+        if (promotion.PurchaseDeadline is { } deadline && !deadline.IsInferred() && deadline.Date < today)
         {
             return new(PromotionStatus.Expired, $"Purchase deadline passed ({deadline.SourceText.Trim()}).");
         }
@@ -136,13 +167,18 @@ public static class PromotionStatusEvaluator
             return new(PromotionStatus.Expired, "No longer listed on the official Carowinds pages.");
         }
 
+        // An inferred end date (year not stated, or a page banner rather than the offer's own terms) that
+        // has passed without the offer being re-listed since is "not confirmed", never confirmed-expired:
+        // the next successful check either re-lists it or no longer lists it (authoritative either way).
         var lastVerifiedDate = DateOnly.FromDateTime(EasternDate(promotion.LastVerifiedAt));
-        if (promotion.PurchaseDeadline is null &&
-            promotion.CampaignEnd is { } campaignEnd &&
-            campaignEnd.Date < today &&
-            lastVerifiedDate <= campaignEnd.Date)
+        var inferredEnd = promotion.PurchaseDeadline ?? promotion.CampaignEnd;
+        if (inferredEnd is not null &&
+            inferredEnd.IsInferred() &&
+            inferredEnd.Date < today &&
+            lastVerifiedDate <= inferredEnd.Date)
         {
-            return new(PromotionStatus.Expired, $"Advertised end date passed ({campaignEnd.SourceText.Trim()}).");
+            return new(PromotionStatus.Unknown, string.Create(PresentationCulture.UnitedStates,
+                $"Inferred end date passed (\"{inferredEnd.SourceText.Trim()}\", read as {inferredEnd.Date:MMMM d, yyyy}); not confirmed as ended by the official page."));
         }
 
         if (promotion.PurchaseStart is { } start && start.Date > today)

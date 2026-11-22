@@ -226,12 +226,16 @@ Copy-Item -LiteralPath $licensesSource -Destination $stagingReleaseDirectory -Re
 
 if ($isLocalTest) {
     $commit = (& git -C $repoRoot rev-parse HEAD 2>$null)
+    $dirty = (& git -C $repoRoot status --porcelain --untracked-files=no -- src packaging Directory.Build.props 2>$null)
+    $source = if ($dirty) { "uncommitted source changes on top of $commit" } else { $commit }
+    $frozenSameVersion = Test-Path -LiteralPath (Join-Path $repoRoot 'artifacts' 'releases' "Carowinds-Operations-$version-win-x64.zip")
+    $versionNote = if ($frozenSameVersion) { 'same version string as a frozen release; this is NOT that release' } else { 'development version; not a published release' }
     $markerLines = @(
         'LOCAL-ONLY TEST BUILD - NOT A RELEASE',
         '',
         "Label:   $LocalTestLabel",
-        "Version: $version (same version string as the frozen release; this is NOT that release)",
-        "Commit:  $commit",
+        "Version: $version ($versionNote)",
+        "Source:  $source",
         '',
         'Use only in a disposable Windows test account. Do not install updates from this build.',
         'Delete the extracted folder when testing is finished.'

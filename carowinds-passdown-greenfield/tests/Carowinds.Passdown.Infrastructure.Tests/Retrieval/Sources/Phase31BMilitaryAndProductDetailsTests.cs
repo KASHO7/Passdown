@@ -81,6 +81,23 @@ public class Phase31BMilitaryAndProductDetailsTests
     }
 
     [Fact]
+    public async Task OriginalAndRedesignedLayouts_ProduceTheSameEstablishedIdentities()
+    {
+        var original = await RetrieveMilitaryAsync(FixtureFile.ReadText("military-first-responder/published-page.html"));
+        var redesigned = await RetrieveMilitaryAsync(FixtureFile.ReadText("phase31b/military-discounts.html"));
+
+        var redesignedKeys = redesigned.Payload!.Products.Select(p => p.Key).ToHashSet();
+        Assert.All(original.Payload!.Products, p => Assert.Contains(p.Key, redesignedKeys));
+        Assert.Equal(
+            new[]
+            {
+                CatalogProductKey.FromOfficialId(SourceCategory.MilitaryFirstResponder, "FallMilitaryGoldSP2027"),
+                CatalogProductKey.FromOfficialId(SourceCategory.MilitaryFirstResponder, "MilitaryWizard"),
+            }.OrderBy(k => k.ToString(), StringComparer.Ordinal),
+            redesignedKeys.OrderBy(k => k.ToString(), StringComparer.Ordinal));
+    }
+
+    [Fact]
     public async Task OriginalLayoutFixture_StillParses_AndAnEmptyPageWithoutOffersIsStillAVerifiedEmptyCatalog()
     {
         var original = await RetrieveMilitaryAsync(FixtureFile.ReadText("military-first-responder/published-page.html"));

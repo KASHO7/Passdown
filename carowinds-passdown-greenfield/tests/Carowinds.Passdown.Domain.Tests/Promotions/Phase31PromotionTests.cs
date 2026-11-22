@@ -142,12 +142,44 @@ public class Phase31PromotionStatusTests
     }
 
     [Fact]
-    public void CampaignBannerEndPassed_WithoutRecheck_IsExpired()
+    public void CampaignBannerEndPassed_WithoutRecheck_IsNotConfirmed_NeverExpired()
     {
         var offer = Offer(o => o with { CampaignEnd = new OfficialDateStatement(new(2026, 11, 27), "Hurry! Black Friday Deal Ends 11/27", DeadlineSource.CampaignBanner, YearInferred: true) });
 
         Assert.Equal(PromotionStatus.Current, StatusOn(offer, new(2026, 11, 22), CheckedNov21, CheckedNov21.AddHours(3)));
-        Assert.Equal(PromotionStatus.Expired, StatusOn(offer, new(2026, 11, 28), CheckedNov21, CheckedNov21.AddDays(7)));
+        var after = PromotionStatusEvaluator.Evaluate(offer, new(2026, 11, 28), CheckedNov21, CheckedNov21.AddDays(7));
+        Assert.Equal(PromotionStatus.Unknown, after.Status);
+        Assert.Contains("not confirmed as ended", after.Reason, StringComparison.Ordinal);
+        Assert.Contains("November 27, 2026", after.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CampaignBannerEndPassed_AndALaterCheckNoLongerListsIt_IsExpired()
+    {
+        var offer = Offer(o => o with { CampaignEnd = new OfficialDateStatement(new(2026, 11, 27), "Hurry! Black Friday Deal Ends 11/27", DeadlineSource.CampaignBanner, YearInferred: true) });
+        var nov28 = new DateTimeOffset(2026, 11, 28, 9, 0, 0, Eastern);
+
+        Assert.Equal(PromotionStatus.Expired, StatusOn(offer, new(2026, 11, 28), nov28, nov28.AddHours(1)));
+    }
+
+    [Fact]
+    public void YearInferredOwnDeadlinePassed_IsNotConfirmed_UntilTheOfficialPageSettlesIt()
+    {
+        var offer = Offer(o => o with { PurchaseDeadline = new OfficialDateStatement(new(2026, 11, 30), "Buy by 11/30.", DeadlineSource.OfferTerms, YearInferred: true) });
+
+        Assert.Equal(PromotionStatus.Current, StatusOn(offer, new(2026, 11, 30), CheckedNov21, CheckedNov21.AddHours(1)));
+        Assert.Equal(PromotionStatus.Unknown, StatusOn(offer, new(2026, 12, 1), CheckedNov21, CheckedNov21.AddHours(1)));
+        var dec1 = new DateTimeOffset(2026, 12, 1, 9, 0, 0, Eastern);
+        Assert.Equal(PromotionStatus.Expired, StatusOn(offer, new(2026, 12, 1), dec1, dec1.AddHours(1))); // no longer listed
+    }
+
+    [Fact]
+    public void InferredVsConfirmed_Classification()
+    {
+        Assert.False(new OfficialDateStatement(new(2026, 11, 30), "Book by November 30, 2026.", DeadlineSource.OfferTerms).IsInferred());
+        Assert.True(new OfficialDateStatement(new(2026, 11, 30), "Buy by 11/30.", DeadlineSource.OfferTerms, YearInferred: true).IsInferred());
+        Assert.True(new OfficialDateStatement(new(2026, 11, 30), "Deal Ends November 30, 2026", DeadlineSource.CampaignBanner).IsInferred());
+        Assert.Null(new OfficialDateStatement(new(2026, 11, 30), "Book by November 30, 2026.", DeadlineSource.OfferTerms).InferenceNote());
     }
 
     [Fact]

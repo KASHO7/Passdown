@@ -444,10 +444,14 @@ public sealed record ProductDetailAssessment(ProductDetailStatus Status, string 
 /// <summary>
 /// Phase 31B: pure status rules for official product details, by the Eastern "today". Deadlines are
 /// inclusive (valid on the stated day). A passed purchase deadline with an open redemption deadline
-/// is reported as both: no longer available with new purchases, earned benefits still usable.
+/// is reported as both: no longer available with new purchases, earned benefits still usable. Only
+/// confirmed dates expire a statement by themselves; a passed inferred date (campaign banner, or no
+/// year stated) with no re-verification since is reported as not confirmed (Stale), never Expired.
 /// </summary>
 public static class ProductDetailStatusEvaluator
 {
+    private static readonly CultureInfo Us = CultureInfo.GetCultureInfo("en-US");
+
     /// <summary>Details not re-verified within this window are shown as stale (the deals rule).</summary>
     public static TimeSpan StaleAfter => PromotionStatusEvaluator.VerificationStaleAfter;
 
@@ -461,21 +465,22 @@ public static class ProductDetailStatusEvaluator
         ArgumentNullException.ThrowIfNull(details);
         ArgumentNullException.ThrowIfNull(statement);
 
-        if (statement.RedemptionDeadline is { } use && use.Date < today)
+        // Confirmed dates (stated in full in the card's own terms) are authoritative on their own.
+        if (statement.RedemptionDeadline is { } use && !use.IsInferred() && use.Date < today)
         {
-            return new(ProductDetailStatus.Expired, string.Create(CultureInfo.GetCultureInfo("en-US"), $"Expired — use-by date {use.Date:MMMM d, yyyy} has passed."));
+            return new(ProductDetailStatus.Expired, string.Create(Us, $"Expired — use-by date {use.Date:MMMM d, yyyy} has passed."));
         }
 
         if (statement.ValidityWindow is { } window && window.End < today)
         {
-            return new(ProductDetailStatus.Expired, string.Create(CultureInfo.GetCultureInfo("en-US"), $"Expired — valid through {window.End:MMMM d, yyyy}."));
+            return new(ProductDetailStatus.Expired, string.Create(Us, $"Expired — valid through {window.End:MMMM d, yyyy}."));
         }
 
-        if (statement.PurchaseDeadline is { } buy && buy.Date < today)
+        if (statement.PurchaseDeadline is { } buy && !buy.IsInferred() && buy.Date < today)
         {
-            var reason = statement.RedemptionDeadline is { } openUse
-                ? string.Create(CultureInfo.GetCultureInfo("en-US"), $"No longer offered with new purchases (ended {buy.Date:MMMM d, yyyy}); already-earned benefits are usable through {openUse.Date:MMMM d, yyyy}.")
-                : string.Create(CultureInfo.GetCultureInfo("en-US"), $"Purchase deadline passed ({buy.Date:MMMM d, yyyy}).");
+            var reason = statement.RedemptionDeadline is { } openUse && openUse.Date >= today
+                ? string.Create(Us, $"No longer offered with new purchases (ended {buy.Date:MMMM d, yyyy}); already-earned benefits are usable through {openUse.Date:MMMM d, yyyy}.")
+                : string.Create(Us, $"Purchase deadline passed ({buy.Date:MMMM d, yyyy}).");
             return new(ProductDetailStatus.Expired, reason);
         }
 
@@ -487,6 +492,27 @@ public static class ProductDetailStatusEvaluator
         if (latestSuccessfulCheck is { } latest && details.LastVerifiedAt < latest)
         {
             return new(ProductDetailStatus.Expired, "No longer listed on the official page at the latest check.");
+        }
+
+        // An inferred date that has passed, with no re-verification since, is "not confirmed" — never
+        // Current and never confirmed-Expired. The next successful check settles it either way.
+        var lastVerifiedDate = DateOnly.FromDateTime(details.LastVerifiedAt.DateTime);
+        var passedInferred = new[] { statement.PurchaseDeadline, statement.RedemptionDeadline }
+            .OfType<OfficialDateStatement>()
+            .Where(d => d.IsInferred() && d.Date < today && lastVerifiedDate <= d.Date)
+            .OrderBy(d => d.Date)
+            .FirstOrDefault();
+        if (passedInferred is not null)
+        {
+            var which = ReferenceEquals(passedInferred, statement.PurchaseDeadline) ? "buy-by" : "use-by";
+            var reason = string.Create(Us,
+                $"The {which} date {passedInferred.Date:MMMM d, yyyy} ({passedInferred.InferenceNote()}) has passed; not confirmed as ended by the official page.");
+            if (which == "buy-by" && statement.RedemptionDeadline is { } earnedUse && !earnedUse.IsInferred() && earnedUse.Date >= today)
+            {
+                reason += string.Create(Us, $" Already-earned benefits are usable through {earnedUse.Date:MMMM d, yyyy}.");
+            }
+
+            return new(ProductDetailStatus.Stale, reason);
         }
 
         if (now - details.LastVerifiedAt > StaleAfter)

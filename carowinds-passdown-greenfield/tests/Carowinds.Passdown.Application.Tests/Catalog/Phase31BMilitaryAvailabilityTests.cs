@@ -33,12 +33,13 @@ public class Phase31BMilitaryAvailabilityTests
     {
         public InMemoryCatalogProductRepository Catalog { get; } = new();
         public InMemorySeasonPriceHistoryRepository PriceHistory { get; } = new();
+        public InMemoryProductHistoryRepository ProductHistory { get; } = new();
         public ProductReconciliationService Reconciliation { get; }
 
         public Queue<SourceResult<CatalogPayload>> Results { get; } = new();
 
         public Harness() =>
-            Reconciliation = new ProductReconciliationService(Catalog, new InMemoryProductHistoryRepository(), new FakeUnitOfWorkFactory(), logger: null, new SeasonPriceHistoryRecorder(PriceHistory));
+            Reconciliation = new ProductReconciliationService(Catalog, ProductHistory, new FakeUnitOfWorkFactory(), logger: null, new SeasonPriceHistoryRecorder(PriceHistory));
 
         public Task RefreshAsync()
         {
@@ -136,5 +137,40 @@ public class Phase31BMilitaryAvailabilityTests
 
         Assert.Equal(ProductAvailability.Available, (await h.ListedGoldAsync()).Availability.Availability);
         Assert.Single(h.PriceHistory.All, i => i.ProductKey == GoldKey.ToString());
+    }
+
+    [Fact]
+    public async Task AfterTheCorrectedRefresh_BothMilitaryProductsKeepTheirIdentities_AndHistoricalPricing()
+    {
+        var h = new Harness();
+        h.EnqueueVerified(1, Gold(89m), Tickets());
+        h.EnqueueVerified(2); // the old misread: "verified", zero offers
+        h.EnqueueVerified(10, Gold(95m), new ObservedProduct(TicketKey, "Military & First Responder Ticket", 45m, "$45", null, "Starting From", DateSpecific: false, ApplicableDate: null));
+        for (var i = 0; i < 3; i++)
+        {
+            await h.RefreshAsync();
+        }
+
+        foreach (var key in new[] { GoldKey, TicketKey })
+        {
+            var record = await h.Catalog.GetAsync(key);
+            Assert.NotNull(record);
+            Assert.Equal(ProductLifecycleState.Active, record!.LifecycleState);
+            Assert.Equal(Day(1), record.FirstSeenAt);
+        }
+
+        Assert.Equal(2, (await h.Catalog.GetByCategoryAsync(SourceCategory.MilitaryFirstResponder)).Count); // no duplicate identities
+
+        // The daily-admission Ticket is deliberately not in Season Price History (PriceHistoryTrackingPolicy);
+        // its earlier official prices stay in the catalog's product history under the same key.
+        Assert.DoesNotContain(h.PriceHistory.All, i => i.ProductKey == TicketKey.ToString());
+        var tickets = await h.ProductHistory.GetHistoryAsync(TicketKey.ToString());
+        Assert.Equal(40m, tickets[0].CurrentPriceAmount);
+        Assert.Equal(Day(1), tickets[0].RecordedAt);
+        Assert.Equal(45m, tickets[^1].CurrentPriceAmount);
+        Assert.Equal(ProductLifecycleState.Active, tickets[^1].LifecycleState);
+
+        var gold = h.PriceHistory.All.Where(i => i.ProductKey == GoldKey.ToString()).OrderBy(i => i.Sequence).ToList();
+        Assert.Equal([89m, 95m], gold.Select(i => i.Amount));
     }
 }

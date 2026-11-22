@@ -166,12 +166,20 @@ public static class PriceHistoryTimelineMerge
                 LastConfirmedAt = group.LastConfirmedAt,
             };
 
+            var overlapsEarlier = index > 0 && groups.Take(index).Any(g => g.State != group.State && g.LastConfirmedAt > group.LastConfirmedAt);
             entries.Add(new PriceHistoryEntry(merged, previous is null ? null : SeasonPriceChange.Between(previous.State, merged.State))
             {
                 Provenance = group.Provenance,
-                OverlapsEarlierPeriod = index > 0 && groups.Take(index).Any(g => g.State != group.State && g.LastConfirmedAt > group.LastConfirmedAt),
+                OverlapsEarlierPeriod = overlapsEarlier,
             });
-            previous = merged;
+
+            // Phase 31B finalization: a concurrent observation (another computer's reading fully inside a
+            // period that kept being confirmed) is never the baseline for the next row's change — the next
+            // period changed from the period it actually followed.
+            if (!overlapsEarlier)
+            {
+                previous = merged;
+            }
         }
 
         return entries;

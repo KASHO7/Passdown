@@ -1662,6 +1662,8 @@
                                     </Expander.Header>
                                     <StackPanel Spacing="4">
                                       <ItemsControl ItemsSource="{Binding ImportantDetails.Lines}" />
+                                      <TextBlock Text="{Binding ImportantDetails.InferredDatesNote}" IsVisible="{Binding ImportantDetails.HasInferredDatesNote}"
+                                                 Classes="muted" FontSize="11" FontStyle="Italic" TextWrapping="Wrap" />
                                       <TextBlock Text="{Binding ImportantDetails.DiscrepanciesText}" IsVisible="{Binding ImportantDetails.HasDiscrepancies}"
                                                  Classes="fieldWarning" FontSize="12" TextWrapping="Wrap" />
                                       <TextBlock Text="{Binding ImportantDetails.FreshnessWarning}" IsVisible="{Binding ImportantDetails.HasFreshnessWarning}"

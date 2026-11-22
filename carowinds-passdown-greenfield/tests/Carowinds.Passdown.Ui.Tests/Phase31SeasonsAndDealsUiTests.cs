@@ -214,7 +214,7 @@ public class Phase31SeasonsAndDealsUiTests
         Assert.Equal("Only $159", b.PriceText);
         Assert.Equal("Regular $287", b.RegularPriceText);
         Assert.Equal("BLACK FRIDAY DEAL", b.Badge);
-        Assert.Contains(b.DateLines, l => l.StartsWith("Page banner: \"Hurry! Black Friday Deal Ends 11/27\" (read as Nov 27, 2026)", StringComparison.Ordinal));
+        Assert.Contains(b.DateLines, l => l.StartsWith("Page banner (inferred end date, not stated in this offer's own terms): \"Hurry! Black Friday Deal Ends 11/27\" — read as Nov 27, 2026, year not stated", StringComparison.Ordinal));
         Assert.Contains(b.TermLines, l => l.Contains("processing fee", StringComparison.Ordinal));
 
         var s = Assert.Single(presentation.Current, d => d.Title == "Black Friday Deal");
@@ -224,7 +224,7 @@ public class Phase31SeasonsAndDealsUiTests
 
         var r = Assert.Single(presentation.Current, d => d.Title == "Resorts Black Friday Deal");
         Assert.Equal("3rd Night FREE", r.PriceText);
-        Assert.Contains(r.DateLines, l => l.StartsWith("Purchase by Nov 30, 2026", StringComparison.Ordinal));
+        Assert.Contains("Purchase by Nov 30, 2026 (\"Book by November 30, 2026.\")", r.DateLines); // confirmed: no inference label
         Assert.Contains(r.DateLines, l => l.StartsWith("Use/visit window: Nov 2, 2026 – Dec 30, 2027", StringComparison.Ordinal));
         Assert.Single(r.WarningLines);
     }

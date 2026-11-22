@@ -154,13 +154,55 @@ public class Phase31BProductTermsTests
     }
 
     [Fact]
-    public void AfterThePurchaseDeadline_NewPurchasesNoLongerQualify_ButEarnedTicketsStayUsable()
+    public void AfterAnInferredPurchaseDeadline_ThePerkIsNotConfirmed_NeverExpiredOnThatEvidenceAlone()
     {
         var assessment = ProductDetailStatusEvaluator.Evaluate(Details(Perk), Perk, new DateOnly(2026, 11, 28), VerifiedAt, VerifiedAt.AddHours(1));
+
+        Assert.Equal(ProductDetailStatus.Stale, assessment.Status);
+        Assert.Contains("not confirmed as ended", assessment.Reason, StringComparison.Ordinal);
+        Assert.Contains("inferred from the page's campaign end date", assessment.Reason, StringComparison.Ordinal);
+        Assert.Contains("January 3, 2027", assessment.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AfterAConfirmedPurchaseDeadline_NewPurchasesNoLongerQualify_ButEarnedTicketsStayUsable()
+    {
+        var confirmed = Perk with
+        {
+            PurchaseDeadline = new OfficialDateStatement(new DateOnly(2026, 11, 27), "Buy by November 27, 2026.", DeadlineSource.OfferTerms),
+        };
+
+        var assessment = ProductDetailStatusEvaluator.Evaluate(Details(confirmed), confirmed, new DateOnly(2026, 11, 28), VerifiedAt, VerifiedAt.AddHours(1));
 
         Assert.Equal(ProductDetailStatus.Expired, assessment.Status);
         Assert.Contains("No longer offered with new purchases", assessment.Reason, StringComparison.Ordinal);
         Assert.Contains("January 3, 2027", assessment.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AfterAnInferredPurchaseDeadline_ALaterCheckThatNoLongerListsTheCard_IsExpired()
+    {
+        var nov28 = new DateTimeOffset(2026, 11, 28, 9, 0, 0, TimeSpan.FromHours(-5));
+
+        var assessment = ProductDetailStatusEvaluator.Evaluate(Details(Perk), Perk, new DateOnly(2026, 11, 28), nov28, nov28.AddHours(1));
+
+        Assert.Equal(ProductDetailStatus.Expired, assessment.Status);
+        Assert.Contains("No longer listed", assessment.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnInferredUseByDate_NeverExpiresTheStatementByItself()
+    {
+        var inferredUse = Perk with
+        {
+            PurchaseDeadline = null,
+            RedemptionDeadline = new OfficialDateStatement(new DateOnly(2027, 1, 3), "Use by 1/3.", DeadlineSource.OfferTerms, YearInferred: true),
+        };
+
+        var assessment = ProductDetailStatusEvaluator.Evaluate(Details(inferredUse), inferredUse, new DateOnly(2027, 1, 4), VerifiedAt, VerifiedAt.AddHours(1));
+
+        Assert.Equal(ProductDetailStatus.Stale, assessment.Status);
+        Assert.Contains("use-by date January 3, 2027 (year not stated; inferred)", assessment.Reason, StringComparison.Ordinal);
     }
 
     [Fact]

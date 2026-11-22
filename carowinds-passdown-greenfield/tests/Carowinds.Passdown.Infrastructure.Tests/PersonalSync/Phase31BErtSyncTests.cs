@@ -195,6 +195,24 @@ public sealed class Phase31BErtSyncTests : IDisposable
     }
 
     [Fact]
+    public async Task SameRidesInADifferentOrder_ButADifferentStartTime_IsStillAConflict_AboutTheStartTimeOnly()
+    {
+        var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));
+        var b = CreateDevice("b", DeviceBId, new FakeClock(BaseNow.AddMinutes(5)));
+        await SaveNovemberAsync(a, "Copperhead Strike", "Mountain Gliders");
+        await b.Ert.SaveMonthlyAsync(new MonthlyErtDraft(2026, 11, ErtConfigurationState.Configured, new TimeOnly(9, 30), ["Mountain Gliders", "Copperhead Strike"], Note: null));
+
+        await a.Sync.RunAsync();
+        var result = await b.Sync.RunAsync();
+
+        Assert.Equal(1, result.ConflictCount);
+        var detail = await b.Resolution.GetErtConflictDetailAsync(SyncEntityType.MonthlyErt, NovemberId);
+        Assert.NotNull(detail);
+        Assert.False(detail!.RidesDiffer); // the ride order alone is not a difference
+        Assert.True(detail.OtherFieldsDiffer);
+    }
+
+    [Fact]
     public async Task EditedMergedRides_BecomeTheResolvedValue_AndSyncToTheOtherComputer()
     {
         var a = CreateDevice("a", DeviceAId, new FakeClock(BaseNow));

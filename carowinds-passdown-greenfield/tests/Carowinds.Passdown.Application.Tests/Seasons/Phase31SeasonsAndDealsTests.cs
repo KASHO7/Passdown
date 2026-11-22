@@ -91,7 +91,7 @@ public class Phase31SeasonsAndDealsTests
         Assert.True(workspace.Season.Resolution.Offers(OperatingEventKind.Oktoberfest));
         Assert.False(workspace.Season.Resolution.Offers(OperatingEventKind.SCarowinds));
         Assert.Equal(OfficialDocumentFreshness.Current, workspace.Season.ScheduleStatus.Freshness);
-        Assert.Equal(0, env.Orchestrator.ManualDateRefreshCalls.Count); // date navigation never goes online
+        Assert.Empty(env.Orchestrator.ManualDateRefreshCalls); // date navigation never goes online
     }
 
     [Fact]

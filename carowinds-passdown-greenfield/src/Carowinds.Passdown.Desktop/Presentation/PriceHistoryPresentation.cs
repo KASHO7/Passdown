@@ -133,7 +133,12 @@ public static class PriceHistoryPresentation
                 IsIncrease: change is { AmountDelta: > 0 },
                 IsDecrease: change is { AmountDelta: < 0 },
                 ProvenanceText: ProvenanceText(entry.Provenance)));
-            previous = entry;
+
+            // Same baseline rule as the merge: a concurrent observation never becomes the "before" of the next row's note.
+            if (!entry.OverlapsEarlierPeriod)
+            {
+                previous = entry;
+            }
         }
 
         return rows;

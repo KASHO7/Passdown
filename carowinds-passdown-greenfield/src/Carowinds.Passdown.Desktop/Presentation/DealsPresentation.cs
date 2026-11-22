@@ -93,12 +93,14 @@ public sealed record DealsPresentation(
 
         if (p.PurchaseDeadline is { } deadline)
         {
-            dates.Add($"Purchase by {Date(deadline.Date)} (\"{deadline.SourceText}\")");
+            dates.Add(deadline.InferenceNote() is { } note
+                ? $"Purchase by {Date(deadline.Date)} ({note}; \"{deadline.SourceText}\")"
+                : $"Purchase by {Date(deadline.Date)} (\"{deadline.SourceText}\")");
         }
 
         if (p.CampaignEnd is { } campaign && (p.PurchaseDeadline is null || campaign.Date != p.PurchaseDeadline.Date))
         {
-            dates.Add($"Page banner: \"{campaign.SourceText}\"{(campaign.YearInferred ? $" (read as {Date(campaign.Date)})" : string.Empty)}");
+            dates.Add($"Page banner (inferred end date, not stated in this offer's own terms): \"{campaign.SourceText}\"{(campaign.YearInferred ? $" — read as {Date(campaign.Date)}, year not stated" : string.Empty)}");
         }
 
         if (p.RedemptionWindow is { } window)

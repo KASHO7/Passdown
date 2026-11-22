@@ -32,9 +32,15 @@ public sealed record ProductImportantDetailsPresentation(
     string ProvenanceText,
     string? FreshnessWarning,
     IReadOnlyList<string> PreviousTermsLines,
-    Uri SourceUrl)
+    Uri SourceUrl,
+    string? InferredDatesNote = null)
 {
     public const string HeaderText = "Important Details & Deadlines";
+
+    /// <summary>Shown under the lines whenever any displayed date is inferred.</summary>
+    public const string InferredDatesNoteText =
+        "Dates marked \"inferred\" are not stated in full as this item's own deadline on the official page. " +
+        "They are shown for reference and are not used on their own to mark anything expired.";
 
     private static readonly CultureInfo Us = CultureInfo.GetCultureInfo("en-US");
 
@@ -45,6 +51,8 @@ public sealed record ProductImportantDetailsPresentation(
     public bool HasFreshnessWarning => FreshnessWarning is not null;
 
     public bool HasPreviousTerms => PreviousTermsLines.Count > 0;
+
+    public bool HasInferredDatesNote => InferredDatesNote is not null;
 
     /// <summary>Discrepancies as one wrapped block (one per line).</summary>
     public string DiscrepanciesText => string.Join(Environment.NewLine, Discrepancies);
@@ -79,7 +87,8 @@ public sealed record ProductImportantDetailsPresentation(
             provenance,
             freshness,
             previous,
-            source.PrimarySourceUrl);
+            source.PrimarySourceUrl,
+            details.Lines.Any(l => HasInferredDate(l.Statement)) ? InferredDatesNoteText : null);
     }
 
     /// <summary>The next open deadline, shown under the header ("Buy by Nov 27, 2026 · Use by Jan 3, 2027"), or null.</summary>
@@ -92,6 +101,9 @@ public sealed record ProductImportantDetailsPresentation(
             .FirstOrDefault();
         return next;
     }
+
+    private static bool HasInferredDate(ProductDetailStatement statement) =>
+        statement.PurchaseDeadline?.IsInferred() == true || statement.RedemptionDeadline?.IsInferred() == true;
 
     public static ProductDetailLinePresentation Line(ProductDetailLine line)
     {
@@ -126,20 +138,22 @@ public sealed record ProductImportantDetailsPresentation(
         _ => "Unverified",
     };
 
-    /// <summary>Purchase and redemption deadlines are always labeled separately; an inferred year says so.</summary>
+    /// <summary>
+    /// Purchase and redemption deadlines are always labeled separately. A confirmed date (stated in full
+    /// in the card's own terms) is shown plain; an inferred one says so and why, in its own words.
+    /// </summary>
     public static string? DeadlineText(ProductDetailStatement statement)
     {
         ArgumentNullException.ThrowIfNull(statement);
         var parts = new List<string>();
         if (statement.PurchaseDeadline is { } buy)
         {
-            var from = buy.Source == DeadlineSource.CampaignBanner ? " (campaign end date)" : string.Empty;
-            parts.Add(string.Create(Us, $"Buy by {buy.Date:MMMM d, yyyy}{from}{(buy.YearInferred ? " — year inferred" : string.Empty)}"));
+            parts.Add(string.Create(Us, $"Buy by {buy.Date:MMMM d, yyyy}{Inference(buy)}"));
         }
 
         if (statement.RedemptionDeadline is { } use)
         {
-            parts.Add(string.Create(Us, $"Use by {use.Date:MMMM d, yyyy}{(use.YearInferred ? " — year inferred" : string.Empty)}"));
+            parts.Add(string.Create(Us, $"Use by {use.Date:MMMM d, yyyy}{Inference(use)}"));
         }
 
         if (statement.ValidityWindow is { } window)
@@ -149,6 +163,9 @@ public sealed record ProductImportantDetailsPresentation(
 
         return parts.Count == 0 ? null : string.Join(" · ", parts);
     }
+
+    private static string Inference(OfficialDateStatement date) =>
+        date.InferenceNote() is { } note ? $" ({note})" : string.Empty;
 
     private static string ChannelPageName(OfficialProductChannel channel) => channel switch
     {
