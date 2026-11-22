@@ -43,6 +43,7 @@ using Carowinds.Passdown.Infrastructure.Files;
 using Carowinds.Passdown.Infrastructure.Logging;
 using Carowinds.Passdown.Infrastructure.PdfOutput;
 using Carowinds.Passdown.Infrastructure.PersonalSync;
+using Carowinds.Passdown.Infrastructure.Accessibility;
 using Carowinds.Passdown.Infrastructure.Preferences;
 using Carowinds.Passdown.Infrastructure.Retrieval.Browser;
 using Carowinds.Passdown.Infrastructure.Retrieval.Http;
@@ -118,6 +119,7 @@ public partial class App : global::Avalonia.Application
             // could create a window — and before migrations, which it does not depend on — so a saved
             // Light or Dark is the first theme ever drawn. One tiny local file read; never throws.
             ApplySavedAppearance(services, logger);
+            ApplySavedInterfaceMotion(services, logger);
 
             // Storage must be ready (spec §17 Phase 1: "establish ... storage
             // migrations before building the production UI") before any
@@ -243,6 +245,26 @@ public partial class App : global::Avalonia.Application
         catch (Exception ex)
         {
             logger.LogWarning("Appearance preference could not be applied ({ExceptionType}); following the system theme.", ex.GetType().Name);
+        }
+    }
+
+    /// <summary>
+    /// Phase 35A: loads the local "Interface animations" choice (On when nothing is saved) and reads the
+    /// operating system's reduced-motion setting before the first window. Never blocks startup: on failure
+    /// the controller keeps its defaults.
+    /// </summary>
+    private static void ApplySavedInterfaceMotion(IServiceProvider services, ILogger logger)
+    {
+        try
+        {
+            var motion = services.GetRequiredService<InterfaceMotionController>();
+            motion.Initialize();
+            logger.LogInformation("Interface animations: {Preference} (OS reduced motion {System}; motion {Effective}).",
+                motion.Preference, motion.SystemReducedMotion, motion.IsMotionEffective ? "shown" : "off");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning("Interface animations preference could not be applied ({ExceptionType}).", ex.GetType().Name);
         }
     }
 
@@ -788,6 +810,12 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<ISystemAppearanceSource>(_ => new AvaloniaSystemAppearanceSource());
         services.AddSingleton<IThemeVariantTarget, ApplicationThemeVariantTarget>();
         services.AddSingleton<AppearanceThemeController>();
+        // Phase 35A: Settings → Appearance → Interface animations — one local file, never synced; the Windows
+        // "Animation effects" setting is read through SystemParametersInfo (Infrastructure, Windows only).
+        services.AddSingleton<IInterfaceAnimationPreferenceStore>(provider => new FileInterfaceAnimationPreferenceStore(
+            FileInterfaceAnimationPreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FileInterfaceAnimationPreferenceStore>>()));
+        services.AddSingleton<ISystemReducedMotionReader, WindowsAnimationEffectsReader>();
+        services.AddSingleton<InterfaceMotionController>();
         services.AddTransient<AppearanceSettingsViewModel>();
         services.AddTransient<PersonalSyncSettingsViewModel>();
         // Phase 26: the one system-browser launcher for allowlisted official source pages.

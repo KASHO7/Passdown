@@ -292,7 +292,8 @@ public class Phase23CAppearancePreferenceTests
         Assert.Equal(["IAppearancePreferenceStore", "ISystemAppearanceSource", "IThemeVariantTarget", "ILogger`1"], parameters);
 
         var viewModelParameters = typeof(AppearanceSettingsViewModel).GetConstructors().Single().GetParameters();
-        Assert.Equal([typeof(AppearanceThemeController)], viewModelParameters.Select(p => p.ParameterType));
+        // Phase 35A adds exactly one more local, device-only dependency: the Interface animations controller.
+        Assert.Equal([typeof(AppearanceThemeController), typeof(InterfaceMotionController)], viewModelParameters.Select(p => p.ParameterType));
     }
 
     [Fact]
