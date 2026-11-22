@@ -450,11 +450,12 @@ public sealed class Phase22DAssociateWorkspaceTests
     }
 
     [Fact]
-    public void Rail_KeepsItsThreeSections_WithTheNotesCount()
+    public void Rail_KeepsItsSections_WithTheNotesCount()
     {
         var markup = Markup();
 
-        Assert.Equal(3, Regex.Matches(markup, "<Button Classes=\"railItem\"").Count);
+        // Phase 31E: Shows joined the rail — Overview, Products, Shows, Notes.
+        Assert.Equal(4, Regex.Matches(markup, "<Button Classes=\"railItem\"").Count);
         Assert.Contains("{Binding HasOperationalNotesCount}", markup);
         Assert.Contains("AutomationProperties.Name=\"Notes section\"", markup);
         Assert.Contains("StringFormat='Operational notes: {0}'", markup);

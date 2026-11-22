@@ -1,12 +1,15 @@
-# Phase 31D — Windows GUI checklist (Associate layout and Passdown default preferences)
+# Phase 31D/31E — Windows GUI checklist (Associate layout and Passdown default preferences)
 
 Phase 31D is a focused refinement of the Associate screen and Settings:
 
-- **Overview:** the Shows panel sits beside **Include in Passdown** when the content area is wide enough
-  (two columns of at least 420 px), and stacks below it otherwise. No new navigation section.
-- **Include in Passdown** now holds the **Shows** checkbox (after Operational Notes). The Shows panel no
-  longer has its own inclusion checkbox; it keeps Select all / Clear and per-show selection, and shows one
-  line saying whether Shows prints.
+- **Shows rail section (Phase 31E):** show selection moved off Overview into its own left-sidebar section.
+  Sidebar order: Overview, Products, Shows, Notes. The Shows page holds the official-schedule label and
+  status, the date's shows with times and locations, per-show checkboxes, and Select all / Clear
+  (panel up to 960 px wide). Overview keeps **Include in Passdown** only. (Phase 31D's side-by-side
+  Overview layout was replaced by this.)
+- **Include in Passdown** now holds the **Shows** checkbox (after Operational Notes). The Shows page has no
+  inclusion checkbox; one line there says whether Shows prints. Unchecking only stops printing; the
+  selected shows are kept and print again when it is re-checked.
 - **Settings ▸ Passdown Preferences:** seven checkboxes choosing which sections start checked for a date
   with no saved draft. Saved on this computer only (`%LOCALAPPDATA%\Carowinds Passdown\passdown-defaults.json`),
   never synced, Personal Sync not required.
@@ -27,25 +30,30 @@ in-app update from a local test build. Frozen RC.10 artifacts are not rebuilt or
 
 Write PASS / FAIL / N/A and a short note for each item. Take a screenshot of each FAIL.
 
-## A. Associate ▸ Overview layout
+## A. Associate layout
 
-1. Maximized at 100 %: **Include in Passdown** (left) and **Shows** (right) share one row, same height.
-2. Narrow the window (about 960 px wide): Shows moves below Include in Passdown with a small gap. No
-   horizontal scroll bar; nothing overlaps or is cut off.
-3. Long show names wrap; show times and locations stay readable.
-4. Repeat 1–2 at 125 % and 150 % display scaling.
-5. Repeat 1–2 in Light and Dark appearance.
+1. The Passdown sidebar reads **Overview, Products, Shows, Notes**; the current section is highlighted and
+   Narrator reads "Shows section".
+2. Overview has no Shows list; Include in Passdown is the last panel.
+3. **Shows** page: label "Official schedule", the check time, each show with times and location, a
+   checkbox per show, **Select all** and **Clear**. Maximized, the panel is at most about 960 px wide and
+   sits at the top-left; at about 960 px window width it fills the page. No horizontal scroll bar; nothing
+   overlaps or is cut off. Long show names wrap.
+4. Switching between Overview, Products, Shows and Notes never shows "Saving" or starts an online check.
+5. Repeat 1–3 at 125 % and 150 % display scaling, in Light and Dark.
 
 ## B. Shows inclusion
 
 1. Include in Passdown lists: Daily Admission, Fast Lane, Promotions, Season Passes, Add-Ons,
    (SCarowinds / Haunt when in season), Operational Notes, **Shows**. There is no checkbox in the Shows
    panel header.
-2. Shows unchecked: the Shows panel says "Shows is not included in the Passdown…" in orange text; you can
-   still select shows, Select all and Clear.
+2. Shows unchecked: the Shows page says "Shows is not included in the Passdown. Turn it on under
+   Overview ▸ Include in Passdown." in orange text; you can still select shows, Select all and Clear.
 3. Select two shows, check Shows, **Create PDF** in Classic and in Modern: both shows print with their times.
-4. Uncheck Shows: the same two shows stay selected on screen, and a new PDF has no Shows section.
-5. The official seasonal-event information is still shown inside Include in Passdown.
+4. Uncheck Shows: the same two shows stay selected on the Shows page, and a new PDF has no Shows section.
+   Re-check Shows: a new PDF prints the same two shows again.
+5. A date saved by an earlier version with shows selected opens with the same shows selected.
+6. The official seasonal-event information is still shown inside Include in Passdown.
 
 ## C. Settings ▸ Passdown Preferences
 

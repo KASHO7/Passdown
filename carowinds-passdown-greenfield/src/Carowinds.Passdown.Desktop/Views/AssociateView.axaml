@@ -728,6 +728,10 @@
           <Button Classes="railItem" Classes.active="{Binding IsProductsSectionSelected}"
                   Content="Products" Command="{Binding ShowProductsSectionCommand}"
                   AutomationProperties.Name="Products section" />
+          <!-- Phase 31E: Shows has its own rail section (show selection moved off Overview). -->
+          <Button Classes="railItem" Classes.active="{Binding IsShowsSectionSelected}"
+                  Content="Shows" Command="{Binding ShowShowsSectionCommand}"
+                  AutomationProperties.Name="Shows section" />
           <!-- Phase 22D: the notes count (moved from the old Overview status strip) rides on the rail. -->
           <Button Classes="railItem" Classes.active="{Binding IsNotesSectionSelected}"
                   Command="{Binding ShowNotesSectionCommand}"
@@ -1094,134 +1098,75 @@
             </StackPanel>
             </Border>
 
-            <!-- Phase 31D: Include in Passdown and Shows side by side when the content area is wide
-                 enough (two columns of at least 420px), stacked otherwise. Reading and Tab order:
-                 Include in Passdown first, then Shows. Both panels share the line height when side by side. -->
-            <controls:ShowColumnsPanel x:Name="PassdownChoicesLayout" MinColumnWidth="420" MaxColumns="2"
-                                       ColumnSpacing="12" RowSpacing="12">
-              <!-- Passdown Builder section selection (Phase 8A; SCarowinds/Haunt added Phase 8B): Day
-                   of week, Date, Park Hours, Attendance, and Early Ride Time above always print, and
-                   Daily Feature prints whenever text is entered (Phase 18F); none has a checkbox
-                   here — only these sections can be independently shown/hidden (Phase 31D added Shows;
-                   a new date starts from Settings → Passdown Preferences). -->
-              <Border x:Name="IncludeInPassdownPanel" Classes="panel" AutomationProperties.Name="Include in Passdown">
-                <StackPanel Spacing="6">
-                  <TextBlock Text="Include in Passdown" Classes="sectionTitle" Margin="0" />
-                  <TextBlock Text="Day, date, park hours, attendance, Early Ride Time, and the Daily Feature always print. Choose which additional sections appear on the PDF."
-                             Classes="muted" TextWrapping="Wrap" />
+            <!-- Passdown Builder section selection (Phase 8A; SCarowinds/Haunt added Phase 8B): Day
+                 of week, Date, Park Hours, Attendance, and Early Ride Time above always print, and
+                 Daily Feature prints whenever text is entered (Phase 18F); none has a checkbox
+                 here — only these sections can be independently shown/hidden (Phase 31D added Shows;
+                 a new date starts from Settings → Passdown Preferences). -->
+            <Border x:Name="IncludeInPassdownPanel" Classes="panel" AutomationProperties.Name="Include in Passdown">
+              <StackPanel Spacing="6">
+                <TextBlock Text="Include in Passdown" Classes="sectionTitle" Margin="0" />
+                <TextBlock Text="Day, date, park hours, attendance, Early Ride Time, and the Daily Feature always print. Choose which additional sections appear on the PDF."
+                           Classes="muted" TextWrapping="Wrap" />
 
-                  <!-- Phase 31: the selected date's official events (from the official Carowinds event
-                       schedule, cached; never fetched on date change), with freshness. -->
-                  <Border Classes="inset" IsVisible="{Binding HasSeasonContext}" Margin="0,4,0,2">
-                    <StackPanel Spacing="3">
-                      <TextBlock Text="{Binding SeasonContext.HeadingText}" FontWeight="SemiBold" TextWrapping="Wrap"
-                                 AutomationProperties.Name="{Binding SeasonContext.HeadingText}" />
-                      <ItemsControl ItemsSource="{Binding SeasonContext.Events}" IsVisible="{Binding SeasonContext.HasEvents}">
-                        <ItemsControl.ItemTemplate>
-                          <DataTemplate x:DataType="presentation:SeasonEventLine">
-                            <TextBlock TextWrapping="Wrap" AutomationProperties.Name="{Binding Name}">
-                              <Run Text="{Binding Name}" FontWeight="SemiBold" />
-                              <Run Text=" — " />
-                              <Run Text="{Binding DateText}" />
-                              <Run Text=" · " />
-                              <Run Text="{Binding StatusText}" />
-                            </TextBlock>
-                          </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                      </ItemsControl>
-                      <TextBlock Text="{Binding SeasonContext.NoEventText}" IsVisible="{Binding SeasonContext.HasNoEventText}"
-                                 Classes="muted" TextWrapping="Wrap" />
-                      <TextBlock Text="{Binding SeasonContext.RecentlyEndedText}" IsVisible="{Binding SeasonContext.HasRecentlyEndedText}"
-                                 Classes="muted" TextWrapping="Wrap" />
-                      <TextBlock Text="{Binding SeasonContext.UpcomingText}" IsVisible="{Binding SeasonContext.HasUpcomingText}"
-                                 Classes="muted" TextWrapping="Wrap" />
-                      <TextBlock Text="{Binding SeasonContext.FreshnessText}" FontSize="12" TextWrapping="Wrap"
-                                 Classes="muted" Classes.fieldWarning="{Binding SeasonContext.IsFreshnessWarning}" />
-                    </StackPanel>
-                  </Border>
+                <!-- Phase 31: the selected date's official events (from the official Carowinds event
+                     schedule, cached; never fetched on date change), with freshness. -->
+                <Border Classes="inset" IsVisible="{Binding HasSeasonContext}" Margin="0,4,0,2">
+                  <StackPanel Spacing="3">
+                    <TextBlock Text="{Binding SeasonContext.HeadingText}" FontWeight="SemiBold" TextWrapping="Wrap"
+                               AutomationProperties.Name="{Binding SeasonContext.HeadingText}" />
+                    <ItemsControl ItemsSource="{Binding SeasonContext.Events}" IsVisible="{Binding SeasonContext.HasEvents}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="presentation:SeasonEventLine">
+                          <TextBlock TextWrapping="Wrap" AutomationProperties.Name="{Binding Name}">
+                            <Run Text="{Binding Name}" FontWeight="SemiBold" />
+                            <Run Text=" — " />
+                            <Run Text="{Binding DateText}" />
+                            <Run Text=" · " />
+                            <Run Text="{Binding StatusText}" />
+                          </TextBlock>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="{Binding SeasonContext.NoEventText}" IsVisible="{Binding SeasonContext.HasNoEventText}"
+                               Classes="muted" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding SeasonContext.RecentlyEndedText}" IsVisible="{Binding SeasonContext.HasRecentlyEndedText}"
+                               Classes="muted" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding SeasonContext.UpcomingText}" IsVisible="{Binding SeasonContext.HasUpcomingText}"
+                               Classes="muted" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding SeasonContext.FreshnessText}" FontSize="12" TextWrapping="Wrap"
+                               Classes="muted" Classes.fieldWarning="{Binding SeasonContext.IsFreshnessWarning}" />
+                  </StackPanel>
+                </Border>
 
-                  <WrapPanel ItemSpacing="20" LineSpacing="0">
-                    <CheckBox Content="Daily Admission" IsChecked="{Binding IncludeDailyAdmission}"
-                              AutomationProperties.Name="Include Daily Admission in the Passdown" />
-                    <CheckBox Content="Fast Lane" IsChecked="{Binding IncludeFastLane}"
-                              AutomationProperties.Name="Include Fast Lane in the Passdown" />
-                    <CheckBox Content="Promotions" IsChecked="{Binding IncludePromotions}"
-                              AutomationProperties.Name="Include Promotions in the Passdown" />
-                    <CheckBox Content="Season Passes" IsChecked="{Binding IncludeSeasonPasses}"
-                              AutomationProperties.Name="Include Season Passes in the Passdown" />
-                    <CheckBox Content="Add-Ons" IsChecked="{Binding IncludeAddOns}"
-                              AutomationProperties.Name="Include Add-Ons in the Passdown" />
-                    <CheckBox Content="SCarowinds / Haunt" IsChecked="{Binding IncludeHauntedAttractions}"
-                              IsVisible="{Binding ShowHauntedOption}"
-                              AutomationProperties.Name="Include SCarowinds / Haunt in the Passdown" />
-                    <CheckBox Content="Operational Notes" IsChecked="{Binding IncludeOperationalNotes}"
-                              AutomationProperties.Name="Include Operational Notes in the Passdown" />
-                    <!-- Phase 31D: the Shows section switch (formerly on the Shows panel header). Which shows
-                         print is chosen in the Shows panel. -->
-                    <CheckBox x:Name="IncludeShowsCheckBox" Content="Shows" IsChecked="{Binding IncludeShows}"
-                              AutomationProperties.Name="Include Shows in the Passdown"
-                              AutomationProperties.HelpText="Prints the shows selected in the Shows panel" />
-                  </WrapPanel>
-                  <!-- Phase 31: why the seasonal option is not offered, or why a saved choice no longer applies. -->
-                  <TextBlock Text="{Binding HauntedSeasonNote}" IsVisible="{Binding HasHauntedSeasonNote}"
-                             Classes="muted" FontSize="12" TextWrapping="Wrap"
-                             AutomationProperties.Name="{Binding HauntedSeasonNote}" />
-                </StackPanel>
-              </Border>
-
-              <!-- Phase 21C: optional Shows section — the selected date's verified official shows, one
-                   checkbox per show (all of a selected show's times print). New shows are never
-                   pre-selected; selected shows the schedule no longer carries stay listed with a reason.
-                   Phase 22D: compact two-line rows (name; times · venue) separated by hairlines.
-                   Phase 31D: the PDF on/off switch moved to Include in Passdown; this panel only picks shows. -->
-              <Border x:Name="ShowsPanel" Classes="panel" AutomationProperties.Name="Shows">
-                <StackPanel Spacing="6">
-                  <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="8">
-                    <TextBlock x:Name="ShowsTitle" Grid.Column="0" Text="Shows" Classes="sectionTitle" Margin="0" VerticalAlignment="Center" />
-                    <Border Grid.Column="1" Classes="sourceTag official"><TextBlock Text="Official schedule" /></Border>
-                    <Button Grid.Column="3" Content="Select all" Classes="linkAction" VerticalAlignment="Center"
-                            Command="{Binding SelectAllShowsCommand}"
-                            AutomationProperties.Name="Select every show on the official schedule" />
-                    <Button Grid.Column="4" Content="Clear" Classes="linkAction" VerticalAlignment="Center"
-                            Command="{Binding ClearShowsCommand}"
-                            AutomationProperties.Name="Clear the show selection" />
-                  </Grid>
-                  <!-- Phase 31D: whether Shows prints is chosen under Include in Passdown; this line keeps
-                       "is the section on the PDF" visibly separate from "which shows are selected". -->
-                  <TextBlock x:Name="ShowsInclusionStatus" Text="{Binding ShowsInclusionText}" TextWrapping="Wrap"
-                             Classes="muted" Classes.fieldWarning="{Binding !IncludeShows}"
-                             AutomationProperties.Name="{Binding ShowsInclusionText}"
-                             AutomationProperties.LiveSetting="Polite" />
-                  <TextBlock Text="{Binding ShowsFreshnessText}" Classes="muted" TextWrapping="Wrap"
-                             IsVisible="{Binding HasShowsFreshnessText}" />
-                  <TextBlock Text="{Binding ShowsStatusText}" Classes="muted" TextWrapping="Wrap"
-                             IsVisible="{Binding HasShowsStatusText}" />
-                  <ItemsControl ItemsSource="{Binding ShowRows}" IsVisible="{Binding HasShowRows}">
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate x:DataType="vm:AssociateShowRowViewModel">
-                        <Border Classes="listRow" Padding="0,6">
-                          <StackPanel Spacing="0">
-                            <CheckBox IsChecked="{Binding IsSelected}" VerticalAlignment="Top"
-                                      AutomationProperties.Name="{Binding AccessibleName}">
-                              <StackPanel Spacing="2">
-                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                <WrapPanel Orientation="Horizontal" ItemSpacing="6">
-                                  <TextBlock Text="{Binding TimesText}" TextWrapping="Wrap" />
-                                  <TextBlock Text="·" Classes="muted" IsVisible="{Binding HasVenue}" />
-                                  <TextBlock Text="{Binding Venue}" Classes="muted" IsVisible="{Binding HasVenue}" />
-                                </WrapPanel>
-                              </StackPanel>
-                            </CheckBox>
-                            <TextBlock Text="{Binding StateNote}" Classes="fieldWarning" TextWrapping="Wrap" Margin="32,0,0,0"
-                                       IsVisible="{Binding HasStateNote}" />
-                          </StackPanel>
-                        </Border>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </StackPanel>
-              </Border>
-            </controls:ShowColumnsPanel>
+                <WrapPanel ItemSpacing="20" LineSpacing="0">
+                  <CheckBox Content="Daily Admission" IsChecked="{Binding IncludeDailyAdmission}"
+                            AutomationProperties.Name="Include Daily Admission in the Passdown" />
+                  <CheckBox Content="Fast Lane" IsChecked="{Binding IncludeFastLane}"
+                            AutomationProperties.Name="Include Fast Lane in the Passdown" />
+                  <CheckBox Content="Promotions" IsChecked="{Binding IncludePromotions}"
+                            AutomationProperties.Name="Include Promotions in the Passdown" />
+                  <CheckBox Content="Season Passes" IsChecked="{Binding IncludeSeasonPasses}"
+                            AutomationProperties.Name="Include Season Passes in the Passdown" />
+                  <CheckBox Content="Add-Ons" IsChecked="{Binding IncludeAddOns}"
+                            AutomationProperties.Name="Include Add-Ons in the Passdown" />
+                  <CheckBox Content="SCarowinds / Haunt" IsChecked="{Binding IncludeHauntedAttractions}"
+                            IsVisible="{Binding ShowHauntedOption}"
+                            AutomationProperties.Name="Include SCarowinds / Haunt in the Passdown" />
+                  <CheckBox Content="Operational Notes" IsChecked="{Binding IncludeOperationalNotes}"
+                            AutomationProperties.Name="Include Operational Notes in the Passdown" />
+                  <!-- Phase 31D: the Shows section switch (formerly on the Shows panel header). Which shows
+                       print is chosen in the Shows panel. -->
+                  <CheckBox x:Name="IncludeShowsCheckBox" Content="Shows" IsChecked="{Binding IncludeShows}"
+                            AutomationProperties.Name="Include Shows in the Passdown"
+                            AutomationProperties.HelpText="Prints the shows selected in the Shows panel" />
+                </WrapPanel>
+                <!-- Phase 31: why the seasonal option is not offered, or why a saved choice no longer applies. -->
+                <TextBlock Text="{Binding HauntedSeasonNote}" IsVisible="{Binding HasHauntedSeasonNote}"
+                           Classes="muted" FontSize="12" TextWrapping="Wrap"
+                           AutomationProperties.Name="{Binding HauntedSeasonNote}" />
+              </StackPanel>
+            </Border>
 
           </StackPanel>
       </ScrollViewer>
@@ -1526,6 +1471,72 @@
             </Border>
 
           </StackPanel>
+      </ScrollViewer>
+
+      <!-- Phase 31E: Shows section — the selected date's official shows and the per-show selection
+           (moved off Overview). Whether Shows prints is the Shows checkbox under Overview ▸ Include in
+           Passdown; this page only chooses which shows print, and says whether the section is on. -->
+      <ScrollViewer x:Name="ShowsSectionScroll" Grid.Column="1" Padding="20,16,20,20"
+                    IsVisible="{Binding IsShowsSectionSelected}">
+          <!-- Fills the page up to 960px wide (readable rows; Select all / Clear stay near the names), left-aligned. -->
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" MaxWidth="960" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <!-- Phase 21C: optional Shows section — the selected date's verified official shows, one
+                 checkbox per show (all of a selected show's times print). New shows are never
+                 pre-selected; selected shows the schedule no longer carries stay listed with a reason.
+                 Phase 22D: compact two-line rows (name; times · venue) separated by hairlines.
+                 Phase 31D: the PDF on/off switch moved to Include in Passdown; this panel only picks shows. -->
+            <Border x:Name="ShowsPanel" Classes="panel" VerticalAlignment="Top" AutomationProperties.Name="Shows">
+              <StackPanel Spacing="6">
+                <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="8">
+                  <TextBlock x:Name="ShowsTitle" Grid.Column="0" Text="Shows" Classes="sectionTitle" Margin="0" VerticalAlignment="Center" />
+                  <Border Grid.Column="1" Classes="sourceTag official"><TextBlock Text="Official schedule" /></Border>
+                  <Button Grid.Column="3" Content="Select all" Classes="linkAction" VerticalAlignment="Center"
+                          Command="{Binding SelectAllShowsCommand}"
+                          AutomationProperties.Name="Select every show on the official schedule" />
+                  <Button Grid.Column="4" Content="Clear" Classes="linkAction" VerticalAlignment="Center"
+                          Command="{Binding ClearShowsCommand}"
+                          AutomationProperties.Name="Clear the show selection" />
+                </Grid>
+                <!-- Phase 31D: whether Shows prints is chosen under Include in Passdown; this line keeps
+                     "is the section on the PDF" visibly separate from "which shows are selected". -->
+                <TextBlock x:Name="ShowsInclusionStatus" Text="{Binding ShowsInclusionText}" TextWrapping="Wrap"
+                           Classes="muted" Classes.fieldWarning="{Binding !IncludeShows}"
+                           AutomationProperties.Name="{Binding ShowsInclusionText}"
+                           AutomationProperties.LiveSetting="Polite" />
+                <TextBlock Text="{Binding ShowsFreshnessText}" Classes="muted" TextWrapping="Wrap"
+                           IsVisible="{Binding HasShowsFreshnessText}" />
+                <TextBlock Text="{Binding ShowsStatusText}" Classes="muted" TextWrapping="Wrap"
+                           IsVisible="{Binding HasShowsStatusText}" />
+                <ItemsControl ItemsSource="{Binding ShowRows}" IsVisible="{Binding HasShowRows}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:AssociateShowRowViewModel">
+                      <Border Classes="listRow" Padding="0,6">
+                        <StackPanel Spacing="0">
+                          <CheckBox IsChecked="{Binding IsSelected}" VerticalAlignment="Top"
+                                    AutomationProperties.Name="{Binding AccessibleName}">
+                            <StackPanel Spacing="2">
+                              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                              <WrapPanel Orientation="Horizontal" ItemSpacing="6">
+                                <TextBlock Text="{Binding TimesText}" TextWrapping="Wrap" />
+                                <TextBlock Text="·" Classes="muted" IsVisible="{Binding HasVenue}" />
+                                <TextBlock Text="{Binding Venue}" Classes="muted" IsVisible="{Binding HasVenue}" />
+                              </WrapPanel>
+                            </StackPanel>
+                          </CheckBox>
+                          <TextBlock Text="{Binding StateNote}" Classes="fieldWarning" TextWrapping="Wrap" Margin="32,0,0,0"
+                                     IsVisible="{Binding HasStateNote}" />
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+          </Grid>
       </ScrollViewer>
 
       <ScrollViewer Grid.Column="1" Padding="20,16,20,20"

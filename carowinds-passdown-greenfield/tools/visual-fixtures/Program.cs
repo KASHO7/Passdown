@@ -90,9 +90,10 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
         Select(f, Fixtures.Other);
     }),
     ("Associate-Overview", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowOverviewSectionCommand.Execute(null); Pump(8); }),
-    // Phase 31D: Include in Passdown beside Shows (stacked when narrow), and the Shows-off note.
+    // Phase 31D/31E: Include in Passdown on Overview; show selection on its own Shows rail page (on and off).
     ("Associate-PassdownChoices", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowOverviewSectionCommand.Execute(null); Pump(8); ScrollToName(f.Window, "Include in Passdown"); }),
-    ("Associate-PassdownChoices-ShowsOff", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowOverviewSectionCommand.Execute(null); Pump(8); f.Vm.Associate.IncludeShows = false; Pump(6); ScrollToName(f.Window, "Shows"); }),
+    ("Associate-ShowsPage", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowShowsSectionCommand.Execute(null); Pump(8); }),
+    ("Associate-ShowsPage-Off", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.IncludeShows = false; f.Vm.Associate.ShowShowsSectionCommand.Execute(null); Pump(8); }),
     ("Associate-Products", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8); }),
     // Phase 25: the Season Passes and Memberships groups (scrolled into view).
     ("Associate-Memberships", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8); ScrollToEnd(f.Window); }),
@@ -108,7 +109,6 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
     ("Associate-Details-NoTerms", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8);
         f.Vm.Associate.ProductSections.SelectMany(s => s.Products).First(r => r.DisplayName.StartsWith("All Season Dining", StringComparison.Ordinal)).ViewDetailsCommand.Execute(null); Pump(10); }),
     ("Associate-Notes", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowNotesSectionCommand.Execute(null); Pump(8); }),
-    ("Associate-Shows", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowNotesSectionCommand.Execute(null); Pump(8); ScrollToName(f.Window, "Shows"); }),
     ("Associate-SaveFailed", () => new Fixture(), f =>
     {
         Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowOverviewSectionCommand.Execute(null); Pump(8);

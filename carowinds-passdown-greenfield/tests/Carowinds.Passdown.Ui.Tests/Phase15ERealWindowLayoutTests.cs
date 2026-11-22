@@ -368,43 +368,44 @@ public class Phase15ERealWindowLayoutTests
     // Associate action bar (regression: AssociateView.axaml's WrapPanel fix)
     // ==================================================================================
 
-    // Phase 31D: Include in Passdown and Shows sit side by side when the content area is wide enough and
-    // stack (Include in Passdown first) when it is not — never overlapping, never clipped.
+    // Phase 31E: show selection is its own rail section. On the Shows page the panel and every show
+    // control fit the window; Overview shows Include in Passdown and no Shows panel.
     [Theory]
-    [InlineData(1920d, 1000d, true)]
-    [InlineData(1280d, 860d, true)]
-    [InlineData(1280d, 690d, true)]
-    [InlineData(960d, 640d, false)]
-    public async Task AssociateView_IncludeInPassdownAndShows_SideBySideWhenWide_StackedWhenNarrow(double width, double height, bool sideBySide)
+    [InlineData(1920d, 1000d)]
+    [InlineData(1280d, 860d)]
+    [InlineData(1280d, 690d)]
+    [InlineData(960d, 640d)]
+    public async Task AssociateView_ShowsPage_FitsTheWindow_AndOverviewHasNoShowsPanel(double width, double height)
     {
         var service = new FakeAssociatePassdownService();
         service.ShowSchedules[FixedDate] = new Carowinds.Passdown.Application.Shows.ShowScheduleView(
             FixedDate, Carowinds.Passdown.Application.Shows.ShowScheduleState.Scheduled,
-            [new Carowinds.Passdown.Application.Retrieval.ScheduledShow("SHOW-1", "A Show With A Deliberately Long Name For Wrapping", "Carowinds Theatre", [new TimeOnly(13), new TimeOnly(16, 30)])],
+            [new Carowinds.Passdown.Application.Retrieval.ScheduledShow("SHOW-1", "A Show With A Deliberately Long Name For Wrapping Across The Column", "Carowinds Theatre", [new TimeOnly(13), new TimeOnly(16, 30)])],
             false, null, null);
         var viewModel = new AssociateViewModel(service, CreateClock());
         await viewModel.PendingLoad;
-
         var window = RealizeInWindow(new AssociateView { DataContext = viewModel }, width, height);
-        var include = AbsoluteBounds(window.GetVisualDescendants().OfType<Control>().Single(c => c.Name == "IncludeInPassdownPanel"), window);
-        var shows = AbsoluteBounds(window.GetVisualDescendants().OfType<Control>().Single(c => c.Name == "ShowsPanel"), window);
 
-        Assert.True(include.Width > 0 && shows.Width > 0);
-        var overlap = include.Intersect(shows);
-        Assert.True(overlap.Width <= 0.5 || overlap.Height <= 0.5, "Include in Passdown overlaps Shows.");
-        if (sideBySide)
+        Control NamedControl(string name) => window.GetVisualDescendants().OfType<Control>().Single(c => c.Name == name);
+        Assert.True(NamedControl("IncludeInPassdownPanel").IsEffectivelyVisible);
+        // A hidden section's content is not even realized; either way no Shows panel is visible on Overview.
+        Assert.DoesNotContain(window.GetVisualDescendants().OfType<Control>(), c => c.Name == "ShowsPanel" && c.IsEffectivelyVisible);
+
+        viewModel.ShowShowsSectionCommand.Execute(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.DoesNotContain(window.GetVisualDescendants().OfType<Control>(), c => c.Name == "IncludeInPassdownPanel" && c.IsEffectivelyVisible);
+        var panel = AbsoluteBounds(NamedControl("ShowsPanel"), window);
+        Assert.True(panel.Width > 0 && panel.Right <= window.ClientSize.Width + 1.0, "Shows panel is clipped on the right.");
+        foreach (var name in new[] { "Select every show on the official schedule", "Clear the show selection" })
         {
-            Assert.Equal(include.Top, shows.Top, 1);
-            Assert.True(shows.Left >= include.Right, "Shows must sit to the right of Include in Passdown.");
-            Assert.Equal(include.Height, shows.Height, 1); // one shared line height
-        }
-        else
-        {
-            Assert.Equal(include.Left, shows.Left, 1);
-            Assert.True(shows.Top >= include.Bottom + 11.5, "Shows must stack below Include in Passdown with a gap.");
+            var button = window.GetVisualDescendants().OfType<Button>().Single(b => AutomationProperties.GetName(b) == name);
+            Assert.True(button.IsEffectivelyVisible, $"'{name}' is not visible on the Shows page.");
+            Assert.True(AbsoluteBounds(button, window).Right <= window.ClientSize.Width + 1.0, $"'{name}' is clipped.");
         }
 
-        Assert.True(shows.Right <= window.ClientSize.Width + 1.0, "Shows panel is clipped on the right.");
+        var showCheckBox = window.GetVisualDescendants().OfType<CheckBox>().Single(c => c.IsEffectivelyVisible && c.DataContext is AssociateShowRowViewModel);
+        Assert.True(AbsoluteBounds(showCheckBox, window).Right <= window.ClientSize.Width + 1.0, "The show row is clipped.");
         AssertNoControlClipsHorizontally(window);
         window.Close();
     }
@@ -1864,7 +1865,8 @@ public class Phase15ERealWindowLayoutTests
             ("Calendar", () => viewModel.SelectedSection = AppSection.OperationsCalendar),
             ("Associate Overview", () => { viewModel.SelectedSection = AppSection.AssociatePassdown; viewModel.Associate.ShowOverviewSectionCommand.Execute(null); }),
             ("Associate Products", () => { viewModel.SelectedSection = AppSection.AssociatePassdown; viewModel.Associate.ShowProductsSectionCommand.Execute(null); }),
-            ("Associate Notes and Shows", () => { viewModel.SelectedSection = AppSection.AssociatePassdown; viewModel.Associate.ShowNotesSectionCommand.Execute(null); }),
+            ("Associate Shows", () => { viewModel.SelectedSection = AppSection.AssociatePassdown; viewModel.Associate.ShowShowsSectionCommand.Execute(null); }),
+            ("Associate Notes", () => { viewModel.SelectedSection = AppSection.AssociatePassdown; viewModel.Associate.ShowNotesSectionCommand.Execute(null); }),
             ("Operational Notes", () => viewModel.SelectedSection = AppSection.OperationalNotes),
             ("History", () => viewModel.SelectedSection = AppSection.History),
             ("Settings", () => viewModel.SelectedSection = AppSection.Settings),

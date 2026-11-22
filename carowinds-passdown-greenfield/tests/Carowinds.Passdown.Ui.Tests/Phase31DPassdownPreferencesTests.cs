@@ -9,9 +9,9 @@ using Carowinds.Passdown.Ui.Tests.TestSupport;
 namespace Carowinds.Passdown.Ui.Tests;
 
 /// <summary>
-/// Phase 31D: Settings → Passdown Preferences, saved section selections in the Associate editor, the Shows
-/// switch moved into Include in Passdown (kept apart from which shows are selected), and the responsive
-/// Include in Passdown / Shows layout. View tests assert markup, never bound values (see the partition notes).
+/// Phase 31D: Settings → Passdown Preferences, saved section selections in the Associate editor, and the Shows
+/// switch moved into Include in Passdown (kept apart from which shows are selected). Phase 31E: show selection
+/// moved to its own Shows rail section. View tests assert markup, never bound values (see the partition notes).
 /// </summary>
 public class Phase31DPassdownPreferencesTests
 {
@@ -139,6 +139,29 @@ public class Phase31DPassdownPreferencesTests
         Assert.False(service.StoredDraft(Today)!.Shows!.IncludeInPassdown);
         Assert.Single(service.StoredDraft(Today)!.Shows!.SelectedShows);
         Assert.Empty(viewModel.Workspace!.Shows.PrintableRows);
+
+        // Re-checking prints exactly the shows that were already selected.
+        viewModel.IncludeShows = true;
+        await SaveAsync(viewModel, scheduler);
+        Assert.Equal(["Splash Parade"], viewModel.Workspace!.Shows.PrintableRows.Select(r => r.Name));
+    }
+
+    [Fact]
+    public async Task SwitchingToTheShowsPage_NeverLoadsOrSaves()
+    {
+        var service = new FakeAssociatePassdownService();
+        var (viewModel, _) = CreateAssociate(service);
+        await viewModel.PendingLoad;
+        var loads = service.LoadCalls.Count;
+
+        viewModel.ShowShowsSectionCommand.Execute(null);
+        viewModel.ShowOverviewSectionCommand.Execute(null);
+        viewModel.ShowShowsSectionCommand.Execute(null);
+
+        Assert.True(viewModel.IsShowsSectionSelected);
+        Assert.Equal(loads, service.LoadCalls.Count);
+        Assert.Empty(service.SaveCalls);
+        Assert.Empty(service.CheckOnlineCalls);
     }
 
     [Fact]
@@ -355,20 +378,37 @@ public class Phase31DPassdownPreferencesTests
     }
 
     [Fact]
-    public void AssociateView_IncludeInPassdownAndShows_ShareOneResponsiveRow_OnOverview()
+    public void AssociateView_Rail_IsOverviewProductsShowsNotes()
     {
         var markup = Markup("AssociateView");
-        var layout = Element(markup, "PassdownChoicesLayout");
+        var rail = Regex.Matches(markup, "<Button Classes=\"railItem\" Classes.active=\"\\{Binding (\\w+)\\}\"").Select(m => m.Groups[1].Value);
 
-        Assert.StartsWith("<controls:ShowColumnsPanel x:Name=\"PassdownChoicesLayout\" MinColumnWidth=\"420\" MaxColumns=\"2\"", layout);
-        Assert.True(layout.IndexOf("x:Name=\"IncludeInPassdownPanel\"", StringComparison.Ordinal) < layout.IndexOf("x:Name=\"ShowsPanel\"", StringComparison.Ordinal));
-        Assert.Contains("SeasonContext.HeadingText", layout); // official seasonal-event information stays in Include in Passdown
+        Assert.Equal(["IsOverviewSectionSelected", "IsProductsSectionSelected", "IsShowsSectionSelected", "IsNotesSectionSelected"], rail);
+        Assert.Contains("Content=\"Shows\" Command=\"{Binding ShowShowsSectionCommand}\"", markup);
+        Assert.Contains("AutomationProperties.Name=\"Shows section\"", markup);
+    }
+
+    /// <summary>Phase 31E: the Shows panel lives on its own Shows page; Overview keeps only Include in Passdown.</summary>
+    [Fact]
+    public void AssociateView_ShowsPanel_IsOnTheShowsPage_NotOverview()
+    {
+        var markup = Markup("AssociateView");
+        var showsPage = Element(markup, "ShowsSectionScroll");
+
+        Assert.Contains("IsVisible=\"{Binding IsShowsSectionSelected}\"", showsPage);
+        Assert.Contains("x:Name=\"ShowsPanel\"", showsPage);
+        Assert.Single(Regex.Matches(markup, "x:Name=\"ShowsPanel\""));
+        Assert.Single(Regex.Matches(markup, Regex.Escape("ItemsSource=\"{Binding ShowRows}\"")));
+        Assert.DoesNotContain("IncludeInPassdownPanel", showsPage);
+        Assert.DoesNotContain("PassdownChoicesLayout", markup);
 
         var overviewStart = markup.IndexOf("IsVisible=\"{Binding IsOverviewSectionSelected}\"", StringComparison.Ordinal);
         var productsStart = markup.IndexOf("IsVisible=\"{Binding IsProductsSectionSelected}\"", StringComparison.Ordinal);
-        var layoutStart = markup.IndexOf("x:Name=\"PassdownChoicesLayout\"", StringComparison.Ordinal);
-        Assert.InRange(layoutStart, overviewStart, productsStart); // no new navigation section
-        Assert.Equal(3, Regex.Matches(markup, "Classes=\"railItem\"").Count);
+        var overview = markup[overviewStart..productsStart];
+        Assert.Contains("x:Name=\"IncludeInPassdownPanel\"", overview);
+        Assert.Contains("SeasonContext.HeadingText", overview); // official seasonal-event information stays put
+        Assert.DoesNotContain("ShowRows", overview);
+        Assert.DoesNotContain("SelectAllShowsCommand", overview);
     }
 
     [Fact]

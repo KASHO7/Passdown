@@ -20,8 +20,8 @@ Date: 2026-11-21
 
 ## Passdown choices
 
-- On the Passdown Overview, **Shows** now sits beside **Include in Passdown** when the window is wide enough, and below it on narrower windows.
-- Whether Shows prints is now a checkbox under **Include in Passdown**, with the other sections. The Shows panel only picks which shows print, and says when Shows is turned off.
+- **Shows** has its own section in the Passdown sidebar (Overview, Products, Shows, Notes), so Overview is less crowded. Pick the shows for the date there; Select all and Clear work as before.
+- Whether Shows prints is now a checkbox under **Overview ▸ Include in Passdown**, with the other sections. Turning it off only stops shows from printing — your selected shows are kept and print again when you turn it back on.
 - New: **Settings ▸ Passdown Preferences** chooses which sections are already checked when you start a new Passdown. **Operational Notes** is now checked by default.
 - A Passdown you have already started always keeps its own choices, including sections you unchecked, after a restart or an update.
 

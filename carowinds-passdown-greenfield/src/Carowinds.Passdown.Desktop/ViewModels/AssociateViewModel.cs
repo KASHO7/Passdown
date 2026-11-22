@@ -36,6 +36,9 @@ public enum AssociateSection
     Overview,
     Products,
     Notes,
+
+    /// <summary>Phase 31E: the selected date's official shows and which of them print (rail order: Overview, Products, Shows, Notes).</summary>
+    Shows,
 }
 
 /// <summary>
@@ -224,7 +227,7 @@ public partial class AssociateViewModel : ViewModelBase
     public partial DateOnly SelectedDate { get; set; }
 
     /// <summary>
-    /// Which of Overview/Products/Notes is currently shown (Phase 10C Part F) — deliberately
+    /// Which of Overview/Products/Shows/Notes is currently shown (Phase 10C Part F) — deliberately
     /// independent of <see cref="SelectedDate"/>: switching this never loads, saves, or otherwise
     /// touches draft data, exactly like the view-layer <c>ToggleButton</c> state it replaces.
     /// </summary>
@@ -232,6 +235,7 @@ public partial class AssociateViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsOverviewSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsProductsSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsNotesSectionSelected))]
+    [NotifyPropertyChangedFor(nameof(IsShowsSectionSelected))]
     public partial AssociateSection SelectedSection { get; set; } = AssociateSection.Overview;
 
     public bool IsOverviewSectionSelected => SelectedSection == AssociateSection.Overview;
@@ -239,6 +243,8 @@ public partial class AssociateViewModel : ViewModelBase
     public bool IsProductsSectionSelected => SelectedSection == AssociateSection.Products;
 
     public bool IsNotesSectionSelected => SelectedSection == AssociateSection.Notes;
+
+    public bool IsShowsSectionSelected => SelectedSection == AssociateSection.Shows;
 
     [RelayCommand]
     private void ShowOverviewSection() => SelectedSection = AssociateSection.Overview;
@@ -248,6 +254,9 @@ public partial class AssociateViewModel : ViewModelBase
 
     [RelayCommand]
     private void ShowNotesSection() => SelectedSection = AssociateSection.Notes;
+
+    [RelayCommand]
+    private void ShowShowsSection() => SelectedSection = AssociateSection.Shows;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBusy))]
@@ -551,9 +560,9 @@ public partial class AssociateViewModel : ViewModelBase
     public partial bool IncludeShows { get; set; }
 
     public const string ShowsIncludedText = "Selected shows print on the Passdown.";
-    public const string ShowsNotIncludedText = "Shows is not included in the Passdown. Turn it on under Include in Passdown.";
+    public const string ShowsNotIncludedText = "Shows is not included in the Passdown. Turn it on under Overview ▸ Include in Passdown.";
 
-    /// <summary>Phase 31D: on the Shows panel — whether the section prints, kept apart from which shows are selected.</summary>
+    /// <summary>Phase 31D: on the Shows page (Phase 31E) — whether the section prints, kept apart from which shows are selected.</summary>
     public string ShowsInclusionText => IncludeShows ? ShowsIncludedText : ShowsNotIncludedText;
 
     /// <summary>Phase 21C: the selected date's official shows (plus any selected show no longer on the schedule, explained).</summary>

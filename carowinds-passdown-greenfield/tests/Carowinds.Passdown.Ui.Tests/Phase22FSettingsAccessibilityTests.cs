@@ -211,7 +211,7 @@ public class Phase22FSettingsAccessibilityTests
         var style = markup[markup.IndexOf("<Style Selector=\"Button.railItem.active\">", StringComparison.Ordinal)..];
         style = style[..style.IndexOf("</Style>", StringComparison.Ordinal)];
         Assert.Contains("<Setter Property=\"AutomationProperties.ItemStatus\" Value=\"Current section\" />", style);
-        foreach (var flag in new[] { "IsOverviewSectionSelected", "IsProductsSectionSelected", "IsNotesSectionSelected" })
+        foreach (var flag in new[] { "IsOverviewSectionSelected", "IsProductsSectionSelected", "IsShowsSectionSelected", "IsNotesSectionSelected" })
         {
             Assert.Contains($"Classes=\"railItem\" Classes.active=\"{{Binding {flag}}}\"", markup);
         }
