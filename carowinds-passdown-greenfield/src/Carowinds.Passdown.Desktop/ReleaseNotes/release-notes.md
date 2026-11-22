@@ -18,6 +18,13 @@ Date: 2026-11-21
 - A product sold only through a verified channel (such as ID.me) is shown as "Availability unconfirmed" instead of "Retired".
 - Season Price History combines matching checks from all your computers into one row. A brief reading from another computer no longer changes how the next price change is shown.
 
+## Passdown choices
+
+- On the Passdown Overview, **Shows** now sits beside **Include in Passdown** when the window is wide enough, and below it on narrower windows.
+- Whether Shows prints is now a checkbox under **Include in Passdown**, with the other sections. The Shows panel only picks which shows print, and says when Shows is turned off.
+- New: **Settings ▸ Passdown Preferences** chooses which sections are already checked when you start a new Passdown. **Operational Notes** is now checked by default.
+- A Passdown you have already started always keeps its own choices, including sections you unchecked, after a restart or an update.
+
 ## Early Ride Time sync
 
 - The same rides listed in a different order on two computers are no longer a conflict.

@@ -43,13 +43,16 @@ public sealed record PassdownSectionSelection(
     public static PassdownSectionSelection AllIncluded { get; } = new(true, true, true, true, true, true, true);
 
     /// <summary>
-    /// The default for a brand-new draft (Phase 17D §6's "normal intent"): Daily Admission, Fast Lane,
-    /// and Promotions checked — the sections normally relevant to a typical shift; Season Passes,
-    /// Add-Ons, SCarowinds/Haunt, and Operational Notes unchecked, since those are seasonal/occasional
-    /// rather than everyday content. Add-Ons remain fully available for price/history/reference
+    /// The built-in default for a brand-new draft (Phase 17D §6's "normal intent"): Daily Admission, Fast
+    /// Lane, and Promotions checked — the sections normally relevant to a typical shift; Season Passes,
+    /// Add-Ons, and SCarowinds/Haunt unchecked, since those are seasonal/occasional rather than everyday
+    /// content. Phase 31D: Operational Notes is now checked by default (it used to start unchecked, which is
+    /// why it appeared "deselected" on every unsaved date after a restart or update). A computer's Settings →
+    /// Passdown Preferences can change these for new drafts (<see cref="Preferences.PassdownDefaultSelections"/>);
+    /// a saved draft never uses this value. Add-Ons remain fully available for price/history/reference
     /// elsewhere in the app (Products screen) regardless of this PDF-inclusion default.
     /// </summary>
-    public static PassdownSectionSelection Default { get; } = new(true, true, true, false, false, false, false);
+    public static PassdownSectionSelection Default { get; } = new(true, true, true, false, false, true, false);
 }
 
 /// <summary>Manual correction to the official park hours (spec §8.1/§8.2) — distinct from a private-buyout override, see <see cref="PrivateBuyoutOverride"/>.</summary>
@@ -173,4 +176,19 @@ public sealed record AssociateDraftPayload(
         CustomProducts: [],
         SectionSelection: PassdownSectionSelection.Default,
         SelectedOperationalNotes: []);
+
+    /// <summary>
+    /// Phase 31D: the draft a date with no saved draft starts with, using this computer's Settings →
+    /// Passdown Preferences. Only ever used when no draft exists — a saved draft (any version) always
+    /// keeps its own saved selections, including explicitly unchecked ones.
+    /// </summary>
+    public static AssociateDraftPayload CreateDefault(Preferences.PassdownDefaultSelections defaults)
+    {
+        ArgumentNullException.ThrowIfNull(defaults);
+        return CreateDefault() with
+        {
+            SectionSelection = defaults.ToSectionSelection(),
+            Shows = defaults.ToShowsSelection(),
+        };
+    }
 }

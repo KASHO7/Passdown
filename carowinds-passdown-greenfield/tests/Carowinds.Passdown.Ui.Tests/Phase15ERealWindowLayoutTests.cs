@@ -368,6 +368,47 @@ public class Phase15ERealWindowLayoutTests
     // Associate action bar (regression: AssociateView.axaml's WrapPanel fix)
     // ==================================================================================
 
+    // Phase 31D: Include in Passdown and Shows sit side by side when the content area is wide enough and
+    // stack (Include in Passdown first) when it is not — never overlapping, never clipped.
+    [Theory]
+    [InlineData(1920d, 1000d, true)]
+    [InlineData(1280d, 860d, true)]
+    [InlineData(1280d, 690d, true)]
+    [InlineData(960d, 640d, false)]
+    public async Task AssociateView_IncludeInPassdownAndShows_SideBySideWhenWide_StackedWhenNarrow(double width, double height, bool sideBySide)
+    {
+        var service = new FakeAssociatePassdownService();
+        service.ShowSchedules[FixedDate] = new Carowinds.Passdown.Application.Shows.ShowScheduleView(
+            FixedDate, Carowinds.Passdown.Application.Shows.ShowScheduleState.Scheduled,
+            [new Carowinds.Passdown.Application.Retrieval.ScheduledShow("SHOW-1", "A Show With A Deliberately Long Name For Wrapping", "Carowinds Theatre", [new TimeOnly(13), new TimeOnly(16, 30)])],
+            false, null, null);
+        var viewModel = new AssociateViewModel(service, CreateClock());
+        await viewModel.PendingLoad;
+
+        var window = RealizeInWindow(new AssociateView { DataContext = viewModel }, width, height);
+        var include = AbsoluteBounds(window.GetVisualDescendants().OfType<Control>().Single(c => c.Name == "IncludeInPassdownPanel"), window);
+        var shows = AbsoluteBounds(window.GetVisualDescendants().OfType<Control>().Single(c => c.Name == "ShowsPanel"), window);
+
+        Assert.True(include.Width > 0 && shows.Width > 0);
+        var overlap = include.Intersect(shows);
+        Assert.True(overlap.Width <= 0.5 || overlap.Height <= 0.5, "Include in Passdown overlaps Shows.");
+        if (sideBySide)
+        {
+            Assert.Equal(include.Top, shows.Top, 1);
+            Assert.True(shows.Left >= include.Right, "Shows must sit to the right of Include in Passdown.");
+            Assert.Equal(include.Height, shows.Height, 1); // one shared line height
+        }
+        else
+        {
+            Assert.Equal(include.Left, shows.Left, 1);
+            Assert.True(shows.Top >= include.Bottom + 11.5, "Shows must stack below Include in Passdown with a gap.");
+        }
+
+        Assert.True(shows.Right <= window.ClientSize.Width + 1.0, "Shows panel is clipped on the right.");
+        AssertNoControlClipsHorizontally(window);
+        window.Close();
+    }
+
     [Theory]
     [InlineData(1280d, 860d)]
     [InlineData(960d, 640d)]
@@ -1790,8 +1831,9 @@ public class Phase15ERealWindowLayoutTests
         viewModel.SelectedSection = AppSection.Settings;
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        // Shift+Tab back from the next control on the page (Enable Personal Sync).
-        window.GetVisualDescendants().OfType<CheckBox>().Single(c => AutomationProperties.GetName(c) == "Enable Personal Sync").Focus();
+        // Shift+Tab back from the next control on the page (Phase 31D: the first Passdown Preferences
+        // checkbox, which now sits between Appearance and Personal Sync).
+        window.GetVisualDescendants().OfType<CheckBox>().Single(c => AutomationProperties.GetName(c) == "Select Daily Admission automatically for a new Passdown").Focus();
         window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.Shift);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 

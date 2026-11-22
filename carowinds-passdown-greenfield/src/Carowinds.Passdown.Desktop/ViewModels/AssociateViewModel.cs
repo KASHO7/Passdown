@@ -541,9 +541,20 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IncludeOperationalNotes { get; set; } = true;
 
-    /// <summary>Phase 21C: the optional Shows section switch (off by default; old drafts load off).</summary>
+    /// <summary>
+    /// Phase 21C: the optional Shows section switch (old drafts without a Shows value load off). Phase 31D:
+    /// shown under Include in Passdown; a new date starts from Settings → Passdown Preferences. Independent of
+    /// which shows are selected (<see cref="ShowRows"/>): turning it off keeps the selection.
+    /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsInclusionText))]
     public partial bool IncludeShows { get; set; }
+
+    public const string ShowsIncludedText = "Selected shows print on the Passdown.";
+    public const string ShowsNotIncludedText = "Shows is not included in the Passdown. Turn it on under Include in Passdown.";
+
+    /// <summary>Phase 31D: on the Shows panel — whether the section prints, kept apart from which shows are selected.</summary>
+    public string ShowsInclusionText => IncludeShows ? ShowsIncludedText : ShowsNotIncludedText;
 
     /// <summary>Phase 21C: the selected date's official shows (plus any selected show no longer on the schedule, explained).</summary>
     [ObservableProperty]
@@ -697,6 +708,50 @@ public partial class AssociateViewModel : ViewModelBase
 
     /// <summary>The in-flight (or most recent) reload triggered by newer official data, so a test can await it.</summary>
     public Task PendingOfficialDataReload => _pendingOfficialDataReload;
+
+    /// <summary>The in-flight (or most recent) reload after Settings → Passdown Preferences changed, so a test can await it.</summary>
+    public Task PendingDefaultsRefresh { get; private set; } = Task.CompletedTask;
+
+    /// <summary>
+    /// Phase 31D: Settings → Passdown Preferences changed. Only an open date with no saved draft and no
+    /// unsaved edits is re-composed (so it shows the new defaults); a saved date is never touched, so its own
+    /// saved selections — including explicitly unchecked ones — always win. Never an online check.
+    /// </summary>
+    public void RequestNewPassdownDefaultsRefresh() =>
+        _uiDispatcher.Post(() => PendingDefaultsRefresh = RefreshNewPassdownDefaultsAsync());
+
+    internal async Task RefreshNewPassdownDefaultsAsync()
+    {
+        try
+        {
+            var date = SelectedDate;
+            if (!IsShowingUnsavedDefaultDraft(date))
+            {
+                return;
+            }
+
+            var workspace = await _service.LoadAssociateDateAsync(date).ConfigureAwait(true);
+            if (!IsShowingUnsavedDefaultDraft(date) || workspace.SaveStatus.State != AssociateSaveState.NeverSaved)
+            {
+                return; // something changed while loading (an edit, a save, a date switch): leave it alone.
+            }
+
+            var ertPanelWasOpen = IsErtEditorOpen;
+            ApplyWorkspaceToFields(workspace);
+            IsErtEditorOpen = ertPanelWasOpen;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogWarning(ex, "Failed to show the new Passdown defaults for the selected date; the previous selections are still shown.");
+        }
+    }
+
+    private bool IsShowingUnsavedDefaultDraft(DateOnly date) =>
+        Workspace is { } current
+        && current.OperatingDate == date
+        && _draftDateInEdit == date
+        && current.SaveStatus.State == AssociateSaveState.NeverSaved
+        && !_isDirty && !_saveInFlight && !IsCheckingOnline && !IsErtEditorDirty();
 
     /// <summary>
     /// Phase 19A: after a date's local data is shown, quietly check it online when it is today or a

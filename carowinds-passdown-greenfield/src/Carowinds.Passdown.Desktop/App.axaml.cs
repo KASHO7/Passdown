@@ -569,6 +569,13 @@ public partial class App : global::Avalonia.Application
         // scheduled finalization freezes whatever template was selected at that moment).
         services.AddSingleton<IAssociatePassdownTemplatePreferenceStore>(_ => new FileAssociatePassdownTemplatePreferenceStore(FileAssociatePassdownTemplatePreferenceStore.DefaultPath));
 
+        // Phase 31D: Settings → Passdown Preferences — which sections start checked for a date with no
+        // saved draft. One flat local JSON file beside the template preference, never synced, no table.
+        // AssociatePassdownService reads it only when composing a date that has no saved draft.
+        services.AddSingleton<IPassdownDefaultsPreferenceStore>(provider => new FilePassdownDefaultsPreferenceStore(
+            FilePassdownDefaultsPreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FilePassdownDefaultsPreferenceStore>>()));
+        services.AddTransient<PassdownPreferencesSettingsViewModel>();
+
         // Phase 9A: the immutable finalized-passdown foundation.
         services.AddSingleton<IFinalizedPassdownRepository, SqliteFinalizedPassdownRepository>();
         services.AddSingleton<IFinalizedPassdownSnapshotBuilder, FinalizedPassdownSnapshotBuilder>();

@@ -99,6 +99,40 @@
           </StackPanel>
         </Border>
 
+        <!-- Phase 31D: Passdown Preferences — which Include in Passdown sections start checked for a date
+             with no saved draft. Each checkbox saves at once on this computer (no Apply button, no Personal
+             Sync). A date that already has a saved draft always keeps its own saved selections. -->
+        <TextBlock Text="Passdown Preferences" Classes="sectionTitle" Margin="0,12,0,0" />
+        <Border x:Name="PassdownPreferencesSection" Classes="panel" AutomationProperties.Name="Passdown Preferences">
+          <StackPanel Spacing="8">
+            <TextBlock x:Name="PassdownPreferencesIntro" Classes="muted" TextWrapping="Wrap"
+                       Text="Choose which sections are selected automatically when starting a new Passdown." />
+            <WrapPanel x:Name="PassdownPreferencesOptions" ItemSpacing="20" LineSpacing="0"
+                       AutomationProperties.Name="Sections selected automatically for a new Passdown">
+              <CheckBox Content="Daily Admission" IsChecked="{Binding PassdownPreferences.DailyAdmission}"
+                        AutomationProperties.Name="Select Daily Admission automatically for a new Passdown" />
+              <CheckBox Content="Fast Lane" IsChecked="{Binding PassdownPreferences.FastLane}"
+                        AutomationProperties.Name="Select Fast Lane automatically for a new Passdown" />
+              <CheckBox Content="Promotions" IsChecked="{Binding PassdownPreferences.Promotions}"
+                        AutomationProperties.Name="Select Promotions automatically for a new Passdown" />
+              <CheckBox Content="Season Passes" IsChecked="{Binding PassdownPreferences.SeasonPasses}"
+                        AutomationProperties.Name="Select Season Passes automatically for a new Passdown" />
+              <CheckBox Content="Add-Ons" IsChecked="{Binding PassdownPreferences.AddOns}"
+                        AutomationProperties.Name="Select Add-Ons automatically for a new Passdown" />
+              <CheckBox Content="Operational Notes" IsChecked="{Binding PassdownPreferences.OperationalNotes}"
+                        AutomationProperties.Name="Select Operational Notes automatically for a new Passdown" />
+              <CheckBox Content="Shows" IsChecked="{Binding PassdownPreferences.Shows}"
+                        AutomationProperties.Name="Select Shows automatically for a new Passdown" />
+            </WrapPanel>
+            <TextBlock Classes="muted" TextWrapping="Wrap" FontSize="12"
+                       Text="Saved on this computer only. Passdowns you have already started keep their own choices." />
+            <TextBlock Classes="statusError" TextWrapping="Wrap"
+                       Text="{Binding PassdownPreferences.SaveMessage}"
+                       IsVisible="{Binding PassdownPreferences.SaveMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       AutomationProperties.LiveSetting="Polite" />
+          </StackPanel>
+        </Border>
+
         <!-- 2. Data Refresh (information only — the schedule is automatic and the 6 AM task is set up
              outside this screen, so nothing here implies it can be changed). -->
         <TextBlock Text="Data Refresh" Classes="sectionTitle" Margin="0,12,0,0" />

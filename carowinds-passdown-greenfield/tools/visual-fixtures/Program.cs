@@ -90,6 +90,9 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
         Select(f, Fixtures.Other);
     }),
     ("Associate-Overview", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowOverviewSectionCommand.Execute(null); Pump(8); }),
+    // Phase 31D: Include in Passdown beside Shows (stacked when narrow), and the Shows-off note.
+    ("Associate-PassdownChoices", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowOverviewSectionCommand.Execute(null); Pump(8); ScrollToName(f.Window, "Include in Passdown"); }),
+    ("Associate-PassdownChoices-ShowsOff", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowOverviewSectionCommand.Execute(null); Pump(8); f.Vm.Associate.IncludeShows = false; Pump(6); ScrollToName(f.Window, "Shows"); }),
     ("Associate-Products", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8); }),
     // Phase 25: the Season Passes and Memberships groups (scrolled into view).
     ("Associate-Memberships", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8); ScrollToEnd(f.Window); }),

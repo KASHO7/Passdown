@@ -39,6 +39,9 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
     /// <summary>Phase 23C: Settings → Appearance (System / Light / Dark, local to this computer).</summary>
     public AppearanceSettingsViewModel Appearance { get; }
 
+    /// <summary>Phase 31D: Settings → Passdown Preferences (default Include in Passdown sections, local to this computer).</summary>
+    public PassdownPreferencesSettingsViewModel PassdownPreferences { get; }
+
     /// <summary>Phase 23D: Settings → Application Updates, and About this build → What's New.</summary>
     public ApplicationUpdatesViewModel Updates { get; }
 
@@ -130,7 +133,8 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         BuildIdentity? buildIdentity = null,
         DiagnosticsExportViewModel? diagnostics = null,
         AppearanceSettingsViewModel? appearance = null,
-        ApplicationUpdatesViewModel? updates = null)
+        ApplicationUpdatesViewModel? updates = null,
+        PassdownPreferencesSettingsViewModel? passdownPreferences = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(folderPicker);
@@ -145,6 +149,7 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         Build = buildIdentity ?? BuildIdentity.Current();
         Diagnostics = diagnostics ?? new DiagnosticsExportViewModel();
         Appearance = appearance ?? new AppearanceSettingsViewModel();
+        PassdownPreferences = passdownPreferences ?? new PassdownPreferencesSettingsViewModel();
         Updates = updates ?? new ApplicationUpdatesViewModel(installedVersion: Build.Version);
 
         AutomationStatus = coordinator.CurrentStatus;

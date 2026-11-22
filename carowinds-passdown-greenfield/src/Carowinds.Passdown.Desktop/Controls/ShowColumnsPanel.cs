@@ -21,9 +21,19 @@ public sealed class ShowColumnsPanel : Panel
     public static readonly StyledProperty<double> ColumnSpacingProperty =
         AvaloniaProperty.Register<ShowColumnsPanel, double>(nameof(ColumnSpacing), 24);
 
+    /// <summary>Phase 31D: vertical gap between lines (0 by default, so the Dashboard's show grid is unchanged).</summary>
+    public static readonly StyledProperty<double> RowSpacingProperty =
+        AvaloniaProperty.Register<ShowColumnsPanel, double>(nameof(RowSpacing), 0);
+
     static ShowColumnsPanel()
     {
-        AffectsMeasure<ShowColumnsPanel>(MinColumnWidthProperty, MaxColumnsProperty, ColumnSpacingProperty);
+        AffectsMeasure<ShowColumnsPanel>(MinColumnWidthProperty, MaxColumnsProperty, ColumnSpacingProperty, RowSpacingProperty);
+    }
+
+    public double RowSpacing
+    {
+        get => GetValue(RowSpacingProperty);
+        set => SetValue(RowSpacingProperty, value);
     }
 
     public double MinColumnWidth
@@ -69,6 +79,11 @@ public sealed class ShowColumnsPanel : Panel
 
         for (var start = 0; start < visible.Count; start += columns)
         {
+            if (start > 0)
+            {
+                height += RowSpacing;
+            }
+
             double lineHeight = 0;
             foreach (var child in visible.Skip(start).Take(columns))
             {
@@ -100,7 +115,7 @@ public sealed class ShowColumnsPanel : Panel
                 line[i].Arrange(new Rect(i * (columnWidth + ColumnSpacing), top, columnWidth, lineHeight));
             }
 
-            top += lineHeight;
+            top += lineHeight + RowSpacing;
         }
 
         return finalSize;

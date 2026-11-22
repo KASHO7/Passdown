@@ -7,6 +7,7 @@ using Carowinds.Passdown.Application.Freshness;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.PersonalSync;
+using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Seasons;
@@ -53,7 +54,8 @@ public sealed class AssociatePassdownService(
     IDataChangeNotifier? dataChangeNotifier = null,
     ISeasonPriceHistoryRepository? seasonPriceHistoryRepository = null,
     ILogger<AssociatePassdownService>? logger = null,
-    IOperatingSeasonService? seasonService = null) : IAssociatePassdownService
+    IOperatingSeasonService? seasonService = null,
+    IPassdownDefaultsPreferenceStore? passdownDefaultsStore = null) : IAssociatePassdownService
 {
     private readonly ILogger _logger = logger ?? (ILogger)NullLogger.Instance;
 
@@ -373,14 +375,38 @@ public sealed class AssociatePassdownService(
     {
         var draftRecord = await draftRepository.GetAsync(operatingDate, cancellationToken).ConfigureAwait(false);
         return draftRecord is null
-            ? (AssociateDraftPayload.CreateDefault(), null)
+            ? (await CreateNewDraftAsync(cancellationToken).ConfigureAwait(false), null)
             : (AssociateDraftPayloadSerializer.Deserialize(draftRecord.PayloadJson), ComputeStoredDraftHash(draftRecord.PayloadJson));
+    }
+
+    /// <summary>
+    /// Phase 31D: the starting draft for a date with no saved draft — from this computer's Settings →
+    /// Passdown Preferences when available, otherwise the built-in defaults. Never used for a date that
+    /// already has a saved draft, so changing a default never rewrites earlier saved selections.
+    /// </summary>
+    private async Task<AssociateDraftPayload> CreateNewDraftAsync(CancellationToken cancellationToken)
+    {
+        if (passdownDefaultsStore is null)
+        {
+            return AssociateDraftPayload.CreateDefault(PassdownDefaultSelections.BuiltIn);
+        }
+
+        try
+        {
+            var defaults = await passdownDefaultsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+            return AssociateDraftPayload.CreateDefault(defaults);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning("Passdown default selections could not be read ({ExceptionType}); using built-in defaults.", ex.GetType().Name);
+            return AssociateDraftPayload.CreateDefault(PassdownDefaultSelections.BuiltIn);
+        }
     }
 
     private async Task<AssociateWorkspace> ComposeAsync(DateOnly operatingDate, CancellationToken cancellationToken, bool applyHistoricalPricingRule = true)
     {
         var draftRecord = await draftRepository.GetAsync(operatingDate, cancellationToken).ConfigureAwait(false);
-        var draft = draftRecord is null ? AssociateDraftPayload.CreateDefault() : AssociateDraftPayloadSerializer.Deserialize(draftRecord.PayloadJson);
+        var draft = draftRecord is null ? await CreateNewDraftAsync(cancellationToken).ConfigureAwait(false) : AssociateDraftPayloadSerializer.Deserialize(draftRecord.PayloadJson);
         var saveStatus = draftRecord is null ? AssociateSaveStatus.NeverSaved : new AssociateSaveStatus(AssociateSaveState.Saved, draftRecord.UpdatedAt);
 
         var asOf = clock.UtcNow;

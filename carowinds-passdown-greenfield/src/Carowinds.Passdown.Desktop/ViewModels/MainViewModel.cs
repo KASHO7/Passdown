@@ -60,6 +60,10 @@ public partial class MainViewModel : ViewModelBase
         PriceHistory = priceHistory;
         WhatsNew = whatsNew ?? settings.Updates.WhatsNew;
 
+        // Phase 31D: changed Passdown defaults show at once on an open date that has never been saved;
+        // a saved date always keeps its own saved selections.
+        Settings.PassdownPreferences.DefaultsSaved += (_, _) => Associate.RequestNewPassdownDefaultsRefresh();
+
         // Phase 23D: the What's New overlay and the subtle Settings-gear update indicator.
         WhatsNew.PropertyChanged += (_, e) =>
         {
