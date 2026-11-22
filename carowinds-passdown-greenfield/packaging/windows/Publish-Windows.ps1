@@ -41,7 +41,11 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$OutputDirectory
+    [string]$OutputDirectory,
+
+    # Phase 32: optional displayed-version stamp for LOCAL-ONLY test builds (Build-PortableRelease.ps1
+    # -LocalTestVersion). Empty for a release, which keeps Directory.Build.props' <Version> unchanged.
+    [string]$InformationalVersion
 )
 
 $ErrorActionPreference = 'Stop'
@@ -71,12 +75,19 @@ Write-Host "Publishing Carowinds Operations (Release, win-x64, self-contained)..
 Write-Host "  Project: $desktopProject"
 Write-Host "  Output:  $OutputDirectory"
 
+$versionArguments = @()
+if (-not [string]::IsNullOrWhiteSpace($InformationalVersion)) {
+    $versionArguments = @("-p:InformationalVersion=$InformationalVersion")
+    Write-Host "  Displayed version (local test): $InformationalVersion"
+}
+
 & dotnet publish $desktopProject `
     -c Release `
     -r win-x64 `
     --self-contained true `
     -o $OutputDirectory `
-    -p:PlaywrightPlatform=win-x64
+    -p:PlaywrightPlatform=win-x64 `
+    @versionArguments
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "dotnet publish failed with exit code $LASTEXITCODE."
@@ -98,7 +109,8 @@ Write-Host "Publishing the external updater (Release, win-x64, self-contained)..
     -c Release `
     -r win-x64 `
     --self-contained true `
-    -o $updaterOutput
+    -o $updaterOutput `
+    @versionArguments
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "dotnet publish of the updater failed with exit code $LASTEXITCODE."
