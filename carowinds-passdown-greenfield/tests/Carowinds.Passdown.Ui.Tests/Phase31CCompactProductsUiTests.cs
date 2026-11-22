@@ -561,8 +561,9 @@ public class Phase31CCompactProductsUiTests
 
         Assert.DoesNotContain("Terms and details", view, StringComparison.Ordinal);
         Assert.DoesNotContain("Important details and deadlines for {0}", view, StringComparison.Ordinal);
-        Assert.Equal(2, CountOf(view, "Content=\"View details\""));
-        Assert.Equal(2, CountOf(view, "AutomationProperties.Name=\"{Binding ViewDetailsAutomationName}\""));
+        // Deal rows, product rows and (Phase 32) Pass Perk rows each have one small View details link.
+        Assert.Equal(3, CountOf(view, "Content=\"View details\""));
+        Assert.Equal(3, CountOf(view, "AutomationProperties.Name=\"{Binding ViewDetailsAutomationName}\""));
         Assert.Contains("<Style Selector=\"Button.compactLink\">", view, StringComparison.Ordinal);
         Assert.Contains("<DataTemplate DataType=\"vm:DealItemViewModel\"", view, StringComparison.Ordinal);
         Assert.DoesNotContain("{Binding TermLines}", view, StringComparison.Ordinal); // long terms live in the dialog

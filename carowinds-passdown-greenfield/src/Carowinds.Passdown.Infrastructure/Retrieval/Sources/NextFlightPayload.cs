@@ -75,6 +75,33 @@ internal static partial class NextFlightPayload
         return results;
     }
 
+    /// <summary>Phase 32: the JSON object enclosing one position of the payload (parsed and cloned), or null.</summary>
+    public static JsonElement? FindEnclosingObjectAt(string payload, int index)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        if (index < 0 || index >= payload.Length)
+        {
+            return null;
+        }
+
+        var start = EnclosingObjectStart(payload, index);
+        var end = start >= 0 ? MatchingBrace(payload, start) : -1;
+        if (end <= start)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(payload.AsMemory(start, end - start + 1));
+            return document.RootElement.Clone();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     private static int EnclosingObjectStart(string payload, int markerIndex)
     {
         var rowStart = payload.LastIndexOf('\n', markerIndex) + 1;

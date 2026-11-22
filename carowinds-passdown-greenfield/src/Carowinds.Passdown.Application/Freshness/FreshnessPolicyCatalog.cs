@@ -46,6 +46,7 @@ public static class FreshnessPolicyCatalog
             [SourceCategory.ShowSchedule] = new(SourceCategory.ShowSchedule, daily),
             // Phase 31: the official event schedule rides the same daily cadence — no extra polling.
             [SourceCategory.OperatingEvents] = new(SourceCategory.OperatingEvents, daily),
+            [SourceCategory.PassPerks] = new(SourceCategory.PassPerks, daily),
         };
     }
 }

@@ -108,6 +108,18 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
         f.Vm.Associate.ProductSections.SelectMany(s => s.Products).First(r => r.DisplayName.StartsWith("Gold Season", StringComparison.Ordinal)).ViewDetailsCommand.Execute(null); Pump(10); }),
     ("Associate-Details-NoTerms", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8);
         f.Vm.Associate.ProductSections.SelectMany(s => s.Products).First(r => r.DisplayName.StartsWith("All Season Dining", StringComparison.Ordinal)).ViewDetailsCommand.Execute(null); Pump(10); }),
+    // Phase 32: the Pass Perks panel on Products, a perk's View details, the Calendar markers and the setting.
+    ("Associate-PassPerks", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8);
+        f.Vm.Associate.PassPerks!.PendingLoad.Wait(2000); Pump(6); ScrollToName(f.Window, "Pass Perks month"); }),
+    ("Associate-Details-VisitPerk", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8);
+        f.Vm.Associate.PassPerks!.PendingLoad.Wait(2000); Pump(4); f.Vm.Associate.PassPerks.Items.First(i => i.Title.StartsWith("Earn", StringComparison.Ordinal)).ViewDetailsCommand.Execute(null); Pump(10); }),
+    ("Associate-Details-PerkTerms", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8);
+        f.Vm.Associate.PassPerks!.PendingLoad.Wait(2000); Pump(4); f.Vm.Associate.PassPerks.ViewProgramTermsCommand.Execute(null); Pump(10); }),
+    ("Calendar-PassPerks", () => new Fixture(), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Other); }),
+    ("Calendar-PassPerksMonthLong", () => new Fixture(), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Today);
+        foreach (var e in f.Window.GetVisualDescendants().OfType<Expander>().Where(e => (e.Header as string)?.StartsWith("Valid all", StringComparison.Ordinal) == true)) e.IsExpanded = true; Pump(6); }),
+    ("Calendar-PassPerksOff", () => new Fixture(showPassPerks: false), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Other); }),
+    ("Settings-CalendarDisplay", () => new Fixture(), f => { Go(f, AppSection.Settings); Pump(6); ScrollToName(f.Window, "Calendar"); }),
     ("Associate-Notes", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowNotesSectionCommand.Execute(null); Pump(8); }),
     ("Associate-SaveFailed", () => new Fixture(), f =>
     {
@@ -397,9 +409,12 @@ internal sealed class Fixture
     public MainViewModel Vm { get; }
     public MainWindow Window { get; }
 
-    public Fixture(bool emptyNotes = false, bool emptyHistory = false, SyncFixture sync = SyncFixture.Off, Carowinds.Passdown.Application.Shows.ShowScheduleView? dashboardShows = null)
+    public Fixture(bool emptyNotes = false, bool emptyHistory = false, SyncFixture sync = SyncFixture.Off, Carowinds.Passdown.Application.Shows.ShowScheduleView? dashboardShows = null, bool showPassPerks = true)
     {
         var clock = new FakeClock(Fixtures.Now);
+        var passPerks = Phase32Fixtures.Service();
+        var calendarDisplay = new CalendarDisplaySettingsViewModel(new Phase32Fixtures.MemoryCalendarStore(showPassPerks));
+        calendarDisplay.PendingLoad.Wait(2000);
         var dashboard = new FakeOperationsDashboardService();
         BusyDayFixtures.ApplyBusyDay(dashboard);
         if (dashboardShows is not null) Phase23BDashboardShowsFixtures.Apply(dashboard, dashboardShows);
@@ -419,13 +434,13 @@ internal sealed class Fixture
 
         Vm = new MainViewModel(
             new OperationsDashboardViewModel(dashboard),
-            new OperationsCalendarViewModel(CalendarService, clock),
+            new OperationsCalendarViewModel(CalendarService, clock, passPerksService: passPerks, calendarDisplay: calendarDisplay),
             new AssociateViewModel(AssociateService, clock, autosaveDelay: (_, _) => Task.CompletedTask,
-                externalLinkLauncher: new Phase31CFixtures.NoOpLinkLauncher(), dealsService: Phase31CFixtures.Deals(), importantDetailsService: Phase31CFixtures.Details()),
+                externalLinkLauncher: new Phase31CFixtures.NoOpLinkLauncher(), dealsService: Phase31CFixtures.Deals(), importantDetailsService: Phase31CFixtures.Details(), passPerksService: passPerks),
             new OperationalNotesViewModel(notes, clock),
             new PassdownHistoryViewModel(history, new FakeFinalizedPassdownPdfRetrievalService()),
             new PersonalSyncSettingsViewModel(settingsService, new FakeSyncFolderPicker(), conflicts, coordinator, buildIdentity: build, diagnostics: diagnostics,
-                appearance: new AppearanceSettingsViewModel(Appearance)),
+                appearance: new AppearanceSettingsViewModel(Appearance), calendarDisplay: calendarDisplay),
             new PriceHistoryViewModel(priceHistory));
         Window = new MainWindow { DataContext = Vm };
     }

@@ -133,6 +133,23 @@
           </StackPanel>
         </Border>
 
+        <!-- Phase 32: Calendar display (device preference, saved on this computer only, never synced).
+             Hiding Pass Perks markers deletes nothing; the Products Pass Perks list stays available. -->
+        <TextBlock Text="Calendar" Classes="sectionTitle" Margin="0,12,0,0" />
+        <Border x:Name="CalendarDisplaySection" Classes="panel" AutomationProperties.Name="Calendar">
+          <StackPanel Spacing="6">
+            <CheckBox x:Name="ShowPassPerksOnCalendar" Content="Show Pass Perks on Calendar"
+                      IsChecked="{Binding CalendarDisplay.ShowPassPerks}"
+                      AutomationProperties.Name="Show Pass Perks on Calendar" />
+            <TextBlock Classes="muted" TextWrapping="Wrap" FontSize="12"
+                       Text="Marks dates with a confirmed Pass Perks redemption window or deadline. Saved on this computer only. Turning it off hides the markers; the Pass Perks list under Products is unchanged." />
+            <TextBlock Classes="statusError" TextWrapping="Wrap"
+                       Text="{Binding CalendarDisplay.SaveMessage}"
+                       IsVisible="{Binding CalendarDisplay.SaveMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       AutomationProperties.LiveSetting="Polite" />
+          </StackPanel>
+        </Border>
+
         <!-- 2. Data Refresh (information only — the schedule is automatic and the 6 AM task is set up
              outside this screen, so nothing here implies it can be changed). -->
         <TextBlock Text="Data Refresh" Classes="sectionTitle" Margin="0,12,0,0" />

@@ -46,6 +46,26 @@
         </Grid>
       </Border>
     </DataTemplate>
+
+    <!-- Phase 32: one compact Pass Perk row — name, type, one meta line (requirement · confirmed dates ·
+         status word when not current) and the small View details link. Status is text, never colour only. -->
+    <DataTemplate DataType="vm:PassPerkItemViewModel" x:DataType="vm:PassPerkItemViewModel">
+      <Border Classes="productRow" Padding="2,5,2,5">
+        <StackPanel Spacing="1" AutomationProperties.Name="{Binding AccessibleSummary}">
+          <WrapPanel ItemSpacing="8">
+            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" Classes.muted="{Binding IsNotCurrent}" />
+            <Border Classes="sourceTag" VerticalAlignment="Center"><TextBlock Text="{Binding TypeLabel}" /></Border>
+          </WrapPanel>
+          <TextBlock Text="{Binding NoticeText}" IsVisible="{Binding HasNoticeText}" Classes="fieldWarning" TextWrapping="Wrap" />
+          <WrapPanel ItemSpacing="4">
+            <TextBlock Text="{Binding MetaText}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <Button Content="View details" Command="{Binding ViewDetailsCommand}" IsVisible="{Binding CanViewDetails}"
+                    Classes="linkAction compactLink"
+                    AutomationProperties.Name="{Binding ViewDetailsAutomationName}" />
+          </WrapPanel>
+        </StackPanel>
+      </Border>
+    </DataTemplate>
   </UserControl.DataTemplates>
 
   <UserControl.Styles>
@@ -1224,6 +1244,38 @@
                           AutomationProperties.Name="{Binding ExpiredDealsHeaderText}">
                   <ItemsControl ItemsSource="{Binding ExpiredDeals}" />
                 </Expander>
+              </StackPanel>
+            </Border>
+
+            <!-- Phase 32: official Pass Perks for one month (publicly advertised rewards, not a guest's wallet).
+                 Read from the cached official document; the month picker re-formats cached data and never
+                 retrieves online. Details open in the shared View details dialog. -->
+            <Border Classes="panel" IsVisible="{Binding HasPassPerksPanel}">
+              <StackPanel Spacing="4" DataContext="{Binding PassPerks}" x:DataType="vm:PassPerksPanelViewModel">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                  <Border Grid.Column="0" Classes="categoryBand">
+                    <TextBlock Text="Pass Perks" />
+                  </Border>
+                  <ComboBox Grid.Column="1" ItemsSource="{Binding Months}" SelectedItem="{Binding SelectedMonth}"
+                            MinWidth="200" VerticalAlignment="Center"
+                            AutomationProperties.Name="Pass Perks month" />
+                </Grid>
+                <TextBlock Text="{Binding StatusText}" FontSize="12" TextWrapping="Wrap" Margin="2,0,0,2"
+                           Classes="muted" Classes.fieldWarning="{Binding IsStatusWarning}"
+                           AutomationProperties.Name="{Binding StatusText}" />
+                <TextBlock Text="{Binding HistoryNoticeText}" IsVisible="{Binding HasHistoryNoticeText}" Margin="2,0,0,2"
+                           FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"
+                           AutomationProperties.Name="{Binding HistoryNoticeText}" />
+                <TextBlock Text="{Binding EmptyStateText}" IsVisible="{Binding HasEmptyStateText}" Margin="2,0,0,4"
+                           TextWrapping="Wrap" AutomationProperties.Name="{Binding EmptyStateText}" />
+                <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding HasItems}" />
+                <WrapPanel ItemSpacing="4" Margin="2,4,0,0">
+                  <TextBlock Text="{Binding IndividualPassNote}" Classes="muted" FontSize="12" TextWrapping="Wrap" MaxWidth="640"
+                             VerticalAlignment="Center" Margin="0,0,8,0" />
+                  <Button Content="Program terms" Command="{Binding ViewProgramTermsCommand}" IsVisible="{Binding HasProgramTerms}"
+                          Classes="linkAction compactLink"
+                          AutomationProperties.Name="View Pass Perks program terms" />
+                </WrapPanel>
               </StackPanel>
             </Border>
 

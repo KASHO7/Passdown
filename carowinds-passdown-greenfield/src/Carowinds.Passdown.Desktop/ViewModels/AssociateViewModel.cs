@@ -8,6 +8,7 @@ using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.ProductDetails;
+using Carowinds.Passdown.Application.PassPerks;
 using Carowinds.Passdown.Application.Seasons;
 using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Application.Time;
@@ -660,7 +661,8 @@ public partial class AssociateViewModel : ViewModelBase
         IUiDispatcher? uiDispatcher = null,
         IExternalLinkLauncher? externalLinkLauncher = null,
         IOfficialDealsService? dealsService = null,
-        IProductImportantDetailsService? importantDetailsService = null)
+        IProductImportantDetailsService? importantDetailsService = null,
+        IPassPerksService? passPerksService = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -682,6 +684,9 @@ public partial class AssociateViewModel : ViewModelBase
         _importantDetailsService = importantDetailsService;
         OfficialDataStatus = officialDataStatus;
         OfficialDetails = new OfficialDetailsDialogViewModel(externalLinkLauncher);
+
+        // Phase 32: the Pass Perks panel (Products) reads the cached official perks only.
+        PassPerks = passPerksService is null ? null : new PassPerksPanelViewModel(passPerksService, OfficialDetails.Open, logger);
 
         // "Today" in the park's own wall-clock time (spec §6.5/§6.6 use the same Eastern
         // convention for "today") rather than the host machine's arbitrary local time zone.
@@ -1217,6 +1222,11 @@ public partial class AssociateViewModel : ViewModelBase
 
     public string PastSeasonHeaderText => $"Past-season offers — not current ({PastSeasonProducts.Count})";
 
+    /// <summary>Phase 32: the Products screen's Pass Perks panel (null when no Pass Perks service is available, e.g. in tests).</summary>
+    public PassPerksPanelViewModel? PassPerks { get; }
+
+    public bool HasPassPerksPanel => PassPerks is not null;
+
     /// <summary>Phase 31: the Deals panel is shown only when the deals service is available (the desktop app always provides it).</summary>
     public bool HasDealsPanel => _dealsService is not null;
 
@@ -1268,6 +1278,8 @@ public partial class AssociateViewModel : ViewModelBase
     /// <summary>Reads the cached official deals (never online) and applies them; a later load supersedes an earlier one.</summary>
     private void StartDealsLoad()
     {
+        PassPerks?.StartLoad();
+
         if (_importantDetailsService is not null)
         {
             var detailsGeneration = ++_importantDetailsLoadGeneration;

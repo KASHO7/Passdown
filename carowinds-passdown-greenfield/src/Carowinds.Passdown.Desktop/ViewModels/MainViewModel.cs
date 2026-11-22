@@ -160,6 +160,10 @@ public partial class MainViewModel : ViewModelBase
         };
         Calendar.OpenOperationalNotesRequested += (_, _) => ShowOperationalNotesSection();
 
+        // Phase 32: a Pass Perk's View details on the Calendar opens the same in-app dialog Products uses
+        // (hosted once over the whole shell); nothing navigates and no date or draft changes.
+        Calendar.PassPerkDetailsRequested += (_, details) => Associate.OfficialDetails.Open(details);
+
         // Phase 13D Part AI/AJ: "View Date Pricing" routes to Associate's Products section for the
         // selected date — same date-preservation/flush-then-load path as "Open Passdown" above, just
         // targeting a different internal section, so an in-progress edit elsewhere is never lost and

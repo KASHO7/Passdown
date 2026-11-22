@@ -111,13 +111,34 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
     /// <summary>Spec Part J: a compact, reused-not-recomputed staleness indicator — see <see cref="OperationsCalendarOperatingStatePresentation.IsStale"/>.</summary>
     public bool IsHoursStale { get; }
 
-    public string AutomationName => BuildAutomationName(_day, IsSelected, _operatingState, _passdownPresentation, _notesPresentation);
+    public string AutomationName => BuildAutomationName(_day, IsSelected, _operatingState, _passdownPresentation, _notesPresentation)
+        + (PassPerkAccessibilityText is { } perks ? ". " + perks : string.Empty);
 
-    public OperationsCalendarDayViewModel(OperationsCalendarDay day, bool isSelected, Action<DateOnly> onSelect)
+    /// <summary>
+    /// Phase 32: the perks with a confirmed date-specific entry on this date (begins, last day, deadline, or a
+    /// short window) — one gift marker per cell however many apply; the selected-date panel lists them all.
+    /// </summary>
+    public IReadOnlyList<string> PassPerkTitles { get; }
+
+    public bool HasPassPerks => PassPerkTitles.Count > 0;
+
+    /// <summary>"2" beside the marker when more than one perk applies; empty for one (the marker alone says it).</summary>
+    public string PassPerkCountText => PassPerkTitles.Count > 1 ? PassPerkTitles.Count.ToString(PresentationCulture.UnitedStates) : string.Empty;
+
+    /// <summary>Tooltip and Narrator text for the marker — never icon-only.</summary>
+    public string? PassPerkAccessibilityText => PassPerkTitles.Count switch
+    {
+        0 => null,
+        1 => "Pass Perk date: " + PassPerkTitles[0],
+        _ => $"{PassPerkTitles.Count} Pass Perk dates: {string.Join(", ", PassPerkTitles)}",
+    };
+
+    public OperationsCalendarDayViewModel(OperationsCalendarDay day, bool isSelected, Action<DateOnly> onSelect, IReadOnlyList<string>? passPerkTitles = null)
     {
         ArgumentNullException.ThrowIfNull(day);
         ArgumentNullException.ThrowIfNull(onSelect);
         _onSelect = onSelect;
+        PassPerkTitles = passPerkTitles ?? [];
 
         Date = day.Date;
         IsInDisplayedMonth = day.IsInDisplayedMonth;

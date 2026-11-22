@@ -23,6 +23,7 @@ public static class SourceCategoryDisplay
         SourceCategory.DatedMilitaryFirstResponder => "Military & First Responder (dated)",
         SourceCategory.ShowSchedule => "Show Schedule",
         SourceCategory.OperatingEvents => "Event Schedule",
+        SourceCategory.PassPerks => "Pass Perks",
         _ => category.ToString(),
     };
 }

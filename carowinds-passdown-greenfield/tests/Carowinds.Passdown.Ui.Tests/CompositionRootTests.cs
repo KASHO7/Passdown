@@ -45,8 +45,8 @@ public class CompositionRootTests
         // Phase 21A added 1 more: dated-military-first-responder.official.
         // Phase 21C added 1 more: show-schedule.official.
         // Phase 31 added 1 more: operating-events.official (official event schedule).
-        Assert.Equal(14, registrations.Count);
-        Assert.Equal(14, registrations.Select(r => r.SourceId).Distinct().Count());
+        Assert.Equal(15, registrations.Count); // Phase 32: + Pass Perks
+        Assert.Equal(15, registrations.Select(r => r.SourceId).Distinct().Count());
     }
 
     /// <summary>Phase 31: the season and deals read services resolve, and the Associate screen receives the deals service.</summary>
@@ -97,6 +97,7 @@ public class CompositionRootTests
                 SourceCategory.Promotions, SourceCategory.SeasonPasses, SourceCategory.AddOns, SourceCategory.AddOns,
                 SourceCategory.MilitaryFirstResponder,
                 SourceCategory.OperatingEvents, // Phase 31: date-independent official event schedule
+                SourceCategory.PassPerks, // Phase 32: date-independent official Pass Perks
             }.OrderBy(c => c),
             catalogCategories.OrderBy(c => c));
     }

@@ -66,4 +66,11 @@ public enum SourceCategory
     /// row; stored as one last-known-good document, not per date.
     /// </summary>
     OperatingEvents,
+
+    /// <summary>
+    /// Phase 32: official Carowinds Perks &amp; Play rewards (the park's Pass Perks page plus the program
+    /// terms and FAQ). Publicly advertised reference information, never a product row and never a
+    /// statement about one guest's pass; stored as one last-known-good document, not per date.
+    /// </summary>
+    PassPerks,
 }

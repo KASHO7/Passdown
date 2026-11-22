@@ -8,10 +8,17 @@ namespace Carowinds.Passdown.Application.Links;
 /// relative or malformed address, a local path) is refused. The stored source URL is data recorded
 /// from a retrieval; it is never passed to a shell or command line, only to the platform launcher as a
 /// validated <see cref="Uri"/>.
+/// <para>
+/// Phase 32: two exact corporate Six Flags pages are also accepted because they are the official source of
+/// Carowinds Pass Perks program rules — the Pass Perks terms (<c>/pass-perks-terms</c>) and the Perks &amp;
+/// Play program FAQ (<c>/perks-and-play</c>). Exact paths only; no other non-Carowinds Six Flags page.
+/// </para>
 /// </summary>
 public static class OfficialSourceLinkPolicy
 {
     private static readonly HashSet<string> SixFlagsHosts = new(StringComparer.OrdinalIgnoreCase) { "www.sixflags.com", "sixflags.com" };
+
+    private static readonly HashSet<string> SixFlagsProgramPages = new(StringComparer.OrdinalIgnoreCase) { "/pass-perks-terms", "/perks-and-play" };
 
     private static readonly HashSet<string> CarowindsHosts = new(StringComparer.OrdinalIgnoreCase) { "www.carowinds.com", "carowinds.com" };
 
@@ -42,7 +49,7 @@ public static class OfficialSourceLinkPolicy
         }
 
         var path = candidate.AbsolutePath;
-        if (isSixFlags && !(path.Equals("/carowinds", StringComparison.OrdinalIgnoreCase) || path.StartsWith("/carowinds/", StringComparison.OrdinalIgnoreCase)))
+        if (isSixFlags && !(path.Equals("/carowinds", StringComparison.OrdinalIgnoreCase) || path.StartsWith("/carowinds/", StringComparison.OrdinalIgnoreCase) || SixFlagsProgramPages.Contains(path)))
         {
             return false;
         }

@@ -42,6 +42,9 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
     /// <summary>Phase 31D: Settings → Passdown Preferences (default Include in Passdown sections, local to this computer).</summary>
     public PassdownPreferencesSettingsViewModel PassdownPreferences { get; }
 
+    /// <summary>Phase 32: Settings → Calendar ("Show Pass Perks on Calendar"); the same instance the Calendar listens to.</summary>
+    public CalendarDisplaySettingsViewModel CalendarDisplay { get; }
+
     /// <summary>Phase 23D: Settings → Application Updates, and About this build → What's New.</summary>
     public ApplicationUpdatesViewModel Updates { get; }
 
@@ -134,7 +137,8 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         DiagnosticsExportViewModel? diagnostics = null,
         AppearanceSettingsViewModel? appearance = null,
         ApplicationUpdatesViewModel? updates = null,
-        PassdownPreferencesSettingsViewModel? passdownPreferences = null)
+        PassdownPreferencesSettingsViewModel? passdownPreferences = null,
+        CalendarDisplaySettingsViewModel? calendarDisplay = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(folderPicker);
@@ -150,6 +154,7 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         Diagnostics = diagnostics ?? new DiagnosticsExportViewModel();
         Appearance = appearance ?? new AppearanceSettingsViewModel();
         PassdownPreferences = passdownPreferences ?? new PassdownPreferencesSettingsViewModel();
+        CalendarDisplay = calendarDisplay ?? new CalendarDisplaySettingsViewModel();
         Updates = updates ?? new ApplicationUpdatesViewModel(installedVersion: Build.Version);
 
         AutomationStatus = coordinator.CurrentStatus;

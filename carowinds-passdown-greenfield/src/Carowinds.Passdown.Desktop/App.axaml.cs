@@ -21,6 +21,7 @@ using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Retrieval.Browser;
 using Carowinds.Passdown.Application.ProductDetails;
+using Carowinds.Passdown.Application.PassPerks;
 using Carowinds.Passdown.Application.Seasons;
 using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Application.SpellCheck;
@@ -575,6 +576,11 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IPassdownDefaultsPreferenceStore>(provider => new FilePassdownDefaultsPreferenceStore(
             FilePassdownDefaultsPreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FilePassdownDefaultsPreferenceStore>>()));
         services.AddTransient<PassdownPreferencesSettingsViewModel>();
+        // Phase 32: Calendar display preference (Show Pass Perks on Calendar) — one local file, never synced.
+        // A singleton so the Settings checkbox and the Calendar share one live value.
+        services.AddSingleton<ICalendarDisplayPreferenceStore>(provider => new FileCalendarDisplayPreferenceStore(
+            FileCalendarDisplayPreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FileCalendarDisplayPreferenceStore>>()));
+        services.AddSingleton<CalendarDisplaySettingsViewModel>();
 
         // Phase 9A: the immutable finalized-passdown foundation.
         services.AddSingleton<IFinalizedPassdownRepository, SqliteFinalizedPassdownRepository>();
@@ -620,6 +626,7 @@ public partial class App : global::Avalonia.Application
         // cache only (never online on date navigation).
         services.AddSingleton<IOperatingSeasonService, OperatingSeasonService>();
         services.AddSingleton<IOfficialDealsService, OfficialDealsService>();
+        services.AddSingleton<IPassPerksService, PassPerksService>();
         // Phase 31B: Important Details & Deadlines read from the cached official product-details documents.
         services.AddSingleton<IProductImportantDetailsService, ProductImportantDetailsService>();
         services.AddTransient<OperationsCalendarViewModel>();
@@ -919,6 +926,7 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<DatedHauntedSource>();
         services.AddSingleton<PromotionsCatalogSource>();
         services.AddSingleton<OperatingEventsSource>();
+        services.AddSingleton<PassPerksSource>();
         services.AddSingleton<SeasonPassCatalogSource>();
         services.AddSingleton<SeasonPassAddOnsCatalogSource>();
         services.AddSingleton<GeneralAddOnsCatalogSource>();
@@ -969,6 +977,8 @@ public partial class App : global::Avalonia.Application
                 new CurrentAndFutureDatedSourceRegistration<ShowSchedulePayload>(provider.GetRequiredService<ShowScheduleSource>(), datedResultRepository, provider.GetRequiredService<IClock>()),
                 // Phase 31: official event schedule (date-independent, daily cadence).
                 new OperatingEventsSourceRegistration(provider.GetRequiredService<OperatingEventsSource>(), provider.GetRequiredService<IOfficialReferenceDocumentRepository>()),
+                // Phase 32: official Pass Perks (date-independent, daily cadence; same orchestrator, no new poller).
+                new PassPerksSourceRegistration(provider.GetRequiredService<PassPerksSource>(), provider.GetRequiredService<IOfficialReferenceDocumentRepository>()),
             };
         });
 
