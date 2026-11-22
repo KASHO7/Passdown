@@ -126,6 +126,10 @@ Version 0.1.0-rc.12 uses the same database format as rc.11: upgrading from rc.11
 changes nothing in the database. Upgrading from rc.10 or older performs the
 rc.11 upgrade described above.
 
+Version 0.1.0-rc.13 also uses the rc.11 database format: upgrading from rc.11 or
+rc.12 changes nothing in the database. Upgrading from rc.10 or older performs the
+rc.11 upgrade described above.
+
 Passdown History
 -----------------
 Next to "Associate Passdown" at the top of the window is a "History" section. Each

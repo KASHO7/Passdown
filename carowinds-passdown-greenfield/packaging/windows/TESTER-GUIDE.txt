@@ -1,4 +1,4 @@
-Carowinds Operations 0.1.0-rc.12 — Tester Guide
+Carowinds Operations 0.1.0-rc.13 — Tester Guide
 =================================================
 
 Thanks for testing this app. You do not need any technical background. Follow the
@@ -30,7 +30,7 @@ Going back to an older version: copying an older app over this one is NOT a safe
 way to undo the upgrade. If you ever need to go back, close the app, put your
 dated backup folder back in place, and then run the older version.
 
-Coming from rc.11 there is no database change. Coming from rc.10 or older, this
+Coming from rc.11 or rc.12 there is no database change. Coming from rc.10 or older, this
 version changes the format of the app's database the first time it starts (it
 adds one table for official reference pages; nothing you saved is changed).
 Before it does, it saves its own checked copy in the "backups" folder inside
@@ -58,7 +58,7 @@ If more than one computer uses Personal Sync with the same shared folder:
 
 3. Extract the ZIP
 -------------------
-Right-click Carowinds-Operations-0.1.0-rc.12-win-x64.zip and choose
+Right-click Carowinds-Operations-0.1.0-rc.13-win-x64.zip and choose
 "Extract All...". Pick a NEW, empty folder you can write to (Desktop, Documents).
 Do NOT run the app from inside the ZIP without extracting it first.
 
@@ -80,7 +80,7 @@ then "Run anyway" only if you got the ZIP from the person who asked you to test.
 Click the gear icon (Settings) at the right end of the navigation strip, scroll to
 "About this build". It should say:
 
-    Version 0.1.0-rc.12 (followed by a short code in brackets)
+    Version 0.1.0-rc.13 (followed by a short code in brackets)
     Running from  <the folder you just extracted>
 
 If it shows an older number, or a different folder, you opened an older copy (for
@@ -88,7 +88,7 @@ example through Windows Search or the Start menu). Close it and start
 Carowinds.Passdown.Desktop.exe from the folder you just extracted.
 
 About the single .exe file: you may also see
-Carowinds-Operations-0.1.0-rc.12-win-x64-singlefile.exe. It is EXPERIMENTAL.
+Carowinds-Operations-0.1.0-rc.13-win-x64-singlefile.exe. It is EXPERIMENTAL.
 Please test with the ZIP. The single .exe does not carry the license notices or
 the automatic-refresh helpers, so it must not be handed out on its own. It also
 cannot update itself: its Settings › Application Updates says "Manual update
@@ -96,7 +96,7 @@ required".
 
 Installing this version by hand from the ZIP (as described above) does NOT open
 "What's New" when it first starts — that only happens after an update installed
-from inside the app. Only use rc.11's in-app "Install Update" for rc.12 if whoever
+from inside the app. Only use rc.12's in-app "Install Update" for rc.13 if whoever
 asked you to test gave you a special test update and a backed-up test profile.
 
 
@@ -145,8 +145,9 @@ Passdown (Associate Passdown)
     Preview", "Copy ▾" (Teams text), "More ▾" (PDF style and Season Price
     History).
   - Live preview: the real PDF appears beside the editor and stays there while
-    you switch between Overview, Products, Shows and Notes. It updates a moment
-    after you type. Drag the divider to resize it; use the page arrows, zoom,
+    you switch between Overview, Products, Shows and Notes. A single change (a checkbox,
+    a product or a show) appears almost at once; while you keep typing it
+    refreshes again shortly after you pause. Drag the divider to resize it; use the page arrows, zoom,
     Fit width and Fit page. Hide Preview gives the editor the whole width. The
     layout and zoom are remembered on this computer after a restart.
   - Sections: Overview, Products, Shows, Notes.
