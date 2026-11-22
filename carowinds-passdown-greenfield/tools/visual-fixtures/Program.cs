@@ -66,6 +66,30 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
     ("Shell-Expanded-Settings", () => new Fixture(), f => Go(f, AppSection.Settings)),
     ("Shell-FocusNavigation", () => new Fixture(), f => { Go(f, AppSection.Dashboard); FocusNavigation(f.Window, "Operations Calendar section"); }),
     ("Shell-FocusNavigationCollapsed", () => new Fixture(), f => { Go(f, AppSection.Dashboard); Collapse(f); FocusNavigation(f.Window, "Operations Calendar section"); }),
+    // Phase 35B: the Passdown workspace (toolbar, section tabs, Overview sheet, divider, preview companion).
+    ("Workspace-Overview", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); }),
+    ("Workspace-Overview-Collapsed", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); Collapse(f); }),
+    ("Workspace-PreviewHidden", () => new Fixture(preview: PdfPreviewLayoutPreferences.BuiltIn with { IsPreviewVisible = false }), f => { Go(f, AppSection.AssociatePassdown); }),
+    ("Workspace-FocusedInput", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); FocusNamed(f.Window, "Projected attendance"); }),
+    ("Workspace-FocusedTab", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); FocusNamed(f.Window, "Products section"); }),
+    ("Workspace-ProductsTab", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8); }),
+    ("Workspace-Overrides", () => new Fixture(), f =>
+    {
+        Go(f, AppSection.AssociatePassdown);
+        var a = f.Vm.Associate;
+        a.ManualHoursOverrideEnabled = true; a.ManualOpeningTimeText = "9:00 AM"; a.ManualClosingTimeText = "10:00 PM";
+        a.PrivateBuyoutEnabled = true; a.PrivateBuyoutOpeningTimeText = "6:00 PM"; a.PrivateBuyoutClosingTimeText = "11:00 PM";
+        a.PrivateBuyoutDetails = "Synthetic group buyout"; a.NorthGateOverrideText = "9:00 AM";
+        Pump(10);
+    }),
+    ("Workspace-ErtEditor", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.OpenErtEditorCommand.Execute(null); Pump(8); ScrollToName(f.Window, "Early Ride Time editor"); }),
+    ("Workspace-LongContentScrolled", () => new Fixture(), f =>
+    {
+        Go(f, AppSection.AssociatePassdown);
+        f.Vm.Associate.DailyFeatureText = string.Join(" ", Enumerable.Repeat("Synthetic long Daily Feature text that wraps across several lines in the editor.", 8));
+        f.Vm.Associate.ManualHoursOverrideEnabled = true; f.Vm.Associate.PrivateBuyoutEnabled = true;
+        Pump(10); ScrollToEnd(f.Window);
+    }),
     // Phase 35A: Settings → Appearance → Interface animations in its three effective states (in-memory choice,
     // simulated Windows "Animation effects"; never interface-animations.json).
     ("Settings-AnimationsOn", () => new Fixture(motion: ShellMotion.Create(InterfaceAnimationPreference.On, SystemReducedMotion.NotRequested)), f => { Go(f, AppSection.Settings); ScrollToName(f.Window, "Interface animations"); }),
@@ -178,8 +202,8 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
         f.Vm.PriceHistory!.OpenAsync(Fixtures.GoldPassKey).Wait(2000); Pump(10);
     }),
     ("Popup-DatePicker", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "Operating date"); }),
-    ("Popup-Copy", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "Copy for Teams"); }),
-    ("Popup-More", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "More passdown actions"); }),
+    // Phase 35B: Copy for Teams, Print, Save PDF, PDF style, preview, Check Online and Price History share one Actions menu.
+    ("Popup-Actions", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "Passdown actions"); }),
     ("Popup-Math", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowOverviewSectionCommand.Execute(null); Pump(6); OpenFlyout(f.Window, "Insert math symbol or equation"); }),
     ("Notes", () => new Fixture(), f =>
     {
@@ -225,8 +249,7 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
         f.Vm.PriceHistory!.OpenAsync(Fixtures.GoldPassKey).Wait(2000); Pump(10); Flip();
     }),
     ("LiveSwitch-DatePicker", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "Operating date"); Flip(); }),
-    ("LiveSwitch-Copy", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "Copy for Teams"); Flip(); }),
-    ("LiveSwitch-More", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "More passdown actions"); Flip(); }),
+    ("LiveSwitch-Actions", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "Passdown actions"); Flip(); }),
     ("LiveSwitch-Math", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowOverviewSectionCommand.Execute(null); Pump(6); OpenFlyout(f.Window, "Insert math symbol or equation"); Flip(); }),
     ("LiveSwitch-SystemOs", () => new Fixture(), f =>
     {
@@ -317,6 +340,13 @@ static void FocusNavigation(Window window, string automationName)
     Pump(8);
 }
 
+static void FocusNamed(Window window, string automationName)
+{
+    var control = window.GetVisualDescendants().OfType<Control>().FirstOrDefault(c => c.IsEffectivelyVisible && c.Focusable && AutomationProperties.GetName(c) == automationName);
+    control?.Focus(Avalonia.Input.NavigationMethod.Tab);
+    Pump(8);
+}
+
 static void Go(Fixture f, AppSection section)
 {
     f.Vm.SelectedSection = section;
@@ -382,7 +412,7 @@ static void ScrollToEnd(Window window)
 static string Geometry(Window window)
 {
     var scrolls = window.GetVisualDescendants().OfType<ScrollViewer>().Where(s => s.IsEffectivelyVisible).ToList();
-    var horizontal = scrolls.Where(s => s.Extent.Width > s.Viewport.Width + 1).Select(s => $"{s.Extent.Width - s.Viewport.Width:F0}").ToList();
+    var horizontal = scrolls.Where(s => s.Extent.Width > s.Viewport.Width + 1).Select(s => string.IsNullOrEmpty(s.Name) ? $"{s.Extent.Width - s.Viewport.Width:F0}" : $"{s.Name}:{s.Extent.Width - s.Viewport.Width:F0}").ToList();
     var vertical = scrolls.OrderByDescending(s => s.Extent.Height).FirstOrDefault() is { } main ? Math.Max(0, main.Extent.Height - main.Viewport.Height) : 0;
     var clipped = window.GetVisualDescendants().OfType<Button>()
         .Where(b => b.IsEffectivelyVisible && b.Bounds.Width > 0)

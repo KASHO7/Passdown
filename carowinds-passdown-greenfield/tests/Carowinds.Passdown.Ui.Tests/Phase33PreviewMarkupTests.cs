@@ -28,7 +28,9 @@ public partial class Phase33PreviewMarkupTests
         Assert.True(editorStart > 0 && splitter > editorStart && host > splitter);
         Assert.True(markup.LastIndexOf("SectionSelected}\"", StringComparison.Ordinal) < splitter, "a section body appears after the preview");
         Assert.True(lastSection < host);
-        Assert.Contains("ColumnDefinitions=\"140,*\"", markup); // the existing rail + section layout is unchanged
+        // Phase 35B: section tabs over the section bodies, inside the editor pane only (the preview keeps its own column).
+        Assert.Contains("x:Name=\"AssociateEditorPane\" RowDefinitions=\"Auto,*\"", markup);
+        Assert.True(markup.IndexOf("x:Name=\"SectionTabsBar\"", StringComparison.Ordinal) is var tabs && tabs > editorStart && tabs < splitter);
         Assert.Contains("<GridSplitter Grid.Column=\"1\" x:Name=\"PreviewSplitter\"", markup);
         Assert.Contains("ResizeDirection=\"Columns\"", markup);
     }
@@ -36,7 +38,8 @@ public partial class Phase33PreviewMarkupTests
     [Fact]
     public void BothPrintButtons_UseTheOneSharedPrintCommand()
     {
-        Assert.Contains("x:Name=\"AssociatePrintButton\"", AssociateMarkup);
+        Assert.Contains("x:Name=\"AssociatePrintMenuItem\"", AssociateMarkup); // Phase 35B: Actions → Print (also Ctrl+P)
+        Assert.Contains("<KeyBinding Gesture=\"Ctrl+P\" Command=\"{Binding Preview.PrintCommand}\" />", AssociateMarkup);
         Assert.Contains("Command=\"{Binding Preview.PrintCommand}\"", AssociateMarkup);
         Assert.Contains("Command=\"{Binding PrintCommand}\"", PreviewMarkup); // DataContext = the same Preview
         Assert.Contains("<views:PassdownPdfPreviewView x:Name=\"PreviewPane\" DataContext=\"{Binding Preview}\" />", AssociateMarkup);

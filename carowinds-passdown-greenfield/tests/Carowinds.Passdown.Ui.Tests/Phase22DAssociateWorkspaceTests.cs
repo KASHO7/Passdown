@@ -284,20 +284,28 @@ public sealed class Phase22DAssociateWorkspaceTests
         var primary = Assert.Single(primaries);
         Assert.Contains("CreatePdfCommand", primary.Value);
 
-        var checkOnline = Regex.Match(header, "<Button Content=\"Check Online\"[^>]*>", RegexOptions.Singleline).Value;
-        Assert.Contains("Classes=\"toolbarButton\"", checkOnline);
-        Assert.Contains("Rectangle Classes=\"toolbarDivider\"", header);
+        // Phase 35B: Check Online is a labeled item in the Actions menu — explicit, never automatic, never an accent.
+        var actions = header[header.IndexOf("x:Name=\"PassdownActionsButton\"", StringComparison.Ordinal)..];
+        Assert.Contains("Classes=\"secondaryAction\"", header[header.IndexOf("x:Name=\"PassdownActionsButton\"", StringComparison.Ordinal)..][..120]);
+        var checkOnline = Regex.Match(actions, "<MenuItem Header=\"Check Online[^\"]*\"[^>]*>", RegexOptions.Singleline).Value;
+        Assert.Contains("Command=\"{Binding CheckOnlineCommand}\"", checkOnline);
+        Assert.Contains("AutomationProperties.Name=\"Check this date online\"", checkOnline);
+        Assert.Contains("Does not run automatically.", checkOnline);
     }
 
     [Fact]
     public void Toolbar_KeepsEveryActionInTheSameOrder()
     {
         var markup = Markup();
+        // Phase 35B: date navigation, the draft status, Create PDF, then the Actions menu and its items in reading order.
         string[] order =
         [
             "AutomationProperties.Name=\"Previous day\"", "AutomationProperties.Name=\"Operating date\"", "AutomationProperties.Name=\"Next day\"",
-            "AutomationProperties.Name=\"Today\"", "AutomationProperties.Name=\"Check this date online\"", "AutomationProperties.Name=\"Create PDF\"",
-            "AutomationProperties.Name=\"Copy for Teams\"", "AutomationProperties.Name=\"More passdown actions\"",
+            "AutomationProperties.Name=\"Today\"", "AutomationProperties.Name=\"Save status\"", "AutomationProperties.Name=\"Create PDF\"",
+            "AutomationProperties.Name=\"Passdown actions\"", "AutomationProperties.Name=\"Print Passdown\"", "AutomationProperties.Name=\"Save PDF\"",
+            "AutomationProperties.Name=\"Copy operations summary\"", "AutomationProperties.Name=\"Copy today's pricing\"",
+            "AutomationProperties.Name=\"Copy operations summary and pricing\"", "AutomationProperties.Name=\"Classic PDF style\"",
+            "AutomationProperties.Name=\"Check this date online\"", "AutomationProperties.Name=\"Open Season Price History\"",
         ];
         var positions = order.Select(o => markup.IndexOf(o, StringComparison.Ordinal)).ToList();
 
@@ -315,7 +323,13 @@ public sealed class Phase22DAssociateWorkspaceTests
         Assert.Single(Regex.Matches(markup, Regex.Escape("{Binding SaveStatusText")));
         Assert.Contains("<TextBlock Text=\"Draft\" Classes=\"muted\"", markup);
         Assert.Contains("x:Name=\"AssociateOfficialDataStatusText\"", markup);
-        Assert.True(markup.IndexOf("AssociateOfficialDataStatusText", StringComparison.Ordinal) < markup.IndexOf("SaveStatusChip", StringComparison.Ordinal));
+        // Phase 35B: the draft's save state sits on the toolbar; official-data freshness is quiet source information
+        // beside the section tabs — still two separate indicators, never merged.
+        var toolbar = markup[markup.IndexOf("x:Name=\"PassdownToolbar\"", StringComparison.Ordinal)..markup.IndexOf("x:Name=\"AssociateFeedback\"", StringComparison.Ordinal)];
+        Assert.Contains("x:Name=\"SaveStatusChip\"", toolbar);
+        Assert.DoesNotContain("AssociateOfficialDataStatusText", toolbar);
+        var meta = markup[markup.IndexOf("x:Name=\"WorkspaceMeta\"", StringComparison.Ordinal)..];
+        Assert.Contains("x:Name=\"AssociateOfficialDataStatusText\"", meta[..meta.IndexOf("</DockPanel>", StringComparison.Ordinal)]);
         Assert.DoesNotContain("Text=\"Draft: \"", markup); // the old duplicate status strip is gone.
     }
 
@@ -324,7 +338,7 @@ public sealed class Phase22DAssociateWorkspaceTests
     {
         var markup = Markup();
         var feedbackStart = markup.IndexOf("x:Name=\"AssociateFeedback\"", StringComparison.Ordinal);
-        var feedbackEnd = markup.IndexOf("ColumnDefinitions=\"140,*\"", StringComparison.Ordinal);
+        var feedbackEnd = markup.IndexOf("x:Name=\"AssociateBodyGrid\"", StringComparison.Ordinal);
         var feedback = markup[feedbackStart..feedbackEnd];
 
         foreach (var binding in new[] { "HasMultiPagePdfWarning", "RefreshStatusMessage", "RefreshResultMessage", "RefreshHadFailures", "PdfExportMessage", "CopyMessage", "LoadErrorMessage", "SyncConflictMessage", "SaveBlockedMessage" })
@@ -450,12 +464,12 @@ public sealed class Phase22DAssociateWorkspaceTests
     }
 
     [Fact]
-    public void Rail_KeepsItsSections_WithTheNotesCount()
+    public void SectionTabs_KeepTheirSections_WithTheNotesCount()
     {
         var markup = Markup();
 
-        // Phase 31E: Shows joined the rail — Overview, Products, Shows, Notes.
-        Assert.Equal(4, Regex.Matches(markup, "<Button Classes=\"railItem\"").Count);
+        // Phase 31E: Shows joined — Overview, Products, Shows, Notes. Phase 35B: the rail became section tabs.
+        Assert.Equal(4, Regex.Matches(markup, "<Button Classes=\"sectionTab\"").Count);
         Assert.Contains("{Binding HasOperationalNotesCount}", markup);
         Assert.Contains("AutomationProperties.Name=\"Notes section\"", markup);
         Assert.Contains("StringFormat='Operational notes: {0}'", markup);

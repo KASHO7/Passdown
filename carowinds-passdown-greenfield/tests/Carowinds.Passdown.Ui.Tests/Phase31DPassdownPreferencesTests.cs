@@ -378,10 +378,10 @@ public class Phase31DPassdownPreferencesTests
     }
 
     [Fact]
-    public void AssociateView_Rail_IsOverviewProductsShowsNotes()
+    public void AssociateView_SectionTabs_AreOverviewProductsShowsNotes()
     {
         var markup = Markup("AssociateView");
-        var rail = Regex.Matches(markup, "<Button Classes=\"railItem\" Classes.active=\"\\{Binding (\\w+)\\}\"").Select(m => m.Groups[1].Value);
+        var rail = Regex.Matches(markup, "<Button Classes=\"sectionTab\" Classes.active=\"\\{Binding (\\w+)\\}\"").Select(m => m.Groups[1].Value);
 
         Assert.Equal(["IsOverviewSectionSelected", "IsProductsSectionSelected", "IsShowsSectionSelected", "IsNotesSectionSelected"], rail);
         Assert.Contains("Content=\"Shows\" Command=\"{Binding ShowShowsSectionCommand}\"", markup);

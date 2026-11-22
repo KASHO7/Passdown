@@ -79,8 +79,11 @@ public class AssociateViewAccessibilityTests
         Assert.Contains("Previous day", names);
         Assert.Contains("Next day", names);
         Assert.Contains("Operating date", names);
-        Assert.Contains("Check this date online", names);
         Assert.Contains("Create PDF", names);
+        Assert.Contains("Passdown actions", names);
+        // Phase 35B: Check Online lives in the Actions menu, still with its static accessible name.
+        var actions = view.GetLogicalDescendants().OfType<Button>().Single(b => AutomationProperties.GetName(b) == "Passdown actions");
+        Assert.Contains("Check this date online", Assert.IsType<MenuFlyout>(actions.Flyout).Items.OfType<MenuItem>().Select(AutomationProperties.GetName));
         Assert.Contains("Save status", names);
         Assert.Contains("Operational notes", names);
         Assert.Contains("Add a custom or internal product", names);
@@ -103,7 +106,7 @@ public class AssociateViewAccessibilityTests
         // binding) and, like the per-row product/custom-item template names above, is not reliably
         // realized by this unattached headless container — guarded directly against the markup
         // instead, see <see cref="ProductRowAndCustomItemTemplates_DeclareAccessibleNamePatterns"/>.
-        Assert.Contains("Edit Early Ride Time", names);
+        Assert.Contains("Edit Attractions for Early Ride Time", names); // Phase 35B: the visible label is part of the name
         Assert.Contains("Use an Early Ride Time override for this date", names);
         Assert.Contains("Monthly Early Ride Time rides", names);
 

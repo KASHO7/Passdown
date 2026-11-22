@@ -541,6 +541,14 @@
       </Transitions>
     </Setter>
   </Style>
+  <!-- Phase 35B: the Passdown section tabs' underline eases between hover and selected. Selection itself is immediate. -->
+  <Style Selector="Window.motion Button.sectionTab /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="BorderBrush" Duration="{StaticResource PassdownMotionFast}" Easing="{StaticResource PassdownMotionEasing}" />
+      </Transitions>
+    </Setter>
+  </Style>
   <!-- Off / reduced motion: also remove Fluent's own button press-scale transition in the main window. -->
   <Style Selector="Window.noMotion Button, Window.noMotion ToggleButton, Window.noMotion RepeatButton">
     <Setter Property="Transitions" Value="{x:Null}" />

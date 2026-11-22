@@ -393,16 +393,26 @@ public class Phase21BAssociateNavigationTests
             .Where(name => !string.IsNullOrEmpty(name))
             .ToList();
 
-        foreach (var expected in new[] { "Previous day", "Operating date", "Next day", "Today", "Check this date online", "Create PDF", "Copy for Teams", "More passdown actions" })
+        // Phase 35B: the bar keeps date navigation, Create PDF and one Actions menu; Check Online, Print, Save PDF and
+        // the three Copy options moved into that menu (asserted on its items below) — none was removed.
+        foreach (var expected in new[] { "Previous day", "Operating date", "Next day", "Today", "Create PDF", "Passdown actions" })
         {
             Assert.Single(names, name => name == expected);
         }
 
+        var actions = view.GetLogicalDescendants().OfType<Button>().Single(b => AutomationProperties.GetName(b) == "Passdown actions");
+        var itemNames = Assert.IsType<MenuFlyout>(actions.Flyout).Items.OfType<MenuItem>().Select(AutomationProperties.GetName).ToList();
+        foreach (var expected in new[] { "Print Passdown", "Save PDF", "Copy operations summary", "Copy today's pricing", "Copy operations summary and pricing", "Check this date online", "Open Season Price History" })
+        {
+            Assert.Single(itemNames, name => name == expected);
+        }
+
         Assert.DoesNotContain("Export Diagnostics", names);
+        Assert.DoesNotContain("Export Diagnostics", itemNames);
     }
 
     [Fact]
-    public void AssociateViewMarkup_KeepsCopyMenu_MovesPdfStyleIntoMore_AndDropsDiagnostics()
+    public void AssociateViewMarkup_KeepsCopyMenu_KeepsPdfStyleInActions_AndDropsDiagnostics()
     {
         var markup = File.ReadAllText(MarkupFiles.Find("src/Carowinds.Passdown.Desktop/Views/AssociateView.axaml"));
 
@@ -412,12 +422,12 @@ public class Phase21BAssociateNavigationTests
         Assert.Contains("AssociateTeamsCopyKind.OperationsAndPricing", markup, StringComparison.Ordinal);
         Assert.Equal(3, CountOf(markup, "Command=\"{Binding CopyForTeamsCommand}\""));
 
-        // PDF: one Create PDF entry point; all three styles reachable under More.
+        // PDF: one Create PDF entry point; all three styles reachable under Actions, the style in use always named.
         Assert.Equal(1, CountOf(markup, "Command=\"{Binding CreatePdfCommand}\""));
         Assert.Contains("AssociatePassdownTemplate.Classic", markup, StringComparison.Ordinal);
         Assert.Contains("AssociatePassdownTemplate.Compact", markup, StringComparison.Ordinal);
         Assert.Contains("AssociatePassdownTemplate.Modern", markup, StringComparison.Ordinal);
-        Assert.Contains("{Binding SelectedTemplateOption.Label}", markup, StringComparison.Ordinal);
+        Assert.Contains("Text=\"{Binding SelectedTemplateOption.Label, StringFormat='{}{0} PDF style'}\"", markup, StringComparison.Ordinal);
 
         Assert.DoesNotContain("ExportDiagnosticsCommand", markup, StringComparison.Ordinal);
         Assert.DoesNotContain("DiagnosticsExportMessage", markup, StringComparison.Ordinal);

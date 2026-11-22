@@ -19,7 +19,7 @@ namespace Carowinds.Passdown.Ui.Tests;
 /// tests share the headless dispatcher thread; see docs/release-manifest.md for the deterministic partition.
 /// Headless font metrics are approximate — Windows display scaling (100/125/150%) is a manual check.
 /// </summary>
-public class Phase33PreviewWindowTests
+public partial class Phase33PreviewWindowTests
 {
     private static readonly DateOnly FixedDate = new(2026, 8, 21);
 

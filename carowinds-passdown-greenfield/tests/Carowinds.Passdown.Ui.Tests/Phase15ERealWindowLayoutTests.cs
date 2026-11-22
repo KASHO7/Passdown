@@ -439,7 +439,8 @@ public class Phase15ERealWindowLayoutTests
 
         // Phase 21B: date navigation (‹ date › Today) plus the passdown actions; Export Diagnostics now
         // lives in Settings → Diagnostics and must not be on this bar at all.
-        var actionNames = new[] { "Previous day", "Operating date", "Next day", "Today", "Check this date online", "Create PDF", "Copy for Teams", "More passdown actions" };
+        // Phase 35B: Check Online, Print, Save PDF and Copy moved into the Actions menu (asserted below).
+        var actionNames = new[] { "Previous day", "Operating date", "Next day", "Today", "Create PDF", "Passdown actions" };
         var buttonsByName = window.GetVisualDescendants().OfType<Button>()
             .ToDictionary(b => AutomationProperties.GetName(b) ?? string.Empty, b => b);
 
@@ -451,6 +452,13 @@ public class Phase15ERealWindowLayoutTests
             Assert.True(bounds.Width > 0, $"action '{name}' realized with zero width — it is unreachable.");
             Assert.True(bounds.Right <= clientWidth + 1.0,
                 $"action '{name}' right edge {bounds.Right} exceeds window client width {clientWidth}.");
+        }
+
+        var actionsMenu = Assert.IsType<Avalonia.Controls.MenuFlyout>(buttonsByName["Passdown actions"].Flyout);
+        var menuNames = actionsMenu.Items.OfType<MenuItem>().Select(AutomationProperties.GetName).ToList();
+        foreach (var name in new[] { "Print Passdown", "Save PDF", "Copy operations summary", "Copy today's pricing", "Copy operations summary and pricing", "Check this date online" })
+        {
+            Assert.Contains(name, menuNames);
         }
 
         Assert.DoesNotContain("Export Diagnostics", buttonsByName.Keys);
@@ -881,19 +889,40 @@ public class Phase15ERealWindowLayoutTests
     }
 
     [Theory]
-    [InlineData(1280d, 860d)]
-    [InlineData(960d, 640d)]
-    public async Task AssociateView_Overview_ParkHoursAndAttendanceShareTheFirstRow(double width, double height)
+    [InlineData(1920d, 1000d, true)]
+    [InlineData(1280d, 860d, true)]
+    [InlineData(960d, 640d, false)] // minimum window: park hours above the fold, attendance one scroll away (see below)
+    public async Task AssociateView_Overview_ParkHoursThenAttendance_OnOneSheet_AboveTheFold(double width, double height, bool attendanceAboveFold)
     {
+        // Phase 35B (approved Overview reference): Park Hours & Gates first, then Attendance & Early Ride Time
+        // directly below it on the same editing sheet — replacing Phase 22D's side-by-side first row.
         var (window, _, _) = await RealizeBusyAssociateAsync(width, height, ThemeVariant.Light);
         var hours = window.GetVisualDescendants().OfType<StackPanel>().Single(p => AutomationProperties.GetName(p) == "Park hours");
         var attendance = window.GetVisualDescendants().OfType<StackPanel>().Single(p => AutomationProperties.GetName(p) == "Attendance");
+        var sheet = window.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "OverviewSheet");
 
         var hoursBounds = AbsoluteBounds(hours, window);
         var attendanceBounds = AbsoluteBounds(attendance, window);
-        Assert.True(Math.Abs(hoursBounds.Top - attendanceBounds.Top) < 1, "the two official/manual regions should start on one row.");
-        Assert.True(hoursBounds.Right <= attendanceBounds.Left, "park hours and attendance overlap.");
-        Assert.True(attendanceBounds.Bottom < height, "attendance is not above the fold.");
+        var sheetBounds = AbsoluteBounds(sheet, window);
+        Assert.True(hoursBounds.Bottom <= attendanceBounds.Top, "park hours and attendance overlap.");
+        Assert.True(Math.Abs(hoursBounds.Left - attendanceBounds.Left) < 1, "the two regions should share the sheet's left edge.");
+        Assert.True(sheetBounds.Contains(hoursBounds) && sheetBounds.Contains(attendanceBounds), "both regions sit on the one Overview sheet.");
+        Assert.True(hoursBounds.Top < height, $"park hours must start above the fold (hours {hoursBounds.Top:F0}, window {height:F0}).");
+        if (attendanceAboveFold)
+        {
+            Assert.True(attendanceBounds.Top < height, $"attendance must start above the fold (attendance {attendanceBounds.Top:F0}, window {height:F0}).");
+        }
+        else
+        {
+            // The approved layout stacks Park Hours & Gates (with its official-events note) above Attendance. At the
+            // 960×640 minimum the headless fake font metrics push Attendance below the fold, so here it must be one
+            // vertical scroll away inside the Overview — fully visible, never clipped sideways.
+            attendance.BringIntoView();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            var scrolled = AbsoluteBounds(attendance, window);
+            Assert.True(scrolled.Top >= 0 && scrolled.Bottom <= height + 1, $"attendance is not reachable by scrolling ({scrolled}).");
+            Assert.True(scrolled.Right <= width + 1, "attendance is clipped on the right.");
+        }
 
         window.Close();
     }
@@ -1944,8 +1973,7 @@ public class Phase15ERealWindowLayoutTests
 
     [Theory]
     [InlineData("Operating date")]
-    [InlineData("Copy for Teams")]
-    [InlineData("More passdown actions")]
+    [InlineData("Passdown actions")] // Phase 35B: the Copy and More menus are now this one Actions menu.
     [InlineData("Insert math symbol or equation")]
     public void Appearance_AnOpenPopup_RestylesWhenTheThemeChanges(string buttonName)
     {

@@ -201,19 +201,20 @@ public class Phase22FSettingsAccessibilityTests
     // ---------------------------------------------------------------- accessibility
 
     [Fact]
-    public void AssociateSectionRail_AnnouncesTheCurrentSection_LikeTheAppSectionStrip()
+    public void AssociateSectionTabs_AnnounceTheCurrentSection_LikeTheAppSidebar()
     {
-        // Phase 22B exposes the strip's current page through its .active style; the rail now does the same.
+        // Phase 22B exposes the current page through its .active style; the Associate section tabs (Phase 35B,
+        // formerly the rail) do the same.
         var shared = File.ReadAllText(MarkupFiles.Find("src/Carowinds.Passdown.Desktop/Themes/PassdownStyles.axaml"));
         Assert.Contains("<Setter Property=\"AutomationProperties.ItemStatus\" Value=\"Current page\" />", shared);
 
         var markup = Markup("AssociateView");
-        var style = markup[markup.IndexOf("<Style Selector=\"Button.railItem.active\">", StringComparison.Ordinal)..];
+        var style = markup[markup.IndexOf("<Style Selector=\"Button.sectionTab.active\">", StringComparison.Ordinal)..];
         style = style[..style.IndexOf("</Style>", StringComparison.Ordinal)];
         Assert.Contains("<Setter Property=\"AutomationProperties.ItemStatus\" Value=\"Current section\" />", style);
         foreach (var flag in new[] { "IsOverviewSectionSelected", "IsProductsSectionSelected", "IsShowsSectionSelected", "IsNotesSectionSelected" })
         {
-            Assert.Contains($"Classes=\"railItem\" Classes.active=\"{{Binding {flag}}}\"", markup);
+            Assert.Contains($"Classes=\"sectionTab\" Classes.active=\"{{Binding {flag}}}\"", markup);
         }
     }
 
