@@ -176,13 +176,6 @@ public sealed record SeasonResolution(
     /// <summary>True when the event kind applies to the date (scheduled or inside a select-date range).</summary>
     public bool Offers(OperatingEventKind kind) =>
         Applicable.Any(a => a.Event.Kind == kind && a.Status != EventDayStatus.NotOperatingThatDay);
-
-    /// <summary>The most recent official occurrence of <paramref name="kind"/> starting on or before the date, if any.</summary>
-    public OfficialOperatingEvent? LatestOccurrence(OperatingEventKind kind) =>
-        Applicable.Select(a => a.Event).Concat(RecentlyEnded)
-            .Where(e => e.Kind == kind)
-            .OrderByDescending(e => e.StartDate)
-            .FirstOrDefault();
 }
 
 /// <summary>

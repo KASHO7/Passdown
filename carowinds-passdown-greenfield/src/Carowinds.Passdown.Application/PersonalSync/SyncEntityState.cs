@@ -77,9 +77,6 @@ public sealed record SyncEntityState(
         ConflictRemoteContentHash: null,
         ConflictDetectedAtUtc: null,
         UpdatedAtUtc: nowUtc);
-
-    public bool IsDirty(string currentLocalContentHash) =>
-        !string.Equals(SyncedContentHash, currentLocalContentHash, StringComparison.Ordinal);
 }
 
 /// <summary>Persistence for <see cref="SyncEntityState"/> (Phase 16C §5/§32) — one generic store keyed by (EntityType, EntityId), never a per-domain-table column addition.</summary>

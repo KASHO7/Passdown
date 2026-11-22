@@ -53,7 +53,11 @@
 
   <ItemGroup>
     <Folder Include="Models\" />
+    <!-- Phase 34C: Assets/logo.png is the 1254x1254 source art for logo.ico (Phase 13G). Nothing loads it
+         at runtime (the window and executable icons are logo.ico), so it stays in the repository but is removed
+         from the resource glob and not embedded in Carowinds.Passdown.Desktop.dll. -->
     <AvaloniaResource Include="Assets\**" />
+    <AvaloniaResource Remove="Assets\logo.png" />
   </ItemGroup>
 
   <!--
