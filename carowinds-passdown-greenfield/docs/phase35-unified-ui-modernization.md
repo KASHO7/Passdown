@@ -1,6 +1,6 @@
 # Phase 35 — Unified Desktop UI/UX Modernization
 
-Status: **35A (shared shell and design tokens) approved by the product owner after Windows testing. 35B (Passdown workspace) implemented locally — awaiting Windows review; record: `docs/phase35b-passdown-workspace-redesign.md`. 35B and 35C (Passdown workspace; Products & Pricing and the anchored price popover) Windows-tested and confirmed by the product owner. 35D (Shows, Passdown Notes, navy title bar, dropdown chevron alignment) Windows-confirmed; its compact date-selector follow-up is awaiting Windows review; record: `docs/phase35d-shows-notes-shared-polish.md`. 35E–35G planned only, not started.**
+Status: **35A (shared shell and design tokens) approved by the product owner after Windows testing. 35B (Passdown workspace) implemented locally — awaiting Windows review; record: `docs/phase35b-passdown-workspace-redesign.md`. 35B and 35C (Passdown workspace; Products & Pricing and the anchored price popover) Windows-tested and confirmed by the product owner. 35D (Shows, Passdown Notes, navy title bar, dropdown chevron alignment) Windows-confirmed; its compact date-selector follow-up is awaiting Windows review; record: `docs/phase35d-shows-notes-shared-polish.md`. 35E Operations Calendar implemented locally — awaiting Windows review; 35E Dashboard not started (approved reference not supplied), so 35E is incomplete; record: `docs/phase35e-dashboard-calendar-redesign.md`. 35F–35G planned only, not started.**
 
 Design input: `carowinds-next-phase-uiux-handoff.md` (2026-11-22, outside the repository; read in full).
 This is an incremental Avalonia modernization of the existing application, not a rewrite. The HTML
@@ -196,6 +196,10 @@ Each has its own implementation and review gate and needs its approved reference
   `RC14-Phase35D1-LOCALTEST` (SHA-256 `d0bc89d3…191fdeb7`), Windows validation not executed.
 - **35E Dashboard and Calendar** — approved Dashboard styling without fabricated metrics; Calendar month grid with
   open/closed, draft/finalized and the three Pass Perks marker kinds plus month-long summary.
+  **Calendar implemented locally** (`docs/phase35e-dashboard-calendar-redesign.md`): toolbar and fixed month heading,
+  flush month card, draft/finalized-only cell line, per-kind marker colours, in-page Show Perks (shared preference),
+  labelled selected-date panel with pinned actions; local test build `RC14-Phase35E-LOCALTEST`, Windows validation not
+  executed. **Dashboard not started** — the approved Dashboard reference is still missing from the design bundle.
 - **35F Operational Notes, History, Settings** — list/detail and filters; immutable History with stored-PDF
   Open / Save Copy; grouped Settings sections.
 - **35G Consistency and readiness** — cross-screen accessibility, DPI, dark mode and motion-off audit, Windows
