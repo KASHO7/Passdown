@@ -1,6 +1,6 @@
 # Phase 35 — Unified Desktop UI/UX Modernization
 
-Status: **35A (shared shell and design tokens) approved by the product owner after Windows testing. 35B (Passdown workspace) implemented locally — awaiting Windows review; record: `docs/phase35b-passdown-workspace-redesign.md`. 35C (Products & Pricing and the anchored price popover) implemented locally — awaiting Windows review; record: `docs/phase35c-products-pricing-redesign.md`. 35D–35G planned only, not started.**
+Status: **35A (shared shell and design tokens) approved by the product owner after Windows testing. 35B (Passdown workspace) implemented locally — awaiting Windows review; record: `docs/phase35b-passdown-workspace-redesign.md`. 35B and 35C (Passdown workspace; Products & Pricing and the anchored price popover) Windows-tested and confirmed by the product owner. 35D (Shows, Passdown Notes, navy title bar, dropdown chevron alignment) implemented locally — awaiting Windows review; record: `docs/phase35d-shows-notes-shared-polish.md`. 35E–35G planned only, not started.**
 
 Design input: `carowinds-next-phase-uiux-handoff.md` (2026-11-22, outside the repository; read in full).
 This is an incremental Avalonia modernization of the existing application, not a rewrite. The HTML
@@ -90,6 +90,9 @@ essential and missing stops at that point rather than inventing a design.
    validated on the macOS build host and risks exactly the behaviors the brief requires to stay native. The
    name is not repeated inside the window (no second wordmark). If the Windows review wants the title merged
    into the app surface, that is a separate, Windows-tested change.
+   **35D update:** the product owner approved the navy title bar from the reference after Windows review of 35A–35C.
+   It is done without custom chrome: the native title bar stays and only its colours change through DWM caption
+   attributes (Windows 11+, never over high contrast) — see `docs/phase35d-shows-notes-shared-polish.md` §5.
 2. **Sidebar** replaces the horizontal strip: Dashboard, Calendar, Passdown, Operational Notes, History; Settings
    pinned at the bottom (with the existing update dot). Expanded ≈208 px with icon + label; collapsed 56 px icon
    only. No "Admissions"/"Operations" heading, no role label.
@@ -183,8 +186,12 @@ Each has its own implementation and review gate and needs its approved reference
   keyboard-accessible price popover (Enter = Save, Escape = Cancel, Use Official Price clears the override, focus
   restored, repositions near edges, one at a time) committing through the existing override command/validation.
   Details, History, custom items, Current Deals and Pass Perks preserved.
-- **35D Shows and Passdown Notes** — selection clarity, Select All / Clear, expandable long schedules; daily notes
-  one bullet per non-empty line; persistent-note inclusion never resolves or edits the note.
+- **35D Shows and Passdown Notes** (implemented locally — `docs/phase35d-shows-notes-shared-polish.md`) — Shows sheet
+  with live selection count, Select All / Clear and expandable long schedules; Notes sheet separating daily notes
+  (one printed note per non-empty line) from persistent-note inclusion checkboxes that never resolve or edit the note;
+  plus two shared fixes approved after the 35A–35C Windows review: aligned dropdown chevrons (fixed-coordinate
+  12×12 glyph, Stretch None) and the navy native title bar (DWM caption colours). Commits `65c230a`, `d7d6848`;
+  local test build `RC14-Phase35D-LOCALTEST` (SHA-256 `6b67cc89…a6b890b`). Windows validation not executed.
 - **35E Dashboard and Calendar** — approved Dashboard styling without fabricated metrics; Calendar month grid with
   open/closed, draft/finalized and the three Pass Perks marker kinds plus month-long summary.
 - **35F Operational Notes, History, Settings** — list/detail and filters; immutable History with stored-PDF
