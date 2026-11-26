@@ -155,6 +155,18 @@ public partial class App : global::Avalonia.Application
             var mainWindow = services.GetRequiredService<MainWindow>();
             var mainViewModel = services.GetRequiredService<MainViewModel>();
             mainWindow.DataContext = mainViewModel;
+
+            // Phase 35D: the navy title bar — the native Windows title bar keeps every window behaviour; only its
+            // caption/text colours change (Windows 11+, never over a high-contrast theme). Logged once per result.
+            var captionLogged = new HashSet<Carowinds.Passdown.Application.Windowing.CaptionStyleResult>();
+            mainWindow.CaptionStyleApplied += (_, result) =>
+            {
+                if (captionLogged.Add(result))
+                {
+                    logger.LogInformation("Title bar colour: {CaptionStyleResult}", result);
+                }
+            };
+            mainWindow.CaptionStyler = services.GetRequiredService<Carowinds.Passdown.Application.Windowing.IWindowCaptionStyler>();
             var mainViewModelResolvedMs = ElapsedSinceProcessStartMs();
 
             var syncCoordinator = services.GetRequiredService<IPersonalSyncCoordinator>();
@@ -815,6 +827,7 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IInterfaceAnimationPreferenceStore>(provider => new FileInterfaceAnimationPreferenceStore(
             FileInterfaceAnimationPreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FileInterfaceAnimationPreferenceStore>>()));
         services.AddSingleton<ISystemReducedMotionReader, WindowsAnimationEffectsReader>();
+        services.AddSingleton<Carowinds.Passdown.Application.Windowing.IWindowCaptionStyler, Carowinds.Passdown.Infrastructure.Windowing.WindowsCaptionStyler>();
         services.AddSingleton<InterfaceMotionController>();
         // Phase 35A: the sidebar's expanded/collapsed state — one local file, never synced.
         services.AddSingleton<INavigationSidebarPreferenceStore>(provider => new FileNavigationSidebarPreferenceStore(

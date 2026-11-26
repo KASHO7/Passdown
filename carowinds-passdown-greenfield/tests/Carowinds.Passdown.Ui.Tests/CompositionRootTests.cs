@@ -126,6 +126,16 @@ public class CompositionRootTests
     // per-user AppPaths database during an offline unit test — Phase 6A's own
     // migration-runs-before-refresh coverage uses an isolated temp database instead
     // (ScheduledRefreshHostTests).
+    /// <summary>Phase 35D: the navy title bar is wired through the Windows DWM caption styler (inert off Windows).</summary>
+    [Fact]
+    public void BuildServiceProvider_ResolvesTheWindowsCaptionStyler()
+    {
+        var provider = App.BuildServiceProvider();
+
+        Assert.IsType<Carowinds.Passdown.Infrastructure.Windowing.WindowsCaptionStyler>(
+            provider.GetRequiredService<Carowinds.Passdown.Application.Windowing.IWindowCaptionStyler>());
+    }
+
     [Fact]
     public void BuildServiceProvider_NormalMode_ResolvesMigrationRunnerAndMainViewModel()
     {
