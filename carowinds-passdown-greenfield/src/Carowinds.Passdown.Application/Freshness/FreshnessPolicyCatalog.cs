@@ -44,6 +44,9 @@ public static class FreshnessPolicyCatalog
             // Phase 21C: the official show schedule rides the same daily cadence (and the same four-hour
             // comprehensive check) as every other dated source — no second polling engine.
             [SourceCategory.ShowSchedule] = new(SourceCategory.ShowSchedule, daily),
+            // Phase 31: the official event schedule rides the same daily cadence — no extra polling.
+            [SourceCategory.OperatingEvents] = new(SourceCategory.OperatingEvents, daily),
+            [SourceCategory.PassPerks] = new(SourceCategory.PassPerks, daily),
         };
     }
 }

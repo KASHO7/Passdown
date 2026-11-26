@@ -3,7 +3,9 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using System.ComponentModel;
 using Avalonia.VisualTree;
+using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Desktop.ViewModels;
 
 namespace Carowinds.Passdown.Desktop.Views;
@@ -19,6 +21,141 @@ public partial class AssociateView : UserControl
         // the day button and Calendar already mark these events handled by the time they bubble here).
         DateCalendar.AddHandler(PointerReleasedEvent, DateCalendar_OnPointerReleased, RoutingStrategies.Bubble, handledEventsToo: true);
         DateCalendar.AddHandler(KeyDownEvent, DateCalendar_OnPreviewKeyDown, RoutingStrategies.Tunnel);
+
+        // Phase 33: editor | divider | preview sizing — view glue only; the rules live in PdfPreviewLayout.
+        AssociateBodyGrid.SizeChanged += (_, e) =>
+        {
+            _preview?.UpdateAvailableWidth(e.NewSize.Width);
+            ApplyPreviewLayout();
+        };
+        PreviewSplitter.DragCompleted += (_, _) => CommitSplitterWidth();
+
+        // Phase 35C: the price popover — focus moves into it on open; scrolling or resizing the Products list closes it
+        // unsaved, so it can never float detached from the row it edits.
+        PriceEditorPopup.Opened += (_, _) =>
+        {
+            PriceEditorPanel.Classes.Remove("entering"); // fades to full opacity only under Window.motion
+            FocusPriceEditorInput();
+        };
+        PriceEditorPopup.Closed += (_, _) => PriceEditorPanel.Classes.Add("entering");
+        PriceEditorPanel.AddHandler(KeyDownEvent, PriceEditorPanel_OnKeyDown, RoutingStrategies.Tunnel);
+        ProductsSectionScroll.ScrollChanged += (_, e) =>
+        {
+            if (e.OffsetDelta != default)
+            {
+                _priceEditor?.CancelIfOpen();
+            }
+        };
+        ProductsSectionScroll.SizeChanged += (_, e) =>
+        {
+            if (e.WidthChanged || e.HeightChanged)
+            {
+                _priceEditor?.CancelIfOpen();
+            }
+        };
+        PreviewSplitter.AddHandler(KeyUpEvent, (_, e) =>
+        {
+            if (e.Key is Key.Left or Key.Right)
+            {
+                CommitSplitterWidth();
+            }
+        }, RoutingStrategies.Bubble, handledEventsToo: true);
+    }
+
+    private PassdownPdfPreviewViewModel? _preview;
+    private PriceEditorViewModel? _priceEditor;
+    private Control? _priceEditAnchor;
+
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+        if (_priceEditor is not null)
+        {
+            _priceEditor.Closed -= PriceEditor_OnClosed;
+        }
+
+        _priceEditor = (DataContext as AssociateViewModel)?.PriceEditor;
+        if (_priceEditor is not null)
+        {
+            _priceEditor.Closed += PriceEditor_OnClosed;
+        }
+
+        if (_preview is not null)
+        {
+            _preview.PropertyChanged -= Preview_OnPropertyChanged;
+        }
+
+        _preview = (DataContext as AssociateViewModel)?.Preview;
+        if (_preview is not null)
+        {
+            _preview.PropertyChanged += Preview_OnPropertyChanged;
+            if (AssociateBodyGrid.Bounds.Width > 0)
+            {
+                _preview.UpdateAvailableWidth(AssociateBodyGrid.Bounds.Width);
+            }
+        }
+
+        ApplyPreviewLayout();
+    }
+
+    private void Preview_OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(PassdownPdfPreviewViewModel.PaneMode) or nameof(PassdownPdfPreviewViewModel.Layout)
+            or nameof(PassdownPdfPreviewViewModel.EffectivePreviewPaneWidth) or nameof(PassdownPdfPreviewViewModel.IsPreviewPaneShown))
+        {
+            ApplyPreviewLayout();
+        }
+    }
+
+    /// <summary>Applies the view model's resolved pane layout to the three body columns.</summary>
+    private void ApplyPreviewLayout()
+    {
+        var columns = AssociateBodyGrid.ColumnDefinitions;
+        if (columns.Count != 3)
+        {
+            return;
+        }
+
+        var editor = columns[0];
+        var preview = columns[2];
+        var layout = _preview?.Layout ?? new PdfPreviewLayoutState(PdfPreviewPaneMode.EditorOnly, 0, 0);
+        switch (layout.Mode)
+        {
+            case PdfPreviewPaneMode.Split:
+                editor.MinWidth = PdfPreviewLayout.MinEditorWidth;
+                editor.Width = new GridLength(1, GridUnitType.Star);
+                preview.MinWidth = PdfPreviewLayout.MinPreviewWidth;
+                preview.MaxWidth = Math.Max(PdfPreviewLayout.MinPreviewWidth, layout.MaxPreviewWidth);
+                preview.Width = new GridLength(layout.PreviewWidth, GridUnitType.Pixel);
+                break;
+
+            case PdfPreviewPaneMode.PreviewOnly:
+                editor.MinWidth = 0;
+                editor.Width = new GridLength(0, GridUnitType.Pixel);
+                preview.MinWidth = 0;
+                preview.MaxWidth = double.PositiveInfinity;
+                preview.Width = new GridLength(1, GridUnitType.Star);
+                break;
+
+            default:
+                editor.MinWidth = 0;
+                editor.Width = new GridLength(1, GridUnitType.Star);
+                preview.MinWidth = 0;
+                preview.MaxWidth = double.PositiveInfinity;
+                preview.Width = new GridLength(0, GridUnitType.Pixel);
+                break;
+        }
+    }
+
+    private void CommitSplitterWidth()
+    {
+        if (_preview is null || AssociateBodyGrid.ColumnDefinitions.Count != 3)
+        {
+            return;
+        }
+
+        _preview.CommitPreviewPaneWidth(AssociateBodyGrid.ColumnDefinitions[2].ActualWidth);
+        ApplyPreviewLayout(); // normalize: the splitter may have rewritten the editor column as a weighted star
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -91,6 +228,13 @@ public partial class AssociateView : UserControl
     }
 
     /// <summary>
+    /// Phase 35D follow-up: the toolbar's Today button hides once today is selected, so keyboard focus moves to the
+    /// date button beside it instead of being lost with the hidden button. Focus only — Click runs before the
+    /// button's GoToTodayCommand, which still does the date change.
+    /// </summary>
+    private void DateTodayButton_OnClick(object? sender, RoutedEventArgs e) => DateButton.Focus(NavigationMethod.Tab);
+
+    /// <summary>
     /// Phase 13E Part Q: pressing Enter in a Manual Hours/Private Buyout time field commits/normalizes
     /// it immediately, the same as Tab/click-away, instead of waiting for a later, unrelated focus
     /// change — and consumes the key so it can never fall through to an unrelated default button. Pure
@@ -119,6 +263,61 @@ public partial class AssociateView : UserControl
         if (DataContext is AssociateViewModel viewModel)
         {
             viewModel.RegroupCountFields();
+        }
+    }
+
+    /// <summary>
+    /// Phase 35C: the Edit control that was activated (pointer, Enter or Space) becomes the popover's anchor. Click is
+    /// raised before the button's command runs, so the anchor is set before the editor opens.
+    /// </summary>
+    private void PriceEditButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control anchor)
+        {
+            // A partly hidden row is scrolled fully into view and laid out first, so that scroll is finished before the
+            // editor opens (a later scroll closes it) and the popover is placed against the control's final position.
+            anchor.BringIntoView();
+            anchor.UpdateLayout();
+            _priceEditAnchor = anchor; // focus returns here
+            // Placed against the whole display-price cell (price + "Manual override" hint), so the hint stays visible.
+            PriceEditorPopup.PlacementTarget = anchor.Parent is StackPanel { Classes: var classes } cell && classes.Contains("priceCell") ? cell : anchor;
+        }
+    }
+
+    /// <summary>Phase 35C: Escape anywhere in the popover cancels; Enter in the price input saves (Enter on a button activates it).</summary>
+    private void PriceEditorPanel_OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (_priceEditor is not { IsOpen: true } editor)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Escape)
+        {
+            editor.CancelCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter && e.Source is Visual source && (ReferenceEquals(source, PriceEditorTextBox) || source.FindAncestorOfType<TextBox>() == PriceEditorTextBox))
+        {
+            editor.SaveCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
+
+    private void FocusPriceEditorInput()
+    {
+        PriceEditorTextBox.Focus(NavigationMethod.Tab);
+        PriceEditorTextBox.SelectAll();
+    }
+
+    /// <summary>Phase 35C: focus returns to the Edit control that opened the editor, when it still exists on screen.</summary>
+    private void PriceEditor_OnClosed(object? sender, bool committed)
+    {
+        var anchor = _priceEditAnchor;
+        _priceEditAnchor = null;
+        if (anchor is not null && anchor.IsAttachedToVisualTree() && anchor.IsEffectivelyVisible)
+        {
+            anchor.Focus(NavigationMethod.Tab);
         }
     }
 }

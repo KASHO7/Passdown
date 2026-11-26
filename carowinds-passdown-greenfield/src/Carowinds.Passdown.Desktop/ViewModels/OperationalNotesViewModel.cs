@@ -70,6 +70,7 @@ public partial class OperationalNotesViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmptyState))]
     [NotifyPropertyChangedFor(nameof(ShowFilteredEmptyState))]
+    [NotifyPropertyChangedFor(nameof(NoteCountText))]
     public partial IReadOnlyList<OperationalNoteRowPresentation> Notes { get; set; } = [];
 
     [ObservableProperty]
@@ -92,6 +93,7 @@ public partial class OperationalNotesViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsExpiredFilterSelected))]
     [NotifyPropertyChangedFor(nameof(IsResolvedFilterSelected))]
     [NotifyPropertyChangedFor(nameof(FilteredEmptyStateMessage))]
+    [NotifyPropertyChangedFor(nameof(ListHeadingText))]
     public partial OperationalNoteLifecycleFilter LifecycleFilter { get; set; } = OperationalNoteLifecycleFilter.Active;
 
     /// <summary>Category filter (Phase 11E Part A) — composes with <see cref="LifecycleFilter"/> and <see cref="PriorityFilter"/>; <see cref="OperationalNoteCategoryFilterOption.AllOption"/> means no category restriction.</summary>
@@ -105,6 +107,16 @@ public partial class OperationalNotesViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(HasActiveSecondaryFilters))]
     [NotifyPropertyChangedFor(nameof(FilteredEmptyStateMessage))]
     public partial OperationalNotePriorityFilterOption PriorityFilter { get; set; } = OperationalNotePriorityFilterOption.AllOption;
+
+    /// <summary>
+    /// Phase 35F: the search box. Narrows the already-loaded notes by title, note text and category label
+    /// (case-insensitive, every word must match) — an in-memory view filter only, composed with the lifecycle,
+    /// category and priority filters. It never reads storage again and never changes a note.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActiveSecondaryFilters))]
+    [NotifyPropertyChangedFor(nameof(FilteredEmptyStateMessage))]
+    public partial string SearchText { get; set; } = string.Empty;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmptyState))]
@@ -280,7 +292,23 @@ public partial class OperationalNotesViewModel : ViewModelBase
     public IReadOnlyList<OperationalNotePriorityFilterOption> PriorityFilterOptions => OperationalNotePriorityFilterOption.All;
 
     /// <summary>Spec Part D: whether Category and/or Priority currently narrow the view — drives the "Clear filters" affordance. <see cref="LifecycleFilter"/> is a primary navigation tab, not counted here.</summary>
-    public bool HasActiveSecondaryFilters => CategoryFilter.Value is not null || PriorityFilter.Value is not null;
+    public bool HasActiveSecondaryFilters => CategoryFilter.Value is not null || PriorityFilter.Value is not null || HasSearchText;
+
+    private bool HasSearchText => !string.IsNullOrWhiteSpace(SearchText);
+
+    /// <summary>Phase 35F: the list panel's heading — "Active notes", "All notes", … — naming the lifecycle view shown.</summary>
+    public string ListHeadingText => LifecycleFilter switch
+    {
+        OperationalNoteLifecycleFilter.All => "All notes",
+        OperationalNoteLifecycleFilter.Active => "Active notes",
+        OperationalNoteLifecycleFilter.Upcoming => "Upcoming notes",
+        OperationalNoteLifecycleFilter.Expired => "Expired notes",
+        OperationalNoteLifecycleFilter.Resolved => "Resolved notes",
+        _ => "Notes",
+    };
+
+    /// <summary>Phase 35F: "1 note" / "12 notes" — how many notes the current filters show.</summary>
+    public string NoteCountText => Notes.Count == 1 ? "1 note" : $"{Notes.Count} notes";
 
     /// <summary>The fixed category choices for the editor's ComboBox (spec Part J/S) — the same closed set <see cref="OperationalNoteCategoryOption.For"/> uses to label every row/detail, never a second list.</summary>
     public IReadOnlyList<OperationalNoteCategoryOption> EditorCategoryOptions => OperationalNoteCategoryOption.All;
@@ -323,12 +351,15 @@ public partial class OperationalNotesViewModel : ViewModelBase
 
     partial void OnPriorityFilterChanged(OperationalNotePriorityFilterOption value) => ApplyFilter();
 
+    partial void OnSearchTextChanged(string value) => ApplyFilter();
+
     /// <summary>Spec Part D: resets Category/Priority back to "All" without disturbing the lifecycle tab, which is primary navigation rather than a secondary narrowing filter.</summary>
     [RelayCommand]
     private void ClearFilters()
     {
         CategoryFilter = OperationalNoteCategoryFilterOption.AllOption;
         PriorityFilter = OperationalNotePriorityFilterOption.AllOption;
+        SearchText = string.Empty;
     }
 
     /// <summary>Cancels any pending resolve confirmation whenever the selection itself changes, and rebuilds <see cref="SelectedDetail"/> from the cached full note (never re-fetched — spec Part V's local-only guarantee applies to every read here, not only Reload).</summary>
@@ -396,9 +427,22 @@ public partial class OperationalNotesViewModel : ViewModelBase
             filtered = filtered.Where(n => n.Priority == priority);
         }
 
+        if (HasSearchText)
+        {
+            var terms = SearchText.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            filtered = filtered.Where(n => MatchesSearch(n, terms));
+        }
+
         Notes = filtered.Select(n => OperationalNoteRowPresentation.Build(n, referenceDate)).ToList();
         SelectedNote = previousSelectedId is { } id ? Notes.FirstOrDefault(row => row.Id == id) : null;
         RefreshSelectedDetail();
+    }
+
+    /// <summary>Phase 35F: every search word must appear in the note's title, its text or its category label (ordinal, case-insensitive).</summary>
+    private static bool MatchesSearch(OperationalNote note, IReadOnlyList<string> terms)
+    {
+        var haystack = $"{note.Title}\n{note.Body}\n{OperationalNoteCategoryOption.For(note.Category).Label}";
+        return terms.All(term => haystack.Contains(term, StringComparison.OrdinalIgnoreCase));
     }
 
     private void RefreshSelectedDetail()

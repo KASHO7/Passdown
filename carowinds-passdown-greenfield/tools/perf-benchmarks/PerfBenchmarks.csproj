@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Phase 34B-2: opt-in performance benchmarks (docs/phase34b2-general-performance-optimization.md §5, README.md).
+    Not part of CarowindsPassdown.slnx, so the normal build and the deterministic test count never depend on
+    it, and no timing is ever asserted. Synthetic data only: a scratch SQLite database in a folder you pass,
+    in-memory PDFs, headless Avalonia + Skia for real bitmaps, and the committed retrieval fixtures. It never
+    reads or writes the real profile, makes no network request and uploads nothing.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Headless" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Carowinds.Passdown.Desktop\Carowinds.Passdown.Desktop.csproj" />
+    <Compile Include="..\..\tests\Carowinds.Passdown.Ui.Tests\TestSupport\*.cs" Link="TestSupport\%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

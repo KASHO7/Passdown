@@ -26,6 +26,14 @@ public sealed record PriceHistoryProduct(
 
     /// <summary>Phase 26: the official page this computer last verified the product on, when known (validated before it is ever opened).</summary>
     public Uri? OfficialSourceUrl { get; init; }
+
+    /// <summary>
+    /// Phase 31B: whether "retired" may honestly be shown. A dedicated-channel product (Military &amp;
+    /// First Responder) missing from its public page reads "Availability unconfirmed", not retired.
+    /// </summary>
+    public ProductAvailabilityAssessment Availability { get; init; } = new(
+        IsActive ? ProductAvailability.Available : ProductAvailability.Retired,
+        IsActive ? "Listed at the latest successful official check." : "No longer listed on the official page.");
 }
 
 /// <summary>One interval plus its derived difference from the interval before it (never stored).</summary>
@@ -43,6 +51,13 @@ public sealed record PriceHistoryEntry(SeasonPriceHistoryInterval Interval, Seas
     /// published again at the same price (a new availability interval, not a price change).
     /// </summary>
     public bool IsReappearanceAtSamePrice => ChangeFromPrevious is { AmountChanged: false, KindChanged: false };
+
+    /// <summary>
+    /// Phase 31B: an earlier row with a different price state was still being confirmed after this row's
+    /// last confirmation — two computers' official checks disagreed during this period. Both are kept;
+    /// this row is concurrent evidence, not a confirmed change.
+    /// </summary>
+    public bool OverlapsEarlierPeriod { get; init; }
 }
 
 public interface ISeasonPriceHistoryService
@@ -52,6 +67,35 @@ public interface ISeasonPriceHistoryService
 
     /// <summary>One product's intervals, oldest first, each with its change from the previous interval.</summary>
     Task<IReadOnlyList<PriceHistoryEntry>> GetHistoryAsync(string productKey, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 34B-2: a reader for a screen that will show several products in a row (the Price History overlay).
+    /// It reads the observations merged in through Personal Sync — and folds legacy Season Pass identities — once,
+    /// then answers <see cref="ISeasonPriceHistoryReader.ListTrackedProductsAsync"/> and every
+    /// <see cref="ISeasonPriceHistoryReader.GetHistoryAsync"/> from that, so switching products no longer re-reads the
+    /// whole synced table. This computer's own intervals are still read fresh for every product. The caller
+    /// discards the reader whenever synced observations or the official catalog change, and when the screen closes.
+    /// The default reads nothing in advance and simply forwards to this service.
+    /// </summary>
+    Task<ISeasonPriceHistoryReader> OpenReaderAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<ISeasonPriceHistoryReader>(new ForwardingSeasonPriceHistoryReader(this));
+}
+
+/// <summary>Phase 34B-2: see <see cref="ISeasonPriceHistoryService.OpenReaderAsync"/>. Safe to use from several threads.</summary>
+public interface ISeasonPriceHistoryReader
+{
+    Task<IReadOnlyList<PriceHistoryProduct>> ListTrackedProductsAsync(CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<PriceHistoryEntry>> GetHistoryAsync(string productKey, CancellationToken cancellationToken = default);
+}
+
+internal sealed class ForwardingSeasonPriceHistoryReader(ISeasonPriceHistoryService service) : ISeasonPriceHistoryReader
+{
+    public Task<IReadOnlyList<PriceHistoryProduct>> ListTrackedProductsAsync(CancellationToken cancellationToken = default) =>
+        service.ListTrackedProductsAsync(cancellationToken);
+
+    public Task<IReadOnlyList<PriceHistoryEntry>> GetHistoryAsync(string productKey, CancellationToken cancellationToken = default) =>
+        service.GetHistoryAsync(productKey, cancellationToken);
 }
 
 /// <summary>
@@ -61,15 +105,50 @@ public interface ISeasonPriceHistoryService
 /// combined with this computer's own intervals by <see cref="PriceHistoryTimelineMerge"/> — a read-time
 /// view only; neither store is rewritten, and the current catalog price is never derived from it.
 /// </summary>
+/// <remarks>
+/// Phase 31B: <paramref name="deviceIdProvider"/> (optional) identifies this computer's own contributions
+/// relayed back through Personal Sync. It is only consulted when imported observations exist — which
+/// implies Personal Sync already created the device id — so reading history never creates one.
+/// </remarks>
 public sealed class SeasonPriceHistoryService(
     ICatalogProductRepository catalogRepository,
     ISeasonPriceHistoryRepository historyRepository,
-    ISyncedPriceObservationRepository? syncedRepository = null) : ISeasonPriceHistoryService
+    ISyncedPriceObservationRepository? syncedRepository = null,
+    IDeviceIdProvider? deviceIdProvider = null) : ISeasonPriceHistoryService
 {
     public async Task<IReadOnlyList<PriceHistoryProduct>> ListTrackedProductsAsync(CancellationToken cancellationToken = default)
     {
-        var localKeys = await historyRepository.GetTrackedProductKeysAsync(cancellationToken).ConfigureAwait(false);
         var importedByProduct = await LoadImportedByProductAsync(cancellationToken).ConfigureAwait(false);
+        return await ListTrackedProductsAsync(importedByProduct, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<ISeasonPriceHistoryReader> OpenReaderAsync(CancellationToken cancellationToken = default)
+    {
+        var importedByProduct = await LoadImportedByProductAsync(cancellationToken).ConfigureAwait(false);
+        return new Reader(this, importedByProduct);
+    }
+
+    /// <summary>
+    /// Phase 34B-2: holds one folded, read-only copy of the synced observations. Nothing in it is ever mutated after
+    /// <see cref="LoadImportedByProductAsync"/> builds it, so concurrent reads are safe.
+    /// </summary>
+    private sealed class Reader(SeasonPriceHistoryService service, Dictionary<string, List<OfficialPriceObservation>> importedByProduct) : ISeasonPriceHistoryReader
+    {
+        public Task<IReadOnlyList<PriceHistoryProduct>> ListTrackedProductsAsync(CancellationToken cancellationToken = default) =>
+            service.ListTrackedProductsAsync(importedByProduct, cancellationToken);
+
+        public Task<IReadOnlyList<PriceHistoryEntry>> GetHistoryAsync(string productKey, CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(productKey);
+            return service.GetHistoryAsync(productKey, importedByProduct, cancellationToken);
+        }
+    }
+
+    private async Task<IReadOnlyList<PriceHistoryProduct>> ListTrackedProductsAsync(
+        IReadOnlyDictionary<string, List<OfficialPriceObservation>> importedByProduct,
+        CancellationToken cancellationToken)
+    {
+        var localKeys = await historyRepository.GetTrackedProductKeysAsync(cancellationToken).ConfigureAwait(false);
         var trackedKeys = new HashSet<string>(localKeys, StringComparer.Ordinal);
         trackedKeys.UnionWith(importedByProduct.Keys);
         var products = new List<PriceHistoryProduct>();
@@ -98,10 +177,13 @@ public sealed class SeasonPriceHistoryService(
                 var stateCount = hasHistory
                     ? (await GetHistoryAsync(record.ProductKey, importedByProduct, cancellationToken).ConfigureAwait(false)).Count
                     : 0;
-                var isActive = record.LifecycleState is ProductLifecycleState.Active or ProductLifecycleState.PendingConfirmation;
+                // Phase 31B: retirement is only asserted on reliable evidence; an unconfirmed product stays listed.
+                var availability = ProductAvailabilityClassifier.Classify(record.LifecycleState, record.Category, record.ArchivedReason);
+                var isActive = availability.Availability is ProductAvailability.Available or ProductAvailability.Unconfirmed;
                 products.Add(new PriceHistoryProduct(record.ProductKey, record.DisplayName, trackedFamily, isActive, stateCount)
                 {
                     OfficialSourceUrl = record.LastEvidence.SourceUrl,
+                    Availability = availability,
                 });
                 listedKeys.Add(record.ProductKey);
             }
@@ -161,7 +243,24 @@ public sealed class SeasonPriceHistoryService(
         }
 
         var local = await historyRepository.GetHistoryAsync(productKey, cancellationToken).ConfigureAwait(false);
-        return PriceHistoryTimelineMerge.Merge(productKey, local, imported);
+        return PriceHistoryTimelineMerge.Merge(productKey, local, imported, LocalDeviceId());
+    }
+
+    private Guid? LocalDeviceId()
+    {
+        if (deviceIdProvider is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return deviceIdProvider.GetOrCreateDeviceId();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            return null; // grouping still works; relayed own observations simply stay separate evidence
+        }
     }
 
     private async Task<Dictionary<string, List<OfficialPriceObservation>>> LoadImportedByProductAsync(CancellationToken cancellationToken)

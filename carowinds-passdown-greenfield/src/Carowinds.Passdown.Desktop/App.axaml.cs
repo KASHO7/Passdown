@@ -20,6 +20,10 @@ using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Retrieval.Browser;
+using Carowinds.Passdown.Application.ProductDetails;
+using Carowinds.Passdown.Application.PassPerks;
+using Carowinds.Passdown.Application.PdfOutput;
+using Carowinds.Passdown.Application.Seasons;
 using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Application.SpellCheck;
 using Carowinds.Passdown.Application.Time;
@@ -29,6 +33,7 @@ using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
 using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Promotions;
 using Carowinds.Passdown.Domain.Retrieval;
 using Carowinds.Passdown.Domain.Updates;
 using Carowinds.Passdown.Infrastructure;
@@ -36,7 +41,9 @@ using Carowinds.Passdown.Infrastructure.Concurrency;
 using Carowinds.Passdown.Infrastructure.Diagnostics;
 using Carowinds.Passdown.Infrastructure.Files;
 using Carowinds.Passdown.Infrastructure.Logging;
+using Carowinds.Passdown.Infrastructure.PdfOutput;
 using Carowinds.Passdown.Infrastructure.PersonalSync;
+using Carowinds.Passdown.Infrastructure.Accessibility;
 using Carowinds.Passdown.Infrastructure.Preferences;
 using Carowinds.Passdown.Infrastructure.Retrieval.Browser;
 using Carowinds.Passdown.Infrastructure.Retrieval.Http;
@@ -112,6 +119,7 @@ public partial class App : global::Avalonia.Application
             // could create a window — and before migrations, which it does not depend on — so a saved
             // Light or Dark is the first theme ever drawn. One tiny local file read; never throws.
             ApplySavedAppearance(services, logger);
+            ApplySavedInterfaceMotion(services, logger);
 
             // Storage must be ready (spec §17 Phase 1: "establish ... storage
             // migrations before building the production UI") before any
@@ -147,6 +155,18 @@ public partial class App : global::Avalonia.Application
             var mainWindow = services.GetRequiredService<MainWindow>();
             var mainViewModel = services.GetRequiredService<MainViewModel>();
             mainWindow.DataContext = mainViewModel;
+
+            // Phase 35D: the navy title bar — the native Windows title bar keeps every window behaviour; only its
+            // caption/text colours change (Windows 11+, never over a high-contrast theme). Logged once per result.
+            var captionLogged = new HashSet<Carowinds.Passdown.Application.Windowing.CaptionStyleResult>();
+            mainWindow.CaptionStyleApplied += (_, result) =>
+            {
+                if (captionLogged.Add(result))
+                {
+                    logger.LogInformation("Title bar colour: {CaptionStyleResult}", result);
+                }
+            };
+            mainWindow.CaptionStyler = services.GetRequiredService<Carowinds.Passdown.Application.Windowing.IWindowCaptionStyler>();
             var mainViewModelResolvedMs = ElapsedSinceProcessStartMs();
 
             var syncCoordinator = services.GetRequiredService<IPersonalSyncCoordinator>();
@@ -172,6 +192,13 @@ public partial class App : global::Avalonia.Application
             // Phase 23D: once the window is actually showing, confirm an in-app update's launch to the waiting
             // updater and open What's New if (and only if) the update is recorded as a confirmed success.
             mainWindow.Opened += (_, _) => StartPostUpdateLaunch(services, mainViewModel, updateCoordinator, logger);
+
+            // Phase 34B-2: once the window is showing and the UI has gone idle, pay the PDF engine's one-time
+            // start-up cost on one low-priority background thread (synthetic document, nothing displayed or
+            // written), so the first preview, Create PDF or Print is not delayed by it. Skipped on shutdown.
+            var pdfWarmUp = services.GetRequiredService<PdfEngineWarmUp>();
+            mainWindow.Opened += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() => pdfWarmUp.TryStart(), Avalonia.Threading.DispatcherPriority.ApplicationIdle);
+            desktop.ShutdownRequested += (_, _) => pdfWarmUp.Cancel();
 
             desktop.MainWindow = mainWindow;
             var mainWindowAssignedMs = ElapsedSinceProcessStartMs();
@@ -230,6 +257,26 @@ public partial class App : global::Avalonia.Application
         catch (Exception ex)
         {
             logger.LogWarning("Appearance preference could not be applied ({ExceptionType}); following the system theme.", ex.GetType().Name);
+        }
+    }
+
+    /// <summary>
+    /// Phase 35A: loads the local "Interface animations" choice (On when nothing is saved) and reads the
+    /// operating system's reduced-motion setting before the first window. Never blocks startup: on failure
+    /// the controller keeps its defaults.
+    /// </summary>
+    private static void ApplySavedInterfaceMotion(IServiceProvider services, ILogger logger)
+    {
+        try
+        {
+            var motion = services.GetRequiredService<InterfaceMotionController>();
+            motion.Initialize();
+            logger.LogInformation("Interface animations: {Preference} (OS reduced motion {System}; motion {Effective}).",
+                motion.Preference, motion.SystemReducedMotion, motion.IsMotionEffective ? "shown" : "off");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning("Interface animations preference could not be applied ({ExceptionType}).", ex.GetType().Name);
         }
     }
 
@@ -472,6 +519,12 @@ public partial class App : global::Avalonia.Application
                 $"Embedded resource '{resourceName}' not found in assembly '{assembly.FullName}'.");
     }
 
+    /// <summary>Phase 33: the main window's native handle, owner of the Windows print dialog (UI thread only).</summary>
+    private static IntPtr MainWindowHandle() =>
+        global::Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: { } window }
+            ? window.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero
+            : IntPtr.Zero;
+
     internal static IServiceProvider BuildServiceProvider()
     {
         var configuration = new ConfigurationBuilder()
@@ -511,6 +564,8 @@ public partial class App : global::Avalonia.Application
             new Migration0015CreateErtDateOverridesTable(),
             new Migration0016CreateSeasonPriceHistoryTable(),
             new Migration0017CreateSyncedPriceObservationsTable(),
+            // Phase 31: official event schedule + deals last-known-good documents (additive).
+            new Migration0018CreateOfficialReferenceDocumentsTable(),
         ]);
         services.AddSingleton<MigrationRunner>();
 
@@ -555,14 +610,42 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<IAssociatePassdownPdfExportService, AssociatePassdownPdfExportService>();
         services.AddSingleton<IPdfSaveFilePicker, AvaloniaPdfSaveFilePicker>();
 
+        // Phase 33: live PDF preview (PDFium renders the generated bytes, offline), direct printing (the
+        // Windows print dialog + GDI spooling; Windows only — other hosts get a "use Save PDF" message),
+        // and the preview's local, never-synced layout preferences (one JSON file, no migration).
+        services.AddSingleton<IPdfRasterizer, PdfiumPdfRasterizer>();
+        services.AddSingleton(provider => new PdfEngineWarmUp(
+            provider.GetRequiredService<IAssociatePassdownPdfGenerator>(),
+            provider.GetRequiredService<IPdfRasterizer>(),
+            provider.GetRequiredService<IAssociatePassdownTemplatePreferenceStore>(),
+            isRasterizerWarm: () => PdfiumPdfRasterizer.IsLibraryLoaded,
+            logger: provider.GetRequiredService<ILogger<PdfEngineWarmUp>>()));
+        services.AddSingleton<IPdfPrintService>(provider => OperatingSystem.IsWindows()
+            ? new WindowsPdfPrintService(MainWindowHandle, provider.GetRequiredService<ILogger<WindowsPdfPrintService>>())
+            : new UnsupportedPlatformPdfPrintService());
+        services.AddSingleton<IPdfPreviewLayoutPreferenceStore>(provider => new FilePdfPreviewLayoutPreferenceStore(
+            FilePdfPreviewLayoutPreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FilePdfPreviewLayoutPreferenceStore>>()));
+
         // Phase 18F: plain-text clipboard seam for the Associate screen's Teams "Copy" actions.
         services.AddSingleton<IClipboardService, AvaloniaClipboardService>();
 
         // Phase 17C §15/§39: the local Associate Passdown template preference (Classic/Compact/
         // Modern) — one flat JSON file, mirroring the PersonalSync file-based stores below. Consumed
-        // by both AssociateViewModel (for Preview PDF) and FinalizedPassdownFinalizationService (so a
+        // by both AssociateViewModel (Create PDF and the Phase 33 preview/Print/Save PDF) and FinalizedPassdownFinalizationService (so a
         // scheduled finalization freezes whatever template was selected at that moment).
         services.AddSingleton<IAssociatePassdownTemplatePreferenceStore>(_ => new FileAssociatePassdownTemplatePreferenceStore(FileAssociatePassdownTemplatePreferenceStore.DefaultPath));
+
+        // Phase 31D: Settings → Passdown Preferences — which sections start checked for a date with no
+        // saved draft. One flat local JSON file beside the template preference, never synced, no table.
+        // AssociatePassdownService reads it only when composing a date that has no saved draft.
+        services.AddSingleton<IPassdownDefaultsPreferenceStore>(provider => new FilePassdownDefaultsPreferenceStore(
+            FilePassdownDefaultsPreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FilePassdownDefaultsPreferenceStore>>()));
+        services.AddTransient<PassdownPreferencesSettingsViewModel>();
+        // Phase 32: Calendar display preference (Show Pass Perks on Calendar) — one local file, never synced.
+        // A singleton so the Settings checkbox and the Calendar share one live value.
+        services.AddSingleton<ICalendarDisplayPreferenceStore>(provider => new FileCalendarDisplayPreferenceStore(
+            FileCalendarDisplayPreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FileCalendarDisplayPreferenceStore>>()));
+        services.AddSingleton<CalendarDisplaySettingsViewModel>();
 
         // Phase 9A: the immutable finalized-passdown foundation.
         services.AddSingleton<IFinalizedPassdownRepository, SqliteFinalizedPassdownRepository>();
@@ -604,6 +687,13 @@ public partial class App : global::Avalonia.Application
         // Phase 21C: reads one date's recorded official show schedule (local only; retrieval is the
         // refresh coordinator's job). Used by the Dashboard and Operations Calendar.
         services.AddSingleton<IShowScheduleService, ShowScheduleService>();
+        // Phase 31: official operating seasons and deals — read from the local reference-document
+        // cache only (never online on date navigation).
+        services.AddSingleton<IOperatingSeasonService, OperatingSeasonService>();
+        services.AddSingleton<IOfficialDealsService, OfficialDealsService>();
+        services.AddSingleton<IPassPerksService, PassPerksService>();
+        // Phase 31B: Important Details & Deadlines read from the cached official product-details documents.
+        services.AddSingleton<IProductImportantDetailsService, ProductImportantDetailsService>();
         services.AddTransient<OperationsCalendarViewModel>();
 
         // Phase 11A: the persistent Operational Notes domain/persistence/service foundation.
@@ -732,6 +822,16 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<ISystemAppearanceSource>(_ => new AvaloniaSystemAppearanceSource());
         services.AddSingleton<IThemeVariantTarget, ApplicationThemeVariantTarget>();
         services.AddSingleton<AppearanceThemeController>();
+        // Phase 35A: Settings → Appearance → Interface animations — one local file, never synced; the Windows
+        // "Animation effects" setting is read through SystemParametersInfo (Infrastructure, Windows only).
+        services.AddSingleton<IInterfaceAnimationPreferenceStore>(provider => new FileInterfaceAnimationPreferenceStore(
+            FileInterfaceAnimationPreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FileInterfaceAnimationPreferenceStore>>()));
+        services.AddSingleton<ISystemReducedMotionReader, WindowsAnimationEffectsReader>();
+        services.AddSingleton<Carowinds.Passdown.Application.Windowing.IWindowCaptionStyler, Carowinds.Passdown.Infrastructure.Windowing.WindowsCaptionStyler>();
+        services.AddSingleton<InterfaceMotionController>();
+        // Phase 35A: the sidebar's expanded/collapsed state — one local file, never synced.
+        services.AddSingleton<INavigationSidebarPreferenceStore>(provider => new FileNavigationSidebarPreferenceStore(
+            FileNavigationSidebarPreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FileNavigationSidebarPreferenceStore>>()));
         services.AddTransient<AppearanceSettingsViewModel>();
         services.AddTransient<PersonalSyncSettingsViewModel>();
         // Phase 26: the one system-browser launcher for allowlisted official source pages.
@@ -860,6 +960,7 @@ public partial class App : global::Avalonia.Application
         // Phase 20A: season price history, written by reconciliation in the catalog upsert's own unit
         // of work (no separate polling loop, no extra requests) and read by the Price History screen.
         services.AddSingleton<ISeasonPriceHistoryRepository, SqliteSeasonPriceHistoryRepository>();
+        services.AddSingleton<IOfficialReferenceDocumentRepository, SqliteOfficialReferenceDocumentRepository>();
         services.AddSingleton<SeasonPriceHistoryRecorder>();
         services.AddSingleton<ISeasonPriceHistoryService, SeasonPriceHistoryService>();
         services.AddSingleton<IProductReconciliationService, ProductReconciliationService>();
@@ -889,29 +990,40 @@ public partial class App : global::Avalonia.Application
         // Completed Phase 3 source adapters (Part A "completed sources currently include").
         // Phase 21C: park hours and the show schedule read the same official FIMS operating-hours GET;
         // giving both one coalescing client means a date's hours and shows cost one request.
+        // Phase 34B-2: the six accesso dated sources share it too, so an identical calendar POST (same
+        // endpoint, headers and body apart from accesso's per-request nonce) is sent once per refresh job.
         services.AddSingleton<CoalescingRetrievalHttpClient>(provider => new CoalescingRetrievalHttpClient(
-            provider.GetRequiredService<IRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
+            provider.GetRequiredService<IRetrievalHttpClient>(), provider.GetRequiredService<IClock>(),
+            AccessoKeywordCalendarCoalescing.KeyBody));
         services.AddSingleton<ParkHoursSource>(provider => new ParkHoursSource(
             provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
         services.AddSingleton<ShowScheduleSource>(provider => new ShowScheduleSource(
             provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
-        services.AddSingleton<DatedAdmissionSource>();
-        services.AddSingleton<DatedFastLaneSource>();
-        services.AddSingleton<DatedHauntedSource>();
+        services.AddSingleton<DatedAdmissionSource>(provider => new DatedAdmissionSource(
+            provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
+        services.AddSingleton<DatedFastLaneSource>(provider => new DatedFastLaneSource(
+            provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
+        services.AddSingleton<DatedHauntedSource>(provider => new DatedHauntedSource(
+            provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
         services.AddSingleton<PromotionsCatalogSource>();
+        services.AddSingleton<OperatingEventsSource>();
+        services.AddSingleton<PassPerksSource>();
         services.AddSingleton<SeasonPassCatalogSource>();
         services.AddSingleton<SeasonPassAddOnsCatalogSource>();
         services.AddSingleton<GeneralAddOnsCatalogSource>();
         // Phase 13C: Bring-A-Friend Duo (dated, exact per-person price) and Military/First Responder
         // (catalog, "Starting From").
-        services.AddSingleton<DatedBringAFriendDuoSource>();
+        services.AddSingleton<DatedBringAFriendDuoSource>(provider => new DatedBringAFriendDuoSource(
+            provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
         services.AddSingleton<MilitaryFirstResponderCatalogSource>();
         // Phase 15A: ordinary Bring-A-Friend's exact per-date price (anonymous, keyword
         // BAFWizardDailyTickets) — supersedes Phase 13C's passholder-login-only finding.
-        services.AddSingleton<DatedBringAFriendSource>();
+        services.AddSingleton<DatedBringAFriendSource>(provider => new DatedBringAFriendSource(
+            provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
         // Phase 21A: Military/First Responder exact per-date prices (anonymous, keyword
         // MilitaryWizardDailyTickets) — the store calendar shown before ID.me.
-        services.AddSingleton<DatedMilitaryFirstResponderSource>();
+        services.AddSingleton<DatedMilitaryFirstResponderSource>(provider => new DatedMilitaryFirstResponderSource(
+            provider.GetRequiredService<CoalescingRetrievalHttpClient>(), provider.GetRequiredService<IClock>()));
 
         // Refresh-orchestrator source registrations (Part A) — every adapter above, paired with
         // how its successful payload is persisted (dated) or reconciled (catalog). None of the
@@ -928,17 +1040,29 @@ public partial class App : global::Avalonia.Application
                 new DatedSourceRegistration<DatedAdmissionPayload>(provider.GetRequiredService<DatedAdmissionSource>(), datedResultRepository),
                 new DatedSourceRegistration<DatedFastLanePayload>(provider.GetRequiredService<DatedFastLaneSource>(), datedResultRepository),
                 new DatedSourceRegistration<DatedHauntedPayload>(provider.GetRequiredService<DatedHauntedSource>(), datedResultRepository),
-                new CatalogSourceRegistration(provider.GetRequiredService<PromotionsCatalogSource>(), reconciliationService),
-                new CatalogSourceRegistration(provider.GetRequiredService<SeasonPassCatalogSource>(), reconciliationService),
+                // Phase 31: the same Promotions check also stores the official deals document.
+                new CatalogSourceRegistration(provider.GetRequiredService<PromotionsCatalogSource>(), reconciliationService,
+                    dealsDocuments: provider.GetRequiredService<IOfficialReferenceDocumentRepository>(),
+                    productDetailsDocuments: provider.GetRequiredService<IOfficialReferenceDocumentRepository>(),
+                    productDetailsChannel: OfficialProductChannel.Promotions),
+                new CatalogSourceRegistration(provider.GetRequiredService<SeasonPassCatalogSource>(), reconciliationService,
+                    productDetailsDocuments: provider.GetRequiredService<IOfficialReferenceDocumentRepository>(),
+                    productDetailsChannel: OfficialProductChannel.SeasonPasses),
                 new CatalogSourceRegistration(provider.GetRequiredService<SeasonPassAddOnsCatalogSource>(), reconciliationService),
                 new CatalogSourceRegistration(provider.GetRequiredService<GeneralAddOnsCatalogSource>(), reconciliationService),
                 new DatedSourceRegistration<DatedBringAFriendDuoPayload>(provider.GetRequiredService<DatedBringAFriendDuoSource>(), datedResultRepository),
-                new CatalogSourceRegistration(provider.GetRequiredService<MilitaryFirstResponderCatalogSource>(), reconciliationService),
+                new CatalogSourceRegistration(provider.GetRequiredService<MilitaryFirstResponderCatalogSource>(), reconciliationService,
+                    productDetailsDocuments: provider.GetRequiredService<IOfficialReferenceDocumentRepository>(),
+                    productDetailsChannel: OfficialProductChannel.MilitaryFirstResponder),
                 new DatedSourceRegistration<DatedBringAFriendPayload>(provider.GetRequiredService<DatedBringAFriendSource>(), datedResultRepository),
                 new DatedSourceRegistration<DatedMilitaryFirstResponderPayload>(provider.GetRequiredService<DatedMilitaryFirstResponderSource>(), datedResultRepository),
                 // Phase 21C: official show schedule — today and future dates only, so a past date's
                 // recorded schedule is never replaced.
                 new CurrentAndFutureDatedSourceRegistration<ShowSchedulePayload>(provider.GetRequiredService<ShowScheduleSource>(), datedResultRepository, provider.GetRequiredService<IClock>()),
+                // Phase 31: official event schedule (date-independent, daily cadence).
+                new OperatingEventsSourceRegistration(provider.GetRequiredService<OperatingEventsSource>(), provider.GetRequiredService<IOfficialReferenceDocumentRepository>()),
+                // Phase 32: official Pass Perks (date-independent, daily cadence; same orchestrator, no new poller).
+                new PassPerksSourceRegistration(provider.GetRequiredService<PassPerksSource>(), provider.GetRequiredService<IOfficialReferenceDocumentRepository>()),
             };
         });
 

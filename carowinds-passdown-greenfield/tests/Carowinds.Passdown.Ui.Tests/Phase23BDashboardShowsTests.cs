@@ -446,27 +446,22 @@ public sealed class Phase23BDashboardShowsTests
         Assert.Contains("Classes=\"muted showVenue\"", DashboardShowsTemplate());
     }
 
-    // ---- Fury banner -------------------------------------------------------------------------------
-
-    private static string Banner()
-    {
-        var markup = Markup("src/Carowinds.Passdown.Desktop/Views/MainWindow.axaml");
-        var start = markup.IndexOf("<Border x:Name=\"BrandBanner\"", StringComparison.Ordinal);
-        return markup[start..markup.IndexOf("</Border>\n", markup.IndexOf("BrandWordmark", start, StringComparison.Ordinal), StringComparison.Ordinal)];
-    }
+    // ---- Title area ------------------------------------------------------------------------------
+    // Phase 35A replaced the title-only Fury banner with the native title bar. The Phase 23B intent is kept: the
+    // title is the name alone — no chart mark, replacement symbol, role label or second in-window wordmark.
 
     [Fact]
-    public void Banner_IsTitleOnly_WithNoChartMarkOrReplacementSymbol()
+    public void TitleArea_IsTheNameOnly_WithNoChartMarkReplacementSymbolOrRoleLabel()
     {
-        var banner = Banner();
+        var markup = Markup("src/Carowinds.Passdown.Desktop/Views/MainWindow.axaml");
+        var window = markup[..markup.IndexOf('>')];
 
-        Assert.DoesNotContain("<Rectangle", banner);
-        Assert.DoesNotContain("<PathIcon", banner);
-        Assert.DoesNotContain("<Path ", banner);
-        Assert.DoesNotContain("<StackPanel", banner);
-        Assert.Single(Regex.Matches(banner, "<Image "));
-        Assert.Contains("Source=\"/Assets/Branding/fury325-banner.jpg\"", banner);
-        Assert.Matches("<TextBlock x:Name=\"BrandWordmark\" Classes=\"brandWordmark\" Text=\"CAROWINDS OPERATIONS\"\\s+Margin=\"24,0\"", banner);
+        Assert.Contains("Title=\"Carowinds Operations\"", window);
+        Assert.DoesNotContain("BrandBanner", markup);
+        Assert.DoesNotContain("BrandWordmark", markup);
+        Assert.DoesNotContain("<Rectangle", markup);
+        Assert.DoesNotContain("<Image ", markup);
+        Assert.DoesNotContain("Supervision", markup);
     }
 
     [Fact]

@@ -46,8 +46,9 @@ public class ProductBrandingTests
     public void MainWindow_ShellRetainsTheLegitimateAssociatePassdownWorkflowLabel()
     {
         // "Passdown" describing the document/workflow (not the app) must survive the rename. Phase 22C
-        // shortened the visible label to "Passdown"; the full workflow name stays its accessible name.
-        Assert.Contains("Content=\"Passdown\"", MainWindowAxamlText);
+        // shortened the visible label to "Passdown" (a sidebar label since Phase 35A); the full workflow name
+        // stays its accessible name.
+        Assert.Contains("<TextBlock Classes=\"navLabel\" Text=\"Passdown\" />", MainWindowAxamlText);
         Assert.Contains("AutomationProperties.Name=\"Associate Passdown section\"", MainWindowAxamlText);
     }
 

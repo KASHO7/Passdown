@@ -7,12 +7,14 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Carowinds.Passdown.Application.Diagnostics;
 using Carowinds.Passdown.Application.OperationalNotes;
+using Carowinds.Passdown.Application.PdfOutput;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Desktop;
 using Carowinds.Passdown.Desktop.Services;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
+using Carowinds.Passdown.Infrastructure.PdfOutput;
 using Carowinds.Passdown.Ui.Tests.TestSupport;
 
 // Phase 22F synthetic-fixture screenshot harness. Usage: README.md.
@@ -31,9 +33,13 @@ Fixture.Appearance = appearance;
 var outDir = args.Length > 0 ? args[0] : "visual-fixtures-out";
 var label = args.Length > 1 ? args[1] : "shot";
 var filter = args.Length > 2 && args[2] != "*" ? args[2] : null;
-var sizes = args.Length > 3 && args[3] == "main"
-    ? new (int W, int H)[] { (1280, 860) }
-    : new (int W, int H)[] { (960, 640), (1280, 690), (1280, 860), (1920, 1000) };
+// Phase 35A: "shell" renders the four desktop sizes named in the shell review checklist.
+var sizes = (args.Length > 3 ? args[3] : "all") switch
+{
+    "main" => new (int W, int H)[] { (1280, 860) },
+    "shell" => new (int W, int H)[] { (1920, 1080), (1536, 960), (1280, 720), (960, 640) },
+    _ => new (int W, int H)[] { (960, 640), (1280, 690), (1280, 860), (1920, 1000) },
+};
 // Forced modes run against the opposite simulated OS, proving the preference (not the OS) decides.
 var appearanceModes = (args.Length > 4 ? args[4] : "forced") switch
 {
@@ -50,6 +56,45 @@ var report = new List<string>();
 
 var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arrange)>
 {
+    // Phase 35A: the shared shell — sidebar expanded / collapsed on representative pages, and keyboard focus on a
+    // destination. The sidebar state is in memory only (no navigation-sidebar.json is read or written).
+    ("Shell-Expanded-Dashboard", () => new Fixture(), f => Go(f, AppSection.Dashboard)),
+    ("Shell-Collapsed-Dashboard", () => new Fixture(), f => { Go(f, AppSection.Dashboard); Collapse(f); }),
+    ("Shell-Expanded-Passdown", () => new Fixture(), f => Go(f, AppSection.AssociatePassdown)),
+    ("Shell-Collapsed-Passdown", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); Collapse(f); }),
+    ("Shell-Expanded-Calendar", () => new Fixture(), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Busy); }),
+    ("Shell-Expanded-Settings", () => new Fixture(), f => Go(f, AppSection.Settings)),
+    ("Shell-FocusNavigation", () => new Fixture(), f => { Go(f, AppSection.Dashboard); FocusNavigation(f.Window, "Operations Calendar section"); }),
+    ("Shell-FocusNavigationCollapsed", () => new Fixture(), f => { Go(f, AppSection.Dashboard); Collapse(f); FocusNavigation(f.Window, "Operations Calendar section"); }),
+    // Phase 35B: the Passdown workspace (toolbar, section tabs, Overview sheet, divider, preview companion).
+    ("Workspace-Overview", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); }),
+    ("Workspace-Overview-Collapsed", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); Collapse(f); }),
+    ("Workspace-PreviewHidden", () => new Fixture(preview: PdfPreviewLayoutPreferences.BuiltIn with { IsPreviewVisible = false }), f => { Go(f, AppSection.AssociatePassdown); }),
+    ("Workspace-FocusedInput", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); FocusNamed(f.Window, "Projected attendance"); }),
+    ("Workspace-FocusedTab", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); FocusNamed(f.Window, "Products section"); }),
+    ("Workspace-ProductsTab", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8); }),
+    ("Workspace-Overrides", () => new Fixture(), f =>
+    {
+        Go(f, AppSection.AssociatePassdown);
+        var a = f.Vm.Associate;
+        a.ManualHoursOverrideEnabled = true; a.ManualOpeningTimeText = "9:00 AM"; a.ManualClosingTimeText = "10:00 PM";
+        a.PrivateBuyoutEnabled = true; a.PrivateBuyoutOpeningTimeText = "6:00 PM"; a.PrivateBuyoutClosingTimeText = "11:00 PM";
+        a.PrivateBuyoutDetails = "Synthetic group buyout"; a.NorthGateOverrideText = "9:00 AM";
+        Pump(10);
+    }),
+    ("Workspace-ErtEditor", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.OpenErtEditorCommand.Execute(null); Pump(8); ScrollToName(f.Window, "Early Ride Time editor"); }),
+    ("Workspace-LongContentScrolled", () => new Fixture(), f =>
+    {
+        Go(f, AppSection.AssociatePassdown);
+        f.Vm.Associate.DailyFeatureText = string.Join(" ", Enumerable.Repeat("Synthetic long Daily Feature text that wraps across several lines in the editor.", 8));
+        f.Vm.Associate.ManualHoursOverrideEnabled = true; f.Vm.Associate.PrivateBuyoutEnabled = true;
+        Pump(10); ScrollToEnd(f.Window);
+    }),
+    // Phase 35A: Settings → Appearance → Interface animations in its three effective states (in-memory choice,
+    // simulated Windows "Animation effects"; never interface-animations.json).
+    ("Settings-AnimationsOn", () => new Fixture(motion: ShellMotion.Create(InterfaceAnimationPreference.On, SystemReducedMotion.NotRequested)), f => { Go(f, AppSection.Settings); ScrollToName(f.Window, "Interface animations"); }),
+    ("Settings-AnimationsOff", () => new Fixture(motion: ShellMotion.Create(InterfaceAnimationPreference.Off, SystemReducedMotion.NotRequested)), f => { Go(f, AppSection.Settings); ScrollToName(f.Window, "Interface animations"); }),
+    ("Settings-AnimationsWindowsReduced", () => new Fixture(motion: ShellMotion.Create(InterfaceAnimationPreference.On, SystemReducedMotion.Requested)), f => { Go(f, AppSection.Settings); ScrollToName(f.Window, "Interface animations"); }),
     ("Dashboard", () => new Fixture(), f => Go(f, AppSection.Dashboard)),
     // Phase 23B: Today's Shows density/overlap. "-Top" keeps the page at the top (above-the-fold view);
     // the others scroll the Shows panel into view.
@@ -90,11 +135,102 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
         Select(f, Fixtures.Other);
     }),
     ("Associate-Overview", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowOverviewSectionCommand.Execute(null); Pump(8); }),
+    // Phase 31D/31E: Include in Passdown on Overview; show selection on its own Shows rail page (on and off).
+    ("Associate-PassdownChoices", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowOverviewSectionCommand.Execute(null); Pump(8); ScrollToName(f.Window, "Include in Passdown"); }),
+    ("Associate-ShowsPage", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowShowsSectionCommand.Execute(null); Pump(8); }),
+    ("Associate-ShowsPage-Off", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.IncludeShows = false; f.Vm.Associate.ShowShowsSectionCommand.Execute(null); Pump(8); }),
+    // Phase 35C: Products & Pricing redesign and the anchored price popover (in-memory fixtures only).
+    ("P35C-Products", () => new Fixture(), f => Products(f)),
+    ("P35C-Products-Collapsed", () => new Fixture(), f => { Products(f); Collapse(f); }),
+    ("P35C-Products-PreviewHidden", () => new Fixture(preview: PdfPreviewLayoutPreferences.BuiltIn with { IsPreviewVisible = false }), f => Products(f)),
+    ("P35C-Override", () => new Fixture(), f => { Products(f); FirstRow(f).DisplayPriceOverrideText = "$44.00"; Pump(8); }),
+    ("P35C-Popover", () => new Fixture(), f => { Products(f); OpenPriceEditor(f.Window, FirstRow(f).DisplayName); }),
+    ("P35C-PopoverOverride", () => new Fixture(), f => { Products(f); FirstRow(f).DisplayPriceOverrideText = "$44.00"; Pump(6); OpenPriceEditor(f.Window, FirstRow(f).DisplayName); }),
+    ("P35C-PopoverInvalid", () => new Fixture(), f =>
+    {
+        Products(f); OpenPriceEditor(f.Window, FirstRow(f).DisplayName);
+        f.Vm.Associate.PriceEditor.EditText = "Special"; f.Vm.Associate.PriceEditor.SaveCommand.Execute(null); Pump(8);
+    }),
+    ("P35C-PopoverNearBottom", () => new Fixture(), f =>
+    {
+        Products(f);
+        var name = LowestVisibleEdit(f.Window);
+        if (name is not null) { OpenPriceEditorByName(f.Window, name); }
+    }),
+    ("P35C-FocusEdit", () => new Fixture(), f => { Products(f); FocusStartsWith(f.Window, "Edit display price for " + FirstRow(f).DisplayName); }),
+    ("P35C-Search", () => new Fixture(), f => { Products(f); f.Vm.Associate.ProductSearchText = "pass"; Pump(8); }),
+    ("P35C-Scrolled", () => new Fixture(), f => { Products(f); ScrollBy(f.Window, 900); }),
     ("Associate-Products", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8); }),
     // Phase 25: the Season Passes and Memberships groups (scrolled into view).
     ("Associate-Memberships", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8); ScrollToEnd(f.Window); }),
+    // Phase 31C: the compact Current Deals list and product rows further down the Products page.
+    ("Associate-Products-Scroll700", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8); ScrollBy(f.Window, 700); }),
+    ("Associate-Products-Scroll1400", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8); ScrollBy(f.Window, 1400); }),
+    ("Associate-Details-Deal", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8);
+        f.Vm.Associate.PendingDealsLoad.Wait(2000); Pump(4); f.Vm.Associate.CurrentDeals.First(d => d.Title.Contains("Bundle")).ViewDetailsCommand.Execute(null); Pump(10); }),
+    ("Associate-Details-Resort", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8);
+        f.Vm.Associate.PendingDealsLoad.Wait(2000); Pump(4); f.Vm.Associate.CurrentDeals.First(d => d.Title.Contains("Resort")).ViewDetailsCommand.Execute(null); Pump(10); }),
+    ("Associate-Details-GoldPass", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8);
+        f.Vm.Associate.ProductSections.SelectMany(s => s.Products).First(r => r.DisplayName.StartsWith("Gold Season", StringComparison.Ordinal)).ViewDetailsCommand.Execute(null); Pump(10); }),
+    ("Associate-Details-NoTerms", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8);
+        f.Vm.Associate.ProductSections.SelectMany(s => s.Products).First(r => r.DisplayName.StartsWith("All Season Dining", StringComparison.Ordinal)).ViewDetailsCommand.Execute(null); Pump(10); }),
+    // Phase 32: the Pass Perks panel on Products, a perk's View details, the Calendar markers and the setting.
+    ("Associate-PassPerks", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8);
+        f.Vm.Associate.PassPerks!.PendingLoad.Wait(2000); Pump(6); ScrollToName(f.Window, "Pass Perks month"); }),
+    ("Associate-Details-VisitPerk", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8);
+        f.Vm.Associate.PassPerks!.PendingLoad.Wait(2000); Pump(4); f.Vm.Associate.PassPerks.Items.First(i => i.Title.StartsWith("Earn", StringComparison.Ordinal)).ViewDetailsCommand.Execute(null); Pump(10); }),
+    ("Associate-Details-PerkTerms", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8);
+        f.Vm.Associate.PassPerks!.PendingLoad.Wait(2000); Pump(4); f.Vm.Associate.PassPerks.ViewProgramTermsCommand.Execute(null); Pump(10); }),
+    ("Calendar-PassPerks", () => new Fixture(), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Other); }),
+    ("Calendar-PassPerksMonthLong", () => new Fixture(), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Today);
+        foreach (var e in f.Window.GetVisualDescendants().OfType<Expander>().Where(e => (e.Header as string)?.StartsWith("Valid all", StringComparison.Ordinal) == true)) e.IsExpanded = true; Pump(6); }),
+    ("Calendar-PassPerksOff", () => new Fixture(showPassPerks: false), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Other); }),
+    // Phase 32A: the grid's last rows (Oct 24: two redemption perks; Oct 25: all three marker types) and the legend.
+    ("Calendar-PassPerksGrid", () => new Fixture(), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Other); ScrollBy(f.Window, 420); }),
+    ("Settings-CalendarDisplay", () => new Fixture(), f => { Go(f, AppSection.Settings); Pump(6); ScrollToName(f.Window, "Calendar"); }),
+    // Phase 35D: Shows & Entertainment and Passdown Notes redesign, the Actions dropdown and its chevron.
+    ("P35D-Shows", () => new Fixture(), f => ShowsTab(f)),
+    ("P35D-Shows-Expanded", () => new Fixture(), f => { ShowsTab(f); f.Vm.Associate.ShowRows.First(r => r.CanExpand).IsExpanded = true; Pump(8); }),
+    ("P35D-Shows-Collapsed", () => new Fixture(), f => { ShowsTab(f); Collapse(f); }),
+    ("P35D-Shows-PreviewHidden", () => new Fixture(preview: PdfPreviewLayoutPreferences.BuiltIn with { IsPreviewVisible = false }), f => { ShowsTab(f); f.Vm.Associate.ShowRows.First(r => r.CanExpand).IsExpanded = true; Pump(8); }),
+    ("P35D-Notes", () => new Fixture(), f => NotesTab(f)),
+    ("P35D-Notes-Included", () => new Fixture(includedNote: true), f => { NotesTab(f); ScrollToName(f.Window, "Persistent operational notes"); }),
+    ("P35D-Notes-Collapsed", () => new Fixture(), f => { NotesTab(f); Collapse(f); }),
+    ("P35D-Notes-PreviewHidden", () => new Fixture(preview: PdfPreviewLayoutPreferences.BuiltIn with { IsPreviewVisible = false }), f => NotesTab(f)),
+    ("P35D-Notes-Long", () => new Fixture(), f =>
+    {
+        NotesTab(f);
+        // Blank lines included: they are typed in practice and never print (each non-empty line is one note).
+        f.Vm.Associate.OperationalNotesText = string.Join(Environment.NewLine, Enumerable.Range(1, 24).Select(i => i % 4 == 0 ? string.Empty : $"Synthetic daily note {i}: a long line that wraps inside the editor so scrolling stays predictable."));
+        Pump(12);
+    }),
+    ("P35D-Actions", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "Passdown actions"); }),
+    // Phase 35D follow-up: the compact date selector on today (no Today button) and on another date (Today shown).
+    ("P35D-Date-Today", () => new Fixture(), f => Go(f, AppSection.AssociatePassdown)),
+    ("P35D-Date-OtherDay", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.PreviousDayCommand.Execute(null); Pump(12); }),
+    ("P35D-Date-OtherDayCollapsed", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); Collapse(f); f.Vm.Associate.NextDayCommand.Execute(null); Pump(12); }),
     ("Associate-Notes", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowNotesSectionCommand.Execute(null); Pump(8); }),
-    ("Associate-Shows", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowNotesSectionCommand.Execute(null); Pump(8); ScrollToName(f.Window, "Shows"); }),
+    // Phase 33: the live PDF preview (real QuestPDF bytes rendered by PDFium) beside the editor.
+    ("Preview-Hidden", () => new Fixture(preview: PdfPreviewLayoutPreferences.BuiltIn with { IsPreviewVisible = false }), f => { Go(f, AppSection.AssociatePassdown); Pump(8); }),
+    ("Preview-Modern", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.SelectTemplateCommand.Execute(AssociatePassdownTemplate.Modern); Pump(12); }),
+    ("Preview-Compact", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.SelectTemplateCommand.Execute(AssociatePassdownTemplate.Compact); Pump(12); }),
+    ("Preview-FitPage", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.Preview.FitPageCommand.Execute(null); Pump(12); }),
+    ("Preview-Zoomed", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.Preview.ZoomInCommand.Execute(null); f.Vm.Associate.Preview.ZoomInCommand.Execute(null); Pump(12); }),
+    ("Preview-LongNotesMultiPage", () => new Fixture(), f =>
+    {
+        Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowNotesSectionCommand.Execute(null); Pump(6);
+        f.Vm.Associate.OperationalNotesText = string.Join(Environment.NewLine, Enumerable.Range(1, 60).Select(i => $"Synthetic operational note {i}: a deliberately long line so the passdown continues onto another page rather than truncating anything."));
+        Pump(12); f.Vm.Associate.Preview.NextPageCommand.Execute(null); Pump(12);
+    }),
+    ("Preview-WideLayout", () => new Fixture(preview: PdfPreviewLayoutPreferences.BuiltIn with { PreviewPaneWidth = 760 }), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(12); }),
+    ("Preview-NarrowPreviewFirst", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.Preview.ShowPreviewCommand.Execute(null); Pump(12); }),
+    // A date change held mid-load: the previous date's page is gone at once; the pane says it is loading.
+    ("Preview-SwitchingDates", () => new Fixture(), f =>
+    {
+        Go(f, AppSection.AssociatePassdown); Pump(6);
+        f.AssociateService.LoadGate = new TaskCompletionSource<bool>();
+        f.Vm.Associate.NextDayCommand.Execute(null); Pump(8);
+    }),
     ("Associate-SaveFailed", () => new Fixture(), f =>
     {
         Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowOverviewSectionCommand.Execute(null); Pump(8);
@@ -108,8 +244,8 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
         f.Vm.PriceHistory!.OpenAsync(Fixtures.GoldPassKey).Wait(2000); Pump(10);
     }),
     ("Popup-DatePicker", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "Operating date"); }),
-    ("Popup-Copy", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "Copy for Teams"); }),
-    ("Popup-More", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "More passdown actions"); }),
+    // Phase 35B: Copy for Teams, Print, Save PDF, PDF style, preview, Check Online and Price History share one Actions menu.
+    ("Popup-Actions", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "Passdown actions"); }),
     ("Popup-Math", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowOverviewSectionCommand.Execute(null); Pump(6); OpenFlyout(f.Window, "Insert math symbol or equation"); }),
     ("Notes", () => new Fixture(), f =>
     {
@@ -124,6 +260,34 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
         if (f.Vm.History.HistoryItems.Count > 0) { f.Vm.History.SelectedItem = f.Vm.History.HistoryItems[0]; Pump(10); }
     }),
     ("History-Empty", () => new Fixture(emptyHistory: true), f => Go(f, AppSection.History)),
+    // Phase 35F: Operational Notes list-detail, editor dialog, resolved, search and empty search.
+    ("P35F-Notes", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); if (f.Vm.Notes.Notes.Count > 0) { f.Vm.Notes.SelectedNote = f.Vm.Notes.Notes[0]; Pump(6); } }),
+    ("P35F-Notes-Collapsed", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); Collapse(f); if (f.Vm.Notes.Notes.Count > 0) { f.Vm.Notes.SelectedNote = f.Vm.Notes.Notes[0]; Pump(6); } }),
+    ("P35F-Notes-Editor", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); f.Vm.Notes.NewNoteCommand.Execute(null); Pump(8); }),
+    ("P35F-Notes-Edit", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); f.Vm.Notes.SelectedNote = f.Vm.Notes.Notes[0]; Pump(6); f.Vm.Notes.EditCommand.Execute(null); Pump(8); }),
+    ("P35F-Notes-Resolve", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); f.Vm.Notes.SelectedNote = f.Vm.Notes.Notes[0]; Pump(6); f.Vm.Notes.RequestResolveCommand.Execute(null); Pump(6); }),
+    ("P35F-Notes-Resolved", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); f.Vm.Notes.SetFilterCommand.Execute(OperationalNoteLifecycleFilter.Resolved); Pump(6); if (f.Vm.Notes.Notes.Count > 0) { f.Vm.Notes.SelectedNote = f.Vm.Notes.Notes[0]; Pump(6); } }),
+    ("P35F-Notes-Upcoming", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); f.Vm.Notes.SetFilterCommand.Execute(OperationalNoteLifecycleFilter.Upcoming); Pump(6); f.Vm.Notes.SelectedNote = f.Vm.Notes.Notes.LastOrDefault(); Pump(6); }),
+    ("P35F-Notes-Search", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); f.Vm.Notes.SearchText = "scanner"; Pump(6); }),
+    // Phase 35F: Passdown History list-detail, a record without its PDF, search, record type and empty search.
+    ("P35F-History", () => new Fixture(), f => { Go(f, AppSection.History); f.Vm.History.SelectedItem = f.Vm.History.HistoryItems[0]; Pump(10); }),
+    ("P35F-History-Collapsed", () => new Fixture(), f => { Go(f, AppSection.History); Collapse(f); f.Vm.History.SelectedItem = f.Vm.History.HistoryItems[0]; Pump(10); }),
+    ("P35F-History-Scrolled", () => new Fixture(), f => { Go(f, AppSection.History); f.Vm.History.SelectedItem = f.Vm.History.HistoryItems[0]; Pump(10); ScrollBy(f.Window, 600); }),
+    ("P35F-History-NoPdf", () => new Fixture(), f => { Go(f, AppSection.History); f.Vm.History.SelectedItem = f.Vm.History.HistoryItems.First(i => !i.HasFrozenPdf); Pump(10); }),
+    ("P35F-History-Manual", () => new Fixture(), f => { Go(f, AppSection.History); f.Vm.History.SetOriginFilterCommand.Execute(Carowinds.Passdown.Application.Finalization.FinalizationOrigin.Manual); Pump(6); f.Vm.History.SelectedItem = f.Vm.History.HistoryItems.FirstOrDefault(); Pump(10); }),
+    ("P35F-History-Search", () => new Fixture(), f => { Go(f, AppSection.History); f.Vm.History.SearchText = "pdf unavailable"; Pump(6); }),
+    ("P35F-History-SearchEmpty", () => new Fixture(), f => { Go(f, AppSection.History); f.Vm.History.SearchText = "no such date"; Pump(6); }),
+    ("P35F-History-Empty", () => new Fixture(emptyHistory: true), f => Go(f, AppSection.History)),
+    // Phase 35F: Settings section list — each entry scrolls the page to its group.
+    ("P35F-Settings", () => new Fixture(sync: SyncFixture.UpToDate), f => Go(f, AppSection.Settings)),
+    ("P35F-Settings-Collapsed", () => new Fixture(sync: SyncFixture.UpToDate), f => { Go(f, AppSection.Settings); Collapse(f); }),
+    ("P35F-Settings-Defaults", () => new Fixture(sync: SyncFixture.UpToDate), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to Passdown Defaults settings"); }),
+    ("P35F-Settings-Refresh", () => new Fixture(sync: SyncFixture.UpToDate), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to Data Refresh information"); }),
+    ("P35F-Settings-Sync", () => new Fixture(sync: SyncFixture.UpToDate), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to Personal Sync settings"); }),
+    ("P35F-Settings-SyncError", () => new Fixture(sync: SyncFixture.Error), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to Personal Sync settings"); }),
+    ("P35F-Settings-Diagnostics", () => new Fixture(sync: SyncFixture.UpToDate), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to Diagnostics"); }),
+    ("P35F-Settings-About", () => new Fixture(sync: SyncFixture.UpToDate), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to About this build"); }),
+    ("P35F-Notes-SearchEmpty", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); f.Vm.Notes.SearchText = "no such note"; Pump(6); }),
     ("Settings-Off", () => new Fixture(), f => Go(f, AppSection.Settings)),
     ("Settings-Syncing", () => new Fixture(sync: SyncFixture.UpToDate), f => Go(f, AppSection.Settings)),
     ("Settings-Conflict", () => new Fixture(sync: SyncFixture.Conflict), f => { Go(f, AppSection.Settings); f.Vm.Settings.ReviewConflictsCommand.Execute(null); Pump(8); }),
@@ -155,8 +319,7 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
         f.Vm.PriceHistory!.OpenAsync(Fixtures.GoldPassKey).Wait(2000); Pump(10); Flip();
     }),
     ("LiveSwitch-DatePicker", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "Operating date"); Flip(); }),
-    ("LiveSwitch-Copy", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "Copy for Teams"); Flip(); }),
-    ("LiveSwitch-More", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "More passdown actions"); Flip(); }),
+    ("LiveSwitch-Actions", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "Passdown actions"); Flip(); }),
     ("LiveSwitch-Math", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowOverviewSectionCommand.Execute(null); Pump(6); OpenFlyout(f.Window, "Insert math symbol or equation"); Flip(); }),
     ("LiveSwitch-SystemOs", () => new Fixture(), f =>
     {
@@ -214,6 +377,7 @@ foreach (var (w, h) in sizes)
             Shot(fixture.Window, shot);
             report.Add($"{shot}: {Geometry(fixture.Window)}");
             fixture.CalendarService.Gate?.TrySetResult(true);
+            fixture.AssociateService.LoadGate?.TrySetResult(true);
             fixture.Window.Close();
             Pump(2);
         }
@@ -227,6 +391,37 @@ void Shot(Window window, string name)
 {
     using var frame = window.CaptureRenderedFrame();
     frame?.Save(Path.Combine(outDir, $"{label}-{name}.png"));
+}
+
+static void Collapse(Fixture f)
+{
+    if (f.Vm.ToggleNavigationCommand.CanExecute(null) && !f.Vm.IsNavigationCollapsed)
+    {
+        f.Vm.ToggleNavigationCommand.Execute(null);
+    }
+
+    Pump(8);
+}
+
+static void FocusNavigation(Window window, string automationName)
+{
+    var item = window.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => AutomationProperties.GetName(b) == automationName);
+    item?.Focus(Avalonia.Input.NavigationMethod.Tab);
+    Pump(8);
+}
+
+static void ClickNamed(Window window, string automationName)
+{
+    var button = window.GetVisualDescendants().OfType<Button>().First(b => AutomationProperties.GetName(b) == automationName);
+    button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+    Pump(8);
+}
+
+static void FocusNamed(Window window, string automationName)
+{
+    var control = window.GetVisualDescendants().OfType<Control>().FirstOrDefault(c => c.IsEffectivelyVisible && c.Focusable && AutomationProperties.GetName(c) == automationName);
+    control?.Focus(Avalonia.Input.NavigationMethod.Tab);
+    Pump(8);
 }
 
 static void Go(Fixture f, AppSection section)
@@ -269,6 +464,16 @@ static void ExpandFirstShowTimes(Window window)
     }
 }
 
+static void ScrollBy(Window window, double y)
+{
+    var scroll = window.GetVisualDescendants().OfType<ScrollViewer>().Where(s => s.IsEffectivelyVisible).OrderByDescending(s => s.Extent.Height).FirstOrDefault();
+    if (scroll is not null)
+    {
+        scroll.Offset = new Vector(0, Math.Min(y, Math.Max(0, scroll.Extent.Height - scroll.Viewport.Height)));
+        Pump(8);
+    }
+}
+
 static void ScrollToEnd(Window window)
 {
     var scroll = window.GetVisualDescendants().OfType<ScrollViewer>().Where(s => s.IsEffectivelyVisible).OrderByDescending(s => s.Extent.Height).FirstOrDefault();
@@ -284,7 +489,7 @@ static void ScrollToEnd(Window window)
 static string Geometry(Window window)
 {
     var scrolls = window.GetVisualDescendants().OfType<ScrollViewer>().Where(s => s.IsEffectivelyVisible).ToList();
-    var horizontal = scrolls.Where(s => s.Extent.Width > s.Viewport.Width + 1).Select(s => $"{s.Extent.Width - s.Viewport.Width:F0}").ToList();
+    var horizontal = scrolls.Where(s => s.Extent.Width > s.Viewport.Width + 1).Select(s => string.IsNullOrEmpty(s.Name) ? $"{s.Extent.Width - s.Viewport.Width:F0}" : $"{s.Name}:{s.Extent.Width - s.Viewport.Width:F0}").ToList();
     var vertical = scrolls.OrderByDescending(s => s.Extent.Height).FirstOrDefault() is { } main ? Math.Max(0, main.Extent.Height - main.Viewport.Height) : 0;
     var clipped = window.GetVisualDescendants().OfType<Button>()
         .Where(b => b.IsEffectivelyVisible && b.Bounds.Width > 0)
@@ -351,6 +556,53 @@ static string ShowsGeometry(Window window)
     static string Shorten(string? text) => text is null ? "" : text.Length <= 24 ? text : text[..24] + "…";
 }
 
+static void Products(Fixture f)
+{
+    Go(f, AppSection.AssociatePassdown);
+    f.Vm.Associate.ShowProductsSectionCommand.Execute(null);
+    Pump(10);
+}
+
+static ProductRowViewModel FirstRow(Fixture f) =>
+    f.Vm.Associate.ProductSections.SelectMany(s => s.Products).First(r => r.CanEditPrice);
+
+// Phase 35C: activates an Edit control the way a click/Enter does (Click first — it anchors the popover — then the command).
+static void OpenPriceEditor(Window window, string productName) => OpenPriceEditorByName(window, FindEdit(window, "Edit display price for " + productName)?.Name2());
+
+static void OpenPriceEditorByName(Window window, string? automationName)
+{
+    var button = window.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.IsEffectivelyVisible && AutomationProperties.GetName(b) == automationName);
+    if (button is null)
+    {
+        return;
+    }
+
+    button.Focus(Avalonia.Input.NavigationMethod.Tab);
+    button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+    button.Command?.Execute(button.CommandParameter);
+    Pump(12);
+}
+
+static Button? FindEdit(Window window, string prefix) =>
+    window.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.IsEffectivelyVisible && (AutomationProperties.GetName(b) ?? string.Empty).StartsWith(prefix, StringComparison.Ordinal));
+
+static string? LowestVisibleEdit(Window window) =>
+    window.GetVisualDescendants().OfType<Button>()
+        .Where(b => b.IsEffectivelyVisible && (AutomationProperties.GetName(b) ?? string.Empty).StartsWith("Edit display price for ", StringComparison.Ordinal))
+        .Select(b => (Button: b, Y: b.TranslatePoint(new Point(0, b.Bounds.Height), window)?.Y ?? double.MaxValue))
+        .Where(x => x.Y < window.Bounds.Height - 30)
+        .OrderByDescending(x => x.Y).Select(x => AutomationProperties.GetName(x.Button)).FirstOrDefault();
+
+static void FocusStartsWith(Window window, string prefix)
+{
+    FindEdit(window, prefix)?.Focus(Avalonia.Input.NavigationMethod.Tab);
+    Pump(8);
+}
+
+static void ShowsTab(Fixture f) { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowShowsSectionCommand.Execute(null); Pump(10); }
+
+static void NotesTab(Fixture f) { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowNotesSectionCommand.Execute(null); Pump(10); }
+
 static void Pump(int n)
 {
     for (var i = 0; i < n; i++)
@@ -363,6 +615,35 @@ static void Pump(int n)
 internal enum SyncFixture { Off, UpToDate, Conflict, Error }
 
 /// <summary>One isolated app shell over fakes — no database, no network, no real profile.</summary>
+/// <summary>Phase 35A: an Interface animations controller with an in-memory choice and a simulated OS setting.</summary>
+internal static class ShellMotion
+{
+    public static InterfaceMotionController Create(InterfaceAnimationPreference choice, SystemReducedMotion os)
+    {
+        var controller = new InterfaceMotionController(new MemoryStore(choice), new FixedReader(os));
+        controller.Initialize();
+        return controller;
+    }
+
+    private sealed class MemoryStore(InterfaceAnimationPreference value) : IInterfaceAnimationPreferenceStore
+    {
+        private InterfaceAnimationPreference _value = value;
+
+        public InterfaceAnimationPreference Load() => _value;
+
+        public Task SaveAsync(InterfaceAnimationPreference preference, CancellationToken cancellationToken = default)
+        {
+            _value = preference;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FixedReader(SystemReducedMotion value) : ISystemReducedMotionReader
+    {
+        public SystemReducedMotion Read() => value;
+    }
+}
+
 internal sealed class Fixture
 {
     /// <summary>Phase 23C: the harness-wide appearance controller (in-memory store, simulated OS).</summary>
@@ -373,13 +654,19 @@ internal sealed class Fixture
     public MainViewModel Vm { get; }
     public MainWindow Window { get; }
 
-    public Fixture(bool emptyNotes = false, bool emptyHistory = false, SyncFixture sync = SyncFixture.Off, Carowinds.Passdown.Application.Shows.ShowScheduleView? dashboardShows = null)
+    public Fixture(bool includedNote = false, bool emptyNotes = false, bool emptyHistory = false, SyncFixture sync = SyncFixture.Off, Carowinds.Passdown.Application.Shows.ShowScheduleView? dashboardShows = null, bool showPassPerks = true,
+        PdfPreviewLayoutPreferences? preview = null, InterfaceMotionController? motion = null)
     {
         var clock = new FakeClock(Fixtures.Now);
+        var passPerks = Phase32Fixtures.Service();
+        var calendarDisplay = new CalendarDisplaySettingsViewModel(new Phase32Fixtures.MemoryCalendarStore(showPassPerks));
+        calendarDisplay.PendingLoad.Wait(2000);
         var dashboard = new FakeOperationsDashboardService();
         BusyDayFixtures.ApplyBusyDay(dashboard);
         if (dashboardShows is not null) Phase23BDashboardShowsFixtures.Apply(dashboard, dashboardShows);
         BusyDayFixtures.ApplyBusyAssociate(AssociateService, partialFailure: true);
+        Phase35DFixtures.SeedPersistentNotes(AssociateService);
+        if (includedNote) Phase35DFixtures.IncludeFirstPersistentNote(AssociateService);
         Fixtures.ApplyCalendar(CalendarService);
         var notes = new FakeOperationalNotesService { UtcNowFactory = () => Fixtures.Now };
         if (!emptyNotes) Fixtures.SeedNotes(notes);
@@ -395,13 +682,29 @@ internal sealed class Fixture
 
         Vm = new MainViewModel(
             new OperationsDashboardViewModel(dashboard),
-            new OperationsCalendarViewModel(CalendarService, clock),
-            new AssociateViewModel(AssociateService, clock, autosaveDelay: (_, _) => Task.CompletedTask),
+            new OperationsCalendarViewModel(CalendarService, clock, passPerksService: passPerks, calendarDisplay: calendarDisplay),
+            new AssociateViewModel(AssociateService, clock, autosaveDelay: (_, _) => Task.CompletedTask,
+                externalLinkLauncher: new Phase31CFixtures.NoOpLinkLauncher(), dealsService: Phase31CFixtures.Deals(), importantDetailsService: Phase31CFixtures.Details(), passPerksService: passPerks,
+                // Phase 33: the real QuestPDF export (the default) rendered by the real PDFium rasterizer, inline and
+                // undebounced so a capture shows the finished preview. In-memory layout preferences only.
+                // Never the real profile's associate-passdown-template.json: the Preview-Modern/Compact
+                // scenarios change the PDF style.
+                templatePreferenceStore: new FakeAssociatePassdownTemplatePreferenceStore(),
+                pdfRasterizer: new PdfiumPdfRasterizer(),
+                pdfPrintService: new FakePdfPrintService(),
+                pdfPreviewLayoutStore: new InMemoryPdfPreviewLayoutPreferenceStore(preview),
+                previewWorkScheduler: new InlinePreviewWorkScheduler(),
+                previewDelay: (_, _) => Task.CompletedTask),
             new OperationalNotesViewModel(notes, clock),
             new PassdownHistoryViewModel(history, new FakeFinalizedPassdownPdfRetrievalService()),
             new PersonalSyncSettingsViewModel(settingsService, new FakeSyncFolderPicker(), conflicts, coordinator, buildIdentity: build, diagnostics: diagnostics,
-                appearance: new AppearanceSettingsViewModel(Appearance)),
+                appearance: new AppearanceSettingsViewModel(Appearance, motion), calendarDisplay: calendarDisplay),
             new PriceHistoryViewModel(priceHistory));
         Window = new MainWindow { DataContext = Vm };
     }
+}
+
+internal static class VisualFixtureButtonExtensions
+{
+    public static string? Name2(this Button button) => AutomationProperties.GetName(button);
 }

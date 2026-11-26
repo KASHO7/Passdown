@@ -79,8 +79,11 @@ public class AssociateViewAccessibilityTests
         Assert.Contains("Previous day", names);
         Assert.Contains("Next day", names);
         Assert.Contains("Operating date", names);
-        Assert.Contains("Check this date online", names);
         Assert.Contains("Create PDF", names);
+        Assert.Contains("Passdown actions", names);
+        // Phase 35B: Check Online lives in the Actions menu, still with its static accessible name.
+        var actions = view.GetLogicalDescendants().OfType<Button>().Single(b => AutomationProperties.GetName(b) == "Passdown actions");
+        Assert.Contains("Check this date online", Assert.IsType<MenuFlyout>(actions.Flyout).Items.OfType<MenuItem>().Select(AutomationProperties.GetName));
         Assert.Contains("Save status", names);
         Assert.Contains("Operational notes", names);
         Assert.Contains("Add a custom or internal product", names);
@@ -103,7 +106,7 @@ public class AssociateViewAccessibilityTests
         // binding) and, like the per-row product/custom-item template names above, is not reliably
         // realized by this unattached headless container — guarded directly against the markup
         // instead, see <see cref="ProductRowAndCustomItemTemplates_DeclareAccessibleNamePatterns"/>.
-        Assert.Contains("Edit Early Ride Time", names);
+        Assert.Contains("Edit Attractions for Early Ride Time", names); // Phase 35B: the visible label is part of the name
         Assert.Contains("Use an Early Ride Time override for this date", names);
         Assert.Contains("Monthly Early Ride Time rides", names);
 
@@ -222,12 +225,18 @@ public class AssociateViewAccessibilityTests
         var markup = File.ReadAllText(FindRepoFile("src/Carowinds.Passdown.Desktop/Views/AssociateView.axaml"));
 
         Assert.Contains("StringFormat='Include {0} on the PDF'", markup);
-        Assert.Contains("StringFormat='Display price override for {0}'", markup);
+        // Phase 35C: the row's display price is text with an Edit control ("Edit display price for X, currently $Y",
+        // built by the row view model); the anchored popover's input is "Display price for X".
+        Assert.Contains("AutomationProperties.Name=\"{Binding EditPriceAutomationName}\"", markup);
+        Assert.Contains("AutomationProperties.Name=\"{Binding InputAccessibleName}\"", markup);
         Assert.Contains("StringFormat='Use official price for {0}'", markup);
         Assert.Contains("StringFormat='Remove {0}'", markup);
-        Assert.Contains("StringFormat='Remove {0} from this passdown'", markup);
+        // Phase 35D: a persistent note's Add/Remove is its inclusion checkbox — named for what it is, with the effect
+        // (removing from this passdown only, or adding the note) spelled out in its help text.
+        Assert.Contains("StringFormat='Include {0} in this passdown'", markup);
+        Assert.Contains("StringFormat='Uncheck to remove {0} from this passdown. The original note is not changed.'", markup);
+        Assert.Contains("StringFormat='Check to add note {0} to this passdown. The original note is not changed.'", markup);
         Assert.Contains("StringFormat='Replace {0} with current version'", markup);
-        Assert.Contains("StringFormat='Add note {0}'", markup);
 
         // Phase 17D §2: the resolver-driven, rides-only Early Ride status line's accessible name.
         Assert.Contains("StringFormat='Early Ride: {0}'", markup);

@@ -25,8 +25,18 @@
     single-file alike) - only the OFL.txt license notice is still shipped loose, unchanged, since
     the font content itself now travels inside the assembly instead.
   -->
+  <!--
+    Phase 34C: only the Lato faces the PDFs can ask for are embedded (was all 18, 11.9 MB). The three
+    templates and the Daily Feature use Regular, Bold (.Bold()), SemiBold (.SemiBold()) and Italic
+    (.Italic(), and MathFontSet's prose); BoldItalic and SemiBoldItalic are kept so a future italic span
+    inside a bold or semibold run still matches a real face instead of a synthesized one. The other
+    twelve faces (Thin, ExtraLight, Light, Medium, ExtraBold, Black and their italics) were never
+    selected: PDFs of every template were byte-identical before and after (docs/phase34c-repository-cleanup.md),
+    and Phase34CEmbeddedFontTests fails if a template starts using a weight that is not embedded.
+  -->
   <ItemGroup>
-    <EmbeddedResource Include="$(NuGetPackageRoot)questpdf\$(QuestPdfVersion)\LatoFont\*.ttf">
+    <EmbeddedLatoFace Include="Regular;Bold;SemiBold;Italic;BoldItalic;SemiBoldItalic" />
+    <EmbeddedResource Include="@(EmbeddedLatoFace->'$(NuGetPackageRoot)questpdf\$(QuestPdfVersion)\LatoFont\Lato-%(Identity).ttf')">
       <LogicalName>LatoFont.%(Filename)%(Extension)</LogicalName>
       <Link>LatoFont\%(Filename)%(Extension)</Link>
     </EmbeddedResource>

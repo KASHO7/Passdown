@@ -57,6 +57,11 @@ public static class ProductSeasonClassifier
             tags |= ProductSeasonTags.WinterFest;
         }
 
+        if (displayName.Contains("Oktoberfest", StringComparison.OrdinalIgnoreCase))
+        {
+            tags |= ProductSeasonTags.Oktoberfest;
+        }
+
         return tags;
     }
 

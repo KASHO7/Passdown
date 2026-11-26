@@ -7,14 +7,17 @@ using Carowinds.Passdown.Application.Freshness;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.PersonalSync;
+using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Retrieval;
+using Carowinds.Passdown.Application.Seasons;
 using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Catalog;
 using Carowinds.Passdown.Domain.Ert;
 using Carowinds.Passdown.Domain.Retrieval;
+using Carowinds.Passdown.Domain.Seasons;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -50,7 +53,9 @@ public sealed class AssociatePassdownService(
     IOfficialRefreshGate? refreshGate = null,
     IDataChangeNotifier? dataChangeNotifier = null,
     ISeasonPriceHistoryRepository? seasonPriceHistoryRepository = null,
-    ILogger<AssociatePassdownService>? logger = null) : IAssociatePassdownService
+    ILogger<AssociatePassdownService>? logger = null,
+    IOperatingSeasonService? seasonService = null,
+    IPassdownDefaultsPreferenceStore? passdownDefaultsStore = null) : IAssociatePassdownService
 {
     private readonly ILogger _logger = logger ?? (ILogger)NullLogger.Instance;
 
@@ -370,14 +375,38 @@ public sealed class AssociatePassdownService(
     {
         var draftRecord = await draftRepository.GetAsync(operatingDate, cancellationToken).ConfigureAwait(false);
         return draftRecord is null
-            ? (AssociateDraftPayload.CreateDefault(), null)
+            ? (await CreateNewDraftAsync(cancellationToken).ConfigureAwait(false), null)
             : (AssociateDraftPayloadSerializer.Deserialize(draftRecord.PayloadJson), ComputeStoredDraftHash(draftRecord.PayloadJson));
+    }
+
+    /// <summary>
+    /// Phase 31D: the starting draft for a date with no saved draft — from this computer's Settings →
+    /// Passdown Preferences when available, otherwise the built-in defaults. Never used for a date that
+    /// already has a saved draft, so changing a default never rewrites earlier saved selections.
+    /// </summary>
+    private async Task<AssociateDraftPayload> CreateNewDraftAsync(CancellationToken cancellationToken)
+    {
+        if (passdownDefaultsStore is null)
+        {
+            return AssociateDraftPayload.CreateDefault(PassdownDefaultSelections.BuiltIn);
+        }
+
+        try
+        {
+            var defaults = await passdownDefaultsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+            return AssociateDraftPayload.CreateDefault(defaults);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning("Passdown default selections could not be read ({ExceptionType}); using built-in defaults.", ex.GetType().Name);
+            return AssociateDraftPayload.CreateDefault(PassdownDefaultSelections.BuiltIn);
+        }
     }
 
     private async Task<AssociateWorkspace> ComposeAsync(DateOnly operatingDate, CancellationToken cancellationToken, bool applyHistoricalPricingRule = true)
     {
         var draftRecord = await draftRepository.GetAsync(operatingDate, cancellationToken).ConfigureAwait(false);
-        var draft = draftRecord is null ? AssociateDraftPayload.CreateDefault() : AssociateDraftPayloadSerializer.Deserialize(draftRecord.PayloadJson);
+        var draft = draftRecord is null ? await CreateNewDraftAsync(cancellationToken).ConfigureAwait(false) : AssociateDraftPayloadSerializer.Deserialize(draftRecord.PayloadJson);
         var saveStatus = draftRecord is null ? AssociateSaveStatus.NeverSaved : new AssociateSaveStatus(AssociateSaveState.Saved, draftRecord.UpdatedAt);
 
         var asOf = clock.UtcNow;
@@ -434,6 +463,17 @@ public sealed class AssociatePassdownService(
             ? LimitToHistoricalEvidence(products, operatingDate)
             : 0;
 
+        // Phase 31: the selected date's official season (cached event schedule only — never online), and
+        // the past-season rule for current-catalog event products. Applied only to the current pricing
+        // timeframe: a historical date keeps exactly the evidence recorded for it.
+        var season = seasonService is not null
+            ? await seasonService.ResolveAsync(operatingDate, ParkDayFrom(parkHours), cancellationToken).ConfigureAwait(false)
+            : AssociateSeasonView.NotChecked(operatingDate);
+        if (timeframe == AssociatePricingTimeframe.Current)
+        {
+            MarkPastSeasonProducts(products, season.Schedule, DateOnly.FromDateTime(EasternTimeZone.ConvertFromUtc(asOf).DateTime));
+        }
+
         products.AddRange(ComposeCustomProducts(draft));
 
         var categoryStatuses = StatusTrackedDatedCategories
@@ -458,6 +498,7 @@ public sealed class AssociatePassdownService(
             DraftContentHash = draftRecord is null ? null : SyncContentHash.ComputeDraftHash(draft),
             PricingTimeframe = timeframe,
             WithheldCurrentCatalogProductCount = withheld,
+            Season = season,
         };
 
         if (workspace.IsHistoricalPricingUnavailable)
@@ -468,6 +509,56 @@ public sealed class AssociatePassdownService(
         }
 
         return workspace;
+    }
+
+    /// <summary>Phase 31: the official park-day status for the selected date, from its own recorded park hours.</summary>
+    private static ParkDayOperation ParkDayFrom(AssociateParkHoursView parkHours)
+    {
+        if (parkHours.OfficialIsClosed || parkHours.Verification.State == AssociateVerificationState.Closed)
+        {
+            return ParkDayOperation.Closed;
+        }
+
+        return parkHours.Verification.State is AssociateVerificationState.Verified or AssociateVerificationState.Stale &&
+               parkHours.OfficialOpening is not null
+            ? ParkDayOperation.Open
+            : ParkDayOperation.Unknown;
+    }
+
+    /// <summary>
+    /// Phase 31: marks (never deletes or rewrites) current-catalog products that belong only to a
+    /// seasonal event whose latest official occurrence has ended and that no official check has listed
+    /// since — see <see cref="SeasonalProductAvailability"/>. Dated products and custom entries are
+    /// never touched.
+    /// </summary>
+    private static void MarkPastSeasonProducts(List<AssociateProduct> products, OperatingEventSchedule? schedule, DateOnly today)
+    {
+        if (schedule is null)
+        {
+            return;
+        }
+
+        for (var i = 0; i < products.Count; i++)
+        {
+            var product = products[i];
+            if (product.IsCustom || product.DateSpecific)
+            {
+                continue;
+            }
+
+            var lastVerified = product.Verification.LastVerifiedAt is { } verified
+                ? EasternTimeZone.ConvertFromUtc(verified)
+                : (DateTimeOffset?)null;
+            if (SeasonalProductAvailability.IsPastSeason(product.SeasonTags, lastVerified, schedule, today, out var ended) && ended is not null)
+            {
+                products[i] = product with
+                {
+                    PastSeasonNote = string.Create(
+                        PresentationCulture.UnitedStates,
+                        $"{OperatingEventKinds.DisplayName(ended.Kind)} {ended.EndDate.Year} ended {ended.EndDate:MMMM d, yyyy} (official dates: {ended.DateText}). Not listed by an official check since then, so it is not shown as a current product."),
+                };
+            }
+        }
     }
 
     /// <summary>

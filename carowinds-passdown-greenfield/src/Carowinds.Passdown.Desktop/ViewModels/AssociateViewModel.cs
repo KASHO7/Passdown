@@ -7,6 +7,10 @@ using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Preferences;
 using Carowinds.Passdown.Application.Refresh;
+using Carowinds.Passdown.Application.ProductDetails;
+using Carowinds.Passdown.Application.PassPerks;
+using Carowinds.Passdown.Application.PdfOutput;
+using Carowinds.Passdown.Application.Seasons;
 using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Presentation;
@@ -34,6 +38,9 @@ public enum AssociateSection
     Overview,
     Products,
     Notes,
+
+    /// <summary>Phase 31E: the selected date's official shows and which of them print (rail order: Overview, Products, Shows, Notes).</summary>
+    Shows,
 }
 
 /// <summary>
@@ -77,6 +84,10 @@ public partial class AssociateViewModel : ViewModelBase
 
     /// <summary>Phase 26: opens a validated official source page in the default browser (null in tests that do not supply one — no link is offered).</summary>
     private readonly IExternalLinkLauncher? _externalLinkLauncher;
+    private readonly IOfficialDealsService? _dealsService;
+    private readonly IProductImportantDetailsService? _importantDetailsService;
+    private ProductImportantDetailsIndex _importantDetailsIndex = ProductImportantDetailsIndex.Empty;
+    private int _dealsLoadGeneration;
     private readonly ILogger<AssociateViewModel>? _logger;
     private readonly TimeSpan _autosaveDebounce;
     private readonly Func<TimeSpan, CancellationToken, Task> _autosaveDelay;
@@ -218,7 +229,7 @@ public partial class AssociateViewModel : ViewModelBase
     public partial DateOnly SelectedDate { get; set; }
 
     /// <summary>
-    /// Which of Overview/Products/Notes is currently shown (Phase 10C Part F) — deliberately
+    /// Which of Overview/Products/Shows/Notes is currently shown (Phase 10C Part F) — deliberately
     /// independent of <see cref="SelectedDate"/>: switching this never loads, saves, or otherwise
     /// touches draft data, exactly like the view-layer <c>ToggleButton</c> state it replaces.
     /// </summary>
@@ -226,6 +237,7 @@ public partial class AssociateViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsOverviewSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsProductsSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsNotesSectionSelected))]
+    [NotifyPropertyChangedFor(nameof(IsShowsSectionSelected))]
     public partial AssociateSection SelectedSection { get; set; } = AssociateSection.Overview;
 
     public bool IsOverviewSectionSelected => SelectedSection == AssociateSection.Overview;
@@ -233,6 +245,166 @@ public partial class AssociateViewModel : ViewModelBase
     public bool IsProductsSectionSelected => SelectedSection == AssociateSection.Products;
 
     public bool IsNotesSectionSelected => SelectedSection == AssociateSection.Notes;
+
+    public bool IsShowsSectionSelected => SelectedSection == AssociateSection.Shows;
+
+    // Phase 35C: leaving Products closes an open price editor without saving.
+    partial void OnSelectedSectionChanged(AssociateSection value) => PriceEditor?.CancelIfOpen();
+
+    // ------------------------------------------------------------------ Phase 35C: Products price popover, collapse, search
+
+    /// <summary>
+    /// Phase 35C: the one anchored "Edit display price" popover (docs/phase35c-products-pricing-redesign.md). It
+    /// targets a row instance and the date in edit; a date switch, section switch or list rebuild closes it unsaved,
+    /// and Save re-checks both so a stale editor can never write to another product or date.
+    /// </summary>
+    public PriceEditorViewModel PriceEditor { get; }
+
+    /// <summary>Category names the associate collapsed this session (view state only — never printed or saved).</summary>
+    private readonly HashSet<string> _collapsedProductSections = new(StringComparer.Ordinal);
+
+    /// <summary>Phase 35C: filters product and custom rows by visible words. View state only; never saved.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNoProductSearchMatches))]
+    public partial string? ProductSearchText { get; set; }
+
+    /// <summary>Phase 35C: a search is active and matches no product or custom row.</summary>
+    public bool HasNoProductSearchMatches => !string.IsNullOrWhiteSpace(ProductSearchText)
+        && !ProductSections.Any(section => section.IsSectionVisible)
+        && !CustomProducts.Any(row => row.IsSearchMatch);
+
+    partial void OnProductSearchTextChanged(string? value)
+    {
+        PriceEditor?.CancelIfOpen();
+        ApplyProductSearch();
+    }
+
+    private void ApplyProductSearch()
+    {
+        foreach (var section in ProductSections)
+        {
+            section.ApplySearch(ProductSearchText);
+        }
+
+        var active = !string.IsNullOrWhiteSpace(ProductSearchText);
+        foreach (var row in CustomProducts)
+        {
+            row.IsSearchMatch = !active || row.MatchesSearch(ProductSearchText!);
+        }
+
+        OnPropertyChanged(nameof(HasNoProductSearchMatches));
+        OnPropertyChanged(nameof(CustomProductsSummaryText));
+    }
+
+    /// <summary>Phase 35C: "2 items · 1 included" for the Custom &amp; Internal Items heading.</summary>
+    public string CustomProductsSummaryText
+    {
+        get
+        {
+            var visible = CustomProducts.Where(row => row.IsSearchMatch).ToList();
+            return visible.Count == 0 && CustomProducts.Count == 0
+                ? "No items"
+                : $"{visible.Count} {(visible.Count == 1 ? "item" : "items")} · {visible.Count(row => row.IncludeOnPdf)} included";
+        }
+    }
+
+    private void OpenPriceEditor(IPriceEditTarget target)
+    {
+        var date = _draftDateInEdit ?? SelectedDate;
+        if (!IsPriceEditTargetCurrent(target, date))
+        {
+            return;
+        }
+
+        PriceEditor.Open(target, date);
+    }
+
+    /// <summary>
+    /// Phase 35C: the editor's target is still a row on screen for the date it was opened on, and that date is still
+    /// both the selected date and the date in edit (no switch is in progress).
+    /// </summary>
+    private bool IsPriceEditTargetCurrent(IPriceEditTarget target, DateOnly date) =>
+        SelectedDate == date
+        && (_draftDateInEdit ?? SelectedDate) == date
+        && target switch
+        {
+            ProductRowViewModel row => ProductSections.Any(section => section.Products.Contains(row)),
+            CustomProductRowViewModel custom => CustomProducts.Contains(custom),
+            _ => false,
+        };
+
+    private void OnProductSectionExpandedChanged(ProductCategorySectionViewModel section)
+    {
+        if (section.IsExpanded)
+        {
+            _collapsedProductSections.Remove(section.CategoryDisplayName);
+        }
+        else
+        {
+            _collapsedProductSections.Add(section.CategoryDisplayName);
+            if (PriceEditor.Target is ProductRowViewModel row && section.Products.Contains(row))
+            {
+                PriceEditor.CancelIfOpen(); // its anchor is about to disappear.
+            }
+        }
+    }
+
+    partial void OnProductSectionsChanged(IReadOnlyList<ProductCategorySectionViewModel> value)
+    {
+        PriceEditor?.CancelIfOpen(); // rows were rebuilt — the editor's row no longer exists.
+        OnPropertyChanged(nameof(HasNoProductSearchMatches));
+    }
+
+    partial void OnCustomProductsChanged(ObservableCollection<CustomProductRowViewModel> oldValue, ObservableCollection<CustomProductRowViewModel> newValue)
+    {
+        if (PriceEditor?.Target is CustomProductRowViewModel)
+        {
+            PriceEditor.CancelIfOpen();
+        }
+
+        if (oldValue is not null)
+        {
+            oldValue.CollectionChanged -= OnCustomProductsCollectionChanged;
+            foreach (var row in oldValue)
+            {
+                row.PropertyChanged -= OnCustomProductRowPropertyChanged;
+            }
+        }
+
+        newValue.CollectionChanged += OnCustomProductsCollectionChanged;
+        foreach (var row in newValue)
+        {
+            row.PropertyChanged += OnCustomProductRowPropertyChanged;
+        }
+
+        OnPropertyChanged(nameof(CustomProductsSummaryText));
+    }
+
+    private void OnCustomProductsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        foreach (var row in e.NewItems?.OfType<CustomProductRowViewModel>() ?? [])
+        {
+            row.PropertyChanged += OnCustomProductRowPropertyChanged;
+            row.IsSearchMatch = string.IsNullOrWhiteSpace(ProductSearchText) || row.MatchesSearch(ProductSearchText);
+        }
+
+        foreach (var row in e.OldItems?.OfType<CustomProductRowViewModel>() ?? [])
+        {
+            row.PropertyChanged -= OnCustomProductRowPropertyChanged;
+            PriceEditor.CancelIfTarget(row);
+        }
+
+        OnPropertyChanged(nameof(CustomProductsSummaryText));
+        OnPropertyChanged(nameof(HasNoProductSearchMatches));
+    }
+
+    private void OnCustomProductRowPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(CustomProductRowViewModel.IncludeOnPdf))
+        {
+            OnPropertyChanged(nameof(CustomProductsSummaryText));
+        }
+    }
 
     [RelayCommand]
     private void ShowOverviewSection() => SelectedSection = AssociateSection.Overview;
@@ -242,6 +414,9 @@ public partial class AssociateViewModel : ViewModelBase
 
     [RelayCommand]
     private void ShowNotesSection() => SelectedSection = AssociateSection.Notes;
+
+    [RelayCommand]
+    private void ShowShowsSection() => SelectedSection = AssociateSection.Shows;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBusy))]
@@ -447,6 +622,9 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OperationalNotesCount))]
     [NotifyPropertyChangedFor(nameof(HasOperationalNotesCount))]
+    [NotifyPropertyChangedFor(nameof(DailyNoteLineCount))]
+    [NotifyPropertyChangedFor(nameof(DailyNoteLineCountText))]
+    [NotifyPropertyChangedFor(nameof(NotesSummaryText))]
     public partial string? OperationalNotesText { get; set; }
 
     /// <summary>
@@ -460,6 +638,8 @@ public partial class AssociateViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(HasSelectedOperationalNotes))]
     [NotifyPropertyChangedFor(nameof(OperationalNotesCount))]
     [NotifyPropertyChangedFor(nameof(HasOperationalNotesCount))]
+    [NotifyPropertyChangedFor(nameof(NotesSummaryText))]
+    [NotifyPropertyChangedFor(nameof(IncludedPersistentNotesHeading))]
     public partial IReadOnlyList<AssociateSelectedOperationalNoteRowViewModel> SelectedOperationalNotes { get; set; } = [];
 
     /// <summary>
@@ -484,6 +664,31 @@ public partial class AssociateViewModel : ViewModelBase
     public bool HasOperationalNotesCount => OperationalNotesCount > 0;
 
     public bool HasAvailableOperationalNoteSuggestions => AvailableOperationalNoteSuggestions.Count > 0;
+
+    /// <summary>
+    /// Phase 35D: how many notes the daily text prints — the same non-empty-line rule the draft and PDF use
+    /// (<see cref="ParseLines"/>), so the count can never disagree with the document.
+    /// </summary>
+    public int DailyNoteLineCount => ParseLines(OperationalNotesText).Count;
+
+    /// <summary>"4 notes" under the daily editor (each prints as its own note).</summary>
+    public string DailyNoteLineCountText => DailyNoteLineCount == 1 ? "1 note" : $"{DailyNoteLineCount} notes";
+
+    /// <summary>Phase 35D: "4 daily notes · 1 persistent included" — daily text kept apart from selected persistent notes, both from live state.</summary>
+    public string NotesSummaryText =>
+        $"{(DailyNoteLineCount == 1 ? "1 daily note" : $"{DailyNoteLineCount} daily notes")} · {SelectedOperationalNotes.Count} persistent included";
+
+    /// <summary>Phase 35D: "Included in this Passdown (2)".</summary>
+    public string IncludedPersistentNotesHeading => $"Included in this Passdown ({SelectedOperationalNotes.Count})";
+
+    /// <summary>
+    /// Phase 35D: asks the app shell to open Operational Notes ("Manage notes"). Navigation only — it never
+    /// selects, resolves or edits a note, and the date, draft and selections here stay as they are.
+    /// </summary>
+    public event EventHandler? OpenOperationalNotesRequested;
+
+    [RelayCommand]
+    private void OpenOperationalNotes() => OpenOperationalNotesRequested?.Invoke(this, EventArgs.Empty);
 
     /// <summary>"Available for Aug 26" — the Associate-selected date, not Dashboard's Eastern "today" (Phase 11D Part E/U).</summary>
     public string AvailableOperationalNoteSuggestionsHeading =>
@@ -535,18 +740,67 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IncludeOperationalNotes { get; set; } = true;
 
-    /// <summary>Phase 21C: the optional Shows section switch (off by default; old drafts load off).</summary>
+    /// <summary>
+    /// Phase 21C: the optional Shows section switch (old drafts without a Shows value load off). Phase 31D:
+    /// shown under Include in Passdown; a new date starts from Settings → Passdown Preferences. Independent of
+    /// which shows are selected (<see cref="ShowRows"/>): turning it off keeps the selection.
+    /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsInclusionText))]
     public partial bool IncludeShows { get; set; }
+
+    public const string ShowsIncludedText = "Selected shows print on the Passdown.";
+    public const string ShowsNotIncludedText = "Shows is not included in the Passdown. Turn it on under Overview ▸ Include in Passdown.";
+
+    /// <summary>Phase 31D: on the Shows page (Phase 31E) — whether the section prints, kept apart from which shows are selected.</summary>
+    public string ShowsInclusionText => IncludeShows ? ShowsIncludedText : ShowsNotIncludedText;
 
     /// <summary>Phase 21C: the selected date's official shows (plus any selected show no longer on the schedule, explained).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasShowRows))]
+    [NotifyPropertyChangedFor(nameof(ShowsSelectionSummary))]
     [NotifyCanExecuteChangedFor(nameof(SelectAllShowsCommand))]
     [NotifyCanExecuteChangedFor(nameof(ClearShowsCommand))]
     public partial IReadOnlyList<AssociateShowRowViewModel> ShowRows { get; set; } = [];
 
     public bool HasShowRows => ShowRows.Count > 0;
+
+    /// <summary>Phase 35D: "2 of 4 shows selected" — counted from the rows on screen, never a fixed or invented number.</summary>
+    public string ShowsSelectionSummary
+    {
+        get
+        {
+            var selected = ShowRows.Count(row => row.IsSelected);
+            return ShowRows.Count == 1 ? $"{selected} of 1 show selected" : $"{selected} of {ShowRows.Count} shows selected";
+        }
+    }
+
+    /// <summary>
+    /// Phase 35D: which long show schedules are expanded, by official show id, for <see cref="_expandedShowsDate"/>
+    /// only. Presentation state: kept across a rebuild of the same date (a note added, Check Online) so the list
+    /// does not snap shut under the user, dropped when the date changes; never saved, never selection.
+    /// </summary>
+    private readonly HashSet<string> _expandedShowIds = new(StringComparer.Ordinal);
+
+    private DateOnly? _expandedShowsDate;
+
+    private void OnShowExpansionChanged(string showId, bool isExpanded)
+    {
+        if (isExpanded)
+        {
+            _expandedShowIds.Add(showId);
+        }
+        else
+        {
+            _expandedShowIds.Remove(showId);
+        }
+    }
+
+    private void OnShowSelectionChanged()
+    {
+        OnPropertyChanged(nameof(ShowsSelectionSummary));
+        ScheduleAutosave();
+    }
 
     /// <summary>Phase 21C: why there are no rows ("not published", "couldn't check", …) — null when rows are listed.</summary>
     [ObservableProperty]
@@ -561,6 +815,10 @@ public partial class AssociateViewModel : ViewModelBase
     public partial string? ShowsFreshnessText { get; set; }
 
     public bool HasShowsFreshnessText => ShowsFreshnessText is not null;
+
+    /// <summary>Phase 35D: the Shows heading's second line — the operating date, then the schedule's freshness when there is one.</summary>
+    [ObservableProperty]
+    public partial string ShowsSubtitleText { get; set; } = string.Empty;
 
     /// <summary>Phase 21C: selects every show currently on the official schedule (never a show that no longer is).</summary>
     [RelayCommand(CanExecute = nameof(HasShowRows))]
@@ -632,7 +890,17 @@ public partial class AssociateViewModel : ViewModelBase
         IDataChangeNotifier? dataChangeNotifier = null,
         OfficialDataStatusViewModel? officialDataStatus = null,
         IUiDispatcher? uiDispatcher = null,
-        IExternalLinkLauncher? externalLinkLauncher = null)
+        IExternalLinkLauncher? externalLinkLauncher = null,
+        IOfficialDealsService? dealsService = null,
+        IProductImportantDetailsService? importantDetailsService = null,
+        IPassPerksService? passPerksService = null,
+        IPdfRasterizer? pdfRasterizer = null,
+        IPdfPrintService? pdfPrintService = null,
+        IPdfPreviewLayoutPreferenceStore? pdfPreviewLayoutStore = null,
+        IPdfPageImageFactory? pdfPageImageFactory = null,
+        IPreviewWorkScheduler? previewWorkScheduler = null,
+        TimeSpan? previewDebounce = null,
+        Func<TimeSpan, CancellationToken, Task>? previewDelay = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -645,12 +913,37 @@ public partial class AssociateViewModel : ViewModelBase
         _autosaveDelay = autosaveDelay ?? Task.Delay;
         _pdfExportService = pdfExportService ?? new AssociatePassdownPdfExportService(new AssociatePassdownPdfGenerator());
         _pdfSavePicker = pdfSavePicker ?? new UnavailablePdfSaveFilePicker();
+
+        // Phase 33: the live PDF preview / Print / Save PDF. Built from the same export service as Create
+        // PDF. Without a rasterizer (tests, or a renderer that failed to compose) the pane never shows and
+        // nothing is generated in the background; Print and Save PDF still generate on demand.
+        Preview = new PassdownPdfPreviewViewModel(
+            CapturePreviewRequest,
+            () => HasWorkspace && !IsBusy,
+            _pdfExportService,
+            pdfRasterizer,
+            pdfPrintService ?? new UnsupportedPlatformPdfPrintService(),
+            _pdfSavePicker,
+            pdfPreviewLayoutStore ?? new InMemoryPdfPreviewLayoutPreferenceStore(),
+            pdfPageImageFactory,
+            previewWorkScheduler,
+            previewDebounce,
+            previewDelay,
+            logger: logger);
         _templatePreferenceStore = templatePreferenceStore ?? new FileAssociatePassdownTemplatePreferenceStore(FileAssociatePassdownTemplatePreferenceStore.DefaultPath);
         _clipboardService = clipboardService ?? new UnavailableClipboardService();
         _refreshCoordinator = refreshCoordinator;
         _uiDispatcher = uiDispatcher ?? new AvaloniaUiDispatcher();
         _externalLinkLauncher = externalLinkLauncher;
+        _dealsService = dealsService;
+        _importantDetailsService = importantDetailsService;
         OfficialDataStatus = officialDataStatus;
+        OfficialDetails = new OfficialDetailsDialogViewModel(externalLinkLauncher);
+        PriceEditor = new PriceEditorViewModel(IsPriceEditTargetCurrent);
+        CustomProducts.CollectionChanged += OnCustomProductsCollectionChanged;
+
+        // Phase 32: the Pass Perks panel (Products) reads the cached official perks only.
+        PassPerks = passPerksService is null ? null : new PassPerksPanelViewModel(passPerksService, OfficialDetails.Open, logger);
 
         // "Today" in the park's own wall-clock time (spec §6.5/§6.6 use the same Eastern
         // convention for "today") rather than the host machine's arbitrary local time zone.
@@ -677,6 +970,13 @@ public partial class AssociateViewModel : ViewModelBase
                 {
                     _uiDispatcher.Post(() => _pendingOfficialDataReload = HandleOfficialDataChangedAsync(change));
                 }
+                else if (change.Kind is DataChangeKind.OperatingDay)
+                {
+                    // Phase 35D follow-up: the Eastern date rolled over while the app stayed open (published by the
+                    // existing refresh scheduler — no timer of our own). Only the "is this today?" presentation
+                    // changes: the selected date, draft and preview stay exactly as they are.
+                    _uiDispatcher.Post(RefreshTodayIndicators);
+                }
             };
         }
     }
@@ -686,6 +986,50 @@ public partial class AssociateViewModel : ViewModelBase
 
     /// <summary>The in-flight (or most recent) reload triggered by newer official data, so a test can await it.</summary>
     public Task PendingOfficialDataReload => _pendingOfficialDataReload;
+
+    /// <summary>The in-flight (or most recent) reload after Settings → Passdown Preferences changed, so a test can await it.</summary>
+    public Task PendingDefaultsRefresh { get; private set; } = Task.CompletedTask;
+
+    /// <summary>
+    /// Phase 31D: Settings → Passdown Preferences changed. Only an open date with no saved draft and no
+    /// unsaved edits is re-composed (so it shows the new defaults); a saved date is never touched, so its own
+    /// saved selections — including explicitly unchecked ones — always win. Never an online check.
+    /// </summary>
+    public void RequestNewPassdownDefaultsRefresh() =>
+        _uiDispatcher.Post(() => PendingDefaultsRefresh = RefreshNewPassdownDefaultsAsync());
+
+    internal async Task RefreshNewPassdownDefaultsAsync()
+    {
+        try
+        {
+            var date = SelectedDate;
+            if (!IsShowingUnsavedDefaultDraft(date))
+            {
+                return;
+            }
+
+            var workspace = await _service.LoadAssociateDateAsync(date).ConfigureAwait(true);
+            if (!IsShowingUnsavedDefaultDraft(date) || workspace.SaveStatus.State != AssociateSaveState.NeverSaved)
+            {
+                return; // something changed while loading (an edit, a save, a date switch): leave it alone.
+            }
+
+            var ertPanelWasOpen = IsErtEditorOpen;
+            ApplyWorkspaceToFields(workspace);
+            IsErtEditorOpen = ertPanelWasOpen;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogWarning(ex, "Failed to show the new Passdown defaults for the selected date; the previous selections are still shown.");
+        }
+    }
+
+    private bool IsShowingUnsavedDefaultDraft(DateOnly date) =>
+        Workspace is { } current
+        && current.OperatingDate == date
+        && _draftDateInEdit == date
+        && current.SaveStatus.State == AssociateSaveState.NeverSaved
+        && !_isDirty && !_saveInFlight && !IsCheckingOnline && !IsErtEditorDirty();
 
     /// <summary>
     /// Phase 19A: after a date's local data is shown, quietly check it online when it is today or a
@@ -923,6 +1267,9 @@ public partial class AssociateViewModel : ViewModelBase
     /// </summary>
     partial void OnSelectedTemplateOptionChanged(AssociatePassdownTemplateOption value)
     {
+        // Phase 33: the preview, Print and Save PDF always use the template Create PDF uses.
+        Preview.NotifyContentChanged();
+
         if (_isLoadingTemplatePreference)
         {
             return;
@@ -932,6 +1279,43 @@ public partial class AssociateViewModel : ViewModelBase
     }
 
     public bool IsBusy => IsLoadingDate || IsCheckingOnline;
+
+    /// <summary>Phase 33: the live PDF preview, Print and Save PDF for the selected date.</summary>
+    public PassdownPdfPreviewViewModel Preview { get; }
+
+    private bool _suppressPreviewNotification;
+
+    partial void OnWorkspaceChanged(AssociateWorkspace? value)
+    {
+        if (!_suppressPreviewNotification)
+        {
+            // Phase 34B-1: a replaced workspace (date loaded, Check Online, reload) refreshes immediately —
+            // the preview's capture still refuses until the selected date's workspace is the one loaded.
+            Preview.NotifyWorkspaceReplaced();
+        }
+
+        Preview.RefreshCommandStates();
+    }
+
+    partial void OnIsLoadingDateChanged(bool value) => Preview.RefreshCommandStates();
+
+    partial void OnIsCheckingOnlineChanged(bool value) => Preview.RefreshCommandStates();
+
+    /// <summary>
+    /// Phase 33: what the preview, Print and Save PDF build from — the editor's current fields applied to
+    /// the loaded workspace in memory (exactly what Copy for Teams reads), so unsaved edits are included
+    /// without saving them. Nothing while the selected date's workspace is not loaded yet.
+    /// </summary>
+    private PassdownPdfCapture CapturePreviewRequest()
+    {
+        if (Workspace is not { } workspace || workspace.OperatingDate != SelectedDate)
+        {
+            return PassdownPdfCapture.Waiting("Loading this date's preview…");
+        }
+
+        var effective = _draftDateInEdit == workspace.OperatingDate ? WithDraftApplied(workspace, BuildDraft()) : workspace;
+        return PassdownPdfCapture.Ready(new PassdownPdfRequest(effective, workspace.OperatingDate, SelectedTemplateOption.Value));
+    }
 
     /// <summary>
     /// A <see cref="DateTime"/>-shaped view of <see cref="SelectedDate"/> for Avalonia's
@@ -1109,12 +1493,180 @@ public partial class AssociateViewModel : ViewModelBase
 
     public bool HasHistoricalPricingNotice => HistoricalPricingNotice is not null;
 
+    // ------------------------------------------------------------------ Phase 31: seasons and deals
+
+    /// <summary>
+    /// Phase 31: the selected date's official season shown above "Include in Passdown". Rebuilt from
+    /// the composed workspace on every load (date change, Check Online, newer official data) — never
+    /// from a live edit, so unticking an option never makes it vanish mid-edit.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSeasonContext))]
+    [NotifyPropertyChangedFor(nameof(ShowHauntedOption))]
+    [NotifyPropertyChangedFor(nameof(HauntedSeasonNote))]
+    [NotifyPropertyChangedFor(nameof(HasHauntedSeasonNote))]
+    public partial SeasonContextPresentation? SeasonContext { get; private set; }
+
+    public bool HasSeasonContext => SeasonContext is not null;
+
+    /// <summary>Whether the seasonal "SCarowinds / Haunt" option is offered for the selected date (true when unknown).</summary>
+    public bool ShowHauntedOption => SeasonContext?.ShowHauntedOption ?? true;
+
+    public string? HauntedSeasonNote => SeasonContext?.HauntedNote;
+
+    public bool HasHauntedSeasonNote => HauntedSeasonNote is not null;
+
+    /// <summary>Phase 31: current-catalog products whose seasonal event has ended — listed apart, never as current, never exported.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPastSeasonProducts))]
+    [NotifyPropertyChangedFor(nameof(PastSeasonHeaderText))]
+    public partial IReadOnlyList<PastSeasonProductViewModel> PastSeasonProducts { get; private set; } = [];
+
+    public bool HasPastSeasonProducts => PastSeasonProducts.Count > 0;
+
+    public string PastSeasonHeaderText => $"Past-season offers — not current ({PastSeasonProducts.Count})";
+
+    /// <summary>Phase 32: the Products screen's Pass Perks panel (null when no Pass Perks service is available, e.g. in tests).</summary>
+    public PassPerksPanelViewModel? PassPerks { get; }
+
+    public bool HasPassPerksPanel => PassPerks is not null;
+
+    /// <summary>Phase 31: the Deals panel is shown only when the deals service is available (the desktop app always provides it).</summary>
+    public bool HasDealsPanel => _dealsService is not null;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCurrentDeals))]
+    public partial IReadOnlyList<DealItemViewModel> CurrentDeals { get; private set; } = [];
+
+    public bool HasCurrentDeals => CurrentDeals.Count > 0;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasUpcomingDeals))]
+    public partial IReadOnlyList<DealItemViewModel> UpcomingDeals { get; private set; } = [];
+
+    public bool HasUpcomingDeals => UpcomingDeals.Count > 0;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPreviouslyVerifiedDeals))]
+    [NotifyPropertyChangedFor(nameof(PreviouslyVerifiedDealsHeaderText))]
+    public partial IReadOnlyList<DealItemViewModel> PreviouslyVerifiedDeals { get; private set; } = [];
+
+    public bool HasPreviouslyVerifiedDeals => PreviouslyVerifiedDeals.Count > 0;
+
+    public string PreviouslyVerifiedDealsHeaderText => $"Previously verified — not re-confirmed ({PreviouslyVerifiedDeals.Count})";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasExpiredDeals))]
+    [NotifyPropertyChangedFor(nameof(ExpiredDealsHeaderText))]
+    public partial IReadOnlyList<DealItemViewModel> ExpiredDeals { get; private set; } = [];
+
+    public bool HasExpiredDeals => ExpiredDeals.Count > 0;
+
+    public string ExpiredDealsHeaderText => $"Expired and past offers ({ExpiredDeals.Count})";
+
+    [ObservableProperty]
+    public partial string DealsStatusText { get; private set; } = "Deals not checked yet.";
+
+    [ObservableProperty]
+    public partial bool IsDealsStatusWarning { get; private set; } = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDealsEmptyText))]
+    public partial string? DealsEmptyText { get; private set; } = "Deals not checked yet.";
+
+    public bool HasDealsEmptyText => DealsEmptyText is not null;
+
+    /// <summary>The in-flight (or most recent) deals load, so a test can await it.</summary>
+    public Task PendingDealsLoad { get; private set; } = Task.CompletedTask;
+
+    /// <summary>Reads the cached official deals (never online) and applies them; a later load supersedes an earlier one.</summary>
+    private void StartDealsLoad()
+    {
+        PassPerks?.StartLoad();
+
+        if (_importantDetailsService is not null)
+        {
+            var detailsGeneration = ++_importantDetailsLoadGeneration;
+            PendingImportantDetailsLoad = LoadImportantDetailsAsync(detailsGeneration);
+        }
+
+        if (_dealsService is null)
+        {
+            return;
+        }
+
+        var generation = ++_dealsLoadGeneration;
+        PendingDealsLoad = LoadDealsAsync(generation);
+    }
+
+    private int _importantDetailsLoadGeneration;
+
+    /// <summary>Phase 31B: the in-flight (or most recent) Important Details load, so a test can await it.</summary>
+    public Task PendingImportantDetailsLoad { get; private set; } = Task.CompletedTask;
+
+    /// <summary>Phase 31B: reads the cached official product details (never online) and applies them to the current rows.</summary>
+    private async Task LoadImportantDetailsAsync(int generation)
+    {
+        ProductImportantDetailsIndex index;
+        try
+        {
+            index = await _importantDetailsService!.GetIndexAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogWarning(ex, "The cached official product details could not be read.");
+            index = ProductImportantDetailsIndex.Empty;
+        }
+
+        if (generation != _importantDetailsLoadGeneration)
+        {
+            return;
+        }
+
+        _importantDetailsIndex = index;
+        foreach (var row in ProductSections.SelectMany(section => section.Products))
+        {
+            row.ApplyImportantDetails(index.Find(row.Product), _externalLinkLauncher);
+        }
+    }
+
+    private async Task LoadDealsAsync(int generation)
+    {
+        DealsOverview overview;
+        try
+        {
+            overview = await _dealsService!.GetOverviewAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogWarning(ex, "The cached official deals could not be read.");
+            overview = DealsOverview.NotChecked;
+        }
+
+        if (generation != _dealsLoadGeneration)
+        {
+            return;
+        }
+
+        var presentation = DealsPresentation.Build(overview);
+        CurrentDeals = presentation.Current.Select(item => new DealItemViewModel(item, _externalLinkLauncher, OfficialDetails.Open)).ToList();
+        UpcomingDeals = presentation.Upcoming.Select(item => new DealItemViewModel(item, _externalLinkLauncher, OfficialDetails.Open)).ToList();
+        PreviouslyVerifiedDeals = presentation.PreviouslyVerified.Select(item => new DealItemViewModel(item, _externalLinkLauncher, OfficialDetails.Open)).ToList();
+        ExpiredDeals = presentation.Expired.Select(item => new DealItemViewModel(item, _externalLinkLauncher, OfficialDetails.Open)).ToList();
+        DealsStatusText = presentation.StatusText;
+        IsDealsStatusWarning = presentation.IsStatusWarning;
+        DealsEmptyText = presentation.EmptyStateText;
+    }
+
     /// <summary>
     /// Phase 20A: asks the app shell to open the read-only Season Price History screen — with a
     /// product key from a tracked row's "Price history" action, or null from the Products section's
     /// general entry point (which also reaches retired products). Navigation only; no retrieval.
     /// </summary>
     public event EventHandler<string?>? PriceHistoryRequested;
+
+    /// <summary>Phase 31C: the in-app View details dialog shared by every product and deal row (display only).</summary>
+    public OfficialDetailsDialogViewModel OfficialDetails { get; }
 
     [RelayCommand]
     private void OpenPriceHistory() => PriceHistoryRequested?.Invoke(this, null);
@@ -1191,8 +1743,15 @@ public partial class AssociateViewModel : ViewModelBase
 
     partial void OnSelectedDateChanged(DateOnly value)
     {
+        PriceEditor?.CancelIfOpen(); // Phase 35C: an open price edit belongs to the previous date — discarded, never saved.
+
+        // Phase 33: the page on screen belongs to the previous date — cleared at once, never shown as this one's.
+        Preview.NotifySelectedDateChanged();
+        Preview.ClearActionMessage();
+
         if (_isRestoringSelectedDate)
         {
+            Preview.NotifyWorkspaceReplaced(); // the restored date's workspace is still loaded — rebuild its preview now.
             return; // Phase 23A: a blocked switch putting the date back — the editor never left it.
         }
 
@@ -1378,7 +1937,7 @@ public partial class AssociateViewModel : ViewModelBase
                 return;
             }
 
-            var fileName = string.Create(CultureInfo.InvariantCulture, $"Carowinds-Operations-{workspace.OperatingDate:yyyy-MM-dd}.pdf");
+            var fileName = PassdownPdfPreviewViewModel.SuggestedFileName(workspace.OperatingDate); // Phase 33: shared with Save PDF
             var saveResult = await _pdfSavePicker.SaveAsync(pdfBytes, fileName).ConfigureAwait(true);
 
             PdfExportMessage = saveResult.Outcome switch
@@ -1476,7 +2035,7 @@ public partial class AssociateViewModel : ViewModelBase
     private void AddCustomProduct()
     {
         var entry = new CustomProductEntry(Guid.NewGuid().ToString("N"), "New custom item", Price: null, Notes: null, IncludeOnPdf: true);
-        CustomProducts.Add(new CustomProductRowViewModel(entry, ScheduleAutosave, RemoveCustomProduct));
+        CustomProducts.Add(new CustomProductRowViewModel(entry, ScheduleAutosave, RemoveCustomProduct, OpenPriceEditor));
         OnPropertyChanged(nameof(HasCustomProducts));
         ScheduleAutosave();
     }
@@ -2059,6 +2618,11 @@ public partial class AssociateViewModel : ViewModelBase
 
             BuildProductSections(workspace);
             BuildShowRows(workspace);
+            SeasonContext = SeasonContextPresentation.Build(
+                workspace.Season,
+                draft.SectionSelection.IncludeHauntedAttractions,
+                workspace.Products.Any(product => product.Category == SourceCategory.HauntedAttractions));
+            StartDealsLoad();
 
             _draftDateInEdit = workspace.OperatingDate;
             _draftBaseHash = workspace.DraftContentHash;
@@ -2097,7 +2661,16 @@ public partial class AssociateViewModel : ViewModelBase
             .Where(entry => entry.Section is not null)
             .ToDictionary(entry => entry.Section!.Value, entry => entry.Status);
 
-        var officialBySection = ProductDisplaySectionResolver.ResolveAll(workspace.Products.Where(product => !product.IsCustom))
+        // Phase 31: an event product whose official season has ended is listed apart, never as current.
+        PastSeasonProducts = workspace.Products
+            .Where(product => !product.IsCustom && product.IsPastSeason)
+            .Select(product => new PastSeasonProductViewModel(
+                product.DisplayName,
+                product.OfficialDisplayPrice ?? (product.OfficialPriceAmount is { } amount ? amount.ToString("C", PresentationCulture.UnitedStates) : "—"),
+                product.PastSeasonNote!))
+            .ToList();
+
+        var officialBySection = ProductDisplaySectionResolver.ResolveAll(workspace.Products.Where(product => !product.IsCustom && !product.IsPastSeason))
             .GroupBy(entry => entry.Section, entry => entry.Product)
             .ToDictionary(group => group.Key, group => (IReadOnlyList<AssociateProduct>)group.ToList());
 
@@ -2116,28 +2689,50 @@ public partial class AssociateViewModel : ViewModelBase
                 continue;
             }
 
-            var rows = products.Select(product => new ProductRowViewModel(product, ScheduleAutosave, RequestPriceHistory)).ToList();
-            result.Add(new ProductCategorySectionViewModel(
-                ProductDisplaySectionDisplay.FriendlyName(section), status, rows, PassSourcePresentation.SourceNote(section, products),
-                OfficialSourceLinkViewModel.TryCreate(PassSourcePresentation.SourceUrl(section, products), _externalLinkLauncher)));
+            var sectionName = ProductDisplaySectionDisplay.FriendlyName(section);
+            var rows = products.Select(product => new ProductRowViewModel(product, ScheduleAutosave, RequestPriceHistory, OfficialDetails.Open, OpenPriceEditor)).ToList();
+            foreach (var row in rows)
+            {
+                row.SectionName = sectionName;
+                row.ApplyImportantDetails(_importantDetailsIndex.Find(row.Product), _externalLinkLauncher);
+            }
+
+            var categorySection = new ProductCategorySectionViewModel(
+                sectionName, status, rows, PassSourcePresentation.SourceNote(section, products),
+                OfficialSourceLinkViewModel.TryCreate(PassSourcePresentation.SourceUrl(section, products), _externalLinkLauncher),
+                isExpanded: !_collapsedProductSections.Contains(sectionName),
+                expandedChanged: OnProductSectionExpandedChanged);
+            categorySection.ApplySearch(ProductSearchText);
+            result.Add(categorySection);
         }
 
         ProductSections = result;
         HistoricalPricingNotice = BuildHistoricalPricingNotice(workspace);
 
         CustomProducts = new ObservableCollection<CustomProductRowViewModel>(
-            workspace.Draft.CustomProducts.Select(custom => new CustomProductRowViewModel(custom, ScheduleAutosave, RemoveCustomProduct)));
+            workspace.Draft.CustomProducts.Select(custom => new CustomProductRowViewModel(custom, ScheduleAutosave, RemoveCustomProduct, OpenPriceEditor)));
+        ApplyProductSearch();
     }
 
     /// <summary>Phase 21C: rows from the workspace's reconciled Shows section — this date's only.</summary>
     private void BuildShowRows(AssociateWorkspace workspace)
     {
         var section = workspace.Shows;
-        ShowRows = section.Rows.Select(row => new AssociateShowRowViewModel(row, ScheduleAutosave)).ToList();
+        if (_expandedShowsDate != workspace.OperatingDate)
+        {
+            _expandedShowIds.Clear();
+            _expandedShowsDate = workspace.OperatingDate;
+        }
+
+        ShowRows = section.Rows
+            .Select(row => new AssociateShowRowViewModel(row, OnShowSelectionChanged, _expandedShowIds.Contains(row.ShowId), OnShowExpansionChanged))
+            .ToList();
 
         var presentation = ShowSchedulePresentation.Build(section.Schedule, _clock.UtcNow);
         ShowsStatusText = ShowRows.Count == 0 ? presentation.StatusText : null;
         ShowsFreshnessText = presentation.FreshnessText;
+        var dateText = AssociateDateNavigationPresentation.Build(workspace.OperatingDate, EasternToday).DateText;
+        ShowsSubtitleText = presentation.FreshnessText is { } freshness ? $"{dateText} · {freshness}" : dateText;
     }
 
     internal static string? BuildHistoricalPricingNotice(AssociateWorkspace workspace) =>
@@ -2155,6 +2750,17 @@ public partial class AssociateViewModel : ViewModelBase
         var productOverrides = ProductSections
             .SelectMany(section => section.Products)
             .ToDictionary(row => row.ProductIdentity, row => new ProductDraftOverride(row.IncludeOnPdf, row.DisplayPriceOverride));
+
+        // Phase 31: a past-season product is not an editable row, but its saved choice is kept exactly
+        // as it was (so it applies again if an official check re-lists the product).
+        foreach (var product in Workspace?.Products.Where(product => product.IsPastSeason) ?? [])
+        {
+            if (!productOverrides.ContainsKey(product.ProductIdentity) &&
+                existing.ProductOverrides.TryGetValue(product.ProductIdentity, out var saved))
+            {
+                productOverrides[product.ProductIdentity] = saved;
+            }
+        }
 
         return existing with
         {
@@ -2198,6 +2804,10 @@ public partial class AssociateViewModel : ViewModelBase
         {
             return;
         }
+
+        // Phase 33: every editor change funnels through here — the preview schedules its own refresh
+        // (Phase 34B-1: leading edge + trailing quiet window). Autosave below never waits on the preview.
+        Preview.NotifyContentChanged();
 
         _isDirty = true;
         if (AutosaveState != AssociateAutosaveState.SaveFailed)
@@ -2272,7 +2882,17 @@ public partial class AssociateViewModel : ViewModelBase
 
             if (Workspace is { } current && current.OperatingDate == date)
             {
-                Workspace = WithDraftApplied(current, draft) with { SaveStatus = status, DraftContentHash = saveResult.ContentHash };
+                // Phase 33: the preview was already built from these edits (draft applied in memory) — a save
+                // changes no PDF content, so it does not trigger a regeneration.
+                _suppressPreviewNotification = true;
+                try
+                {
+                    Workspace = WithDraftApplied(current, draft) with { SaveStatus = status, DraftContentHash = saveResult.ContentHash };
+                }
+                finally
+                {
+                    _suppressPreviewNotification = false;
+                }
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

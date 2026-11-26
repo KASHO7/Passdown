@@ -8,10 +8,14 @@
              x:Class="Carowinds.Passdown.Desktop.Views.OperationsCalendarView"
              x:DataType="vm:OperationsCalendarViewModel">
 
-  <!-- Phase 12A: the Operations Calendar foundation — a summary/routing surface ("what dates should I
-       pay attention to, and where do I go next?"), not a second Associate/Notes/History editor.
-       Shared typography, surface, button and status styles
-       come from Themes/PassdownStyles.axaml (Phase 22A); only this screen's own deltas live below. -->
+  <!-- Phase 12A: the Operations Calendar — a summary/routing surface ("what dates should I pay attention to, and
+       where do I go next?"), not a second Passdown/Notes/History editor.
+       Phase 35E: redesigned after the approved carowinds_calendar_refined_prototype.html — a compact page toolbar,
+       a month heading with Previous / Today / Next, one white month card whose day cells share hairlines (no gaps,
+       no per-cell cards), a Pass Perks legend with the shared Show Perks preference, and a selected-date panel with
+       labelled rows and its actions pinned at the bottom. Same view model, commands and data as before; nothing here
+       loads, refreshes or computes. Shared typography, button and status styles come from Themes/PassdownStyles.axaml;
+       only this screen's own deltas live below. -->
   <UserControl.Styles>
     <Style Selector="TextBlock.fieldWarning">
       <Setter Property="Margin" Value="0" />
@@ -19,103 +23,143 @@
     <Style Selector="Button.primaryAction, Button.secondaryAction">
       <Setter Property="HorizontalContentAlignment" Value="Center" />
     </Style>
+
+    <!-- Page toolbar: the same white bar and compact title as the Phase 35B–35D workspace. -->
+    <Style Selector="Border.calendarToolbar">
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceBrush}" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="Padding" Value="16,10" />
+      <Setter Property="MinHeight" Value="60" />
+    </Style>
+    <Style Selector="TextBlock.pageTitle.calendarTitle">
+      <Setter Property="FontSize" Value="17" />
+    </Style>
+    <Style Selector="TextBlock.monthTitle">
+      <Setter Property="FontSize" Value="19" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+    </Style>
+    <Style Selector="StackPanel.monthNavigation > Button">
+      <Setter Property="Padding" Value="11,5" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="MinHeight" Value="0" />
+    </Style>
+
+    <!-- The month card: one white surface; weekday band, then hairline-separated day cells. The week rows sit one
+         pixel past the card's right and bottom edges, so the last column's and row's hairlines tuck under the card
+         border instead of doubling it. -->
+    <Style Selector="Border.calendarCard">
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusCard}" />
+      <Setter Property="ClipToBounds" Value="True" />
+    </Style>
+    <Style Selector="Border.weekdayBand">
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="Padding" Value="0,11" />
+    </Style>
     <Style Selector="TextBlock.weekdayHeader">
       <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
       <Setter Property="FontSize" Value="11" />
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="LetterSpacing" Value="0.5" />
+      <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="HorizontalAlignment" Value="Center" />
     </Style>
 
-    <!-- One day cell (spec Part E/I; Phase 12B Part M/V; Phase 13D Part A/B geometry hardening): plain
-         Button so it is keyboard-reachable with FluentTheme's default focus ring; today/selected/
-         out-of-month are each a distinct border/background treatment (never the only signal — every
-         one of them, plus operating state/hours, also has a textual equivalent in
-         OperationsCalendarDayViewModel.AutomationName). Deliberately no per-operating-state color
-         (spec Part V "avoid one color per operating state ... red for Closed") — the compact text
-         labels below are the state signal; today/selected keep their existing border/band treatment
-         so the two concerns never visually collide.
-         Phase 13D: MinHeight (content could grow the cell taller than its siblings) replaced with a
-         fixed Height, uniform for every cell regardless of how many optional indicator lines a given
-         date has (notes, Important notes, waterpark hours, staleness) — combined with ClipToBounds and
-         single-line/trimmed content below, this is what makes "one date's content must never expand
-         only that date's cell" actually structurally impossible rather than merely usually true. -->
-    <!-- Phase 15B Part 1/2: root cause of the pre-15B "narrow vertical strip" appearance —
-         FluentTheme's default Button ControlTheme sets HorizontalAlignment to a non-Stretch value
-         (confirmed empirically via a real headless-windowed layout pass: freshly-constructed Button
-         instances report HorizontalAlignment=Stretch at the CLR-default level, but once styled by the
-         running app's FluentTheme, the realized value is non-Stretch) — so every day cell sized to its
-         own content instead of its UniformGrid column, and content-sparse off-month cells (bare day
-         number only) collapsed to a "sliver" while content-heavy in-month cells stayed only somewhat
-         wider, leaving the column's remaining width as unused gap. HorizontalAlignment="Stretch" below
-         is the actual fix; it only takes effect once paired with the view's real 7-column Grid-per-week
-         layout (never UniformGrid — see the month grid below), since a Grid's star columns are the
-         part that guarantees "the available column width" exists to stretch into in the first place. -->
+    <!-- One day cell (spec Part E/I; Phase 12B Part M/V; Phase 13D Part A/B geometry hardening): a plain Button, so
+         it is keyboard-reachable with Fluent's focus ring. Today, selected and out-of-month each have a distinct
+         treatment and a textual equivalent in OperationsCalendarDayViewModel.AutomationName. No per-operating-state
+         colour (spec Part V) — the compact labels are the state signal.
+         Phase 13D: a fixed Height (never MinHeight) with ClipToBounds and single-line/trimmed content, so one date's
+         content can never grow only that date's cell.
+         Phase 15B: HorizontalAlignment Stretch — Fluent's Button theme is not Stretch, which made every cell as wide
+         as its own text; paired with the real 7-column Grid per week below.
+         Phase 32A: HorizontalContentAlignment Stretch, so the Pass Perks markers sit the same distance from the day
+         number in every cell.
+         Phase 35E: flush cells with right/bottom hairlines (no margin, no rounded corners) and a quieter height. -->
     <Style Selector="Button.calendarDay">
       <Setter Property="Background" Value="{DynamicResource PassdownSurfaceBrush}" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderBrush}" />
-      <Setter Property="CornerRadius" Value="4" />
-      <Setter Property="Margin" Value="2" />
-      <Setter Property="Padding" Value="8,6" />
-      <Setter Property="Height" Value="132" />
+      <Setter Property="BorderThickness" Value="0,0,1,1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="Padding" Value="9,9" />
+      <Setter Property="Height" Value="100" />
       <Setter Property="ClipToBounds" Value="True" />
       <Setter Property="HorizontalAlignment" Value="Stretch" />
-      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
       <Setter Property="VerticalContentAlignment" Value="Top" />
     </Style>
+    <!-- Adjacent-month dates: a muted surface and day number only (their details stay hidden, Part I). -->
     <Style Selector="Button.calendarDay.outOfMonth">
-      <Setter Property="Opacity" Value="0.4" />
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextMutedBrush}" />
     </Style>
-    <!-- Phase 12E Part E: Today (not selected) stays outline-only — visible, but deliberately quieter
-         than Selected. Selected (not Today) is filled + outlined, so it reads as unmistakable even
-         on its own. Today+Selected together (below) gets its own, more deeply tinted combination
-         rather than silently collapsing into whichever rule happens to apply last — never relying on
-         color alone, since IsToday/IsSelected are both also always present in the cell's own
-         AutomationName. -->
     <Style Selector="Button.calendarDay:pointerover /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderStrongBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
     </Style>
-    <Style Selector="Button.calendarDay.today">
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentForegroundBrush}" />
-      <Setter Property="BorderThickness" Value="2" />
-    </Style>
+    <!-- Selected: a tinted fill inside a 2px accent frame (the padding shrinks by the extra border, so the content
+         never moves). Today: the day number sits in a small accent tile (below), visible whether or not the date is
+         also selected. -->
     <Style Selector="Button.calendarDay.selected">
       <Setter Property="Background" Value="{DynamicResource PassdownSelectedBackgroundBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentForegroundBrush}" />
       <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="Padding" Value="7,7,8,8" />
     </Style>
     <Style Selector="Button.calendarDay.selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource PassdownSelectedBackgroundBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentForegroundBrush}" />
     </Style>
-    <Style Selector="Button.calendarDay.today.selected">
-      <Setter Property="Background" Value="{DynamicResource PassdownChipAccentBrush}" />
-      <Setter Property="BorderThickness" Value="2.5" />
+    <Style Selector="Border.dayNumberTile">
+      <Setter Property="MinWidth" Value="24" />
+      <Setter Property="Height" Value="22" />
+      <Setter Property="Padding" Value="5,0" />
+      <Setter Property="Margin" Value="-5,-2,0,-2" />
+      <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+      <Setter Property="VerticalAlignment" Value="Top" />
     </Style>
+    <Style Selector="Button.calendarDay.today Border.dayNumberTile">
+      <Setter Property="Background" Value="{DynamicResource PassdownChipAccentBrush}" />
+    </Style>
+    <Style Selector="TextBlock.dayNumber">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.calendarDay.today TextBlock.dayNumber">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownChipAccentForegroundBrush}" />
+    </Style>
+
     <Style Selector="TextBlock.dayIndicator">
-      <Setter Property="FontSize" Value="10" />
+      <Setter Property="FontSize" Value="10.5" />
       <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
       <Setter Property="TextWrapping" Value="NoWrap" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
-    <!-- Compact operating-state label ("CLOSED"/"CUSTOM"/"BUYOUT"/"NOT PUBLISHED"/"UNAVAILABLE",
-         spec Part C/D/E/F/G/H/I) — text only, no per-state color (Part V). -->
+    <!-- Phase 35E: "Draft in progress" / "Finalized" — a quiet accent line; dates without a passdown show none. -->
+    <Style Selector="TextBlock.dayPassdownLine">
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+      <Setter Property="TextWrapping" Value="NoWrap" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <!-- Compact operating-state label ("CLOSED"/"CUSTOM"/"BUYOUT"/"NOT PUBLISHED"/"UNAVAILABLE") — text only. -->
     <Style Selector="TextBlock.dayStateLabel">
-      <Setter Property="FontSize" Value="10" />
-      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="LetterSpacing" Value="0.3" />
       <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
       <Setter Property="TextWrapping" Value="NoWrap" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
-    <!-- Phase 15B Part 4: the strongest line in the cell after the date itself (spec "main park
-         hours/status should be visually strongest after the date") — bumped from the pre-15B 10.5px
-         now that full-width columns leave room for it, without needing a second font weight/color
-         convention. -->
-    <!-- Phase 22F: wraps (after the en dash) to at most two lines instead of truncating — at 960 px or at
-         125–150% scaling "12 PM–9 PM" was cut to "12 PM–9…". Wider cells still show one line. -->
+    <!-- Phase 22F: hours wrap (after the en dash) to at most two lines instead of truncating at 960 px or 125–150%. -->
     <Style Selector="TextBlock.dayHoursLine">
       <Setter Property="FontSize" Value="11.5" />
       <Setter Property="FontWeight" Value="SemiBold" />
@@ -123,23 +167,15 @@
       <Setter Property="MaxLines" Value="2" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
-    <!-- The shared muted-amber Stale status color ("warning, not error", spec Part J) — never red. -->
+    <!-- The shared muted-amber Stale status colour ("warning, not error", spec Part J) — never red. -->
     <Style Selector="TextBlock.dayStaleLabel">
-      <Setter Property="FontSize" Value="9.5" />
+      <Setter Property="FontSize" Value="10" />
       <Setter Property="FontStyle" Value="Italic" />
       <Setter Property="Foreground" Value="{DynamicResource PassdownStaleBrush}" />
       <Setter Property="TextWrapping" Value="NoWrap" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
-    <!-- Compact Carolina Harbor line (spec Phase 13D Part F) — same cell as main park hours, never a
-         separate badge/card; slightly muted relative to dayHoursLine so the main gate's hours stay
-         the visually primary line. -->
-    <!-- Phase 22E: one row of the expanded Shows schedule — a hairline above each row, no card. -->
-    <Style Selector="Border.calendarShowRow">
-      <Setter Property="BorderThickness" Value="0,1,0,0" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
-      <Setter Property="Padding" Value="0,6" />
-    </Style>
+    <!-- Compact Carolina Harbor line (Phase 13D Part F) — same cell as main park hours, slightly muted. -->
     <Style Selector="TextBlock.dayWaterparkLine">
       <Setter Property="FontSize" Value="10" />
       <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
@@ -148,301 +184,546 @@
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
-  
+    <!-- Phase 32 / 32A Pass Perks markers. Phase 35E: each kind keeps its own shape and now also its own colour
+         (qualifying visit blue, redemption / use teal, booking deadline amber), matching the legend. -->
+    <Style Selector="PathIcon.passPerkMarker">
+      <Setter Property="Width" Value="13" />
+      <Setter Property="Height" Value="13" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="VerticalAlignment" Value="Bottom" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownPerkQualifyingBrush}" />
+    </Style>
+    <Style Selector="PathIcon.passPerkLegendIcon">
+      <Setter Property="Width" Value="12" />
+      <Setter Property="Height" Value="12" />
+      <Setter Property="Margin" Value="0,0,5,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownPerkQualifyingBrush}" />
+    </Style>
+    <Style Selector="PathIcon.redemption">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownPerkRedemptionBrush}" />
+    </Style>
+    <Style Selector="PathIcon.deadline">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownPerkDeadlineBrush}" />
+    </Style>
+    <!-- Phase 32A: count badge in the marker slot's top-right corner (inside the slot, so it never moves the icon). -->
+    <Style Selector="Border.passPerkCountBadge">
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="MinWidth" Value="8" />
+      <Setter Property="Height" Value="8" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="1,0" />
+      <Setter Property="Background" Value="{DynamicResource PassdownAccentBrush}" />
+    </Style>
+    <Style Selector="Border.passPerkCountBadge > TextBlock">
+      <Setter Property="FontSize" Value="7" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="LineHeight" Value="8" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextOnAccentBrush}" />
+    </Style>
+
+    <!-- Selected-date panel. -->
+    <Style Selector="Border.detailPanel">
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusCard}" />
+      <Setter Property="ClipToBounds" Value="True" />
+      <!-- One fixed width (the prototype is 305 wide, 275 when narrow): it fits beside the month at the 960 px minimum
+           with the sidebar collapsed. A ContainerQuery was measured at ~15 ms extra per month/date change, because every
+           day cell is re-templated on each change, so it is not used here. -->
+      <Setter Property="Width" Value="290" />
+      <Setter Property="MinHeight" Value="340" />
+    </Style>
+    <Style Selector="Border.detailHead">
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="Padding" Value="17,12,10,13" />
+    </Style>
+    <Style Selector="TextBlock.detailEyebrow">
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="LetterSpacing" Value="0.6" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+    </Style>
+    <Style Selector="TextBlock.detailHeading">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+      <Setter Property="Margin" Value="0,0,0,4" />
+    </Style>
+    <Style Selector="Border.detailRule">
+      <Setter Property="Height" Value="1" />
+      <Setter Property="Background" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="Margin" Value="0,0,0,13" />
+    </Style>
+    <!-- A label/value row: the label muted on the left, the value right-aligned and allowed to wrap. -->
+    <Style Selector="Grid.detailRow">
+      <Setter Property="Margin" Value="0,3" />
+    </Style>
+    <Style Selector="Grid.detailRow > TextBlock.detailLabel">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+      <Setter Property="Margin" Value="0,0,12,0" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+    </Style>
+    <Style Selector="Grid.detailRow > TextBlock.detailValue">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+      <Setter Property="TextAlignment" Value="Right" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.detailNote">
+      <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeCaption}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="0,2,0,3" />
+    </Style>
+    <Style Selector="Border.detailActions">
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="BorderThickness" Value="0,1,0,0" />
+      <Setter Property="Padding" Value="15,12" />
+    </Style>
+    <Style Selector="Border.detailActions Button">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Padding" Value="4,6" />
+      <Setter Property="MinHeight" Value="0" />
+    </Style>
+    <!-- Secondary routes read at regular weight beside the one semibold primary action (and fit two to a row). -->
+    <Style Selector="Border.detailActions Button.secondaryAction">
+      <Setter Property="FontWeight" Value="Normal" />
+    </Style>
+
+    <!-- Phase 22E: one row of the expanded Shows schedule — a hairline above each row, no card. -->
+    <Style Selector="Border.calendarShowRow">
+      <Setter Property="BorderThickness" Value="0,1,0,0" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="Padding" Value="0,6" />
+    </Style>
+
+    <!-- Phase 35E: one Pass Perk on the selected date. A dated entry carries a 3px rule in its marker colour; a
+         month-long entry (no marker) is plain text. -->
+    <Style Selector="Border.perkEvent">
+      <Setter Property="Padding" Value="0,4" />
+      <Setter Property="Margin" Value="0,3" />
+    </Style>
+    <Style Selector="Border.perkEvent.dated">
+      <Setter Property="BorderThickness" Value="3,0,0,0" />
+      <Setter Property="Padding" Value="10,3,0,5" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownPerkQualifyingBrush}" />
+    </Style>
+    <Style Selector="Border.perkEvent.redemption">
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownPerkRedemptionBrush}" />
+    </Style>
+    <Style Selector="Border.perkEvent.deadline">
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownPerkDeadlineBrush}" />
+    </Style>
+
+    <!-- Narrow content (collapsed sidebar at 960–1100 px): a slimmer panel and tighter cells, never a clipped one. -->
   </UserControl.Styles>
+
+  <UserControl.DataTemplates>
+    <!-- Phase 32: one Pass Perk on the selected date — its name, why it is on this date (Phase 32A: the marker type
+         first, with the same icon as the day cell), one meta line and the small View details link. -->
+    <DataTemplate DataType="vm:PassPerkItemViewModel" x:DataType="vm:PassPerkItemViewModel">
+      <Border Classes="perkEvent" Classes.dated="{Binding MarkerKind, Converter={x:Static ObjectConverters.IsNotNull}}"
+              Classes.redemption="{Binding IsRedemption}" Classes.deadline="{Binding IsDeadline}">
+        <StackPanel Spacing="2" AutomationProperties.Name="{Binding AccessibleSummary}">
+          <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" Classes.muted="{Binding IsNotCurrent}" />
+          <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding HasHeadlineText}">
+            <Panel Grid.Column="0" VerticalAlignment="Top" Margin="0,1,0,0" IsVisible="{Binding MarkerKind, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <PathIcon Classes="passPerkLegendIcon" Data="{StaticResource PassdownCheckCircleIconGeometry}" IsVisible="{Binding IsQualifyingVisit}"
+                        AutomationProperties.AccessibilityView="Raw" />
+              <PathIcon Classes="passPerkLegendIcon redemption" Data="{StaticResource PassdownGiftIconGeometry}" IsVisible="{Binding IsRedemption}"
+                        AutomationProperties.AccessibilityView="Raw" />
+              <PathIcon Classes="passPerkLegendIcon deadline" Data="{StaticResource PassdownClockIconGeometry}" IsVisible="{Binding IsDeadline}"
+                        AutomationProperties.AccessibilityView="Raw" />
+            </Panel>
+            <TextBlock Grid.Column="1" Text="{Binding HeadlineText}" FontSize="11.5" TextWrapping="Wrap"
+                       Foreground="{DynamicResource PassdownTextSecondaryBrush}" />
+          </Grid>
+          <TextBlock Text="{Binding MetaText}" Classes="muted" FontSize="11.5" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding NoticeText}" IsVisible="{Binding HasNoticeText}" Classes="fieldWarning" FontSize="11.5" TextWrapping="Wrap" />
+          <Button Content="View details" Command="{Binding ViewDetailsCommand}" IsVisible="{Binding CanViewDetails}"
+                  Classes="linkAction" FontSize="11.5" Padding="4,1" MinHeight="0" Margin="-4,0,0,0" HorizontalAlignment="Left"
+                  AutomationProperties.Name="{Binding ViewDetailsAutomationName}" />
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+  </UserControl.DataTemplates>
 
   <Grid RowDefinitions="Auto,*">
 
-    <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceBrush}"
-            BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
-      <Grid ColumnDefinitions="Auto,*,Auto">
-        <StackPanel Grid.Column="0" Spacing="2">
-          <TextBlock Text="OPERATIONS CALENDAR" Classes="sectionTitle" Margin="0" />
-          <TextBlock Text="{Binding DisplayedMonthText}" Classes="pageTitle"
-                     AutomationProperties.Name="Displayed month" />
-          <!-- Phase 20C: background current-year history status — deliberately small and muted, and
-               separate from the operational "Official data checked …" line. -->
-          <TextBlock Text="{Binding HistoryStatus.Text}" Classes="muted"
-                     IsVisible="{Binding HasHistoryStatus}"
-                     ToolTip.Tip="{Binding HistoryStatus.DetailText}"
-                     AutomationProperties.Name="{Binding HistoryStatus.AutomationText}" />
+    <!-- Page toolbar. Phase 20C: the background current-year history status stays a small muted line here,
+         separate from any operational "Official data checked" wording. -->
+    <Border Grid.Row="0" Classes="calendarToolbar">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+          <TextBlock Text="Operations Calendar" Classes="pageTitle calendarTitle" />
+          <TextBlock Text="Park hours, Passdowns, and official Pass Perks dates" Classes="muted" FontSize="12" TextWrapping="Wrap" />
         </StackPanel>
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-          <Button Content="‹ Prev" Classes="secondaryAction" Command="{Binding PreviousMonthCommand}"
-                  AutomationProperties.Name="Previous month" />
-          <Button Content="Today" Classes="secondaryAction" Command="{Binding GoToTodayCommand}"
-                  AutomationProperties.Name="Go to today" />
-          <Button Content="Next ›" Classes="secondaryAction" Command="{Binding NextMonthCommand}"
-                  AutomationProperties.Name="Next month" />
-        </StackPanel>
+        <TextBlock Text="{Binding HistoryStatus.Text}" Classes="muted"
+                   IsVisible="{Binding HasHistoryStatus}" Grid.Column="1" FontSize="12" VerticalAlignment="Center" Margin="16,0,0,0"
+                   MaxWidth="360" TextWrapping="Wrap" TextAlignment="Right"
+                   ToolTip.Tip="{Binding HistoryStatus.DetailText}"
+                   AutomationProperties.Name="{Binding HistoryStatus.AutomationText}" />
       </Grid>
     </Border>
 
-    <ScrollViewer Grid.Row="1" Padding="24,20,24,24">
-      <StackPanel Spacing="16">
+    <!-- Phase 35E workspace (as in the prototype): the month heading stays in place, the month column scrolls on its own
+         when the window is short, and the selected-date panel fills the available height with its body scrolling and
+         its actions always in view. -->
+    <DockPanel Grid.Row="1" Margin="18">
+      <StackPanel DockPanel.Dock="Top" Spacing="12" Margin="0,0,0,12">
 
         <ProgressBar IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoading}" AutomationProperties.Name="Loading calendar" />
 
         <TextBlock Text="{Binding ErrorMessage}" Classes="fieldError" TextWrapping="Wrap"
                    IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
-        <Grid IsVisible="{Binding HasSnapshot}" ColumnDefinitions="*,320">
-
-          <StackPanel Grid.Column="0" Spacing="8" Margin="0,0,16,0">
-
-            <Grid ColumnDefinitions="*,*,*,*,*,*,*" AutomationProperties.Name="Weekday headers">
-              <TextBlock Grid.Column="0" Text="Sun" Classes="weekdayHeader" />
-              <TextBlock Grid.Column="1" Text="Mon" Classes="weekdayHeader" />
-              <TextBlock Grid.Column="2" Text="Tue" Classes="weekdayHeader" />
-              <TextBlock Grid.Column="3" Text="Wed" Classes="weekdayHeader" />
-              <TextBlock Grid.Column="4" Text="Thu" Classes="weekdayHeader" />
-              <TextBlock Grid.Column="5" Text="Fri" Classes="weekdayHeader" />
-              <TextBlock Grid.Column="6" Text="Sat" Classes="weekdayHeader" />
-            </Grid>
-
-            <!-- Phase 15B Part 1: one real Grid per week (never UniformGrid — see the
-                 Button.calendarDay style comment above for why) so the month reads as a true
-                 full-width 7-column grid: ColumnDefinitions="*,*,*,*,*,*,*" guarantees each week row's
-                 7 columns divide the available width evenly regardless of any day's content, which is
-                 what a content-sized panel (UniformGrid, or an ItemsControl whose containers don't
-                 stretch) cannot guarantee. The outer ItemsControl (Weeks) only stacks a variable
-                 number of week rows (5 or 6, spec's own "no fabricated cells" rule) — each row is
-                 itself an inner ItemsControl over that week's 7 days, whose ItemsPanel IS the 7-column
-                 Grid. ContentPresenter is the actual container Avalonia generates per item (confirmed
-                 empirically), so Grid.Column must be set on it directly — not on the templated Button
-                 — via the ItemsControl.Styles setter below, bound to
-                 OperationsCalendarDayViewModel.ColumnIndex (Sunday=0 .. Saturday=6, matching the
-                 weekday header above). -->
-            <ItemsControl ItemsSource="{Binding Weeks}" AutomationProperties.Name="Calendar month grid">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <StackPanel Orientation="Vertical" Spacing="4" />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:OperationsCalendarWeekViewModel">
-                  <ItemsControl ItemsSource="{Binding Days}" HorizontalAlignment="Stretch"
-                                AutomationProperties.Name="Calendar week row">
-                    <ItemsControl.ItemsPanel>
-                      <ItemsPanelTemplate>
-                        <Grid ColumnDefinitions="*,*,*,*,*,*,*" />
-                      </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.Styles>
-                      <Style Selector="ContentPresenter" x:DataType="vm:OperationsCalendarDayViewModel">
-                        <Setter Property="Grid.Column" Value="{Binding ColumnIndex}" />
-                      </Style>
-                    </ItemsControl.Styles>
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate x:DataType="vm:OperationsCalendarDayViewModel">
-                        <Button Classes="calendarDay" Classes.today="{Binding IsToday}" Classes.selected="{Binding IsSelected}"
-                                Classes.outOfMonth="{Binding !IsInDisplayedMonth}"
-                                Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AutomationName}">
-                          <StackPanel Spacing="3">
-                            <TextBlock Text="{Binding DayNumber}" FontWeight="SemiBold" FontSize="14" />
-
-                            <!-- Operating-state/hours/passdown-status/notes overlay (spec Phase 12B
-                                 Part C/D/E/F/G/H/I; Phase 12C Part G/H/I): hidden as one unit for
-                                 out-of-month cells to avoid clutter (Part I — "day number only"
-                                 preserved from 12A/12B), even though those dates still carry real
-                                 data. Content-budget priority (Part H; reaffirmed Phase 15B Part 4)
-                                 top to bottom: day number (outside this block), operating
-                                 state/hours, passdown status, operational-notes summary. -->
-                            <StackPanel Spacing="2" IsVisible="{Binding IsInDisplayedMonth}">
-                              <TextBlock Text="{Binding OperatingStateLabel}" Classes="dayStateLabel" IsVisible="{Binding HasOperatingStateLabel}" />
-                              <TextBlock Text="{Binding EffectiveHoursLineDisplay}" Classes="dayHoursLine" IsVisible="{Binding HasEffectiveHoursLine}" />
-                              <!-- Phase 13D Part F: same cell as main park hours, never a separate badge. -->
-                              <TextBlock Text="{Binding WaterparkLineDisplay}" Classes="dayWaterparkLine" IsVisible="{Binding HasWaterparkLine}" />
-                              <TextBlock Text="Stale" Classes="dayStaleLabel" IsVisible="{Binding IsHoursStale}" />
-                              <TextBlock Text="{Binding PassdownStatusLabel}" Classes="dayIndicator" />
-                              <!-- Phase 12E Part H: the "Important" clause reuses the app's one
-                                   established restrained-accent convention (never a red/alarm badge)
-                                   — see TextBlock.priorityText.important above. -->
-                              <TextBlock Text="{Binding NotesSummaryText}" Classes="dayIndicator priorityText"
-                                         Classes.important="{Binding HasImportantOperationalNotes}"
-                                         IsVisible="{Binding HasOperationalNotes}" />
-                            </StackPanel>
-                          </StackPanel>
-                        </Button>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
+        <!-- Month heading and navigation stay usable even when a month failed to load. -->
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+            <TextBlock Text="{Binding DisplayedMonthText}" Classes="monthTitle"
+                       AutomationProperties.Name="Displayed month" />
+            <TextBlock Text="Select an operating date to review its information." Classes="muted" FontSize="12" TextWrapping="Wrap" />
           </StackPanel>
+          <StackPanel Grid.Column="1" Classes="monthNavigation" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center" Margin="12,0,0,0">
+            <Button Content="‹ Previous" Classes="secondaryAction" Command="{Binding PreviousMonthCommand}"
+                    AutomationProperties.Name="Previous month" />
+            <Button Content="Today" Classes="secondaryAction" Command="{Binding GoToTodayCommand}"
+                    AutomationProperties.Name="Go to today" />
+            <Button Content="Next ›" Classes="secondaryAction" Command="{Binding NextMonthCommand}"
+                    AutomationProperties.Name="Next month" />
+          </StackPanel>
+        </Grid>
+      </StackPanel>
 
-          <!-- Phase 12E Part A/Q: "heroPanel" (a 3px accent top rule, same recipe as Dashboard's own
-               Today's Operation/Passdown Status panels) marks this as the one panel that anchors the
-               screen's secondary hierarchy tier, below the grid itself — reused, not reinvented.
-               Phase 22E: each information group is its own tight label/value stack (heading → value 2px)
-               with 14px between groups, so headings bind to their values instead of floating evenly. -->
-          <Border Grid.Column="1" Classes="panel heroPanel" AutomationProperties.Name="Selected date summary">
-            <StackPanel Spacing="14">
+        <Grid IsVisible="{Binding HasSnapshot}" ColumnDefinitions="*,16,Auto">
 
-              <StackPanel Spacing="6">
-                <TextBlock Text="SELECTED DATE" Classes="subsectionTitle" Margin="0" />
-                <WrapPanel Orientation="Horizontal">
-                  <!-- Phase 22F: bound to the view model's own selected date, so the heading changes the
-                       instant a date is chosen rather than when its details finish loading. -->
-                  <TextBlock x:Name="SelectedDateHeading" Text="{Binding SelectedDateHeadingText}" FontSize="16" FontWeight="Bold" TextWrapping="Wrap"
-                             VerticalAlignment="Center" Margin="0,0,8,0"
-                             AutomationProperties.Name="{Binding SelectedDateHeadingText, StringFormat='Selected date: {0}'}" />
-                  <Border Classes="chip" VerticalAlignment="Center" IsVisible="{Binding SelectedDateIsToday}">
-                    <TextBlock Text="Today" />
-                  </Border>
-                </WrapPanel>
-                <!-- Previous/Next Day (Phase 12D Part C): explicit day-stepping alongside the day-cell
-                     grid and month navigation — supervisors scanning adjacent days without switching
-                     months. Plain Buttons, keyboard-reachable like every other action on this screen.
-                     Phase 22E: a WrapPanel, so at 125–150% scaling the pair wraps instead of overflowing the panel. -->
-                <WrapPanel Orientation="Horizontal">
-                  <Button Content="‹ Prev Day" Classes="secondaryAction" Command="{Binding PreviousDayCommand}" Margin="0,0,8,4"
-                          AutomationProperties.Name="Previous day" />
-                  <Button Content="Next Day ›" Classes="secondaryAction" Command="{Binding NextDayCommand}" Margin="0,0,0,4"
-                          AutomationProperties.Name="Next day" />
-                </WrapPanel>
+          <ScrollViewer Grid.Column="0" x:Name="CalendarScroll" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel x:Name="CalendarColumn" Spacing="10">
+
+            <Border Classes="calendarCard">
+              <StackPanel>
+                <Border Classes="weekdayBand">
+                  <Grid ColumnDefinitions="*,*,*,*,*,*,*" AutomationProperties.Name="Weekday headers">
+                    <TextBlock Grid.Column="0" Text="Sun" Classes="weekdayHeader" />
+                    <TextBlock Grid.Column="1" Text="Mon" Classes="weekdayHeader" />
+                    <TextBlock Grid.Column="2" Text="Tue" Classes="weekdayHeader" />
+                    <TextBlock Grid.Column="3" Text="Wed" Classes="weekdayHeader" />
+                    <TextBlock Grid.Column="4" Text="Thu" Classes="weekdayHeader" />
+                    <TextBlock Grid.Column="5" Text="Fri" Classes="weekdayHeader" />
+                    <TextBlock Grid.Column="6" Text="Sat" Classes="weekdayHeader" />
+                  </Grid>
+                </Border>
+
+                <!-- Phase 15B: one real Grid per week (never UniformGrid) so the month is a true full-width 7-column
+                     grid: each week row's star columns divide the width evenly regardless of content. The outer
+                     ItemsControl stacks 5 or 6 week rows (no fabricated cells); each row's ItemsPanel IS the 7-column
+                     Grid, and Grid.Column is set on the generated ContentPresenter from ColumnIndex (Sun=0 .. Sat=6). -->
+                <ItemsControl ItemsSource="{Binding Weeks}" Margin="0,0,-1,-1" AutomationProperties.Name="Calendar month grid">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Orientation="Vertical" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:OperationsCalendarWeekViewModel">
+                      <ItemsControl ItemsSource="{Binding Days}" HorizontalAlignment="Stretch"
+                                    AutomationProperties.Name="Calendar week row">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate>
+                            <Grid ColumnDefinitions="*,*,*,*,*,*,*" />
+                          </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.Styles>
+                          <Style Selector="ContentPresenter" x:DataType="vm:OperationsCalendarDayViewModel">
+                            <Setter Property="Grid.Column" Value="{Binding ColumnIndex}" />
+                          </Style>
+                        </ItemsControl.Styles>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:OperationsCalendarDayViewModel">
+                            <Button Classes="calendarDay" Classes.today="{Binding IsToday}" Classes.selected="{Binding IsSelected}"
+                                    Classes.outOfMonth="{Binding !IsInDisplayedMonth}"
+                                    Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AutomationName}">
+                              <StackPanel Spacing="5">
+                                <!-- Phase 32A: a fixed-height top row — the day number pinned top-left and the Pass Perks
+                                     markers in a fixed top-right strip, the same height with or without markers. Markers
+                                     keep a fixed order (qualifying visit, redemption, deadline), a fixed 15×14 slot each
+                                     and a 3px gap; a count badge sits inside the slot, so a count never shifts the icon. -->
+                                <Grid ColumnDefinitions="Auto,*" Height="18" Classes="dayTopRow">
+                                  <Border Grid.Column="0" Classes="dayNumberTile">
+                                    <TextBlock Text="{Binding DayNumber}" Classes="dayNumber" />
+                                  </Border>
+                                  <!-- Compact fallback: when a narrow cell can't fit every marker at full size, the Viewbox
+                                       shrinks the strip proportionally (DownOnly) — never clipped, never reordered. -->
+                                  <Viewbox Grid.Column="1" Stretch="Uniform" StretchDirection="DownOnly"
+                                           HorizontalAlignment="Right" VerticalAlignment="Top" Margin="4,2,0,0"
+                                           IsVisible="{Binding HasPassPerks}">
+                                  <ItemsControl ItemsSource="{Binding PassPerkMarkers}" Classes="passPerkMarkers"
+                                                ToolTip.Tip="{Binding PassPerkAccessibilityText}">
+                                    <ItemsControl.ItemsPanel>
+                                      <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="3" />
+                                      </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                      <DataTemplate x:DataType="vm:PassPerkDayMarker">
+                                        <Panel Width="15" Height="14" ToolTip.Tip="{Binding AccessibilityText}">
+                                          <PathIcon Classes="passPerkMarker" Data="{StaticResource PassdownCheckCircleIconGeometry}"
+                                                    IsVisible="{Binding IsQualifyingVisit}" AutomationProperties.AccessibilityView="Raw" />
+                                          <PathIcon Classes="passPerkMarker redemption" Data="{StaticResource PassdownGiftIconGeometry}"
+                                                    IsVisible="{Binding IsRedemption}" AutomationProperties.AccessibilityView="Raw" />
+                                          <PathIcon Classes="passPerkMarker deadline" Data="{StaticResource PassdownClockIconGeometry}"
+                                                    IsVisible="{Binding IsDeadline}" AutomationProperties.AccessibilityView="Raw" />
+                                          <Border Classes="passPerkCountBadge" IsVisible="{Binding HasCount}">
+                                            <TextBlock Text="{Binding CountText}" />
+                                          </Border>
+                                        </Panel>
+                                      </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                  </ItemsControl>
+                                  </Viewbox>
+                                </Grid>
+
+                                <!-- Operating state/hours, passdown lifecycle and notes: hidden as one unit on adjacent-month
+                                     dates (Part I). Priority top to bottom: state/hours, passdown, notes. -->
+                                <StackPanel Spacing="2" IsVisible="{Binding IsInDisplayedMonth}">
+                                  <TextBlock Text="{Binding OperatingStateLabel}" Classes="dayStateLabel" IsVisible="{Binding HasOperatingStateLabel}" />
+                                  <TextBlock Text="{Binding EffectiveHoursLineDisplay}" Classes="dayHoursLine" IsVisible="{Binding HasEffectiveHoursLine}" />
+                                  <TextBlock Text="{Binding WaterparkLineDisplay}" Classes="dayWaterparkLine" IsVisible="{Binding HasWaterparkLine}" />
+                                  <TextBlock Text="Stale" Classes="dayStaleLabel" IsVisible="{Binding IsHoursStale}" />
+                                  <TextBlock Text="{Binding PassdownCellText}" Classes="dayPassdownLine" IsVisible="{Binding HasPassdownCellText}" />
+                                  <!-- Phase 12E Part H: "Important" reuses the restrained-accent priority convention, never red. -->
+                                  <TextBlock Text="{Binding NotesSummaryText}" Classes="dayIndicator priorityText"
+                                             Classes.important="{Binding HasImportantOperationalNotes}"
+                                             IsVisible="{Binding HasOperationalNotes}" />
+                                </StackPanel>
+                              </StackPanel>
+                            </Button>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
               </StackPanel>
+            </Border>
 
-              <!-- Phase 12E Part J/P: a hairline separates day-identity/day-stepping from the
-                   informational groups below. -->
-              <Border Height="1" Background="{DynamicResource PassdownDividerBrush}" />
+            <!-- Phase 32A legend (shape + colour + words) while markers are shown and the month has any; Phase 35E adds the
+                 shared Show Perks preference (the same value as Settings → Calendar, saved on this computer only). -->
+            <Grid ColumnDefinitions="*,Auto" Margin="2,0">
+              <WrapPanel x:Name="PassPerkLegend" Grid.Column="0" ItemSpacing="16" LineSpacing="4" VerticalAlignment="Center"
+                         IsVisible="{Binding HasPassPerkLegend}"
+                         AutomationProperties.Name="Pass Perks markers: check mark, qualifying visit date; gift, redemption date; clock, booking deadline">
+                <TextBlock Text="Pass Perks" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <StackPanel Orientation="Horizontal">
+                  <PathIcon Classes="passPerkLegendIcon" Data="{StaticResource PassdownCheckCircleIconGeometry}" AutomationProperties.AccessibilityView="Raw" />
+                  <TextBlock Text="Qualifying visit" Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                  <PathIcon Classes="passPerkLegendIcon redemption" Data="{StaticResource PassdownGiftIconGeometry}" AutomationProperties.AccessibilityView="Raw" />
+                  <TextBlock Text="Redemption / use" Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                  <PathIcon Classes="passPerkLegendIcon deadline" Data="{StaticResource PassdownClockIconGeometry}" AutomationProperties.AccessibilityView="Raw" />
+                  <TextBlock Text="Booking deadline" Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                </StackPanel>
+              </WrapPanel>
+              <CheckBox x:Name="ShowPassPerksToggle" Grid.Column="1" Content="Show Perks" FontSize="12" Margin="12,0,0,0" MinHeight="0"
+                        VerticalAlignment="Center"
+                        IsVisible="{Binding CanTogglePassPerks}"
+                        IsChecked="{Binding CalendarDisplay.ShowPassPerks, FallbackValue=False}"
+                        AutomationProperties.Name="Show Pass Perks on Calendar" />
+            </Grid>
+            <TextBlock Text="Markers show confirmed, date-specific public offers, not rewards earned by an individual guest."
+                       Classes="muted" FontSize="11.5" TextWrapping="Wrap" Margin="2,0" IsVisible="{Binding HasPassPerkLegend}" />
+          </StackPanel>
+          </ScrollViewer>
 
-              <!-- Phase 22F: while the selected date's details are not loaded (a date change in flight, or a
-                   failed local read) one compact line stands in for them — the previous date's hours,
-                   pricing, Shows, passdown status and notes are never shown under the new heading. -->
-              <TextBlock x:Name="SelectedDetailPlaceholder" Text="{Binding SelectedDetailPlaceholderText}" Classes="muted" TextWrapping="Wrap"
-                         IsVisible="{Binding !IsSelectedDetailCurrent}"
-                         AutomationProperties.LiveSetting="Polite" />
+          <!-- Selected-date panel: identity and day-stepping, labelled information groups separated by hairlines, and
+               the routing actions pinned to the bottom of the panel. -->
+          <Border Grid.Column="2" Classes="detailPanel" AutomationProperties.Name="Selected date summary">
+            <Grid RowDefinitions="Auto,*,Auto">
 
-              <StackPanel x:Name="SelectedDateDetails" Spacing="14" IsVisible="{Binding IsSelectedDetailCurrent}">
+              <Border Grid.Row="0" Classes="detailHead">
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="SELECTED DATE" Classes="detailEyebrow" VerticalAlignment="Center" />
+                  <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Spacing="5" Margin="0,2,7,0">
+                    <!-- Phase 22F: bound to the view model's own selected date, so the heading changes the instant a
+                         date is chosen rather than when its details finish loading. -->
+                    <WrapPanel Orientation="Horizontal">
+                      <TextBlock x:Name="SelectedDateHeading" Text="{Binding SelectedDateHeadingText}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap"
+                                 VerticalAlignment="Center" Margin="0,0,8,0"
+                                 AutomationProperties.Name="{Binding SelectedDateHeadingText, StringFormat='Selected date: {0}'}" />
+                      <Border Classes="chip" VerticalAlignment="Center" IsVisible="{Binding SelectedDateIsToday}">
+                        <TextBlock Text="Today" />
+                      </Border>
+                    </WrapPanel>
+                  </StackPanel>
+                  <!-- Phase 12D Part C: explicit day-stepping, kept as two compact icon buttons. -->
+                  <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center" Margin="6,-6,0,-4">
+                    <Button Content="‹" Classes="iconAction" FontSize="18" Command="{Binding PreviousDayCommand}"
+                            ToolTip.Tip="Previous day" AutomationProperties.Name="Previous day" />
+                    <Button Content="›" Classes="iconAction" FontSize="18" Command="{Binding NextDayCommand}"
+                            ToolTip.Tip="Next day" AutomationProperties.Name="Next day" />
+                  </StackPanel>
+                </Grid>
+              </Border>
 
-              <!-- Park Status / Effective Hours (spec Phase 12B Part K) — reuses the same
-                   ParkHoursPresentation formatter Associate Overview/Dashboard already use; never a
-                   second hours computation. -->
-              <StackPanel Spacing="2" AutomationProperties.Name="Park status">
-                <TextBlock Text="PARK STATUS" Classes="subsectionTitle" Margin="0,0,0,2" />
-                <TextBlock Text="{Binding Presentation.ParkStatusText}" FontWeight="SemiBold"
-                           AutomationProperties.Name="{Binding Presentation.ParkStatusText, StringFormat='Park status: {0}'}" />
-                <TextBlock Text="{Binding Presentation.EffectiveHoursText}" TextWrapping="Wrap"
-                           IsVisible="{Binding Presentation.EffectiveHoursText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                           AutomationProperties.Name="{Binding Presentation.EffectiveHoursText, StringFormat='Effective hours: {0}'}" />
-                <TextBlock Text="{Binding Presentation.ParkHoursVerificationText}" Classes="muted" TextWrapping="Wrap"
-                           IsVisible="{Binding Presentation.ParkHoursVerificationText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                <TextBlock Text="{Binding Presentation.ParkHoursStaleNoteText}" Classes="fieldWarning" TextWrapping="Wrap"
-                           IsVisible="{Binding Presentation.ParkHoursStaleNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                <!-- Carolina Harbor / waterpark hours (spec Phase 13D Part G) — omitted cleanly (no
-                     blank placeholder) whenever not published for the selected date. -->
-                <TextBlock TextWrapping="Wrap" Margin="0,2,0,0" IsVisible="{Binding Presentation.HasWaterparkHours}"
-                           AutomationProperties.Name="{Binding Presentation.WaterparkHoursText, StringFormat='Carolina Harbor hours: {0}'}"><Run Text="Carolina Harbor · " Foreground="{DynamicResource PassdownTextSecondaryBrush}" /><Run Text="{Binding Presentation.WaterparkHoursText}" /></TextBlock>
+              <ScrollViewer Grid.Row="1" x:Name="SelectedDateScroll" HorizontalScrollBarVisibility="Disabled">
+              <StackPanel Margin="17,14,17,12">
+                <!-- Phase 22F: while the selected date's details are not loaded (a date change in flight, or a failed
+                     local read) one compact line stands in for them — the previous date's details never show under the
+                     new heading. -->
+                <TextBlock x:Name="SelectedDetailPlaceholder" Text="{Binding SelectedDetailPlaceholderText}" Classes="muted" TextWrapping="Wrap"
+                           IsVisible="{Binding !IsSelectedDetailCurrent}"
+                           AutomationProperties.LiveSetting="Polite" />
+
+                <StackPanel x:Name="SelectedDateDetails" Spacing="14" IsVisible="{Binding IsSelectedDetailCurrent}">
+
+                  <!-- Park information: status and effective hours (the shared ParkHoursPresentation text — never a
+                       second hours computation), Carolina Harbor when published, the daily ticket and Shows. -->
+                  <StackPanel AutomationProperties.Name="Park status">
+                    <TextBlock Text="Park information" Classes="detailHeading" />
+                    <Grid Classes="detailRow" ColumnDefinitions="Auto,*">
+                      <TextBlock Grid.Column="0" Text="Park status" Classes="detailLabel" />
+                      <TextBlock Grid.Column="1" Text="{Binding Presentation.ParkStatusText}" Classes="detailValue"
+                                 AutomationProperties.Name="{Binding Presentation.ParkStatusText, StringFormat='Park status: {0}'}" />
+                    </Grid>
+                    <Grid Classes="detailRow" ColumnDefinitions="Auto,*"
+                          IsVisible="{Binding Presentation.EffectiveHoursText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                      <TextBlock Grid.Column="0" Text="Park hours" Classes="detailLabel" />
+                      <TextBlock Grid.Column="1" Text="{Binding Presentation.EffectiveHoursText}" Classes="detailValue"
+                                 AutomationProperties.Name="{Binding Presentation.EffectiveHoursText, StringFormat='Effective hours: {0}'}" />
+                    </Grid>
+                    <TextBlock Text="{Binding Presentation.ParkHoursVerificationText}" Classes="muted detailNote"
+                               IsVisible="{Binding Presentation.ParkHoursVerificationText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <TextBlock Text="{Binding Presentation.ParkHoursStaleNoteText}" Classes="fieldWarning detailNote"
+                               IsVisible="{Binding Presentation.ParkHoursStaleNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <!-- Carolina Harbor (Phase 13D Part G) — omitted cleanly whenever not published for the date. -->
+                    <Grid Classes="detailRow" ColumnDefinitions="Auto,*" IsVisible="{Binding Presentation.HasWaterparkHours}">
+                      <TextBlock Grid.Column="0" Text="Carolina Harbor" Classes="detailLabel" />
+                      <TextBlock Grid.Column="1" Text="{Binding Presentation.WaterparkHoursText}" Classes="detailValue"
+                                 AutomationProperties.Name="{Binding Presentation.WaterparkHoursText, StringFormat='Carolina Harbor hours: {0}'}" />
+                    </Grid>
+                    <!-- Daily Admission (Phase 13D Part AH/AK): one compact line; View Pricing is the seam to full detail. -->
+                    <Grid Classes="detailRow" ColumnDefinitions="Auto,*">
+                      <TextBlock Grid.Column="0" Text="Daily ticket" Classes="detailLabel" />
+                      <TextBlock Grid.Column="1" Text="{Binding Presentation.DailyAdmissionPriceText}" Classes="detailValue"
+                                 AutomationProperties.Name="{Binding Presentation.DailyAdmissionPriceText, StringFormat='Daily ticket price: {0}'}" />
+                    </Grid>
+
+                    <!-- Phase 22E: compact Shows — one summary line and a collapsed "View schedule" disclosure (shared
+                         Expander.disclosure: ExpandCollapse automation, Enter/Space, Fluent focus) revealing every
+                         official start time and venue. Empty, unpublished, closed, failed and past states are words,
+                         never "0 shows". CalendarShows is null while a newly selected date loads. Expanding never loads. -->
+                    <StackPanel IsVisible="{Binding CalendarShows, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                AutomationProperties.Name="Shows">
+                      <Grid Classes="detailRow" ColumnDefinitions="Auto,*">
+                        <TextBlock Grid.Column="0" Text="Shows" Classes="detailLabel" />
+                        <TextBlock Grid.Column="1" Text="{Binding CalendarShows.SummaryText}" Classes="detailValue"
+                                   IsVisible="{Binding CalendarShows.HasSummary, FallbackValue=False}"
+                                   AutomationProperties.Name="{Binding CalendarShows.SummaryText, StringFormat='Shows: {0}'}" />
+                      </Grid>
+                      <TextBlock Text="{Binding CalendarShows.StatusText}" Classes="muted detailNote"
+                                 Classes.statusError="{Binding CalendarShows.IsProblem, FallbackValue=False}"
+                                 IsVisible="{Binding CalendarShows.HasStatusText, FallbackValue=False}" />
+                      <Expander x:Name="ShowScheduleExpander" Classes="disclosure" Margin="0,2,0,0"
+                                Header="{Binding ShowScheduleToggleText}"
+                                IsExpanded="{Binding IsShowScheduleExpanded}"
+                                IsVisible="{Binding CalendarShows.HasSchedule, FallbackValue=False}"
+                                AutomationProperties.Name="Show schedule">
+                        <ItemsControl ItemsSource="{Binding CalendarShows.Rows}" AutomationProperties.Name="Shows for the selected date">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="presentation:CalendarShowRowPresentation">
+                              <Border Classes="calendarShowRow" AutomationProperties.Name="{Binding AccessibleText}">
+                                <StackPanel Spacing="1">
+                                  <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                  <TextBlock FontSize="12" TextWrapping="Wrap"><Run Text="{Binding TimesText}" /><Run Text="{Binding VenueSuffix}" Foreground="{DynamicResource PassdownTextSecondaryBrush}" /></TextBlock>
+                                </StackPanel>
+                              </Border>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </Expander>
+                      <TextBlock Text="{Binding CalendarShows.FreshnessText}" Classes="muted detailNote"
+                                 IsVisible="{Binding CalendarShows.HasFreshnessText, FallbackValue=False}" />
+                    </StackPanel>
+                  </StackPanel>
+
+                  <!-- Phase 32: Pass Perks for the selected date — perks with a confirmed date-specific entry, then a
+                       collapsed "Valid all {month}" summary for month-long perks (never repeated daily markers). Hidden
+                       by the Show Pass Perks preference. -->
+                  <StackPanel x:Name="SelectedDatePassPerks" IsVisible="{Binding HasPassPerksSection}"
+                              AutomationProperties.Name="Pass Perks">
+                    <Border Classes="detailRule" />
+                    <TextBlock Text="Pass Perks" Classes="detailHeading" />
+                    <ItemsControl ItemsSource="{Binding SelectedDatePassPerks}" IsVisible="{Binding HasSelectedDatePassPerks}"
+                                  AutomationProperties.Name="Pass Perks dates on the selected date" />
+                    <Expander Classes="disclosure" Margin="0,4,0,0" Header="{Binding MonthLongPassPerksHeaderText}"
+                              IsVisible="{Binding HasMonthLongPassPerks}"
+                              AutomationProperties.Name="{Binding MonthLongPassPerksHeaderText}">
+                      <ItemsControl ItemsSource="{Binding MonthLongPassPerks}" />
+                    </Expander>
+                  </StackPanel>
+
+                  <!-- Passdown status (Phase 12C Part J/Y: No Draft / Draft In Progress / Finalized with its last-saved or
+                       finalized note) and active Operational Notes (counts only, never note bodies — Part S). -->
+                  <StackPanel>
+                    <Border Classes="detailRule" />
+                    <TextBlock Text="Passdown and notes" Classes="detailHeading" />
+                    <Grid Classes="detailRow" ColumnDefinitions="Auto,*">
+                      <TextBlock Grid.Column="0" Text="Passdown" Classes="detailLabel" />
+                      <TextBlock Grid.Column="1" Text="{Binding Presentation.PassdownStatusText}" Classes="detailValue"
+                                 AutomationProperties.Name="{Binding Presentation.PassdownStatusText, StringFormat='Passdown status: {0}'}" />
+                    </Grid>
+                    <TextBlock Text="{Binding Presentation.PassdownDetailNoteText}" Classes="muted detailNote"
+                               IsVisible="{Binding Presentation.PassdownDetailNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <Grid Classes="detailRow" ColumnDefinitions="Auto,*">
+                      <TextBlock Grid.Column="0" Text="Operational notes" Classes="detailLabel" />
+                      <TextBlock Grid.Column="1" Text="{Binding Presentation.OperationalNotesCountText}" Classes="detailValue"
+                                 AutomationProperties.Name="{Binding Presentation.OperationalNotesCountText, StringFormat='Active operational notes: {0}'}" />
+                    </Grid>
+                    <TextBlock Text="{Binding Presentation.OperationalNotesImportantText}" Classes="priorityText important detailNote"
+                               IsVisible="{Binding Presentation.OperationalNotesImportantText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  </StackPanel>
+
+                </StackPanel>
               </StackPanel>
+              </ScrollViewer>
 
-              <!-- Daily Admission pricing (spec Phase 13D Part AH/AK) — deliberately just one compact
-                   line, never every Fast Lane option/pass/promotion/bundle; View Date Pricing (below)
-                   is the seam to full detail. -->
-              <StackPanel Spacing="2">
-                <TextBlock Text="DAILY TICKET" Classes="subsectionTitle" Margin="0,0,0,2" />
-                <TextBlock Text="{Binding Presentation.DailyAdmissionPriceText}" FontWeight="SemiBold"
-                           AutomationProperties.Name="{Binding Presentation.DailyAdmissionPriceText, StringFormat='Daily ticket price: {0}'}" />
-              </StackPanel>
-
-              <!-- Phase 22E: compact Shows — one summary line ("6 scheduled shows · 22 performances") and a
-                   "View schedule ▾" disclosure (the shared Expander.disclosure: ExpandCollapse automation,
-                   Enter/Space, Fluent focus) revealing every official start time and venue. Collapsed by
-                   default; the preference survives date changes for the session. Empty, unpublished, closed,
-                   failed and past states are words, never "0 shows", and get no empty disclosure.
-                   CalendarShows is null while a newly selected date loads, so the previous date's lineup
-                   is never shown under it. Expanding never loads anything. -->
-              <StackPanel Spacing="2" IsVisible="{Binding CalendarShows, Converter={x:Static ObjectConverters.IsNotNull}}"
-                          AutomationProperties.Name="Shows">
-                <TextBlock Text="SHOWS" Classes="subsectionTitle" Margin="0,0,0,2" />
-                <TextBlock Text="{Binding CalendarShows.SummaryText}" FontWeight="SemiBold" TextWrapping="Wrap"
-                           IsVisible="{Binding CalendarShows.HasSummary, FallbackValue=False}"
-                           AutomationProperties.Name="{Binding CalendarShows.SummaryText, StringFormat='Shows: {0}'}" />
-                <TextBlock Text="{Binding CalendarShows.StatusText}" TextWrapping="Wrap"
-                           Classes="muted" Classes.statusError="{Binding CalendarShows.IsProblem, FallbackValue=False}"
-                           IsVisible="{Binding CalendarShows.HasStatusText, FallbackValue=False}" />
-                <Expander x:Name="ShowScheduleExpander" Classes="disclosure" Margin="0,2,0,0"
-                          Header="{Binding ShowScheduleToggleText}"
-                          IsExpanded="{Binding IsShowScheduleExpanded}"
-                          IsVisible="{Binding CalendarShows.HasSchedule, FallbackValue=False}"
-                          AutomationProperties.Name="Show schedule">
-                  <ItemsControl ItemsSource="{Binding CalendarShows.Rows}" AutomationProperties.Name="Shows for the selected date">
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate x:DataType="presentation:CalendarShowRowPresentation">
-                        <Border Classes="calendarShowRow" AutomationProperties.Name="{Binding AccessibleText}">
-                          <StackPanel Spacing="1">
-                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                            <TextBlock TextWrapping="Wrap"><Run Text="{Binding TimesText}" /><Run Text="{Binding VenueSuffix}" Foreground="{DynamicResource PassdownTextSecondaryBrush}" /></TextBlock>
-                          </StackPanel>
-                        </Border>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </Expander>
-                <TextBlock Text="{Binding CalendarShows.FreshnessText}" Classes="muted" TextWrapping="Wrap" Margin="0,2,0,0"
-                           IsVisible="{Binding CalendarShows.HasFreshnessText, FallbackValue=False}" />
-              </StackPanel>
-
-              <!-- Passdown Status (spec Phase 12C Part J/Y): No Draft/Draft In Progress/Finalized,
-                   reusing OperationsCalendarPassdownPresentation for both the label and its detail
-                   note (last-saved/finalized timestamp, or an empty-state sentence). -->
-              <StackPanel Spacing="2">
-                <TextBlock Text="PASSDOWN STATUS" Classes="subsectionTitle" Margin="0,0,0,2" />
-                <TextBlock Text="{Binding Presentation.PassdownStatusText}" FontWeight="SemiBold"
-                           AutomationProperties.Name="{Binding Presentation.PassdownStatusText, StringFormat='Passdown status: {0}'}" />
-                <TextBlock Text="{Binding Presentation.PassdownDetailNoteText}" Classes="muted" TextWrapping="Wrap"
-                           IsVisible="{Binding Presentation.PassdownDetailNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-              </StackPanel>
-
-              <!-- Active Operational Notes (spec Phase 12C Part J/T): the persistent Operational
-                   Notes concept, deliberately labeled to avoid confusion with the daily Associate
-                   draft's own Notes entry — counts only, never note titles/bodies (Part S).
-                   Phase 12E Part H/Q: "Important" reuses TextBlock.priorityText.important (never red). -->
-              <StackPanel Spacing="2">
-                <TextBlock Text="ACTIVE OPERATIONAL NOTES" Classes="subsectionTitle" Margin="0,0,0,2" />
-                <TextBlock Text="{Binding Presentation.OperationalNotesCountText}" FontWeight="SemiBold"
-                           AutomationProperties.Name="{Binding Presentation.OperationalNotesCountText, StringFormat='Active operational notes: {0}'}" />
-                <TextBlock Text="{Binding Presentation.OperationalNotesImportantText}" Classes="priorityText important" TextWrapping="Wrap"
-                           IsVisible="{Binding Presentation.OperationalNotesImportantText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-              </StackPanel>
-
-              </StackPanel>
-
-              <!-- Phase 12E Part J/P: a second divider separates the informational groups above from
-                   the routing actions below. -->
-              <Border Height="1" Background="{DynamicResource PassdownDividerBrush}" />
-
-              <StackPanel Spacing="8">
-                <Button Content="Open Passdown" Classes="primaryAction" Command="{Binding OpenAssociateCommand}"
-                        HorizontalAlignment="Stretch"
-                        AutomationProperties.Name="Open Passdown"
-                        AutomationProperties.HelpText="Opens Associate Passdown set to the selected date." />
-                <!-- Phase 12E Part S: disabled (not hidden) until Finalized — HelpText is dynamic so a
-                     disabled control's explanation stays accurate. -->
-                <Button Content="Open History" Classes="secondaryAction" Command="{Binding OpenHistoryCommand}"
-                        HorizontalAlignment="Stretch"
-                        AutomationProperties.Name="Open History"
-                        AutomationProperties.HelpText="{Binding OpenHistoryHelpText}" />
-                <!-- Phase 13D Part AI/AJ: local-only navigation to Associate's Products section for the
-                     selected date — never triggers Check Online by itself. -->
-                <Button Content="View Date Pricing" Classes="secondaryAction" Command="{Binding ViewDatePricingCommand}"
-                        HorizontalAlignment="Stretch"
-                        AutomationProperties.Name="View Date Pricing"
-                        AutomationProperties.HelpText="Opens full product pricing for the selected date." />
-                <Button Content="Open Operational Notes" Classes="secondaryAction" Command="{Binding OpenOperationalNotesCommand}"
-                        HorizontalAlignment="Stretch"
-                        AutomationProperties.Name="Open Operational Notes"
-                        AutomationProperties.HelpText="Opens the Operational Notes manager." />
-              </StackPanel>
-            </StackPanel>
+              <!-- Routing actions — never a refresh: each raises the existing navigation event for the selected date. -->
+              <Border Grid.Row="2" Classes="detailActions">
+                <Grid ColumnDefinitions="*,7,*" RowDefinitions="Auto,7,Auto,7,Auto">
+                  <Button Grid.Row="0" Grid.ColumnSpan="3" Content="Open Passdown" Classes="primaryAction" Command="{Binding OpenAssociateCommand}"
+                          AutomationProperties.Name="Open Passdown"
+                          AutomationProperties.HelpText="Opens Associate Passdown set to the selected date." />
+                  <!-- Phase 13D Part AI/AJ: local-only navigation to the selected date's Products — never Check Online. -->
+                  <Button Grid.Row="2" Grid.Column="0" Content="View Pricing" Classes="secondaryAction" Command="{Binding ViewDatePricingCommand}"
+                          AutomationProperties.Name="View Pricing"
+                          AutomationProperties.HelpText="Opens full product pricing for the selected date." />
+                  <Button Grid.Row="2" Grid.Column="2" Content="Operational Notes" Classes="secondaryAction" Command="{Binding OpenOperationalNotesCommand}"
+                          AutomationProperties.Name="Open Operational Notes"
+                          AutomationProperties.HelpText="Opens the Operational Notes manager." />
+                  <!-- Phase 12E Part S: disabled (not hidden) until Finalized; the help text says why. Opens the stored
+                       record read-only — History never regenerates a finalized PDF. -->
+                  <Button Grid.Row="4" Grid.ColumnSpan="3" Content="View Finalized History" Classes="secondaryAction" Command="{Binding OpenHistoryCommand}"
+                          AutomationProperties.Name="View Finalized History"
+                          AutomationProperties.HelpText="{Binding OpenHistoryHelpText}" />
+                </Grid>
+              </Border>
+            </Grid>
           </Border>
 
         </Grid>
 
-      </StackPanel>
-    </ScrollViewer>
+    </DockPanel>
 
   </Grid>
 

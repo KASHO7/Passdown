@@ -1,10 +1,12 @@
 using Carowinds.Passdown.Application.Calendar;
 using Carowinds.Passdown.Application.Changes;
 using Carowinds.Passdown.Application.HistoricalBackfill;
+using Carowinds.Passdown.Application.PassPerks;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Desktop.Services;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.PassPerks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -28,6 +30,9 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     private readonly IClock _clock;
     private readonly ILogger<OperationsCalendarViewModel>? _logger;
     private readonly IHistoricalBackfillService? _historicalBackfill;
+    private readonly IPassPerksService? _passPerksService;
+    private readonly CalendarDisplaySettingsViewModel? _calendarDisplay;
+    private PassPerksOverview? _passPerksOverview;
 
     private int _loadVersion;
     private bool _quietReloadInFlight;
@@ -123,7 +128,9 @@ public partial class OperationsCalendarViewModel : ViewModelBase
         ILogger<OperationsCalendarViewModel>? logger = null,
         IDataChangeNotifier? dataChangeNotifier = null,
         IHistoricalBackfillService? historicalBackfill = null,
-        IUiDispatcher? uiDispatcher = null)
+        IUiDispatcher? uiDispatcher = null,
+        IPassPerksService? passPerksService = null,
+        CalendarDisplaySettingsViewModel? calendarDisplay = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -132,6 +139,8 @@ public partial class OperationsCalendarViewModel : ViewModelBase
         _clock = clock;
         _logger = logger;
         _historicalBackfill = historicalBackfill;
+        _passPerksService = passPerksService;
+        _calendarDisplay = calendarDisplay;
 
         var today = TodayEastern();
         DisplayedMonth = new DateOnly(today.Year, today.Month, 1);
@@ -141,6 +150,12 @@ public partial class OperationsCalendarViewModel : ViewModelBase
         _pendingLoad = LoadAsync();
 
         var dispatcher = uiDispatcher ?? new AvaloniaUiDispatcher();
+
+        // Phase 32: the Settings checkbox and this Calendar share one live value; toggling only re-formats.
+        if (calendarDisplay is not null)
+        {
+            calendarDisplay.ShowPassPerksChanged += (_, _) => dispatcher.Post(RebuildPassPerkPresentation);
+        }
 
         // Phase 20C: the Calendar now follows committed local changes (official data from any refresh,
         // historical backfill, drafts, notes, sync) the same way the Dashboard does — a local re-read of
@@ -218,8 +233,10 @@ public partial class OperationsCalendarViewModel : ViewModelBase
         try
         {
             var snapshot = await _service.LoadAsync(DisplayedMonth, SelectedDate).ConfigureAwait(true);
+            var perks = await LoadPassPerksOverviewAsync().ConfigureAwait(true);
             if (version == _loadVersion)
             {
+                _passPerksOverview = perks;
                 Snapshot = snapshot;
                 ErrorMessage = null;
             }
@@ -301,6 +318,8 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     partial void OnSelectedDateChanged(DateOnly value)
     {
         RebuildCalendarShows();
+        RebuildSelectedPassPerks();
+        OnPropertyChanged(nameof(MonthLongPassPerksHeaderText));
         foreach (var day in Days)
         {
             day.IsSelected = day.Date == value;
@@ -327,9 +346,136 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     {
         Presentation = value is null ? null : OperationsCalendarPresentation.Build(value);
         RebuildCalendarShows();
-        Days = value?.Days.Select(day => new OperationsCalendarDayViewModel(day, day.Date == SelectedDate, SelectDate)).ToList() ?? [];
-        Weeks = Days.Chunk(7).Select(week => new OperationsCalendarWeekViewModel(week)).ToList();
+        RebuildDays(value);
     }
+
+    private void RebuildDays(OperationsCalendarSnapshot? value)
+    {
+        var markers = PassPerkMarkers(value);
+        Days = value?.Days.Select(day => new OperationsCalendarDayViewModel(
+            day,
+            day.Date == SelectedDate,
+            SelectDate,
+            markers.TryGetValue(day.Date, out var dayMarkers) ? dayMarkers : null)).ToList() ?? [];
+        Weeks = Days.Chunk(7).Select(week => new OperationsCalendarWeekViewModel(week)).ToList();
+        OnPropertyChanged(nameof(HasPassPerkLegend));
+        RebuildSelectedPassPerks();
+    }
+
+    // ---- Phase 32: Pass Perks on the Calendar (cached official data only; never a retrieval) ----
+
+    /// <summary>Phase 32: raised by a Pass Perk's View details; <see cref="MainViewModel"/> opens the shared dialog.</summary>
+    public event EventHandler<OfficialDetailsPresentation>? PassPerkDetailsRequested;
+
+    /// <summary>Phase 32: whether Pass Perks markers and the selected-date list are shown (Settings → Calendar; default on).</summary>
+    public bool ShowPassPerks => _passPerksService is not null && (_calendarDisplay?.ShowPassPerks ?? true);
+
+    /// <summary>
+    /// Phase 35E: the same shared Settings → Calendar preference, so the Calendar's own "Show Perks" box and the
+    /// Settings checkbox are one value saved by one store. Null when the Calendar was built without it.
+    /// </summary>
+    public CalendarDisplaySettingsViewModel? CalendarDisplay => _calendarDisplay;
+
+    /// <summary>Phase 35E: the in-Calendar "Show Perks" box is offered only when Pass Perks and the shared preference both exist.</summary>
+    public bool CanTogglePassPerks => _passPerksService is not null && _calendarDisplay is not null;
+
+    /// <summary>Phase 32: perks with a confirmed date-specific entry on <see cref="SelectedDate"/> (begins, ends, deadline, short window).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSelectedDatePassPerks))]
+    [NotifyPropertyChangedFor(nameof(HasPassPerksSection))]
+    public partial IReadOnlyList<PassPerkItemViewModel> SelectedDatePassPerks { get; private set; } = [];
+
+    public bool HasSelectedDatePassPerks => SelectedDatePassPerks.Count > 0;
+
+    /// <summary>Phase 32: the selected date's month perks that carry no daily marker (valid all month) — a compact summary instead of 30 markers.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasMonthLongPassPerks))]
+    [NotifyPropertyChangedFor(nameof(MonthLongPassPerksHeaderText))]
+    [NotifyPropertyChangedFor(nameof(HasPassPerksSection))]
+    public partial IReadOnlyList<PassPerkItemViewModel> MonthLongPassPerks { get; private set; } = [];
+
+    public bool HasMonthLongPassPerks => MonthLongPassPerks.Count > 0;
+
+    public string MonthLongPassPerksHeaderText => $"Valid all {SelectedDate.ToString("MMMM", PresentationCulture.UnitedStates)} ({MonthLongPassPerks.Count})";
+
+    public bool HasPassPerksSection => ShowPassPerks && (HasSelectedDatePassPerks || HasMonthLongPassPerks);
+
+    /// <summary>Phase 32A: the small marker legend under the grid — shown only while markers are on and the month has any.</summary>
+    public bool HasPassPerkLegend => ShowPassPerks && Days.Any(d => d.HasPassPerks);
+
+    private async Task<PassPerksOverview?> LoadPassPerksOverviewAsync()
+    {
+        if (_passPerksService is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return await _passPerksService.GetOverviewAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogWarning(ex, "Failed to read cached Pass Perks for the Calendar; markers are omitted.");
+            return null; // the Calendar itself stays fully usable
+        }
+    }
+
+    private Dictionary<DateOnly, IReadOnlyList<PassPerkDayMarker>> PassPerkMarkers(OperationsCalendarSnapshot? snapshot)
+    {
+        if (!ShowPassPerks || _passPerksOverview is null || snapshot is not { Days.Count: > 0 })
+        {
+            return [];
+        }
+
+        // Phase 32A: one marker per type per date, in a fixed type order; each lists its perks once.
+        return _passPerksOverview.CalendarEntries(snapshot.Days[0].Date, snapshot.Days[^1].Date)
+            .GroupBy(e => e.Entry.Date)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<PassPerkDayMarker>)g
+                    .GroupBy(e => e.Entry.MarkerKind)
+                    .OrderBy(k => k.Key)
+                    .Select(k => new PassPerkDayMarker(k.Key, k.Select(e => e.Entry.Perk.Title).Distinct(StringComparer.Ordinal).ToList()))
+                    .ToList());
+    }
+
+    private void RebuildSelectedPassPerks()
+    {
+        if (!ShowPassPerks || _passPerksOverview is not { } overview)
+        {
+            SelectedDatePassPerks = [];
+            MonthLongPassPerks = [];
+            OnPropertyChanged(nameof(HasPassPerksSection));
+            return;
+        }
+
+        var terms = overview.ProgramTerms;
+        // Phase 32A: one row per perk per marker type, qualifying visits first, then redemption, then deadlines;
+        // each row names its type, so a date with both a qualifying and a redemption entry reads unambiguously.
+        SelectedDatePassPerks = overview.CalendarEntries(SelectedDate, SelectedDate)
+            .GroupBy(e => (e.Entry.MarkerKind, e.Entry.Perk.PerkId))
+            .OrderBy(g => g.Key.MarkerKind)
+            .ThenBy(g => g.First().Entry.Perk.Title, StringComparer.Ordinal)
+            .Select(g => new PassPerkItemViewModel(
+                PassPerksPresentation.Item(new PassPerkEntry(g.First().Entry.Perk, g.First().Assessment), terms),
+                OpenPassPerkDetails,
+                string.Join(" · ", g.Select(e => PassPerksPresentation.CalendarKindText(e.Entry.Kind)).Distinct(StringComparer.Ordinal)),
+                g.Key.MarkerKind))
+            .ToList();
+        MonthLongPassPerks = overview.MonthLongEntries(SelectedDate.Year, SelectedDate.Month)
+            .Select(e => new PassPerkItemViewModel(PassPerksPresentation.Item(e, terms), OpenPassPerkDetails))
+            .ToList();
+        OnPropertyChanged(nameof(HasPassPerksSection));
+    }
+
+    private void RebuildPassPerkPresentation()
+    {
+        OnPropertyChanged(nameof(ShowPassPerks));
+        RebuildDays(Snapshot);
+    }
+
+    private void OpenPassPerkDetails(OfficialDetailsPresentation details) => PassPerkDetailsRequested?.Invoke(this, details);
 
     /// <summary>
     /// Phase 12D Part D: preserves the selection's day-of-month across a month change, clamping to the
@@ -433,11 +579,13 @@ public partial class OperationsCalendarViewModel : ViewModelBase
         try
         {
             var snapshot = await _service.LoadAsync(DisplayedMonth, SelectedDate).ConfigureAwait(true);
+            var perks = await LoadPassPerksOverviewAsync().ConfigureAwait(true);
             if (version != _loadVersion)
             {
                 return; // a newer month/selection change started before this one finished loading.
             }
 
+            _passPerksOverview = perks;
             Snapshot = snapshot;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

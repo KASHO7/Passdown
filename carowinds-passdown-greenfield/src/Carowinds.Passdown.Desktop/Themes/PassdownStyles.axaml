@@ -163,6 +163,12 @@
     <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
     <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
   </Style>
+  <!-- Phase 35A: a hairline that separates two groups inside one panel (e.g. Appearance → Interface animations). -->
+  <Style Selector="Border.divider">
+    <Setter Property="Height" Value="1" />
+    <Setter Property="Background" Value="{DynamicResource PassdownDividerBrush}" />
+    <Setter Property="Margin" Value="0,6,0,2" />
+  </Style>
   <!-- Category heading strip inside a list (Products, History). -->
   <Style Selector="Border.categoryBand">
     <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
@@ -268,6 +274,30 @@
     <Setter Property="Background" Value="{DynamicResource PassdownAccentPressedBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentPressedBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource PassdownTextOnAccentBrush}" />
+  </Style>
+
+  <!-- Phase 35D dropdown chevron (shared): a 12×12 box drawn with fixed coordinates (PassdownDropdownChevronGeometry,
+       Stretch None) so the glyph's visible centre is the box centre, then centred on its label. One size, one weight,
+       one gap (StackPanel.dropdownLabel) for every menu trigger — the Passdown Actions button and the date button. The
+       colour follows the button's own foreground state via the secondary text token in both themes. -->
+  <Style Selector="Path.dropdownChevron">
+    <Setter Property="Width" Value="12" />
+    <Setter Property="Height" Value="12" />
+    <Setter Property="Stretch" Value="None" />
+    <Setter Property="Stroke" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+    <Setter Property="StrokeThickness" Value="1.5" />
+    <Setter Property="StrokeLineCap" Value="Round" />
+    <Setter Property="StrokeJoin" Value="Round" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="IsHitTestVisible" Value="False" />
+  </Style>
+  <Style Selector="StackPanel.dropdownLabel">
+    <Setter Property="Orientation" Value="Horizontal" />
+    <Setter Property="Spacing" Value="7" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="StackPanel.dropdownLabel > TextBlock">
+    <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
 
   <!-- Secondary: neutral outlined button — quieter than primary, clearly a control. -->
@@ -392,98 +422,298 @@
   </Style>
 
   <!-- ===================================================================================
-       App shell: Fury banner and section navigation (Phase 22B, MainWindow only)
+       App shell: sidebar navigation (Phase 35A, MainWindow only)
        =================================================================================== -->
 
-  <!-- The compact photographic brand banner. Theme-invariant (dark in both themes); its height is
-       a single token so every page shares the same shell geometry. -->
-  <Style Selector="Border.brandBanner">
-    <Setter Property="Height" Value="{DynamicResource PassdownBannerHeight}" />
-    <Setter Property="Background" Value="{DynamicResource PassdownBrandDarkBrush}" />
+  <!-- The sidebar. Its width snaps between the two states (no width animation), so pages lay out exactly once
+       per toggle — no relayout jitter while the PDF preview or a long page is showing. -->
+  <Style Selector="Border.navSidebar">
+    <Setter Property="Width" Value="{DynamicResource PassdownSidebarExpandedWidth}" />
+    <Setter Property="Background" Value="{DynamicResource PassdownNavigationBackgroundBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,1,0" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+    <Setter Property="Padding" Value="{DynamicResource PassdownSidebarPadding}" />
     <Setter Property="ClipToBounds" Value="True" />
   </Style>
-  <Style Selector="TextBlock.brandWordmark">
-    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeWordmark}" />
-    <Setter Property="FontWeight" Value="Bold" />
-    <Setter Property="LetterSpacing" Value="1.6" />
-    <Setter Property="Foreground" Value="{DynamicResource PassdownHeaderForegroundBrush}" />
-    <Setter Property="VerticalAlignment" Value="Center" />
+  <Style Selector="Border.navSidebar.collapsed">
+    <Setter Property="Width" Value="{DynamicResource PassdownSidebarCollapsedWidth}" />
+  </Style>
+  <!-- Collapsed: labels leave the layout and the accessibility tree (each item keeps its accessible name). -->
+  <Style Selector="Border.navSidebar.collapsed TextBlock.navLabel">
+    <Setter Property="IsVisible" Value="False" />
+    <Setter Property="Opacity" Value="0" />
   </Style>
 
-  <!-- The single row of top-level sections, on the theme's neutral surface. -->
-  <Style Selector="Border.appNavigation">
-    <Setter Property="Background" Value="{DynamicResource PassdownSurfaceBrush}" />
-    <Setter Property="BorderThickness" Value="0,0,0,1" />
-    <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
-    <Setter Property="Padding" Value="{DynamicResource PassdownNavigationStripPadding}" />
-  </Style>
-
-  <!-- A section item. Active = 2px accent underline + SemiBold + primary text (shape and weight,
-       never color alone); hover = neutral background only, so hovered and active never look alike.
-       The label template reserves the SemiBold width up front, so selecting an item never moves its
-       neighbors. Plain Button + a data-bound "active" class (not ToggleButton): selection lives only
-       in MainViewModel.SelectedSection. Fluent's focus adorner is untouched. -->
-  <Style Selector="Button.appSectionItem">
+  <!-- A navigation item: full-width row, icon + label. Active = indicator bar + selected fill + SemiBold +
+       primary text + "Current page" for screen readers (shape and weight, never colour alone); hover = neutral
+       fill only, so hovered and active never look alike. Plain Button + a data-bound "active" class: selection
+       lives only in MainViewModel.SelectedSection. Fluent's focus adorner and template are untouched. -->
+  <Style Selector="Button.navItem">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="MinHeight" Value="{DynamicResource PassdownNavigationItemHeight}" />
+    <Setter Property="Margin" Value="{DynamicResource PassdownNavigationItemMargin}" />
+    <Setter Property="Padding" Value="0" />
     <Setter Property="Background" Value="Transparent" />
-    <Setter Property="BorderThickness" Value="0,0,0,2" />
-    <Setter Property="BorderBrush" Value="Transparent" />
-    <Setter Property="CornerRadius" Value="0" />
-    <Setter Property="Padding" Value="{DynamicResource PassdownNavigationItemPadding}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
     <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeBody}" />
     <Setter Property="FontWeight" Value="Normal" />
     <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
     <Setter Property="Cursor" Value="Hand" />
-    <Setter Property="ContentTemplate">
-      <DataTemplate x:DataType="sys:String">
-        <Panel>
-          <TextBlock Text="{Binding}" FontWeight="SemiBold" Opacity="0" TextAlignment="Center"
-                     AutomationProperties.AccessibilityView="Raw" />
-          <TextBlock Text="{Binding}" TextAlignment="Center" />
-        </Panel>
-      </DataTemplate>
-    </Setter>
   </Style>
-  <Style Selector="Button.appSectionItem.active">
-    <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentForegroundBrush}" />
-    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
-    <Setter Property="FontWeight" Value="SemiBold" />
-    <!-- Screen readers hear which section is showing, not only sighted users. -->
-    <Setter Property="AutomationProperties.ItemStatus" Value="Current page" />
-  </Style>
-  <!-- Fluent shrinks a pressed button (scale 0.98); a navigation row must not jitter. -->
-  <Style Selector="Button.appSectionItem:pressed">
-    <Setter Property="RenderTransform" Value="scale(1)" />
-  </Style>
-  <Style Selector="Button.appSectionItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
-    <Setter Property="BorderBrush" Value="Transparent" />
-    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
-  </Style>
-  <Style Selector="Button.appSectionItem:pressed /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource PassdownPressedBackgroundBrush}" />
-    <Setter Property="BorderBrush" Value="Transparent" />
-    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
-  </Style>
-  <Style Selector="Button.appSectionItem.active:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.appSectionItem.active:pressed /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentForegroundBrush}" />
-  </Style>
-  <!-- Phase 22C: the trailing Settings item is an icon (gear) rather than a word. It keeps every
-       appSectionItem state (underline, hover, focus, "Current page"); only the string label template
-       is dropped and the padding evens out so the 33px row height is unchanged. -->
-  <Style Selector="Button.appSectionItem.iconItem">
-    <Setter Property="ContentTemplate" Value="{x:Null}" />
-    <Setter Property="Padding" Value="12,7" />
-  </Style>
-  <Style Selector="Button.appSectionItem.iconItem PathIcon">
+  <Style Selector="Button.navItem PathIcon">
     <Setter Property="Width" Value="{DynamicResource PassdownNavigationIconSize}" />
     <Setter Property="Height" Value="{DynamicResource PassdownNavigationIconSize}" />
   </Style>
-  <!-- Disabled while an Operational Note is being edited (MainViewModel CanExecute): stays a quiet
-       label rather than Fluent's gray button fill. -->
-  <Style Selector="Button.appSectionItem:disabled /template/ ContentPresenter#PART_ContentPresenter">
+  <Style Selector="Button.navItem StackPanel.navContent">
+    <Setter Property="Margin" Value="{DynamicResource PassdownNavigationContentInset}" />
+  </Style>
+  <Style Selector="Button.navItem TextBlock.navLabel">
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="Button.navItem Border.navIndicator">
+    <Setter Property="Width" Value="3" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="CornerRadius" Value="1.5" />
+    <Setter Property="VerticalAlignment" Value="Center" />
     <Setter Property="Background" Value="Transparent" />
-    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="Button.navItem.active">
+    <Setter Property="Background" Value="{DynamicResource PassdownNavigationActiveBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="AutomationProperties.ItemStatus" Value="Current page" />
+  </Style>
+  <Style Selector="Button.navItem.active Border.navIndicator">
+    <Setter Property="Background" Value="{DynamicResource PassdownNavigationActiveIndicatorBrush}" />
+  </Style>
+  <!-- Fluent shrinks a pressed button (scale 0.98); a navigation column must not jitter. -->
+  <Style Selector="Button.navItem:pressed">
+    <Setter Property="RenderTransform" Value="scale(1)" />
+  </Style>
+  <Style Selector="Button.navItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.navItem:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownPressedBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.navItem.active:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.navItem.active:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownNavigationActiveBackgroundBrush}" />
+  </Style>
+  <!-- Disabled while an Operational Note is being edited (MainViewModel CanExecute), or the toggle in a narrow
+       window: a quiet label rather than Fluent's gray button fill. -->
+  <Style Selector="Button.navItem:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
     <Setter Property="Foreground" Value="{DynamicResource PassdownTextDisabledBrush}" />
+  </Style>
+
+  <!-- Square icon-only action (the sidebar toggle; later icon buttons). Same states as navItem, no fill at rest. -->
+  <Style Selector="Button.iconAction">
+    <Setter Property="Width" Value="{DynamicResource PassdownIconButtonSize}" />
+    <Setter Property="Height" Value="{DynamicResource PassdownIconButtonSize}" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+  </Style>
+  <Style Selector="Button.iconAction PathIcon">
+    <Setter Property="Width" Value="{DynamicResource PassdownIconSize}" />
+    <Setter Property="Height" Value="{DynamicResource PassdownIconSize}" />
+  </Style>
+  <Style Selector="Button.iconAction:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.iconAction:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownPressedBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.iconAction:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextDisabledBrush}" />
+  </Style>
+
+  <!-- ===================================================================================
+       Motion (Phase 35A). Every cosmetic transition is declared here, under the main window's
+       "motion" class, which MainViewModel.IsInterfaceMotionEnabled sets only while Settings →
+       Appearance → Interface animations is On and Windows does not request reduced motion.
+       Without the class these styles do not apply, so no transition exists at all.
+       State changes themselves are immediate; only their appearance eases.
+       =================================================================================== -->
+
+  <!-- Sidebar labels fade in on expand (render-only opacity; no layout work per frame). -->
+  <Style Selector="Window.motion TextBlock.navLabel">
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Opacity" Duration="{StaticResource PassdownMotionPanel}" Easing="{StaticResource PassdownMotionEasing}" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <!-- Hover / press fills on shell and shared buttons ease in quickly. -->
+  <Style Selector="Window.motion Button.navItem /template/ ContentPresenter#PART_ContentPresenter, Window.motion Button.iconAction /template/ ContentPresenter#PART_ContentPresenter, Window.motion Button.primaryAction /template/ ContentPresenter#PART_ContentPresenter, Window.motion Button.secondaryAction /template/ ContentPresenter#PART_ContentPresenter, Window.motion Button.linkAction /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="{StaticResource PassdownMotionFast}" Easing="{StaticResource PassdownMotionEasing}" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <!-- Phase 35B: the Passdown section tabs' underline eases between hover and selected. Selection itself is immediate. -->
+  <Style Selector="Window.motion Button.sectionTab /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="BorderBrush" Duration="{StaticResource PassdownMotionFast}" Easing="{StaticResource PassdownMotionEasing}" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <!-- Phase 35C: the Products price popover fades in (opacity only, no movement). The view drops its "entering"
+       class as the popover opens, so this runs only under Window.motion; the popover is interactive from the first
+       frame either way. -->
+  <Style Selector="Window.motion Border.pricePopover">
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Opacity" Duration="{StaticResource PassdownMotionOverlay}" Easing="{StaticResource PassdownMotionEasing}" />
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <!-- Off / reduced motion: also remove Fluent's own button press-scale transition in the main window. -->
+  <Style Selector="Window.noMotion Button, Window.noMotion ToggleButton, Window.noMotion RepeatButton">
+    <Setter Property="Transitions" Value="{x:Null}" />
+  </Style>
+
+  <!-- ===================================================================================
+       Phase 35F: list-detail workspaces (Operational Notes, Passdown History) and Settings groups.
+       One white page header, one quiet filter bar, then two bordered cards (list, detail) on the app
+       background — no further nesting. All colours are tokens.
+       =================================================================================== -->
+
+  <Style Selector="Border.pageHeader">
+    <Setter Property="Background" Value="{DynamicResource PassdownSurfaceBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+    <Setter Property="Padding" Value="22,16" />
+    <Setter Property="MinHeight" Value="76" />
+  </Style>
+  <Style Selector="Border.filterBar">
+    <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+    <Setter Property="Padding" Value="22,10" />
+  </Style>
+  <Style Selector="TextBox.searchBox">
+    <Setter Property="MinHeight" Value="34" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="TextBox.searchBox PathIcon">
+    <Setter Property="Width" Value="14" />
+    <Setter Property="Height" Value="14" />
+    <Setter Property="Margin" Value="10,0,2,0" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+  </Style>
+  <!-- Segmented filters (Active / All / …, All records / Scheduled / …): the current one is tinted and bold,
+       and announced as the current filter — never colour alone. -->
+  <Style Selector="Button.segment">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+    <Setter Property="Padding" Value="10,7" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+  </Style>
+  <Style Selector="Button.segment:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.segment.active">
+    <Setter Property="Background" Value="{DynamicResource PassdownSelectedBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="AutomationProperties.ItemStatus" Value="Current filter" />
+  </Style>
+  <Style Selector="Button.segment.active:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownSelectedBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+  </Style>
+  <Style Selector="Button.segment:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextDisabledBrush}" />
+  </Style>
+  <Style Selector="Border.workspaceCard">
+    <Setter Property="Background" Value="{DynamicResource PassdownSurfaceBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderBrush}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusCard}" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <Style Selector="Border.listHeader">
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+    <Setter Property="Padding" Value="16,13,16,11" />
+  </Style>
+  <!-- A small state tag on a list row or record header (Active, Resolved, PDF, Scheduled …). -->
+  <Style Selector="Border.statePill">
+    <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+    <Setter Property="Padding" Value="6,2" />
+    <Setter Property="VerticalAlignment" Value="Top" />
+  </Style>
+  <Style Selector="Border.statePill TextBlock">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeTableHeader}" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+  </Style>
+  <Style Selector="Border.statePill.resolved">
+    <Setter Property="Background" Value="{DynamicResource PassdownSuccessBackgroundBrush}" />
+  </Style>
+  <Style Selector="Border.statePill.resolved TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource PassdownSuccessBrush}" />
+  </Style>
+  <Style Selector="TextBlock.eyebrow">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeTableHeader}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="LetterSpacing" Value="0.5" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+  </Style>
+  <Style Selector="TextBlock.detailTitle">
+    <Setter Property="FontSize" Value="22" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <!-- An explanatory note inside a detail or settings card. -->
+  <Style Selector="Border.noticeBox">
+    <Setter Property="Padding" Value="13,11" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+    <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
+  </Style>
+  <Style Selector="Border.noticeBox TextBlock">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="LineHeight" Value="18" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <!-- In-page modal (the Operational Note editor): a scrim over the page and one bordered dialog surface. -->
+  <Style Selector="Border.modalScrim">
+    <Setter Property="Background" Value="{DynamicResource PassdownOverlayScrimBrush}" />
+  </Style>
+  <Style Selector="Border.modalDialog">
+    <Setter Property="Background" Value="{DynamicResource PassdownPopupSurfaceBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderBrush}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusPopup}" />
+    <Setter Property="ClipToBounds" Value="True" />
   </Style>
 
   <!-- ===================================================================================

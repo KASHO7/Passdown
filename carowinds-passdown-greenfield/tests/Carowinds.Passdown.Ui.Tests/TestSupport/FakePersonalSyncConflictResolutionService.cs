@@ -51,4 +51,21 @@ internal sealed class FakePersonalSyncConflictResolutionService : IPersonalSyncC
         LastResolutionKind = "AcceptDeletion";
         return Task.FromResult(NextResolution);
     }
+
+    /// <summary>Phase 31B: the ERT conflict detail returned by <see cref="GetErtConflictDetailAsync"/>.</summary>
+    public ErtConflictDetail? NextErtDetail { get; set; }
+
+    public ErtConflictEditedResolution? LastErtResolution { get; private set; }
+
+    public Task<ErtConflictDetail?> GetErtConflictDetailAsync(SyncEntityType entityType, string entityId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(NextErtDetail);
+
+    public Task<ConflictResolutionResult> ResolveWithEditedErtRidesAsync(
+        SyncEntityType entityType, string entityId, ErtConflictEditedResolution resolution, CancellationToken cancellationToken = default)
+    {
+        LastResolvedEntity = (entityType, entityId);
+        LastResolutionKind = "EditedErt";
+        LastErtResolution = resolution;
+        return Task.FromResult(NextResolution);
+    }
 }

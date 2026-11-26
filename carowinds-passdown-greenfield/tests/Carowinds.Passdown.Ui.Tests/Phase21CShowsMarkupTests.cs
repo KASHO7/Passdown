@@ -28,7 +28,7 @@ public class Phase21CShowsMarkupTests
         var markup = Markup("src/Carowinds.Passdown.Desktop/Views/AssociateView.axaml");
 
         Assert.Contains("IsChecked=\"{Binding IncludeShows}\"", markup);
-        Assert.Contains("Include the Shows section in the Passdown", markup);
+        Assert.Contains("Include Shows in the Passdown", markup); // Phase 31D: moved to Include in Passdown.
         Assert.Contains("ItemsSource=\"{Binding ShowRows}\"", markup);
         Assert.Contains("AutomationProperties.Name=\"{Binding AccessibleName}\"", markup);
         Assert.Contains("Command=\"{Binding SelectAllShowsCommand}\"", markup);

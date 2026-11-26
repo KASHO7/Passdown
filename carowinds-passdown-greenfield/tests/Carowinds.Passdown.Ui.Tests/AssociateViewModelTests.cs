@@ -389,6 +389,19 @@ public class AssociateViewModelTests
     }
 
     [Fact]
+    public void ShowShowsSectionCommand_SelectsShowsSection()
+    {
+        var viewModel = CreateViewModel();
+
+        viewModel.ShowShowsSectionCommand.Execute(null);
+
+        Assert.Equal(AssociateSection.Shows, viewModel.SelectedSection);
+        Assert.True(viewModel.IsShowsSectionSelected);
+        Assert.False(viewModel.IsOverviewSectionSelected);
+        Assert.False(viewModel.IsNotesSectionSelected);
+    }
+
+    [Fact]
     public void ShowNotesSectionCommand_SelectsNotesSection()
     {
         var viewModel = CreateViewModel();

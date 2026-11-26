@@ -270,14 +270,15 @@ public class AssociateViewModelCopyForTeamsTests
 
         var view = new AssociateView { DataContext = viewModel };
 
-        var copyButton = Assert.Single(view.GetLogicalDescendants().OfType<Button>(), b => AutomationProperties.GetName(b) == "Copy for Teams");
-        Assert.True(copyButton.Focusable);
-        Assert.True(copyButton.IsTabStop);
-        Assert.False(string.IsNullOrEmpty(AutomationProperties.GetHelpText(copyButton)));
+        // Phase 35B: the three Copy for Teams entries moved into the one keyboard-reachable Actions menu.
+        var actionsButton = Assert.Single(view.GetLogicalDescendants().OfType<Button>(), b => AutomationProperties.GetName(b) == "Passdown actions");
+        Assert.True(actionsButton.Focusable);
+        Assert.True(actionsButton.IsTabStop);
+        Assert.False(string.IsNullOrEmpty(AutomationProperties.GetHelpText(actionsButton)));
 
-        var menu = Assert.IsType<MenuFlyout>(copyButton.Flyout);
-        var items = menu.Items.OfType<MenuItem>().ToList();
-        Assert.Equal(["Operations Summary", "Today's Pricing", "Operations + Pricing"], items.Select(i => i.Header as string));
+        var menu = Assert.IsType<MenuFlyout>(actionsButton.Flyout);
+        var items = menu.Items.OfType<MenuItem>().Where(i => i.CommandParameter is AssociateTeamsCopyKind).ToList();
+        Assert.Equal(["Copy for Teams: Operations Summary", "Copy for Teams: Today's Pricing", "Copy for Teams: Operations + Pricing"], items.Select(i => i.Header as string));
         Assert.Equal(
             [AssociateTeamsCopyKind.OperationsSummary, AssociateTeamsCopyKind.TodaysPricing, AssociateTeamsCopyKind.OperationsAndPricing],
             items.Select(i => (AssociateTeamsCopyKind)i.CommandParameter!));

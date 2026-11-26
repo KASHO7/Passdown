@@ -48,6 +48,45 @@ public static class SyncContentHash
     public static string ComputeErtDateOverrideHash(ErtDateOverrideSyncPayload payload) =>
         Compute(ErtDateOverrideSyncPayloadSerializer.Serialize(payload));
 
+    /// <summary>
+    /// Phase 31B: the <em>meaning</em> of a monthly ERT configuration for conflict detection — state,
+    /// start time, the order-independent ride set (<see cref="Domain.Ert.ErtRideSelection.CanonicalSet"/>)
+    /// and the trimmed note; never the edit time or the rides' display order. Used only to recognize two
+    /// devices that agree; <see cref="ComputeMonthlyErtHash"/> stays the stored dirty-tracking hash.
+    /// </summary>
+    public static string ComputeMonthlyErtSemanticHash(MonthlyErtSyncPayload payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        return Compute(JsonSerializer.Serialize(new object?[]
+        {
+            "monthly-ert-semantic/v1",
+            payload.Year,
+            payload.Month,
+            payload.State.ToString(),
+            payload.StartTime?.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture),
+            Domain.Ert.ErtRideSelection.CanonicalSet(payload.Rides),
+            NormalizeText(payload.Note),
+        }));
+    }
+
+    /// <summary>Phase 31B: <see cref="ComputeMonthlyErtSemanticHash"/>'s date-override counterpart.</summary>
+    public static string ComputeErtDateOverrideSemanticHash(ErtDateOverrideSyncPayload payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        return Compute(JsonSerializer.Serialize(new object?[]
+        {
+            "ert-date-override-semantic/v1",
+            payload.OperatingDate.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            payload.State.ToString(),
+            payload.StartTime?.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture),
+            Domain.Ert.ErtRideSelection.CanonicalSet(payload.Rides),
+            NormalizeText(payload.Reason),
+        }));
+    }
+
+    private static string? NormalizeText(string? text) =>
+        string.IsNullOrWhiteSpace(text) ? null : string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
     private static string Compute(string canonicalJson) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalJson)));
 }

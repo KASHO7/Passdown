@@ -8,30 +8,33 @@ using Avalonia.Styling;
 namespace Carowinds.Passdown.Ui.Tests;
 
 /// <summary>
-/// Phase 22B: the Fury banner and the app-shell section navigation (Views/MainWindow.axaml plus the
-/// shell section of Themes/PassdownStyles.axaml). Markup, resource and asset assertions only — no real
-/// Window and no brush color reads, so this class runs in the normal mixed Ui partition. The realized
-/// geometry, keyboard and live theme-switch checks are in <see cref="Phase15ERealWindowLayoutTests"/>
-/// (a run-alone real-Window class).
+/// Phase 22B, updated for Phase 35A: the app-shell navigation (Views/MainWindow.axaml plus the shell section of
+/// Themes/PassdownStyles.axaml). Phase 35A replaced the Fury photo banner and horizontal strip with a left sidebar
+/// and the native title bar; every navigation contract is kept (destinations, order, commands, selection flags,
+/// accessible names, one landmark, shared styles only, semantic tokens only, active state by shape + weight +
+/// screen-reader status, Fluent focus). Banner-only assertions were replaced by sidebar equivalents — see
+/// docs/phase35-unified-ui-modernization.md §14. Markup, resource and asset assertions only (no real Window, no
+/// brush colour reads), so this class runs in the mixed Ui partition; realized geometry, keyboard, motion and live
+/// theme checks are in <see cref="Phase15ERealWindowLayoutTests"/>.
 /// </summary>
 public sealed partial class Phase22BShellNavigationTests
 {
     private const string BannerAvaresUri = "avares://Carowinds.Passdown.Desktop/Assets/Branding/fury325-banner.jpg";
 
-    // (visible label, command, selection flag, accessible name) — the established destinations, in
-    // order. Phase 22C shortened the visible labels; Settings is a gear icon (no text label). Every
-    // accessible name still contains its visible label.
-    public static readonly (string? Label, string Command, string Flag, string AccessibleName)[] Destinations =
+    // (visible label, command, selection flag, accessible name) — the established destinations, in order.
+    // Phase 35A: the sidebar shows a label for every item ("Operational Notes" in full, "Settings" beside the
+    // gear). Every accessible name still contains its visible label, or equals it.
+    public static readonly (string Label, string Command, string Flag, string AccessibleName)[] Destinations =
     [
         ("Dashboard", "ShowDashboardSectionCommand", "IsDashboardSectionSelected", "Dashboard section"),
         ("Calendar", "ShowOperationsCalendarSectionCommand", "IsOperationsCalendarSectionSelected", "Operations Calendar section"),
         ("Passdown", "ShowAssociateSectionCommand", "IsAssociateSectionSelected", "Associate Passdown section"),
-        ("Notes", "ShowOperationalNotesSectionCommand", "IsOperationalNotesSectionSelected", "Operational Notes section"),
+        ("Operational Notes", "ShowOperationalNotesSectionCommand", "IsOperationalNotesSectionSelected", "Operational Notes section"),
         ("History", "ShowHistorySectionCommand", "IsHistorySectionSelected", "History section"),
-        (null, "ShowSettingsSectionCommand", "IsSettingsSectionSelected", "Settings"),
+        ("Settings", "ShowSettingsSectionCommand", "IsSettingsSectionSelected", "Settings"),
     ];
 
-    private static string MainWindowMarkup => File.ReadAllText(MarkupFiles.Find("src/Carowinds.Passdown.Desktop/Views/MainWindow.axaml"));
+    private static string MainWindowMarkup => File.ReadAllText(MarkupFiles.Find("src/Carowinds.Passdown.Desktop/Views/MainWindow.axaml")).Replace("\r\n", "\n");
 
     private static string StylesMarkup => File.ReadAllText(MarkupFiles.Find("src/Carowinds.Passdown.Desktop/Themes/PassdownStyles.axaml"));
 
@@ -39,6 +42,13 @@ public sealed partial class Phase22BShellNavigationTests
 
     private static List<string> NavigationButtons() =>
         NavButton().Matches(MainWindowMarkup).Select(m => m.Value).ToList();
+
+    /// <summary>The full element (open tag through its closing &lt;/Button&gt;) of each navigation item, in order.</summary>
+    private static List<string> NavigationElements()
+    {
+        var markup = MainWindowMarkup;
+        return NavButton().Matches(markup).Select(m => markup[m.Index..(markup.IndexOf("</Button>", m.Index, StringComparison.Ordinal))]).ToList();
+    }
 
     // ------------------------------------------------------------------ destinations
 
@@ -51,14 +61,10 @@ public sealed partial class Phase22BShellNavigationTests
         Assert.Equal(Destinations.Select(d => $"{{Binding {d.Command}}}"), commands);
         Assert.Equal(commands.Count, commands.Distinct().Count());
 
-        // Phase 22C: the shortened visible labels, in order; Settings has no text label (gear icon).
-        var labels = buttons.Take(5).Select(b => Attribute(b, "Content")).ToList();
-        Assert.Equal(["Dashboard", "Calendar", "Passdown", "Notes", "History"], labels);
-        Assert.DoesNotMatch(new Regex("\\sContent=\""), buttons[5]);
-        foreach (var retired in new[] { "Content=\"Operations Calendar\"", "Content=\"Associate Passdown\"", "Content=\"Operational Notes\"", "Content=\"Settings\"" })
-        {
-            Assert.DoesNotContain(retired, MainWindowMarkup);
-        }
+        var labels = NavigationElements().Select(e => Regex.Match(e, "<TextBlock Classes=\"navLabel\" Text=\"([^\"]+)\"").Groups[1].Value).ToList();
+        Assert.Equal(Destinations.Select(d => d.Label), labels);
+        // No Manager/Alerts destination (CLAUDE.md "current scope decision") — checked on real attributes, not comments.
+        Assert.DoesNotMatch(new Regex("(Text|Command|AutomationProperties.Name|ToolTip.Tip)=\"[^\"]*(Manager|Alerts)"), MainWindowMarkup);
     }
 
     [Fact]
@@ -70,12 +76,11 @@ public sealed partial class Phase22BShellNavigationTests
             var (label, command, flag, accessibleName) = Destinations[i];
             Assert.Equal($"{{Binding {command}}}", Attribute(buttons[i], "Command"));
             Assert.Equal($"{{Binding {flag}}}", Attribute(buttons[i], "Classes.active"));
-            Assert.StartsWith("appSectionItem", Attribute(buttons[i], "Classes"));
+            Assert.Equal("navItem", Attribute(buttons[i], "Classes"));
             Assert.Equal(accessibleName, Attribute(buttons[i], "AutomationProperties.Name"));
-            if (label is not null)
-            {
-                Assert.Contains(label, accessibleName); // WCAG 2.5.3: the accessible name contains the visible label
-            }
+            Assert.Contains(label, accessibleName); // WCAG 2.5.3: the accessible name contains the visible label
+            Assert.Equal(label, Attribute(buttons[i], "ToolTip.Tip")); // the collapsed sidebar's tooltip is the label
+            Assert.Equal("{Binding IsNavigationShownCollapsed}", Attribute(buttons[i], "ToolTip.ServiceEnabled"));
         }
 
         // Each selection flag drives exactly one item, so at most one item can ever be active.
@@ -86,31 +91,46 @@ public sealed partial class Phase22BShellNavigationTests
     }
 
     [Fact]
-    public void SettingsGear_IsATrailingAccessibleIconItem_UsingTheBuiltInPathIcon()
+    public void EveryItem_HasADecorativeIcon_AnIndicatorSlot_AndOneLabel()
     {
-        var settings = NavigationButtons()[^1];
+        var geometries = new[] { "Dashboard", "Calendar", "Passdown", "Notes", "History", "Settings" };
+        var elements = NavigationElements();
+        for (var i = 0; i < elements.Count; i++)
+        {
+            Assert.Contains($"<PathIcon Data=\"{{StaticResource Passdown{geometries[i]}IconGeometry}}\" AutomationProperties.AccessibilityView=\"Raw\" />", elements[i]);
+            Assert.Contains($"<StreamGeometry x:Key=\"Passdown{geometries[i]}IconGeometry\">", TokensMarkup);
+            Assert.Single(Regex.Matches(elements[i], "<Border Classes=\"navIndicator\" />"));
+            Assert.Single(Regex.Matches(elements[i], "<TextBlock Classes=\"navLabel\""));
+        }
+    }
+
+    [Fact]
+    public void Settings_IsPinnedToTheBottomRow_WithTheGearAndTheUpdateIndicator()
+    {
+        var settings = NavigationElements()[^1];
         Assert.Contains("x:Name=\"SettingsNavigationItem\"", settings);
-        Assert.Equal("appSectionItem iconItem", Attribute(settings, "Classes"));
-        Assert.Equal("Settings", Attribute(settings, "AutomationProperties.Name"));
-        Assert.Equal("Settings", Attribute(settings, "ToolTip.Tip"));
-        Assert.Equal("1", Attribute(settings, "Grid.Column")); // the trailing Auto column, right edge of the strip
+        Assert.Equal("2", Attribute(NavigationButtons()[^1], "Grid.Row")); // the bottom Auto row; destinations fill the * row
+        Assert.Matches(new Regex("<Grid x:Name=\"AppNavigationLayout\" RowDefinitions=\"Auto,\\*,Auto\""), MainWindowMarkup);
+        Assert.Contains("AutomationProperties.HelpText=\"{Binding SettingsNavigationHelpText}\"", settings);
+        var dot = Regex.Match(settings, "<Ellipse x:Name=\"UpdateIndicatorDot\"[^>]*/>", RegexOptions.Singleline).Value;
+        Assert.Contains("IsVisible=\"{Binding HasUpdateNotification}\"", dot);
+        Assert.Contains("IsHitTestVisible=\"False\"", dot);
+        Assert.Contains("AutomationProperties.AccessibilityView=\"Raw\"", dot);
+    }
 
-        var markup = MainWindowMarkup.Replace("\r\n", "\n");
-        var element = markup[markup.IndexOf("<Button x:Name=\"SettingsNavigationItem\"", StringComparison.Ordinal)..];
-        element = element[..(element.IndexOf("</Button>", StringComparison.Ordinal))];
-        Assert.Contains("<PathIcon Data=\"{StaticResource PassdownSettingsIconGeometry}\" AutomationProperties.AccessibilityView=\"Raw\" />", element);
-        Assert.Contains("<StreamGeometry x:Key=\"PassdownSettingsIconGeometry\">", TokensMarkup);
-
-        // The icon variant keeps every appSectionItem state; it only drops the string label template.
-        var section = ShellStylesSection();
-        var icon = Block(section, "Button.appSectionItem.iconItem");
-        Assert.Contains("<Setter Property=\"ContentTemplate\" Value=\"{x:Null}\" />", icon);
-        var padding = Regex.Match(icon, "Property=\"Padding\" Value=\"(\\d+),(\\d+)\"");
-        Assert.True(padding.Success);
-        // 16px icon + vertical padding stays within a text item's height (8+8 padding + a 14px label line),
-        // so the gear never makes the strip taller.
-        Assert.True(16 + 2 * int.Parse(padding.Groups[2].Value, CultureInfo.InvariantCulture) <= 16 + 16, "gear item taller than a text item");
-        Assert.Contains("<Setter Property=\"Width\" Value=\"{DynamicResource PassdownNavigationIconSize}\" />", Block(section, "Button.appSectionItem.iconItem PathIcon"));
+    [Fact]
+    public void Toggle_IsAnAccessibleIconAction_FirstInTheLandmark()
+    {
+        var markup = MainWindowMarkup;
+        var toggle = markup[markup.IndexOf("<Button x:Name=\"NavigationToggle\"", StringComparison.Ordinal)..];
+        toggle = toggle[..toggle.IndexOf("</Button>", StringComparison.Ordinal)];
+        Assert.Contains("Classes=\"iconAction\"", toggle);
+        Assert.Contains("Command=\"{Binding ToggleNavigationCommand}\"", toggle);
+        Assert.Contains("AutomationProperties.Name=\"{Binding NavigationToggleName}\"", toggle);
+        Assert.Contains("ToolTip.Tip=\"{Binding NavigationToggleName}\"", toggle);
+        Assert.Contains("<PathIcon Data=\"{StaticResource PassdownSidebarToggleIconGeometry}\" AutomationProperties.AccessibilityView=\"Raw\" />", toggle);
+        Assert.True(markup.IndexOf("NavigationToggle", StringComparison.Ordinal) < markup.IndexOf("ShowDashboardSectionCommand", StringComparison.Ordinal), "the toggle comes first in Tab order");
+        Assert.Contains("Classes.collapsed=\"{Binding IsNavigationShownCollapsed}\"", markup);
     }
 
     [Fact]
@@ -124,48 +144,54 @@ public sealed partial class Phase22BShellNavigationTests
         })
         {
             Assert.Single(Regex.Matches(MainWindowMarkup, $"<views:{view} "));
-            Assert.Contains($"<Border IsVisible=\"{{Binding {flag}}}\">\n                <views:{view} ", MainWindowMarkup.Replace("\r\n", "\n"));
+            Assert.Contains($"<Border IsVisible=\"{{Binding {flag}}}\">\n                <views:{view} ", MainWindowMarkup);
+        }
+
+        Assert.Contains("<Grid x:Name=\"SectionHost\" Grid.Column=\"1\">", MainWindowMarkup);
+    }
+
+    [Fact]
+    public void Navigation_IsOneLandmark_WithNoScrollingOrDecorativeHeading()
+    {
+        Assert.Single(Regex.Matches(MainWindowMarkup, "AutomationProperties.LandmarkType=\"Navigation\""));
+        Assert.Contains("AutomationProperties.Name=\"Application sections\" AutomationProperties.LandmarkType=\"Navigation\"", MainWindowMarkup);
+        var shell = MainWindowMarkup[..MainWindowMarkup.IndexOf("<views:", StringComparison.Ordinal)];
+        Assert.DoesNotContain("ScrollViewer", shell);
+        Assert.Equal(Destinations.Length, Regex.Matches(shell, "<TextBlock ").Count); // the six labels — no heading, no role label
+        foreach (var forbidden in new[] { "Admissions", "ADMISSIONS", "OPERATIONS", "Supervision" })
+        {
+            Assert.DoesNotContain(forbidden, shell);
+        }
+    }
+
+    // ------------------------------------------------------------------ title area
+
+    [Fact]
+    public void TitleArea_IsTheNativeTitleBar_OriginalIconAndNameOnly_WithNoBannerOrRepeatedTitle()
+    {
+        var window = MainWindowMarkup[..MainWindowMarkup.IndexOf('>')];
+        Assert.Contains("Icon=\"/Assets/logo.ico\"", window);
+        Assert.Contains("Title=\"Carowinds Operations\"", window);
+        Assert.DoesNotContain("ExtendClientAreaToDecorationsHint", MainWindowMarkup);
+        Assert.DoesNotContain("SystemDecorations", MainWindowMarkup);
+        foreach (var retired in new[] { "BrandBanner", "BrandWordmark", "fury325", "CAROWINDS OPERATIONS", "Text=\"Carowinds Operations\"" })
+        {
+            Assert.DoesNotContain(retired, MainWindowMarkup);
         }
     }
 
     [Fact]
-    public void Navigation_IsAWrappingLandmark_SoNarrowWindowsKeepEveryDestinationReachable()
+    public void ShellMarkup_NeverReferencesAUrlOrDeveloperPath()
     {
-        // Phase 22C: the landmark is the Grid holding the wrapping label row and the trailing gear.
-        Assert.Matches(new Regex("<Grid x:Name=\"AppNavigationLayout\" ColumnDefinitions=\"\\*,Auto\"\\s+AutomationProperties.Name=\"Application sections\" AutomationProperties.LandmarkType=\"Navigation\">"), MainWindowMarkup);
-        Assert.Contains("<WrapPanel x:Name=\"AppNavigationItems\" Grid.Column=\"0\" Orientation=\"Horizontal\">", MainWindowMarkup);
-        Assert.DoesNotContain("ScrollViewer", MainWindowMarkup[..MainWindowMarkup.IndexOf("<views:", StringComparison.Ordinal)]);
-    }
-
-    // ------------------------------------------------------------------ banner
-
-    [Fact]
-    public void Banner_ShowsOneWordmark_AndNoStackedDuplicateTitle()
-    {
-        Assert.Single(Regex.Matches(MainWindowMarkup, "Text=\"CAROWINDS OPERATIONS\""));
-        Assert.DoesNotContain("Text=\"CAROWINDS\"", MainWindowMarkup);
-        Assert.DoesNotContain("Text=\"OPERATIONS\"", MainWindowMarkup);
-        Assert.Contains("<TextBlock x:Name=\"BrandWordmark\" Classes=\"brandWordmark\"", MainWindowMarkup);
-        Assert.Contains("<Border x:Name=\"BrandBanner\" DockPanel.Dock=\"Top\" Classes=\"brandBanner\">", MainWindowMarkup);
-    }
-
-    [Fact]
-    public void BannerImage_IsABundledRelativeResource_NeverAUrlOrDeveloperPath()
-    {
-        var image = Regex.Match(MainWindowMarkup, "<Image x:Name=\"BrandBannerImage\"[^>]*/>", RegexOptions.Singleline).Value;
-        Assert.Contains("Source=\"/Assets/Branding/fury325-banner.jpg\"", image);
-        Assert.Contains("Stretch=\"UniformToFill\"", image); // fills the width without distortion
+        var withoutNamespaces = Regex.Replace(MainWindowMarkup, "xmlns(:\\w+)?=\"[^\"]*\"", string.Empty);
         foreach (var forbidden in new[] { "http:", "https:", "file:", "/Users/", "/home/", ":\\", "OneDrive" })
         {
-            Assert.DoesNotContain(forbidden, image, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(forbidden, withoutNamespaces, StringComparison.OrdinalIgnoreCase);
         }
-
-        var withoutNamespaces = Regex.Replace(MainWindowMarkup, "xmlns(:\\w+)?=\"[^\"]*\"", string.Empty);
-        Assert.DoesNotMatch(new Regex("https?://", RegexOptions.IgnoreCase), withoutNamespaces);
-        Assert.Contains("<AvaloniaResource Include=\"Assets\\**\" />",
-            File.ReadAllText(MarkupFiles.Find("src/Carowinds.Passdown.Desktop/Carowinds.Passdown.Desktop.csproj")));
     }
 
+    // The Fury 325 photograph is kept in the repository, unreferenced, until the 35A Windows review accepts the new
+    // shell (rollback is a revert); its removal is planned for 35G. Until then it stays a single valid asset.
     [Fact]
     public void BannerImage_IsEmbeddedInTheDesktopAssembly()
     {
@@ -186,7 +212,6 @@ public sealed partial class Phase22BShellNavigationTests
         Assert.Equal(1920, width);
         Assert.True(width / (double)height >= 4, $"banner asset {width}x{height} is not a panoramic crop");
 
-        // No duplicate copies of the photograph anywhere under src/.
         var src = Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(path))))!;
         var copies = Directory.EnumerateFiles(src, "*.*", SearchOption.AllDirectories)
             .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}") && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
@@ -195,71 +220,58 @@ public sealed partial class Phase22BShellNavigationTests
         Assert.Single(copies);
     }
 
+    // ------------------------------------------------------------------ tokens
+
     [Fact]
-    public void BannerPhotograph_IsDecorative_HiddenFromScreenReadersAndHitTesting()
+    public void SidebarTokens_KeepTheShellCompact()
     {
-        var image = Regex.Match(MainWindowMarkup, "<Image x:Name=\"BrandBannerImage\"[^>]*/>", RegexOptions.Singleline).Value;
-        Assert.Contains("AutomationProperties.AccessibilityView=\"Raw\"", image);
-        Assert.Contains("IsHitTestVisible=\"False\"", image);
-        Assert.Contains("AutomationProperties.Name=\"Carowinds Operations\"", MainWindowMarkup);
+        Assert.InRange(Resolve<double>("PassdownSidebarExpandedWidth"), 180, 232);
+        Assert.InRange(Resolve<double>("PassdownSidebarCollapsedWidth"), 48, 64);
+        Assert.InRange(Resolve<double>("PassdownNavigationItemHeight"), 32, 40); // compact, still a comfortable hit target
+        Assert.InRange(Resolve<double>("PassdownNavigationIconSize"), 16, 20);
+        var margin = Resolve<Avalonia.Thickness>("PassdownNavigationItemMargin");
+        var inset = Resolve<Avalonia.Thickness>("PassdownNavigationContentInset");
+        // The collapsed width centres the icon: margin + 3px indicator + inset + icon + same on the right.
+        var iconCentre = margin.Left + 3 + inset.Left + Resolve<double>("PassdownNavigationIconSize") / 2;
+        Assert.Equal(Resolve<double>("PassdownSidebarCollapsedWidth") / 2, iconCentre, 0.5);
     }
 
     [Fact]
-    public void BannerTokens_KeepTheHeaderCompact()
+    public void MotionTokens_StayWithinTheApprovedUpperBounds()
     {
-        Assert.InRange(Resolve<double>("PassdownBannerHeight"), 72, 84);
-        Assert.InRange(Resolve<double>("PassdownFontSizeWordmark"), 14, 18);
-        var item = Resolve<Avalonia.Thickness>("PassdownNavigationItemPadding");
-        Assert.InRange(item.Top + item.Bottom, 12, 20); // compact, still a comfortable hit target
-        Resolve<Avalonia.Thickness>("PassdownNavigationStripPadding");
-        Assert.IsAssignableFrom<IBrush>(Resolve<object>("PassdownBannerOverlayBrush"));
+        Assert.InRange(Resolve<TimeSpan>("PassdownMotionFast").TotalMilliseconds, 100, 140);
+        Assert.InRange(Resolve<TimeSpan>("PassdownMotionPanel").TotalMilliseconds, 160, 180);
+        Assert.InRange(Resolve<TimeSpan>("PassdownMotionOverlay").TotalMilliseconds, 120, 180);
+        Assert.IsType<Avalonia.Animation.Easings.CubicEaseOut>(Resolve<object>("PassdownMotionEasing"));
     }
 
-    // WCAG relative luminance. The overlay must guarantee white wordmark text ≥ 4.5:1 even when the
-    // photo pixel behind it is pure white, so legibility never depends on which part of the photo shows.
-    [Fact]
-    public void BannerOverlay_GuaranteesWordmarkContrast_OverTheBrightestPossiblePhotoPixel()
+    // WCAG relative luminance from the token XAML (no brush reads in this partition).
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public void NavigationColours_MeetContrastTargets(string theme)
     {
-        var brush = Regex.Match(TokensMarkup, "<LinearGradientBrush x:Key=\"PassdownBannerOverlayBrush\" StartPoint=\"([^\"]+)\" EndPoint=\"([^\"]+)\">(.*?)</LinearGradientBrush>", RegexOptions.Singleline);
-        Assert.True(brush.Success);
-        Assert.DoesNotContain("%", brush.Groups[2].Value); // absolute: same scrim behind the text at every width
-        var span = double.Parse(brush.Groups[2].Value.Split(',')[0], CultureInfo.InvariantCulture);
-        var stops = Regex.Matches(brush.Groups[3].Value, "Offset=\"([0-9.]+)\" Color=\"(#[0-9A-Fa-f]{8})\"")
-            .Select(m => (Offset: double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture), Color: Color.Parse(m.Groups[2].Value)))
-            .ToList();
-        Assert.True(stops.Count >= 2);
-
-        // Wordmark: 24px margin + 18px mark + 12px spacing + ~245px of 16px Bold letter-spaced text.
-        const double wordmarkEnd = 300;
-        foreach (var x in new[] { 0d, wordmarkEnd / 2, wordmarkEnd })
+        Color Token(string key)
         {
-            var (alpha, overlay) = Sample(stops, x / span);
-            var composite = Color.FromRgb(Mix(overlay.R, alpha), Mix(overlay.G, alpha), Mix(overlay.B, alpha));
-            var ratio = Contrast(Colors.White, composite);
-            Assert.True(ratio >= 4.5, $"white wordmark over a white photo pixel at x={x} is {ratio:F2}:1");
+            var dict = ThemeDictionary(theme);
+            var m = Regex.Match(dict, $"<SolidColorBrush x:Key=\"{key}\" Color=\"(#[0-9A-Fa-f]{{6}})\" />");
+            Assert.True(m.Success, $"{key} missing in {theme}");
+            return Color.Parse(m.Groups[1].Value);
         }
 
-        // The right side stays light enough for the ride to remain visible.
-        Assert.True(stops[^1].Color.A / 255.0 <= 0.6, "the overlay should not black out the photograph");
-
-        static byte Mix(byte overlayChannel, double alpha) => (byte)Math.Round(alpha * overlayChannel + (1 - alpha) * 255);
+        var background = Token("PassdownNavigationBackgroundBrush");
+        var active = Token("PassdownNavigationActiveBackgroundBrush");
+        Assert.True(Contrast(Token("PassdownTextSecondaryBrush"), background) >= 4.5, "inactive label");
+        Assert.True(Contrast(Token("PassdownTextPrimaryBrush"), active) >= 4.5, "active label");
+        Assert.True(Contrast(Token("PassdownTextPrimaryBrush"), Token("PassdownHoverBackgroundBrush")) >= 4.5, "hovered label");
+        Assert.True(Contrast(Token("PassdownNavigationActiveIndicatorBrush"), active) >= 3, "active indicator (non-text, WCAG 1.4.11)");
+        Assert.True(Contrast(Token("PassdownTextDisabledBrush"), background) >= 2.5, "disabled label stays discernible");
     }
 
-    private static (double Alpha, Color Color) Sample(List<(double Offset, Color Color)> stops, double t)
+    private static string ThemeDictionary(string theme)
     {
-        t = Math.Clamp(t, 0, 1);
-        for (var i = 1; i < stops.Count; i++)
-        {
-            if (t <= stops[i].Offset)
-            {
-                var (o0, c0) = stops[i - 1];
-                var (o1, c1) = stops[i];
-                var f = (t - o0) / (o1 - o0);
-                return ((c0.A + (c1.A - c0.A) * f) / 255.0, c0);
-            }
-        }
-
-        return (stops[^1].Color.A / 255.0, stops[^1].Color);
+        var start = TokensMarkup.IndexOf($"<ResourceDictionary x:Key=\"{theme}\">", StringComparison.Ordinal);
+        return TokensMarkup[start..TokensMarkup.IndexOf("</ResourceDictionary>", start, StringComparison.Ordinal)];
     }
 
     private static double Contrast(Color a, Color b)
@@ -268,6 +280,26 @@ public sealed partial class Phase22BShellNavigationTests
         static double Luminance(Color c) => 0.2126 * Channel(c.R) + 0.7152 * Channel(c.G) + 0.0722 * Channel(c.B);
         var (la, lb) = (Luminance(a), Luminance(b));
         return (Math.Max(la, lb) + 0.05) / (Math.Min(la, lb) + 0.05);
+    }
+
+    [Theory]
+    [InlineData("PassdownNavigationBackgroundBrush")]
+    [InlineData("PassdownNavigationActiveBackgroundBrush")]
+    [InlineData("PassdownNavigationActiveIndicatorBrush")]
+    [InlineData("PassdownTextSecondaryBrush")]
+    [InlineData("PassdownTextPrimaryBrush")]
+    [InlineData("PassdownHoverBackgroundBrush")]
+    [InlineData("PassdownDividerBrush")]
+    public void NavigationBrushes_ResolveSeparatelyPerTheme_SoALiveSwitchRestylesTheSidebar(string key) =>
+        Assert.NotSame(Resolve<IBrush>(key, ThemeVariant.Light), Resolve<IBrush>(key, ThemeVariant.Dark));
+
+    [Fact]
+    public void BrandNavy_IsThemeInvariantIdentity()
+    {
+        Assert.Same(Resolve<IBrush>("PassdownBrandNavyBrush", ThemeVariant.Light), Resolve<IBrush>("PassdownBrandNavyBrush", ThemeVariant.Dark));
+        Assert.Contains("<Color x:Key=\"PassdownBrandNavyColor\">#17324D</Color>", TokensMarkup);
+        var darkStart = TokensMarkup.IndexOf("<ResourceDictionary x:Key=\"Dark\">", StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Key=\"PassdownBrandNavy", TokensMarkup[darkStart..]);
     }
 
     // ------------------------------------------------------------------ shared styling
@@ -289,11 +321,12 @@ public sealed partial class Phase22BShellNavigationTests
         var selectors = SharedSelectors();
         foreach (var expected in new[]
         {
-            "Border.brandBanner", "TextBlock.brandWordmark", "Border.appNavigation",
-            "Button.appSectionItem", "Button.appSectionItem.active", "Button.appSectionItem:pressed",
-            "Button.appSectionItem:pointerover /template/ ContentPresenter#PART_ContentPresenter",
-            "Button.appSectionItem:pressed /template/ ContentPresenter#PART_ContentPresenter",
-            "Button.appSectionItem:disabled /template/ ContentPresenter#PART_ContentPresenter",
+            "Border.navSidebar", "Border.navSidebar.collapsed", "Border.navSidebar.collapsed TextBlock.navLabel",
+            "Button.navItem", "Button.navItem.active", "Button.navItem:pressed", "Button.navItem.active Border.navIndicator",
+            "Button.navItem:pointerover /template/ ContentPresenter#PART_ContentPresenter",
+            "Button.navItem:pressed /template/ ContentPresenter#PART_ContentPresenter",
+            "Button.navItem:disabled /template/ ContentPresenter#PART_ContentPresenter",
+            "Button.iconAction",
         })
         {
             Assert.Contains(expected, selectors);
@@ -301,11 +334,15 @@ public sealed partial class Phase22BShellNavigationTests
 
         Assert.DoesNotContain("<Window.Styles>", MainWindowMarkup);
         Assert.DoesNotContain("<Style Selector=", MainWindowMarkup);
+        foreach (var retired in new[] { "Border.brandBanner", "TextBlock.brandWordmark", "Border.appNavigation", "Button.appSectionItem" })
+        {
+            Assert.DoesNotContain(retired, selectors);
+        }
     }
 
     private static string ShellStylesSection()
     {
-        var start = StylesMarkup.IndexOf("App shell: Fury banner and section navigation", StringComparison.Ordinal);
+        var start = StylesMarkup.IndexOf("App shell: sidebar navigation", StringComparison.Ordinal);
         var end = StylesMarkup.IndexOf("Lists, popups and loading feedback", start, StringComparison.Ordinal);
         Assert.True(start > 0 && end > start);
         return StylesMarkup[start..end];
@@ -318,10 +355,10 @@ public sealed partial class Phase22BShellNavigationTests
         Assert.DoesNotMatch(new Regex("Value=\"#[0-9A-Fa-f]{3,8}\""), section);
         foreach (var token in new[]
         {
-            "PassdownSurfaceBrush", "PassdownDividerBrush", "PassdownTextSecondaryBrush", "PassdownTextPrimaryBrush",
-            "PassdownAccentForegroundBrush", "PassdownHoverBackgroundBrush", "PassdownPressedBackgroundBrush",
-            "PassdownTextDisabledBrush", "PassdownBannerHeight", "PassdownBrandDarkBrush", "PassdownHeaderForegroundBrush",
-            "PassdownNavigationItemPadding", "PassdownNavigationStripPadding", "PassdownFontSizeBody",
+            "PassdownNavigationBackgroundBrush", "PassdownNavigationActiveBackgroundBrush", "PassdownNavigationActiveIndicatorBrush",
+            "PassdownDividerBrush", "PassdownTextSecondaryBrush", "PassdownTextPrimaryBrush", "PassdownHoverBackgroundBrush",
+            "PassdownPressedBackgroundBrush", "PassdownTextDisabledBrush", "PassdownSidebarExpandedWidth", "PassdownSidebarCollapsedWidth",
+            "PassdownNavigationItemHeight", "PassdownNavigationItemMargin", "PassdownNavigationContentInset", "PassdownFontSizeBody",
         })
         {
             Assert.Contains($"{{DynamicResource {token}}}", section);
@@ -329,35 +366,40 @@ public sealed partial class Phase22BShellNavigationTests
 
         // Accent fills (PassdownAccentBrush) are for primary actions, never a navigation surface.
         Assert.DoesNotContain("PassdownAccentBrush}", section);
-        Assert.DoesNotContain("PassdownSelectedBackgroundBrush", section);
     }
 
     [Fact]
     public void ActiveItem_IsIndicatedByShapeWeightAndScreenReaderStatus_NotColorAlone()
     {
         var section = ShellStylesSection();
-        var item = Block(section, "Button.appSectionItem");
-        var active = Block(section, "Button.appSectionItem.active");
+        var item = Block(section, "Button.navItem");
+        var active = Block(section, "Button.navItem.active");
 
-        Assert.Contains("<Setter Property=\"BorderThickness\" Value=\"0,0,0,2\" />", item); // underline slot on every item
-        Assert.Contains("<Setter Property=\"BorderBrush\" Value=\"Transparent\" />", item);
         Assert.Contains("<Setter Property=\"FontWeight\" Value=\"Normal\" />", item);
-        Assert.Contains("<Setter Property=\"BorderBrush\" Value=\"{DynamicResource PassdownAccentForegroundBrush}\" />", active);
         Assert.Contains("<Setter Property=\"FontWeight\" Value=\"SemiBold\" />", active);
         Assert.Contains("<Setter Property=\"AutomationProperties.ItemStatus\" Value=\"Current page\" />", active);
+        Assert.Contains("<Setter Property=\"Background\" Value=\"{DynamicResource PassdownNavigationActiveBackgroundBrush}\" />", active);
+        // The indicator bar: a 3px shape on every item, drawn only for the active one.
+        var indicator = Block(section, "Button.navItem Border.navIndicator");
+        Assert.Contains("<Setter Property=\"Width\" Value=\"3\" />", indicator);
+        Assert.Contains("<Setter Property=\"Background\" Value=\"Transparent\" />", indicator);
+        Assert.Contains("<Setter Property=\"Background\" Value=\"{DynamicResource PassdownNavigationActiveIndicatorBrush}\" />", Block(section, "Button.navItem.active Border.navIndicator"));
 
-        // Hover never draws the underline, so hovered and active stay distinguishable; active keeps it on hover.
-        var hover = Block(section, "Button.appSectionItem:pointerover /template/ ContentPresenter#PART_ContentPresenter");
-        Assert.Contains("<Setter Property=\"BorderBrush\" Value=\"Transparent\" />", hover);
-        Assert.Contains("Button.appSectionItem.active:pointerover /template/ ContentPresenter#PART_ContentPresenter", section);
+        // Hover is a neutral fill only; the active item keeps its own fill when hovered, so the two never look alike.
+        var hover = Block(section, "Button.navItem:pointerover /template/ ContentPresenter#PART_ContentPresenter");
+        Assert.Contains("PassdownHoverBackgroundBrush", hover);
+        Assert.Contains("Button.navItem.active:pointerover /template/ ContentPresenter#PART_ContentPresenter", section);
     }
 
     [Fact]
-    public void ItemLabels_ReserveTheSemiBoldWidth_SoSelectionNeverMovesNeighbors()
+    public void ItemLabels_TrimRatherThanWrap_SoItemsKeepTheirHeight()
     {
-        var item = Block(ShellStylesSection(), "Button.appSectionItem");
-        Assert.Contains("<TextBlock Text=\"{Binding}\" FontWeight=\"SemiBold\" Opacity=\"0\"", item);
-        Assert.Contains("AutomationProperties.AccessibilityView=\"Raw\"", item); // the width placeholder is not read twice
+        // Phase 35A (replaces the strip's SemiBold-width reservation, which a vertical list does not need): a label
+        // can never push its row taller or overflow the sidebar.
+        var label = Block(ShellStylesSection(), "Button.navItem TextBlock.navLabel");
+        Assert.Contains("<Setter Property=\"TextTrimming\" Value=\"CharacterEllipsis\" />", label);
+        Assert.DoesNotContain("TextWrapping", label);
+        Assert.Contains("<Setter Property=\"MinHeight\" Value=\"{DynamicResource PassdownNavigationItemHeight}\" />", Block(ShellStylesSection(), "Button.navItem"));
     }
 
     [Fact]
@@ -371,25 +413,56 @@ public sealed partial class Phase22BShellNavigationTests
         Assert.Contains("<SolidColorBrush x:Key=\"SystemControlFocusVisualPrimaryBrush\"", TokensMarkup);
     }
 
-    [Theory]
-    [InlineData("PassdownSurfaceBrush")]
-    [InlineData("PassdownTextSecondaryBrush")]
-    [InlineData("PassdownTextPrimaryBrush")]
-    [InlineData("PassdownAccentForegroundBrush")]
-    [InlineData("PassdownHoverBackgroundBrush")]
-    [InlineData("PassdownDividerBrush")]
-    public void NavigationBrushes_ResolveSeparatelyPerTheme_SoALiveSwitchRestylesTheStrip(string key) =>
-        Assert.NotSame(Resolve<IBrush>(key, ThemeVariant.Light), Resolve<IBrush>(key, ThemeVariant.Dark));
+    // ------------------------------------------------------------------ motion scoping
 
-    [Theory]
-    [InlineData("PassdownBannerOverlayBrush")]
-    [InlineData("PassdownBrandDarkBrush")]
-    [InlineData("PassdownHeaderForegroundBrush")]
-    public void BannerBrushes_AreThemeInvariant_TheBannerStaysDarkInBothThemes(string key)
+    private static string MotionSection()
     {
-        Assert.Same(Resolve<IBrush>(key, ThemeVariant.Light), Resolve<IBrush>(key, ThemeVariant.Dark));
-        var darkStart = TokensMarkup.IndexOf("<ResourceDictionary x:Key=\"Dark\">", StringComparison.Ordinal);
-        Assert.DoesNotContain($"x:Key=\"{key}\"", TokensMarkup[darkStart..]);
+        var start = StylesMarkup.IndexOf("Motion (Phase 35A)", StringComparison.Ordinal);
+        var end = StylesMarkup.IndexOf("Lists, popups and loading feedback", start, StringComparison.Ordinal);
+        Assert.True(start > 0 && end > start);
+        return StylesMarkup[start..end];
+    }
+
+    [Fact]
+    public void EveryTransition_IsScopedUnderTheWindowMotionClass_AndUsesTheMotionTokens()
+    {
+        // Outside the motion section no style declares a transition, so Off / reduced motion means none exists.
+        var outside = StylesMarkup.Replace(MotionSection(), string.Empty);
+        Assert.DoesNotContain("Transition ", outside);
+        Assert.DoesNotContain("Property=\"Transitions\"", outside);
+
+        var motion = MotionSection();
+        foreach (Match style in Regex.Matches(motion, "<Style Selector=\"([^\"]+)\">\\s*<Setter Property=\"Transitions\">"))
+        {
+            foreach (var selector in style.Groups[1].Value.Split(','))
+            {
+                Assert.StartsWith("Window.motion ", selector.Trim());
+            }
+        }
+
+        foreach (Match duration in Regex.Matches(motion, "Duration=\"([^\"]+)\""))
+        {
+            Assert.Matches("^\\{StaticResource PassdownMotion(Fast|Panel|Overlay)\\}$", duration.Groups[1].Value);
+        }
+
+        Assert.DoesNotContain("KeyFrame", StylesMarkup);
+        Assert.DoesNotContain("IterationCount", StylesMarkup); // no looping decorative animation
+        Assert.DoesNotContain("ScaleTransform", motion); // no bouncing/scaling
+        Assert.Contains("<Style Selector=\"Window.noMotion Button, Window.noMotion ToggleButton, Window.noMotion RepeatButton\">", motion);
+    }
+
+    [Fact]
+    public void Sidebar_WidthIsNeverAnimated_SoPagesLayOutOncePerToggle()
+    {
+        Assert.DoesNotMatch(new Regex("Transition Property=\"(Width|MinWidth|MaxWidth|Margin|Padding)\""), StylesMarkup);
+    }
+
+    [Fact]
+    public void Window_BindsTheMotionClasses_ToTheViewModel()
+    {
+        var window = MainWindowMarkup[..MainWindowMarkup.IndexOf('>')];
+        Assert.Contains("Classes.motion=\"{Binding IsInterfaceMotionEnabled}\"", window);
+        Assert.Contains("Classes.noMotion=\"{Binding IsInterfaceMotionDisabled}\"", window);
     }
 
     // ------------------------------------------------------------------ helpers
@@ -432,6 +505,6 @@ public sealed partial class Phase22BShellNavigationTests
         throw new Xunit.Sdk.XunitException("no JPEG frame header");
     }
 
-    [GeneratedRegex("<Button [^>]*Classes=\"appSectionItem[^\"]*\"[^>]*>", RegexOptions.Singleline)]
+    [GeneratedRegex("<Button [^>]*Classes=\"navItem[^\"]*\"[^>]*>", RegexOptions.Singleline)]
     private static partial Regex NavButton();
 }

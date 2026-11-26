@@ -59,4 +59,18 @@ public enum SourceCategory
     /// never a priced product — it never composes into any product section or Teams Copy output.
     /// </summary>
     ShowSchedule,
+
+    /// <summary>
+    /// Phase 31: the official Carowinds event schedule (events listing and event pages) — operating
+    /// seasons such as SCarowinds, Oktoberfest and WinterFest. Reference information, never a product
+    /// row; stored as one last-known-good document, not per date.
+    /// </summary>
+    OperatingEvents,
+
+    /// <summary>
+    /// Phase 32: official Carowinds Perks &amp; Play rewards (the park's Pass Perks page plus the program
+    /// terms and FAQ). Publicly advertised reference information, never a product row and never a
+    /// statement about one guest's pass; stored as one last-known-good document, not per date.
+    /// </summary>
+    PassPerks,
 }

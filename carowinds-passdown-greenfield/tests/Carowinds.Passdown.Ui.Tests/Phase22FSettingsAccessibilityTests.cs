@@ -94,8 +94,10 @@ public class Phase22FSettingsAccessibilityTests
         var markup = Markup("PersonalSyncSettingsView");
         Assert.Contains("<SelectableTextBlock Text=\"{Binding SyncRootPath}\" TextWrapping=\"Wrap\"", markup);
         Assert.Contains("Text=\"{Binding BuildExecutablePathText}\" TextWrapping=\"Wrap\"", markup);
-        Assert.Matches(new Regex("Classes=\"settingsRows\" ColumnDefinitions=\"140,\\*\""), markup);
-        Assert.Contains("MaxWidth=\"720\"", markup);
+        // Phase 35F: the approved prototype's 175px label column and 860px content width.
+        Assert.Matches(new Regex("Classes=\"settingsRows\" ColumnDefinitions=\"175,\\*\""), markup);
+        Assert.DoesNotMatch(new Regex("Classes=\"settingsRows\" ColumnDefinitions=\"\\d+,\\d"), markup); // the value column always flexes
+        Assert.Contains("MaxWidth=\"860\"", markup);
     }
 
     [Theory]
@@ -201,19 +203,20 @@ public class Phase22FSettingsAccessibilityTests
     // ---------------------------------------------------------------- accessibility
 
     [Fact]
-    public void AssociateSectionRail_AnnouncesTheCurrentSection_LikeTheAppSectionStrip()
+    public void AssociateSectionTabs_AnnounceTheCurrentSection_LikeTheAppSidebar()
     {
-        // Phase 22B exposes the strip's current page through its .active style; the rail now does the same.
+        // Phase 22B exposes the current page through its .active style; the Associate section tabs (Phase 35B,
+        // formerly the rail) do the same.
         var shared = File.ReadAllText(MarkupFiles.Find("src/Carowinds.Passdown.Desktop/Themes/PassdownStyles.axaml"));
         Assert.Contains("<Setter Property=\"AutomationProperties.ItemStatus\" Value=\"Current page\" />", shared);
 
         var markup = Markup("AssociateView");
-        var style = markup[markup.IndexOf("<Style Selector=\"Button.railItem.active\">", StringComparison.Ordinal)..];
+        var style = markup[markup.IndexOf("<Style Selector=\"Button.sectionTab.active\">", StringComparison.Ordinal)..];
         style = style[..style.IndexOf("</Style>", StringComparison.Ordinal)];
         Assert.Contains("<Setter Property=\"AutomationProperties.ItemStatus\" Value=\"Current section\" />", style);
-        foreach (var flag in new[] { "IsOverviewSectionSelected", "IsProductsSectionSelected", "IsNotesSectionSelected" })
+        foreach (var flag in new[] { "IsOverviewSectionSelected", "IsProductsSectionSelected", "IsShowsSectionSelected", "IsNotesSectionSelected" })
         {
-            Assert.Contains($"Classes=\"railItem\" Classes.active=\"{{Binding {flag}}}\"", markup);
+            Assert.Contains($"Classes=\"sectionTab\" Classes.active=\"{{Binding {flag}}}\"", markup);
         }
     }
 
@@ -256,8 +259,9 @@ public class Phase22FSettingsAccessibilityTests
     public void HistoryGateTimes_AreLabelled_ForSightedAndScreenReaderUsers()
     {
         var markup = Markup("HistoryView");
-        Assert.Contains("<Run Text=\"North Gate · \"", markup);
-        Assert.Contains("<Run Text=\"Avenue · \"", markup);
+        // Phase 35F: each gate time is its own labelled stat ("NORTH GATE" / "AVENUE ENTRANCE" over the value).
+        Assert.Contains("<TextBlock Text=\"NORTH GATE\" Classes=\"eyebrow\" />", markup);
+        Assert.Contains("<TextBlock Text=\"AVENUE ENTRANCE\" Classes=\"eyebrow\" />", markup);
         Assert.Contains("StringFormat='North Gate: {0}'", markup);
         Assert.Contains("StringFormat='Avenue: {0}'", markup);
     }

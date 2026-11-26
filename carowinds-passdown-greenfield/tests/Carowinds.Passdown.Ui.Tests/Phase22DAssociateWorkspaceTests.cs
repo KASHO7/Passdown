@@ -284,20 +284,28 @@ public sealed class Phase22DAssociateWorkspaceTests
         var primary = Assert.Single(primaries);
         Assert.Contains("CreatePdfCommand", primary.Value);
 
-        var checkOnline = Regex.Match(header, "<Button Content=\"Check Online\"[^>]*>", RegexOptions.Singleline).Value;
-        Assert.Contains("Classes=\"toolbarButton\"", checkOnline);
-        Assert.Contains("Rectangle Classes=\"toolbarDivider\"", header);
+        // Phase 35B: Check Online is a labeled item in the Actions menu — explicit, never automatic, never an accent.
+        var actions = header[header.IndexOf("x:Name=\"PassdownActionsButton\"", StringComparison.Ordinal)..];
+        Assert.Contains("Classes=\"secondaryAction\"", header[header.IndexOf("x:Name=\"PassdownActionsButton\"", StringComparison.Ordinal)..][..120]);
+        var checkOnline = Regex.Match(actions, "<MenuItem Header=\"Check Online[^\"]*\"[^>]*>", RegexOptions.Singleline).Value;
+        Assert.Contains("Command=\"{Binding CheckOnlineCommand}\"", checkOnline);
+        Assert.Contains("AutomationProperties.Name=\"Check this date online\"", checkOnline);
+        Assert.Contains("Does not run automatically.", checkOnline);
     }
 
     [Fact]
     public void Toolbar_KeepsEveryActionInTheSameOrder()
     {
         var markup = Markup();
+        // Phase 35B: date navigation, the draft status, Create PDF, then the Actions menu and its items in reading order.
         string[] order =
         [
             "AutomationProperties.Name=\"Previous day\"", "AutomationProperties.Name=\"Operating date\"", "AutomationProperties.Name=\"Next day\"",
-            "AutomationProperties.Name=\"Today\"", "AutomationProperties.Name=\"Check this date online\"", "AutomationProperties.Name=\"Create PDF\"",
-            "AutomationProperties.Name=\"Copy for Teams\"", "AutomationProperties.Name=\"More passdown actions\"",
+            "AutomationProperties.Name=\"Today\"", "AutomationProperties.Name=\"Save status\"", "AutomationProperties.Name=\"Create PDF\"",
+            "AutomationProperties.Name=\"Passdown actions\"", "AutomationProperties.Name=\"Print Passdown\"", "AutomationProperties.Name=\"Save PDF\"",
+            "AutomationProperties.Name=\"Copy operations summary\"", "AutomationProperties.Name=\"Copy today's pricing\"",
+            "AutomationProperties.Name=\"Copy operations summary and pricing\"", "AutomationProperties.Name=\"Classic PDF style\"",
+            "AutomationProperties.Name=\"Check this date online\"", "AutomationProperties.Name=\"Open Season Price History\"",
         ];
         var positions = order.Select(o => markup.IndexOf(o, StringComparison.Ordinal)).ToList();
 
@@ -315,7 +323,13 @@ public sealed class Phase22DAssociateWorkspaceTests
         Assert.Single(Regex.Matches(markup, Regex.Escape("{Binding SaveStatusText")));
         Assert.Contains("<TextBlock Text=\"Draft\" Classes=\"muted\"", markup);
         Assert.Contains("x:Name=\"AssociateOfficialDataStatusText\"", markup);
-        Assert.True(markup.IndexOf("AssociateOfficialDataStatusText", StringComparison.Ordinal) < markup.IndexOf("SaveStatusChip", StringComparison.Ordinal));
+        // Phase 35B: the draft's save state sits on the toolbar; official-data freshness is quiet source information
+        // beside the section tabs — still two separate indicators, never merged.
+        var toolbar = markup[markup.IndexOf("x:Name=\"PassdownToolbar\"", StringComparison.Ordinal)..markup.IndexOf("x:Name=\"AssociateFeedback\"", StringComparison.Ordinal)];
+        Assert.Contains("x:Name=\"SaveStatusChip\"", toolbar);
+        Assert.DoesNotContain("AssociateOfficialDataStatusText", toolbar);
+        var meta = markup[markup.IndexOf("x:Name=\"WorkspaceMeta\"", StringComparison.Ordinal)..];
+        Assert.Contains("x:Name=\"AssociateOfficialDataStatusText\"", meta[..meta.IndexOf("</DockPanel>", StringComparison.Ordinal)]);
         Assert.DoesNotContain("Text=\"Draft: \"", markup); // the old duplicate status strip is gone.
     }
 
@@ -324,7 +338,7 @@ public sealed class Phase22DAssociateWorkspaceTests
     {
         var markup = Markup();
         var feedbackStart = markup.IndexOf("x:Name=\"AssociateFeedback\"", StringComparison.Ordinal);
-        var feedbackEnd = markup.IndexOf("ColumnDefinitions=\"140,*\"", StringComparison.Ordinal);
+        var feedbackEnd = markup.IndexOf("x:Name=\"AssociateBodyGrid\"", StringComparison.Ordinal);
         var feedback = markup[feedbackStart..feedbackEnd];
 
         foreach (var binding in new[] { "HasMultiPagePdfWarning", "RefreshStatusMessage", "RefreshResultMessage", "RefreshHadFailures", "PdfExportMessage", "CopyMessage", "LoadErrorMessage", "SyncConflictMessage", "SaveBlockedMessage" })
@@ -345,12 +359,18 @@ public sealed class Phase22DAssociateWorkspaceTests
             "ParkHours.NorthGateText", "ParkHours.AvenueText", "NorthGateOverrideText", "AvenueOverrideText", "ResetNorthGateOverrideCommand", "ResetAvenueOverrideCommand",
             "ProjectedAttendanceText", "ProjectedAttendanceError", "PreSoldsText", "PreSoldsError", "EarlyRideTimeStatusText", "OpenErtEditorCommand",
             "DailyFeatureTypeOptions", "SelectedDailyFeatureTypeOption", "DailyFeatureText", "IsErtEditorOpen", "ManualHoursOverrideEnabled", "PrivateBuyoutEnabled",
-            "PrivateBuyoutDetails", "ManualHoursWarningText", "PrivateBuyoutHoursWarningText", "IncludeShows", "ShowsFreshnessText", "ShowsStatusText", "ShowRows",
-            "SelectAllShowsCommand", "ClearShowsCommand", "StateNote", "TimesText", "Venue", "IncludeDailyAdmission", "IncludeFastLane", "IncludePromotions",
+            "PrivateBuyoutDetails", "ManualHoursWarningText", "PrivateBuyoutHoursWarningText", "IncludeShows", "ShowsStatusText",
+            // Phase 35D: the schedule freshness reads as the Shows heading's second line (date · freshness), built from ShowsFreshnessText.
+            "ShowsSubtitleText", "ShowRows",
+            "SelectAllShowsCommand", "ClearShowsCommand", "StateNote", "Venue",
+            // Phase 35D: the times column binds the compact preview plus "+N more"; the full list is in AllTimes (expanded tiles) and TimesAccessibleName.
+            "TimesPreviewText", "MoreTimesText", "AllTimes", "TimesAccessibleName", "IncludeDailyAdmission", "IncludeFastLane", "IncludePromotions",
             "IncludeSeasonPasses", "IncludeAddOns", "IncludeHauntedAttractions", "IncludeOperationalNotes", "OpenPriceHistoryCommand", "HistoricalPricingNotice",
             "ProductSections", "Status.StatusText", "Status.DetailText", "OfficialPriceText", "ComparisonPriceText", "PriceQualifier", "BundleNoteText",
-            "VerificationNoteText", "ViewPriceHistoryCommand", "DisplayPriceOverrideText", "OverridePlaceholderText", "DisplayPriceOverrideError",
-            "ResetToOfficialCommand", "AddCustomProductCommand", "CustomProducts", "OperationalNotesText", "SelectedOperationalNotes",
+            "VerificationNoteText", "ViewPriceHistoryCommand",
+            // Phase 35C: the per-row override TextBox, placeholder, inline error and Use official link moved into the one
+            // anchored price popover (EffectivePriceText + EditPriceCommand on the row; EditText/ErrorText/UseOfficialCommand there).
+            "EffectivePriceText", "EditPriceCommand", "EditText", "ErrorText", "UseOfficialCommand", "AddCustomProductCommand", "CustomProducts", "OperationalNotesText", "SelectedOperationalNotes",
             "AvailableOperationalNoteSuggestions", "ReplaceCommand", "AddCommand", "OperationalNotesCount", "IsOverviewSectionSelected",
             "IsProductsSectionSelected", "IsNotesSectionSelected",
         ];
@@ -407,18 +427,29 @@ public sealed class Phase22DAssociateWorkspaceTests
         Assert.Contains("Selector=\"controls|DailyFeatureMathPreview.attachedPreview\"", markup);
     }
 
+    /// <summary>
+    /// Phase 35D (was Phase 22D's "name; times · venue"): each show is one hairline row in three columns — name over
+    /// venue, the scheduled performances (a compact preview plus "+N more"), and View times for a long schedule, whose
+    /// expanded list shows every time. Still a divided row, never a card.
+    /// </summary>
     [Fact]
-    public void ShowsRows_AreCompactTwoLineRows()
+    public void ShowsRows_AreHairlineRows_WithNameVenueTimesAndExpansion()
     {
         var markup = Markup();
         var template = Regex.Match(markup, "<DataTemplate x:DataType=\"vm:AssociateShowRowViewModel\">.*?</DataTemplate>", RegexOptions.Singleline).Value;
 
         Assert.Contains("Classes=\"listRow\"", template);
         Assert.Contains("{Binding Name}", template);
-        Assert.Contains("{Binding TimesText}", template);
-        Assert.Contains("{Binding Venue}", template);
+        Assert.Contains("{Binding VenueText}", template);
+        Assert.Contains("{Binding TimesPreviewText, Mode=OneWay}", template); // Run.Text binds TwoWay by default
+        Assert.Contains("{Binding MoreTimesText, Mode=OneWay}", template);
+        Assert.Contains("ItemsSource=\"{Binding AllTimes}\"", template);
+        Assert.Contains("IsVisible=\"{Binding IsExpanded}\"", template);
+        Assert.Contains("Command=\"{Binding ToggleExpandedCommand}\"", template);
         Assert.Contains("{Binding AccessibleName}", template);
-        Assert.True(template.IndexOf("{Binding TimesText}", StringComparison.Ordinal) < template.IndexOf("{Binding Venue}", StringComparison.Ordinal));
+        Assert.Contains("AutomationProperties.Name=\"{Binding TimesAccessibleName}\"", template);
+        Assert.True(template.IndexOf("{Binding Name}", StringComparison.Ordinal) < template.IndexOf("{Binding VenueText}", StringComparison.Ordinal));
+        Assert.True(template.IndexOf("{Binding VenueText}", StringComparison.Ordinal) < template.IndexOf("{Binding TimesPreviewText", StringComparison.Ordinal));
         Assert.DoesNotContain("Classes=\"panel\"", template);
         Assert.DoesNotContain("Classes=\"inset\"", template);
     }
@@ -430,7 +461,7 @@ public sealed class Phase22DAssociateWorkspaceTests
         var template = Regex.Match(markup, "<DataTemplate x:DataType=\"vm:ProductRowViewModel\">.*?</DataTemplate>", RegexOptions.Singleline).Value;
 
         Assert.Contains("Text=\"{Binding OfficialPriceText}\" Classes=\"officialPrice\"", template);
-        Assert.Contains("ColumnDefinitions=\"Auto,*,120,180\"", template);
+        Assert.Contains("ColumnDefinitions=\"28,*,100,158,96\"", template); // Phase 35C: Inc · Product · Official · Display price · Details
         Assert.Contains("Text=\"OFFICIAL\"", markup);
         Assert.Contains("Text=\"DISPLAY PRICE\"", markup);
         Assert.Contains("Selector=\"TextBlock.officialPrice\"", markup);
@@ -450,11 +481,12 @@ public sealed class Phase22DAssociateWorkspaceTests
     }
 
     [Fact]
-    public void Rail_KeepsItsThreeSections_WithTheNotesCount()
+    public void SectionTabs_KeepTheirSections_WithTheNotesCount()
     {
         var markup = Markup();
 
-        Assert.Equal(3, Regex.Matches(markup, "<Button Classes=\"railItem\"").Count);
+        // Phase 31E: Shows joined — Overview, Products, Shows, Notes. Phase 35B: the rail became section tabs.
+        Assert.Equal(4, Regex.Matches(markup, "<Button Classes=\"sectionTab\"").Count);
         Assert.Contains("{Binding HasOperationalNotesCount}", markup);
         Assert.Contains("AutomationProperties.Name=\"Notes section\"", markup);
         Assert.Contains("StringFormat='Operational notes: {0}'", markup);

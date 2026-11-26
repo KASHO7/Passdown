@@ -32,4 +32,18 @@ namespace Carowinds.Passdown.Application.Retrieval;
 public sealed record CatalogPayload(IReadOnlyList<ObservedProduct> Products)
 {
     public IReadOnlyList<CatalogProductKey> UnconfirmedProductKeys { get; init; } = [];
+
+    /// <summary>
+    /// Phase 31: the richer official deals observation (deadlines, terms, price options) read from the
+    /// same pages in the same request, when the source provides one. Stored as the deals reference
+    /// document by <see cref="Refresh.CatalogSourceRegistration"/>; never affects catalog reconciliation.
+    /// </summary>
+    public Seasons.OfficialDealsObservation? Deals { get; init; }
+
+    /// <summary>
+    /// Phase 31B: official important details and deadlines read from the same page in the same request,
+    /// when the source provides them (Season Passes, Military &amp; First Responder, Promotions). Stored as
+    /// that channel's product-details reference document; never affects catalog reconciliation.
+    /// </summary>
+    public ProductDetails.OfficialProductDetailsObservation? ProductDetails { get; init; }
 }

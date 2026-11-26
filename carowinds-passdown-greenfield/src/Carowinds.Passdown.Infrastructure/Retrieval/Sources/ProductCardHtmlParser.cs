@@ -27,7 +27,7 @@ namespace Carowinds.Passdown.Infrastructure.Retrieval.Sources;
 /// </summary>
 internal static class ProductCardHtmlParser
 {
-    private const string CardMarker = "data-ab=\"productv2-card\"";
+    internal const string CardMarker = "data-ab=\"productv2-card\"";
     private const string TitleMarker = "data-ab=\"productv2-card-title\"";
     private const string PriceMarker = "data-ab=\"productv2-card-price\"";
     private const string ComparisonPriceMarker = "data-ab=\"productv2-card-price-strikethrough\"";
@@ -73,16 +73,25 @@ internal static class ProductCardHtmlParser
         return cards;
     }
 
-    private static ParsedProductCard ParseCard(string fragment)
+    private static ParsedProductCard ParseCard(string fragment) =>
+        TryParseCard(fragment) ?? throw new FormatException(
+            "A product card was found but its required title/price content could not be extracted — " +
+            "the page structure may have changed or the response was truncated.");
+
+    /// <summary>
+    /// Phase 31B: one card fragment (starting at <see cref="CardMarker"/>), or null when its required
+    /// title/price content cannot be read — so a caller can isolate one unreadable card instead of
+    /// failing the whole page.
+    /// </summary>
+    internal static ParsedProductCard? TryParseCard(string fragment)
     {
+        ArgumentNullException.ThrowIfNull(fragment);
         var displayName = ExtractElementText(fragment, TitleMarker);
         var currentDisplayPrice = ExtractElementText(fragment, PriceMarker);
 
         if (displayName is null || currentDisplayPrice is null)
         {
-            throw new FormatException(
-                "A product card was found but its required title/price content could not be extracted — " +
-                "the page structure may have changed or the response was truncated.");
+            return null;
         }
 
         var comparisonDisplayPrice = ExtractElementText(fragment, ComparisonPriceMarker);
@@ -158,22 +167,14 @@ internal static class ProductCardHtmlParser
     }
 
     /// <summary>
-    /// Strips everything but digits and the decimal point (e.g. `"$1,299.00"` → `1299.00`); returns
-    /// null rather than a guessed number when nothing parseable remains. Internal for the same
-    /// reason as <see cref="ExtractAttributeValue"/> above.
+    /// The single explicit currency amount in a price text (e.g. `"$1,299.00"` → `1299.00`); returns
+    /// null rather than a guessed number when the text states no unambiguous amount. Internal for the
+    /// same reason as <see cref="ExtractAttributeValue"/> above.
     /// </summary>
-    internal static decimal? ParseAmount(string? displayPrice)
-    {
-        if (displayPrice is null)
-        {
-            return null;
-        }
-
-        var digitsOnly = new string(displayPrice.Where(c => char.IsAsciiDigit(c) || c == '.').ToArray());
-        return decimal.TryParse(digitsOnly, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount)
-            ? amount
-            : null;
-    }
+    internal static decimal? ParseAmount(string? displayPrice) =>
+        // Phase 31: strict — one explicit currency amount only. The previous digits-only strip turned
+        // "3rd Night FREE" into 3 and "2 for $90" into 290; non-numeric official wording now stays null.
+        Domain.Promotions.OfficialOfferText.ParseCurrencyAmount(displayPrice);
 }
 
 /// <summary>

@@ -21,6 +21,7 @@ dotnet run -c Release --project tools/visual-fixtures -- <outDir> [label] [scena
 - `scenarioFilter`: case-insensitive substring of a scenario name, such as `Calendar` or `Settings`.
   Use `*` for all scenarios.
 - `all` (default) renders 960×640, 1280×690, 1280×860 and 1920×1000. `main` renders only 1280×860.
+  `shell` (Phase 35A) renders 1920×1080, 1536×960, 1280×720 and 960×640.
   Every size is rendered in both Light and Dark.
 - Appearance (Phase 23C): `forced` (default) renders the Light and Dark preferences, each against the
   opposite simulated OS appearance, and keeps the `Light`/`Dark` file names. `system` renders the System
@@ -41,10 +42,14 @@ or button rectangles inside the panel overlap.
 | Dashboard Shows (Phase 23B) | `DashboardShows-*`: typical and busy days (page top and scrolled to the panel), busy with one list expanded, one show, no shows, not published, stale, failed latest check with last-known-good — 10:45 AM ET on the operating date |
 | Calendar | busy day with Shows collapsed and expanded, WinterFest (Dec 5, noon–9 PM), New Year's Eve (3 PM–1 AM), historical (Sep 12), Not Published (Mar 2027), stale hours, show check failed, a date change held mid-load, a failed local read |
 | Associate | Overview, Products (exact, From, Military/First Responder, override, stale), Notes, Shows, autosave failure, Season Price History overlay |
-| Popups | date picker, Copy menu, More menu, Math picker |
+| Products compact (Phase 31C) | `Associate-Products-Scroll700`/`-Scroll1400` (synthetic Current/Upcoming/Expired deals and Important Details from `Phase31CFixtures.cs`), `Associate-Details-*`: the View details dialog for a bundle deal, a deal whose sources disagree, the Gold pass (grouped terms, inferred date) and an add-on with no recorded terms |
+| Popups | date picker, Actions menu (Phase 35B: Print, Save PDF, Copy for Teams, PDF style, preview, Check Online, Price History), Math picker |
 | Notes / History | populated and empty |
 | Settings | sync off, syncing and up to date, conflict review, folder unavailable with sync error and a Diagnostics export failure |
-| Appearance (Phase 23C) | `Appearance-Settings`, `Appearance-SaveFailed`; `LiveSwitch-*`: the theme flipped with Settings, Dashboard Shows expanded, Calendar Shows expanded, Products, Season Price History, date picker, Copy, More or Math picker already open (captured after the switch), and a simulated OS switch |
+| Shell (Phase 35A) | `Shell-*`: sidebar expanded / collapsed on Dashboard and Passdown, Calendar, Settings, keyboard focus on a destination (expanded and collapsed); `Settings-Animations*`: Interface animations On, Off and Windows reduced motion. Sidebar state and motion choice are in memory only |
+| Workspace (Phase 35B) | `Workspace-*`: Passdown toolbar, section tabs and Overview sheet with the preview — sidebar expanded / collapsed, preview hidden, a focused input, a focused section tab, Products tab selected, manual hours + private buyout + gate override open, the Early Ride Time editor open, and a long Daily Feature scrolled to the end |
+| Shows / Notes (Phase 35D) | `P35D-*`: Shows & Entertainment default, a 16-time schedule expanded, sidebar collapsed, preview hidden; Passdown Notes default, a persistent note included, sidebar collapsed, preview hidden, long daily notes with blank lines; the Actions dropdown open; `P35D-Date-*` the compact date selector on today (no Today button) and on another date (Today shown). Synthetic persistent notes come from `Phase35DFixtures.cs` (in memory) |
+| Appearance (Phase 23C) | `Appearance-Settings`, `Appearance-SaveFailed`; `LiveSwitch-*`: the theme flipped with Settings, Dashboard Shows expanded, Calendar Shows expanded, Products, Season Price History, date picker, Actions or Math picker already open (captured after the switch), and a simulated OS switch |
 
 To compare against an earlier commit, export that commit with `git archive` into a scratch folder,
 copy this folder into it, and run it there. This changes nothing in the repository.

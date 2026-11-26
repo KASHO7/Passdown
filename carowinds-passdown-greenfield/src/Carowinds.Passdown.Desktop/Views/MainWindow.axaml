@@ -9,104 +9,132 @@
         x:DataType="vm:MainViewModel"
         Icon="/Assets/logo.ico"
         Title="Carowinds Operations"
-        Width="1280" Height="860" MinWidth="960" MinHeight="640">
+        Width="1280" Height="860" MinWidth="960" MinHeight="640"
+        Classes.motion="{Binding IsInterfaceMotionEnabled}"
+        Classes.noMotion="{Binding IsInterfaceMotionDisabled}">
 
-    <!-- Phase 22B: the banner and section-navigation styles (Border.brandBanner,
-         TextBlock.brandWordmark, Border.appNavigation, Button.appSectionItem[.active]) live in
-         Themes/PassdownStyles.axaml with the rest of the shared styles. -->
+    <!-- Phase 35A shell (docs/phase35-unified-ui-modernization.md §6). The compact title area is the native
+         Windows title bar: the original app icon (Icon above, byte-identical to the supplied .ico) and
+         "Carowinds Operations" only — so minimize, maximize, restore, close, Snap Layouts, drag and DPI stay
+         native, and the name is not repeated inside the window. The Phase 22B photo banner and horizontal
+         strip are replaced by a left sidebar. Styles live in Themes/PassdownStyles.axaml ("App shell" and
+         "Motion"); the window's "motion" class gates every cosmetic transition. -->
 
     <Grid>
-    <DockPanel LastChildFill="True">
+    <Grid x:Name="AppShell" ColumnDefinitions="Auto,*">
 
-        <!-- Brand banner (Phase 22B, "Option A — Minimal Fury Banner"; replaces the Phase 13G navy
-             band): a compact, theme-invariant panoramic crop of Fury 325 under a charcoal-navy
-             left-to-right scrim, with one "CAROWINDS OPERATIONS" wordmark (title only since Phase 23B). The photo is a bundled
-             avares resource (offline, no network fetch) cropped UniformToFill around the camelback
-             crest; it is decorative, so it is hidden from assistive technology and hit testing.
-             Associate Passdown is the only workflow this release — no Manager entry point is added
-             as a placeholder (CLAUDE.md "current scope decision"). -->
-        <Border x:Name="BrandBanner" DockPanel.Dock="Top" Classes="brandBanner">
-            <Panel>
-                <Image x:Name="BrandBannerImage" Source="/Assets/Branding/fury325-banner.jpg"
-                       Stretch="UniformToFill" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                       RenderOptions.BitmapInterpolationMode="HighQuality"
-                       IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw" />
-                <Border Background="{DynamicResource PassdownBannerOverlayBrush}" IsHitTestVisible="False" />
-
-                <!-- Phase 23B: title-only branding. The small bar-chart "ascending-track" mark that sat before the
-                     title was removed; nothing replaces it. The wordmark starts at the page content's 24 px left
-                     margin (PassdownPagePadding), the same edge as the page titles below. The window/taskbar icon
-                     is the separate Icon="/Assets/logo.ico" above and is unchanged. -->
-                <TextBlock x:Name="BrandWordmark" Classes="brandWordmark" Text="CAROWINDS OPERATIONS"
-                           Margin="24,0" HorizontalAlignment="Left"
-                           AutomationProperties.Name="Carowinds Operations" />
-            </Panel>
-        </Border>
-
-        <!-- App-shell section strip (spec Phase 9D Part A; extended Phase 10A Part A, Phase 11B Part A,
-             Phase 12A Part B): the only top-level navigation this app has — Dashboard (Phase 10A's
-             supervisor summary/control surface and the default startup section), Operations Calendar
-             (Phase 12A's month-grid planning/routing surface), Associate Passdown (the only editable
-             daily workflow), Operational Notes (Phase 11B's persistent supervisor-managed notes manager
-             — distinct from Associate's own daily Notes entry), and History (Phase 9D's read-only
-             archive). No Manager/Alerts entry (CLAUDE.md "current scope decision"). Each button's
-             CanExecute (every section except Operational Notes itself, which is always reachable) is
-             disabled while Notes.IsEditing is true (spec Part X), so its own IsEnabled need not be
-             bound separately here. -->
-        <Border x:Name="AppNavigation" DockPanel.Dock="Top" Classes="appNavigation">
-            <!-- Phase 15E: WrapPanel, not a fixed-width StackPanel — if the labels ever do not fit (very
-                 large text scaling), they wrap to a second row instead of pushing a section off the
-                 window. Phase 22C: short visible labels (Dashboard · Calendar · Passdown · Notes ·
-                 History) and Settings as a trailing gear; the accessible names keep the full section
-                 names (each contains its visible label), and the six destinations, commands, order and
-                 selection flags are unchanged. The Grid is the one "Application sections" landmark, so
-                 the gear stays inside it and Tab still runs Dashboard → … → History → Settings. -->
-            <Grid x:Name="AppNavigationLayout" ColumnDefinitions="*,Auto"
+        <!-- The sidebar. Destinations, commands, order and selection flags are unchanged from Phase 22C
+             (Dashboard · Calendar · Passdown · Operational Notes · History, Settings pinned at the bottom); no
+             Manager/Alerts entry (CLAUDE.md "current scope decision") and no decorative section heading. Each
+             section command's CanExecute still blocks leaving Operational Notes mid-edit. Collapsing only
+             changes this column: no page, date, draft or refresh is touched. -->
+        <Border x:Name="AppNavigation" Grid.Column="0" Classes="navSidebar"
+                Classes.collapsed="{Binding IsNavigationShownCollapsed}">
+            <Grid x:Name="AppNavigationLayout" RowDefinitions="Auto,*,Auto"
                   AutomationProperties.Name="Application sections" AutomationProperties.LandmarkType="Navigation">
-                <WrapPanel x:Name="AppNavigationItems" Grid.Column="0" Orientation="Horizontal">
-                    <Button Classes="appSectionItem" Classes.active="{Binding IsDashboardSectionSelected}"
-                            Content="Dashboard" Command="{Binding ShowDashboardSectionCommand}"
-                            AutomationProperties.Name="Dashboard section" />
-                    <Button Classes="appSectionItem" Classes.active="{Binding IsOperationsCalendarSectionSelected}"
-                            Content="Calendar" Command="{Binding ShowOperationsCalendarSectionCommand}"
-                            AutomationProperties.Name="Operations Calendar section" />
-                    <Button Classes="appSectionItem" Classes.active="{Binding IsAssociateSectionSelected}"
-                            Content="Passdown" Command="{Binding ShowAssociateSectionCommand}"
-                            AutomationProperties.Name="Associate Passdown section" />
-                    <Button Classes="appSectionItem" Classes.active="{Binding IsOperationalNotesSectionSelected}"
-                            Content="Notes" Command="{Binding ShowOperationalNotesSectionCommand}"
-                            AutomationProperties.Name="Operational Notes section" />
-                    <Button Classes="appSectionItem" Classes.active="{Binding IsHistorySectionSelected}"
-                            Content="History" Command="{Binding ShowHistorySectionCommand}"
-                            AutomationProperties.Name="History section" />
-                </WrapPanel>
-                <Button x:Name="SettingsNavigationItem" Grid.Column="1" VerticalAlignment="Top"
-                        Classes="appSectionItem iconItem" Classes.active="{Binding IsSettingsSectionSelected}"
+
+                <Button x:Name="NavigationToggle" Grid.Row="0" Classes="iconAction" Margin="12,0,0,8"
+                        HorizontalAlignment="Left"
+                        Command="{Binding ToggleNavigationCommand}"
+                        AutomationProperties.Name="{Binding NavigationToggleName}"
+                        ToolTip.Tip="{Binding NavigationToggleName}">
+                    <PathIcon Data="{StaticResource PassdownSidebarToggleIconGeometry}" AutomationProperties.AccessibilityView="Raw" />
+                </Button>
+
+                <StackPanel x:Name="AppNavigationItems" Grid.Row="1">
+                    <Button Classes="navItem" Classes.active="{Binding IsDashboardSectionSelected}"
+                            Command="{Binding ShowDashboardSectionCommand}"
+                            AutomationProperties.Name="Dashboard section"
+                            ToolTip.Tip="Dashboard" ToolTip.ServiceEnabled="{Binding IsNavigationShownCollapsed}">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Border Classes="navIndicator" />
+                            <StackPanel Grid.Column="1" Classes="navContent" Orientation="Horizontal" Spacing="12">
+                                <PathIcon Data="{StaticResource PassdownDashboardIconGeometry}" AutomationProperties.AccessibilityView="Raw" />
+                                <TextBlock Classes="navLabel" Text="Dashboard" />
+                            </StackPanel>
+                        </Grid>
+                    </Button>
+                    <Button Classes="navItem" Classes.active="{Binding IsOperationsCalendarSectionSelected}"
+                            Command="{Binding ShowOperationsCalendarSectionCommand}"
+                            AutomationProperties.Name="Operations Calendar section"
+                            ToolTip.Tip="Calendar" ToolTip.ServiceEnabled="{Binding IsNavigationShownCollapsed}">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Border Classes="navIndicator" />
+                            <StackPanel Grid.Column="1" Classes="navContent" Orientation="Horizontal" Spacing="12">
+                                <PathIcon Data="{StaticResource PassdownCalendarIconGeometry}" AutomationProperties.AccessibilityView="Raw" />
+                                <TextBlock Classes="navLabel" Text="Calendar" />
+                            </StackPanel>
+                        </Grid>
+                    </Button>
+                    <Button Classes="navItem" Classes.active="{Binding IsAssociateSectionSelected}"
+                            Command="{Binding ShowAssociateSectionCommand}"
+                            AutomationProperties.Name="Associate Passdown section"
+                            ToolTip.Tip="Passdown" ToolTip.ServiceEnabled="{Binding IsNavigationShownCollapsed}">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Border Classes="navIndicator" />
+                            <StackPanel Grid.Column="1" Classes="navContent" Orientation="Horizontal" Spacing="12">
+                                <PathIcon Data="{StaticResource PassdownPassdownIconGeometry}" AutomationProperties.AccessibilityView="Raw" />
+                                <TextBlock Classes="navLabel" Text="Passdown" />
+                            </StackPanel>
+                        </Grid>
+                    </Button>
+                    <Button Classes="navItem" Classes.active="{Binding IsOperationalNotesSectionSelected}"
+                            Command="{Binding ShowOperationalNotesSectionCommand}"
+                            AutomationProperties.Name="Operational Notes section"
+                            ToolTip.Tip="Operational Notes" ToolTip.ServiceEnabled="{Binding IsNavigationShownCollapsed}">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Border Classes="navIndicator" />
+                            <StackPanel Grid.Column="1" Classes="navContent" Orientation="Horizontal" Spacing="12">
+                                <PathIcon Data="{StaticResource PassdownNotesIconGeometry}" AutomationProperties.AccessibilityView="Raw" />
+                                <TextBlock Classes="navLabel" Text="Operational Notes" />
+                            </StackPanel>
+                        </Grid>
+                    </Button>
+                    <Button Classes="navItem" Classes.active="{Binding IsHistorySectionSelected}"
+                            Command="{Binding ShowHistorySectionCommand}"
+                            AutomationProperties.Name="History section"
+                            ToolTip.Tip="History" ToolTip.ServiceEnabled="{Binding IsNavigationShownCollapsed}">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Border Classes="navIndicator" />
+                            <StackPanel Grid.Column="1" Classes="navContent" Orientation="Horizontal" Spacing="12">
+                                <PathIcon Data="{StaticResource PassdownHistoryIconGeometry}" AutomationProperties.AccessibilityView="Raw" />
+                                <TextBlock Classes="navLabel" Text="History" />
+                            </StackPanel>
+                        </Grid>
+                    </Button>
+                </StackPanel>
+
+                <!-- Settings, pinned to the bottom. Phase 23D's update dot sits on the gear's corner (decorative;
+                     the help text says "Update available" for Narrator). -->
+                <Button x:Name="SettingsNavigationItem" Grid.Row="2" Classes="navItem"
+                        Classes.active="{Binding IsSettingsSectionSelected}"
                         Command="{Binding ShowSettingsSectionCommand}"
                         AutomationProperties.Name="Settings" ToolTip.Tip="Settings"
+                        ToolTip.ServiceEnabled="{Binding IsNavigationShownCollapsed}"
                         AutomationProperties.HelpText="{Binding SettingsNavigationHelpText}">
-                    <PathIcon Data="{StaticResource PassdownSettingsIconGeometry}" AutomationProperties.AccessibilityView="Raw" />
+                    <Grid ColumnDefinitions="Auto,*">
+                        <Border Classes="navIndicator" />
+                        <StackPanel Grid.Column="1" Classes="navContent" Orientation="Horizontal" Spacing="12">
+                            <Panel>
+                                <PathIcon Data="{StaticResource PassdownSettingsIconGeometry}" AutomationProperties.AccessibilityView="Raw" />
+                                <Ellipse x:Name="UpdateIndicatorDot" Width="8" Height="8"
+                                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-3,-3,0"
+                                         Fill="{DynamicResource PassdownAccentBrush}"
+                                         IsVisible="{Binding HasUpdateNotification}" IsHitTestVisible="False"
+                                         AutomationProperties.AccessibilityView="Raw" />
+                            </Panel>
+                            <TextBlock Classes="navLabel" Text="Settings" />
+                        </StackPanel>
+                    </Grid>
                 </Button>
-                <!-- Phase 23D: a small accent dot over the gear when an approved update is waiting (and not snoozed) —
-                     the only update notice outside Settings; never a popup. Decorative: the gear's help text says
-                     "Update available" for Narrator, so the dot is hidden from assistive technology and hit testing. -->
-                <Ellipse x:Name="UpdateIndicatorDot" Grid.Column="1" Width="8" Height="8"
-                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0"
-                         Fill="{DynamicResource PassdownAccentBrush}"
-                         IsVisible="{Binding HasUpdateNotification}" IsHitTestVisible="False"
-                         AutomationProperties.AccessibilityView="Raw" />
             </Grid>
         </Border>
 
-        <!-- All five sections are constructed once and stay alive for the app's lifetime (spec Part
-             T): switching which one is visible never recreates the Associate screen's in-progress
-             edits/autosave state and never touches AssociateViewModel.SelectedDate. -->
-        <Grid>
-            <!-- IsVisible is bound on the wrapping Border (still MainViewModel's own DataContext) —
-                 the inner view's DataContext reassignment below changes the compiled-binding type for
-                 its own subtree, so IsDashboardSectionSelected/IsOperationsCalendarSectionSelected/
-                 IsAssociateSectionSelected/IsOperationalNotesSectionSelected/IsHistorySectionSelected
-                 must not be bound on the same element as that DataContext switch. -->
+        <!-- All six sections are constructed once and stay alive for the app's lifetime (spec Part T): switching
+             which one is visible — or collapsing the sidebar — never recreates the Associate screen's in-progress
+             edits/autosave state and never touches AssociateViewModel.SelectedDate. IsVisible is bound on the
+             wrapping Border (MainViewModel's DataContext), not on the element whose DataContext changes. -->
+        <Grid x:Name="SectionHost" Grid.Column="1">
             <Border IsVisible="{Binding IsDashboardSectionSelected}">
                 <views:DashboardView DataContext="{Binding Dashboard}" />
             </Border>
@@ -127,13 +155,18 @@
             </Border>
         </Grid>
 
-    </DockPanel>
+    </Grid>
 
     <!-- Phase 20A: the read-only Season Price History screen, opened from Associate → Products. An
          overlay over the whole shell (not a section): closing it returns to exactly what was showing,
          with no Associate state touched. -->
     <Border IsVisible="{Binding IsPriceHistoryOpen}" Background="{DynamicResource PassdownOverlayScrimBrush}">
         <views:PriceHistoryView DataContext="{Binding PriceHistory}" />
+    </Border>
+
+    <!-- Phase 31C: View details for a product or official deal, opened from Associate → Products. -->
+    <Border IsVisible="{Binding Associate.OfficialDetails.IsOpen}" Background="{DynamicResource PassdownOverlayScrimBrush}">
+        <views:OfficialDetailsView DataContext="{Binding Associate.OfficialDetails}" />
     </Border>
 
     <!-- Phase 23D: What's New — opened once after a confirmed in-app update, or from Settings → About this build. -->

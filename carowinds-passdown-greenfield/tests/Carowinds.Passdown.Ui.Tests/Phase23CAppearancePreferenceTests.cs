@@ -292,7 +292,8 @@ public class Phase23CAppearancePreferenceTests
         Assert.Equal(["IAppearancePreferenceStore", "ISystemAppearanceSource", "IThemeVariantTarget", "ILogger`1"], parameters);
 
         var viewModelParameters = typeof(AppearanceSettingsViewModel).GetConstructors().Single().GetParameters();
-        Assert.Equal([typeof(AppearanceThemeController)], viewModelParameters.Select(p => p.ParameterType));
+        // Phase 35A adds exactly one more local, device-only dependency: the Interface animations controller.
+        Assert.Equal([typeof(AppearanceThemeController), typeof(InterfaceMotionController)], viewModelParameters.Select(p => p.ParameterType));
     }
 
     [Fact]
@@ -346,7 +347,9 @@ public class Phase23CAppearancePreferenceTests
         Assert.Contains("new Migration0016CreateSeasonPriceHistoryTable(),", app);
         // Phase 26 added migration 17 for synced price observations — still no appearance migration.
         Assert.Contains("new Migration0017CreateSyncedPriceObservationsTable(),", app);
-        Assert.DoesNotContain("Migration0018", app);
+        // Phase 31 added migration 18 for official reference documents — still no appearance migration.
+        Assert.Contains("new Migration0018CreateOfficialReferenceDocumentsTable(),", app);
+        Assert.DoesNotContain("Migration0019", app);
         Assert.DoesNotMatch(@"Migration\d{4}\w*Appearance", app);
     }
 
@@ -531,9 +534,12 @@ public class Phase23CAppearancePreferenceTests
     {
         var section = AppearanceSectionMarkup();
 
+        // Phase 35A put Interface animations in the Appearance panel; since 35F it is one switch, so the panel's only
+        // radio buttons are the theme selector's three options in one group.
         var radios = Regex.Matches(section, "<RadioButton ");
         Assert.Equal(3, radios.Count);
         Assert.Equal(3, Regex.Matches(section, "GroupName=\"Appearance\"").Count);
+        Assert.Single(Regex.Matches(section, "<ToggleSwitch x:Name=\"InterfaceAnimationsSwitch\""));
 
         var system = section.IndexOf("Content=\"Use Windows setting\"", StringComparison.Ordinal);
         var light = section.IndexOf("Content=\"Light\"", StringComparison.Ordinal);

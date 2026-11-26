@@ -74,6 +74,16 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
     /// </summary>
     public string PassdownStatusLabel { get; }
 
+    /// <summary>
+    /// Phase 35E: the day cell's quiet lifecycle line — "Draft in progress" or "Finalized" — and
+    /// <see langword="null"/> for a date with no passdown, so ordinary empty dates carry no "No Draft" text.
+    /// Same Finalized-over-Draft precedence as <see cref="PassdownStatusLabel"/>; <see cref="AutomationName"/>
+    /// still states every status, including "No draft".
+    /// </summary>
+    public string? PassdownCellText { get; }
+
+    public bool HasPassdownCellText => PassdownCellText is not null;
+
     /// <summary>"2 Notes" / "2 Notes · 1 Important" (spec Part E/F/Z), or <see langword="null"/> when no relevant notes exist for this date — a day cell shows no line at all rather than a meaningless "0 Notes".</summary>
     public string? NotesSummaryText { get; }
 
@@ -111,13 +121,28 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
     /// <summary>Spec Part J: a compact, reused-not-recomputed staleness indicator — see <see cref="OperationsCalendarOperatingStatePresentation.IsStale"/>.</summary>
     public bool IsHoursStale { get; }
 
-    public string AutomationName => BuildAutomationName(_day, IsSelected, _operatingState, _passdownPresentation, _notesPresentation);
+    public string AutomationName => BuildAutomationName(_day, IsSelected, _operatingState, _passdownPresentation, _notesPresentation)
+        + (PassPerkAccessibilityText is { } perks ? ". " + perks : string.Empty);
 
-    public OperationsCalendarDayViewModel(OperationsCalendarDay day, bool isSelected, Action<DateOnly> onSelect)
+    /// <summary>
+    /// Phase 32A: this date's Pass Perks markers — at most one per marker type, always in the order qualifying
+    /// visit, redemption, deadline, so the same type sits in the same place every time. Empty when none apply.
+    /// </summary>
+    public IReadOnlyList<PassPerkDayMarker> PassPerkMarkers { get; }
+
+    public bool HasPassPerks => PassPerkMarkers.Count > 0;
+
+    /// <summary>Tooltip and Narrator text for every marker on the date — never icon-only.</summary>
+    public string? PassPerkAccessibilityText => PassPerkMarkers.Count == 0
+        ? null
+        : string.Join(". ", PassPerkMarkers.Select(m => m.AccessibilityText));
+
+    public OperationsCalendarDayViewModel(OperationsCalendarDay day, bool isSelected, Action<DateOnly> onSelect, IReadOnlyList<PassPerkDayMarker>? passPerkMarkers = null)
     {
         ArgumentNullException.ThrowIfNull(day);
         ArgumentNullException.ThrowIfNull(onSelect);
         _onSelect = onSelect;
+        PassPerkMarkers = passPerkMarkers ?? [];
 
         Date = day.Date;
         IsInDisplayedMonth = day.IsInDisplayedMonth;
@@ -137,6 +162,7 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
         var passdownStatus = OperationsCalendarPassdownPresentation.DeriveStatus(day.HasFinalizedPassdown, day.HasAssociateDraft);
         var passdownPresentation = OperationsCalendarPassdownPresentation.Build(passdownStatus);
         PassdownStatusLabel = passdownPresentation.CellLabel;
+        PassdownCellText = passdownStatus == OperationsCalendarPassdownStatus.NoDraft ? null : passdownPresentation.AccessibilityText;
 
         var notesPresentation = OperationsCalendarNotesPresentation.Build(day.RelevantOperationalNoteCount, day.ImportantOperationalNoteCount);
         NotesSummaryText = notesPresentation.CellText;
@@ -185,4 +211,39 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
 
         return string.Join(". ", parts);
     }
+}
+
+/// <summary>
+/// Phase 32A: one Pass Perks marker in a day cell — its type (shape), the perks it stands for, a small count
+/// badge when several perks share the type, and its accessible name/tooltip.
+/// </summary>
+public sealed record PassPerkDayMarker(Domain.PassPerks.PassPerkMarkerKind Kind, IReadOnlyList<string> Titles)
+{
+    public bool IsQualifyingVisit => Kind == Domain.PassPerks.PassPerkMarkerKind.QualifyingVisit;
+
+    public bool IsRedemption => Kind == Domain.PassPerks.PassPerkMarkerKind.Redemption;
+
+    public bool IsDeadline => Kind == Domain.PassPerks.PassPerkMarkerKind.Deadline;
+
+    /// <summary>"2" when more than one perk shares this marker type on the date; empty otherwise.</summary>
+    public string CountText => Titles.Count > 1 ? Titles.Count.ToString(PresentationCulture.UnitedStates) : string.Empty;
+
+    public bool HasCount => Titles.Count > 1;
+
+    /// <summary>"Pass perk redemption date", "Pass perk qualifying visit date" or "Pass perk booking deadline".</summary>
+    public string Label => LabelFor(Kind);
+
+    /// <summary>"Pass perk redemption date: Buy Two, Get One FREE Hot Chocolate Mug" (tooltip and Narrator).</summary>
+    public string AccessibilityText => Titles.Count switch
+    {
+        1 => $"{Label}: {Titles[0]}",
+        _ => $"{Label}s ({Titles.Count}): {string.Join(", ", Titles)}",
+    };
+
+    public static string LabelFor(Domain.PassPerks.PassPerkMarkerKind kind) => kind switch
+    {
+        Domain.PassPerks.PassPerkMarkerKind.QualifyingVisit => "Pass perk qualifying visit date",
+        Domain.PassPerks.PassPerkMarkerKind.Deadline => "Pass perk booking deadline",
+        _ => "Pass perk redemption date",
+    };
 }

@@ -49,13 +49,21 @@ public enum SyncImportDecision
 /// </summary>
 public static class SyncReconciliation
 {
+    /// <param name="localSemanticHash">
+    /// Phase 31B: optional order-independent meaning of the local content (ERT entities). When both
+    /// semantic hashes are supplied and equal, differing bytes (ride order, edit time) are
+    /// <see cref="SyncImportDecision.Converged"/> — never a conflict, and never an update that would
+    /// reorder this device's rides.
+    /// </param>
     public static SyncImportDecision Decide(
         Guid localDeviceId,
         SyncEnvelope envelope,
         bool localEntityExists,
         string? localContentHash,
         SyncEntityState? state,
-        string remoteContentHash)
+        string remoteContentHash,
+        string? localSemanticHash = null,
+        string? remoteSemanticHash = null)
     {
         ArgumentNullException.ThrowIfNull(envelope);
 
@@ -117,6 +125,12 @@ public static class SyncReconciliation
 
         if (string.Equals(localContentHash, remoteContentHash, StringComparison.Ordinal))
         {
+            return SyncImportDecision.Converged;
+        }
+
+        if (localSemanticHash is not null && string.Equals(localSemanticHash, remoteSemanticHash, StringComparison.Ordinal))
+        {
+            // Same meaning, different bytes (e.g. the same rides listed in another order) — both sides agree.
             return SyncImportDecision.Converged;
         }
 

@@ -76,7 +76,17 @@ public sealed record AssociateProduct(
     /// Phase 25: whether this row belongs to the Associate PDF/Teams Copy contract — every non-pass
     /// product and the Season Pass new-purchase price; never a Membership, renewal offer or initiation fee.
     /// </summary>
-    public bool IsPassdownExportable => PassOffer is null || PassOffer.IsPassdownExportable;
+    /// <summary>
+    /// Phase 31: set when this current-catalog product belongs only to a seasonal event whose official
+    /// dates have ended and no official check has listed it since (<see cref="Domain.Seasons.SeasonalProductAvailability"/>).
+    /// The stored record is untouched; the row is shown under past-season offers, never as current, and
+    /// is not exported to the Passdown.
+    /// </summary>
+    public string? PastSeasonNote { get; init; }
+
+    public bool IsPastSeason => PastSeasonNote is not null;
+
+    public bool IsPassdownExportable => (PassOffer is null || PassOffer.IsPassdownExportable) && !IsPastSeason;
 
     /// <summary>Phase 25: a pass option the source lists but marks unavailable ("Not Available") — not a $0 price.</summary>
     public bool IsUnavailablePassOption => PassOffer is not null && OfficialPriceAmount is null && !IsCustom;

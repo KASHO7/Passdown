@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.Json;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain;
@@ -36,9 +35,12 @@ public sealed class DatedFastLaneSource(IRetrievalHttpClient httpClient, IClock 
 
     private static readonly Uri OfficialPageUrl = new("https://www.sixflags.com/carowinds/fast-lane");
 
-    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+    private const string Id = "dated-fast-lane.official";
 
-    public string SourceId => "dated-fast-lane.official";
+    /// <summary>Phase 34C: the shared evidence construction for this source's payload-less results (<see cref="AccessoDatedResults{TPayload}"/>); wording stays here.</summary>
+    private static readonly AccessoDatedResults<DatedFastLanePayload> Results = new(Id, "Carowinds Dated Fast Lane", OfficialPageUrl);
+
+    public string SourceId => Id;
 
     public SourceCategory Category => SourceCategory.DatedFastLane;
 
@@ -62,10 +64,10 @@ public sealed class DatedFastLaneSource(IRetrievalHttpClient httpClient, IClock 
         }
 
         var primaryBody = AccessoKeywordCalendarRequest.BuildBody(Keyword, DisplayZeroCapacity, requestedDate, requestedDate);
-        var primaryResult = await CallCalendarAsync(primaryBody, timeChecked, requestedDate, cancellationToken).ConfigureAwait(false);
-        if (primaryResult.IsError)
+        var primaryResult = await AccessoKeywordCalendarCall.PostAsync(httpClient, primaryBody, cancellationToken).ConfigureAwait(false);
+        if (primaryResult.Failure is { } primaryFailure)
         {
-            return primaryResult.Error!;
+            return Error(timeChecked, requestedDate, primaryFailure);
         }
 
         var primaryService = primaryResult.Service!;
@@ -130,10 +132,10 @@ public sealed class DatedFastLaneSource(IRetrievalHttpClient httpClient, IClock 
         // wider request is needed to tell (docs/retrieval/dated-fast-lane-source.md).
         var windowEnd = requestedDate > today.AddDays(HorizonPaddingDays) ? requestedDate : today.AddDays(HorizonPaddingDays);
         var horizonBody = AccessoKeywordCalendarRequest.BuildBody(Keyword, DisplayZeroCapacity, today, windowEnd);
-        var horizonResult = await CallCalendarAsync(horizonBody, timeChecked, requestedDate, cancellationToken).ConfigureAwait(false);
-        if (horizonResult.IsError)
+        var horizonResult = await AccessoKeywordCalendarCall.PostAsync(httpClient, horizonBody, cancellationToken).ConfigureAwait(false);
+        if (horizonResult.Failure is { } horizonFailure)
         {
-            return horizonResult.Error!;
+            return Error(timeChecked, requestedDate, horizonFailure);
         }
 
         var horizonService = horizonResult.Service!;
@@ -191,60 +193,6 @@ public sealed class DatedFastLaneSource(IRetrievalHttpClient httpClient, IClock 
     }
 
     /// <summary>
-    /// Shared transport/parse handling for both the primary and horizon calls: transport failure,
-    /// non-success status code, malformed JSON, and a missing <c>SERVICE</c> object all become the
-    /// same <see cref="RetrievalStatus.Error"/> shape regardless of which call produced them.
-    /// </summary>
-    private async Task<CalendarCallResult> CallCalendarAsync(
-        string body,
-        DateTimeOffset timeChecked,
-        DateOnly requestedDate,
-        CancellationToken cancellationToken)
-    {
-        RetrievalHttpResponse response;
-        try
-        {
-            response = await httpClient
-                .PostJsonAsync(AccessoKeywordCalendarRequest.Endpoint, body, AccessoKeywordCalendarRequest.Headers, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return CalendarCallResult.Failed(Error(timeChecked, requestedDate, ex));
-        }
-
-        if (!response.IsSuccessStatusCode)
-        {
-            return CalendarCallResult.Failed(Error(
-                timeChecked,
-                requestedDate,
-                new InvalidOperationException(
-                    $"POST {AccessoKeywordCalendarRequest.Endpoint} returned {(int)response.StatusCode} {response.StatusCode}. Body: {Truncate(response.Body)}")));
-        }
-
-        AccessoKeywordCalendarApiResponse? parsed;
-        try
-        {
-            parsed = JsonSerializer.Deserialize<AccessoKeywordCalendarApiResponse>(response.Body, JsonOptions);
-        }
-        catch (JsonException ex)
-        {
-            return CalendarCallResult.Failed(Error(timeChecked, requestedDate, ex));
-        }
-
-        if (parsed?.Service is null)
-        {
-            return CalendarCallResult.Failed(Error(
-                timeChecked,
-                requestedDate,
-                new InvalidOperationException(
-                    $"Unexpected response shape from {AccessoKeywordCalendarRequest.Endpoint}: no SERVICE object. Body: {Truncate(response.Body)}")));
-        }
-
-        return CalendarCallResult.Succeeded(parsed.Service);
-    }
-
-    /// <summary>
     /// One <see cref="DatedFastLaneProduct"/> per package, read directly with no by-name grouping —
     /// unlike <see cref="DatedAdmissionSource"/>, no live `FastLaneOnly` response has ever shown two
     /// packages sharing one name on one date, so there is nothing to group (docs/retrieval/dated-fast-lane-source.md).
@@ -282,64 +230,18 @@ public sealed class DatedFastLaneSource(IRetrievalHttpClient httpClient, IClock 
         $"Fast Lane is not available for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)}.";
 
     private SourceResult<DatedFastLanePayload> NotPublished(DateTimeOffset timeChecked, DateOnly requestedDate) =>
-        SourceResult<DatedFastLanePayload>.WithoutPayload(
-            SourceId,
-            new SourceEvidence(
-                "Carowinds Dated Fast Lane",
-                OfficialPageUrl,
-                timeChecked,
-                RetrievalStatus.NotPublished,
-                $"Fast Lane for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)} has not been published yet.",
-                RetrievalStrategy.DirectApi,
-                requestedDate: requestedDate));
+        Results.NotPublished(
+            timeChecked,
+            requestedDate,
+            $"Fast Lane for {requestedDate.ToString("MMMM d, yyyy", PresentationCulture.UnitedStates)} has not been published yet.");
 
     private SourceResult<DatedFastLanePayload> Unavailable(DateTimeOffset timeChecked, DateOnly requestedDate, string detail) =>
-        SourceResult<DatedFastLanePayload>.WithoutPayload(
-            SourceId,
-            new SourceEvidence(
-                "Carowinds Dated Fast Lane",
-                OfficialPageUrl,
-                timeChecked,
-                RetrievalStatus.Unavailable,
-                detail,
-                RetrievalStrategy.DirectApi,
-                requestedDate: requestedDate));
+        Results.Unavailable(timeChecked, requestedDate, detail);
 
     private SourceResult<DatedFastLanePayload> Error(
         DateTimeOffset timeChecked,
         DateOnly requestedDate,
         Exception exception,
         string userFacingDetail = "We couldn't check Fast Lane availability right now.") =>
-        SourceResult<DatedFastLanePayload>.WithoutPayload(
-            SourceId,
-            RetrievalDiagnostics.Error(
-                "Carowinds Dated Fast Lane",
-                OfficialPageUrl,
-                timeChecked,
-                RetrievalStrategy.DirectApi,
-                userFacingDetail,
-                exception,
-                requestedDate));
-
-    private static string Truncate(string value) => value.Length <= 500 ? value : value[..500] + "…";
-
-    /// <summary>Result of one raw <c>getkeywordcalendar</c> call: either a parsed <see cref="AccessoKeywordCalendarService"/> to interpret, or an already-built <see cref="RetrievalStatus.Error"/> result to return as-is.</summary>
-    private readonly struct CalendarCallResult
-    {
-        private CalendarCallResult(AccessoKeywordCalendarService? service, SourceResult<DatedFastLanePayload>? error)
-        {
-            Service = service;
-            Error = error;
-        }
-
-        public AccessoKeywordCalendarService? Service { get; }
-
-        public SourceResult<DatedFastLanePayload>? Error { get; }
-
-        public bool IsError => Error is not null;
-
-        public static CalendarCallResult Succeeded(AccessoKeywordCalendarService service) => new(service, null);
-
-        public static CalendarCallResult Failed(SourceResult<DatedFastLanePayload> error) => new(null, error);
-    }
+        Results.Error(timeChecked, requestedDate, exception, userFacingDetail);
 }

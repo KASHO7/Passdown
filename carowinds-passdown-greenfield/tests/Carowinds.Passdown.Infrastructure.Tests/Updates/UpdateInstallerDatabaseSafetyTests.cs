@@ -314,7 +314,10 @@ public sealed class UpdateInstallerDatabaseSafetyTests : IDisposable
     public async Task DatabaseStateUnreadableAfterAFailedStart_IsTreatedAsUpgraded_AndNothingIsReversed()
     {
         CreateRc8Profile();
-        var (installer, request) = Prepare();
+
+        // Phase 34C: the lock below is real and held for the whole run, so the schema read always ends in
+        // SQLITE_BUSY; a 1 s busy timeout reaches that same outcome without waiting out the 5 s production one.
+        var (installer, request) = Prepare(new SqliteDatabaseBackup(busyTimeoutSeconds: 1));
         SqliteConnection? holder = null;
         _environment.OnStart = _ =>
         {

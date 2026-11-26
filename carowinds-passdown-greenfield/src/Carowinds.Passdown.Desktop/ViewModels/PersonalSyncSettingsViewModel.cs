@@ -39,6 +39,12 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
     /// <summary>Phase 23C: Settings → Appearance (System / Light / Dark, local to this computer).</summary>
     public AppearanceSettingsViewModel Appearance { get; }
 
+    /// <summary>Phase 31D: Settings → Passdown Preferences (default Include in Passdown sections, local to this computer).</summary>
+    public PassdownPreferencesSettingsViewModel PassdownPreferences { get; }
+
+    /// <summary>Phase 32: Settings → Calendar ("Show Pass Perks on Calendar"); the same instance the Calendar listens to.</summary>
+    public CalendarDisplaySettingsViewModel CalendarDisplay { get; }
+
     /// <summary>Phase 23D: Settings → Application Updates, and About this build → What's New.</summary>
     public ApplicationUpdatesViewModel Updates { get; }
 
@@ -101,6 +107,7 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
     [NotifyCanExecuteChangedFor(nameof(KeepLocalCommand))]
     [NotifyCanExecuteChangedFor(nameof(UseRemoteCommand))]
     [NotifyCanExecuteChangedFor(nameof(AcceptDeletionCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveEditedErtRidesCommand))]
     public partial ConflictDetailPresentation? SelectedConflictDetail { get; set; }
 
     [ObservableProperty]
@@ -129,7 +136,9 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         BuildIdentity? buildIdentity = null,
         DiagnosticsExportViewModel? diagnostics = null,
         AppearanceSettingsViewModel? appearance = null,
-        ApplicationUpdatesViewModel? updates = null)
+        ApplicationUpdatesViewModel? updates = null,
+        PassdownPreferencesSettingsViewModel? passdownPreferences = null,
+        CalendarDisplaySettingsViewModel? calendarDisplay = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(folderPicker);
@@ -144,6 +153,8 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         Build = buildIdentity ?? BuildIdentity.Current();
         Diagnostics = diagnostics ?? new DiagnosticsExportViewModel();
         Appearance = appearance ?? new AppearanceSettingsViewModel();
+        PassdownPreferences = passdownPreferences ?? new PassdownPreferencesSettingsViewModel();
+        CalendarDisplay = calendarDisplay ?? new CalendarDisplaySettingsViewModel();
         Updates = updates ?? new ApplicationUpdatesViewModel(installedVersion: Build.Version);
 
         AutomationStatus = coordinator.CurrentStatus;
@@ -307,6 +318,14 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
                     SelectedConflictDetail = detail is null ? null : ConflictDetailPresentation.ForDraft(summary, detail);
                 }
             }
+            else if (summary.EntityType is SyncEntityType.MonthlyErt or SyncEntityType.ErtDateOverride)
+            {
+                // Phase 31B: ERT conflicts open with a side-by-side comparison and an editable ride list.
+                var detail = await _conflictService.GetErtConflictDetailAsync(summary.EntityType, summary.EntityId).ConfigureAwait(true);
+                SelectedConflictDetail = detail is null ? null : ConflictDetailPresentation.ForErt(summary, detail);
+                EditedErtRidesText = detail is null ? null : string.Join(Environment.NewLine, detail.SuggestedMergedRides);
+                ErtBaseIsThisDevice = detail?.Local is not null;
+            }
             else if (SyncEntityIdentity.TryParseNoteId(summary.EntityId, out var noteId))
             {
                 var detail = await _conflictService.GetNoteConflictDetailAsync(noteId).ConfigureAwait(true);
@@ -326,6 +345,45 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         SelectedConflictDetail = null;
         ConflictActionMessage = null;
     }
+
+    /// <summary>Phase 31B: the editable final ERT ride list for the open conflict, one ride per line.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SaveEditedErtRidesCommand))]
+    public partial string? EditedErtRidesText { get; set; }
+
+    /// <summary>Phase 31B: keep this device's start time/state/note with the edited rides (else the other device's).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ErtBaseIsOtherDevice))]
+    public partial bool ErtBaseIsThisDevice { get; set; } = true;
+
+    public bool ErtBaseIsOtherDevice
+    {
+        get => !ErtBaseIsThisDevice;
+        set => ErtBaseIsThisDevice = !value;
+    }
+
+    /// <summary>Phase 31B: resets the editable list to this device's rides followed by the other device's additional rides.</summary>
+    [RelayCommand]
+    private void UseMergedErtRides()
+    {
+        if (SelectedConflictDetail?.Ert is { } ert)
+        {
+            EditedErtRidesText = string.Join(Environment.NewLine, ert.SuggestedMergedRides);
+        }
+    }
+
+    /// <summary>Phase 31B: "Save Edited Rides" — the edited list becomes the resolved Early Ride Time and syncs normally.</summary>
+    [RelayCommand(CanExecute = nameof(CanSaveEditedErtRides))]
+    private Task SaveEditedErtRidesAsync()
+    {
+        var rides = (EditedErtRidesText ?? string.Empty)
+            .Split(['\r', '\n', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+        var resolution = new ErtConflictEditedResolution(ErtBaseIsThisDevice ? ErtResolutionBase.ThisDevice : ErtResolutionBase.OtherDevice, rides);
+        return ResolveSelectedConflictAsync((type, id, token) => _conflictService.ResolveWithEditedErtRidesAsync(type, id, resolution, token));
+    }
+
+    private bool CanSaveEditedErtRides() => SelectedConflictDetail is { IsErtConflict: true, CanEditErtRides: true };
 
     /// <summary>"Keep This Device" (spec §7/§15).</summary>
     [RelayCommand(CanExecute = nameof(HasSelectedConflict))]

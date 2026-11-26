@@ -393,7 +393,7 @@ public class Phase22CDashboardOverviewTests
     public void DisclosureStyle_IsSharedTokensOnly_AndDoesNotUseAnAccentFill()
     {
         var start = StylesMarkup.IndexOf("<Style Selector=\"Expander.disclosure\">", StringComparison.Ordinal);
-        var end = StylesMarkup.IndexOf("App shell: Fury banner", start, StringComparison.Ordinal);
+        var end = StylesMarkup.IndexOf("App shell: sidebar navigation", start, StringComparison.Ordinal); // Phase 35A section name
         Assert.True(start > 0 && end > start);
         var section = StylesMarkup[start..end];
 

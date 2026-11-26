@@ -34,6 +34,9 @@ internal static class BusyDayFixtures
         new("s2", "Synthetic Starlight Spectacular", "Planet Snoopy", [new TimeOnly(18, 0)]),
         new("s3", "Synthetic Carolina Nights", "Harmony Hall", [new TimeOnly(19, 30), new TimeOnly(21, 0)]),
         new("s4", "Synthetic Drumline", null, [new TimeOnly(15, 15)]),
+        // Phase 35D: a long schedule (16 times, "+12 more") and a long name, for the Shows redesign.
+        new("s5", "Synthetic Character Meet and Greet With A Deliberately Long Name That Wraps", "Gathering Spot",
+            [.. new[] { "11:15", "11:30", "11:45", "12:15", "12:30", "12:45", "14:00", "14:15", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "17:45" }.Select(TimeOnly.Parse)]),
     ];
 
     private static ShowScheduleView Shows(DateOnly date) => new(date, ShowScheduleState.Scheduled, ShowList, false, Verified, Verified);
@@ -262,7 +265,11 @@ internal static partial class Fixtures
             N("Synthetic: Stroller rental relocated for SCarowinds", Cat(0), OperationalNotePriority.Normal, -10, 20),
             N("Synthetic: Parking lot C closed for paving", Cat(1), OperationalNotePriority.Normal, -3, 1),
             N("Synthetic: Radio channel 6 static near the waterpark", Cat(2), OperationalNotePriority.Normal, -4, null),
-            N("Synthetic: Locker kiosk firmware update", Cat(3), OperationalNotePriority.Normal, 2, 4));
+            N("Synthetic: Locker kiosk firmware update", Cat(3), OperationalNotePriority.Normal, 2, 4),
+            // Phase 35F: a resolved note and one with several paragraphs, for the Resolved filter and the detail text.
+            N("Synthetic: Prior equipment check", Cat(3), OperationalNotePriority.Normal, -12, null, "Synthetic: checked every handheld scanner; two were sent for repair.", resolved: true),
+            N("Synthetic: December admission briefing", Cat(1), OperationalNotePriority.Normal, 5, null,
+                "Synthetic: prepare a short summary for associates ahead of the December operating dates.\nCover WinterFest hours, the Avenue entrance and the new season pass desk."));
     }
 
     private static FinalizedPassdownSnapshot Snapshot(DateOnly date) => new(

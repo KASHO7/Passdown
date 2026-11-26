@@ -109,9 +109,26 @@ going back means restoring a backup — see backups\README.txt. Make your own
 dated copy of the data folder before upgrading, and upgrade every computer that
 shares a Personal Sync folder.
 
-Version 0.1.0-rc.10 uses the same database format as rc.9: upgrading from rc.9
-changes nothing in the database. Upgrading straight from rc.8 or older performs
-the rc.9 upgrade described above.
+Version 0.1.0-rc.10 uses the same database format as rc.9.
+
+Database upgrade (rc.11)
+-------------------------
+Version 0.1.0-rc.11 changes the database format again the first time it starts:
+it adds one table for official reference pages (event schedule and deals) and
+changes nothing you saved. As with rc.9, it first writes a checked copy of the
+database to the "backups" folder, and an in-app update also makes a backup
+before it replaces any program file. rc.10 and older cannot open the upgraded
+database, so going back means restoring a backup — see backups\README.txt.
+Upgrade every computer that shares a Personal Sync folder. Upgrading straight
+from rc.8 or older performs both upgrades, each with its own backup.
+
+Version 0.1.0-rc.12 uses the same database format as rc.11: upgrading from rc.11
+changes nothing in the database. Upgrading from rc.10 or older performs the
+rc.11 upgrade described above.
+
+Version 0.1.0-rc.13 also uses the rc.11 database format: upgrading from rc.11 or
+rc.12 changes nothing in the database. Upgrading from rc.10 or older performs the
+rc.11 upgrade described above.
 
 Passdown History
 -----------------

@@ -1,6 +1,8 @@
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain;
+using Carowinds.Passdown.Domain.Catalog;
+using Carowinds.Passdown.Domain.Promotions;
 using Carowinds.Passdown.Domain.Retrieval;
 using Carowinds.Passdown.Infrastructure.Retrieval.Http;
 
@@ -61,17 +63,44 @@ public sealed class MilitaryFirstResponderCatalogSource(IRetrievalHttpClient htt
                 new InvalidOperationException($"GET {PageUrl} returned {(int)response.StatusCode} {response.StatusCode}. Body: {Truncate(response.Body)}"));
         }
 
-        IReadOnlyList<ParsedProductCard> cards;
+        MilitaryPageParseResult page;
         try
         {
-            cards = MilitaryFirstResponderHtmlParser.Parse(response.Body);
+            page = MilitaryFirstResponderHtmlParser.ParsePage(response.Body);
         }
         catch (FormatException ex)
         {
             return Error(timeChecked, ex);
         }
 
-        var products = CatalogCardMapper.ToObservedProducts(cards, Category, SourceName);
+        // Phase 31B: a page that shows official Buy Now offers but yields no readable card is a layout
+        // change, never proof the offers ended — the November 2026 redesign was misread this way and
+        // the 2027 Military Gold Pass was retired after two "successful" empty checks. Likewise a card
+        // that cannot be read or identified could be any product, so nothing is reconciled.
+        if (page.Cards.Count == 0 && (page.HasPurchaseMarkup || page.UnreadableCardKeywords.Count > 0 || page.UnidentifiedUnreadableCardCount > 0))
+        {
+            return Error(timeChecked, new FormatException(
+                "Military & First Responder offers are shown on the page but none could be read — the page format may have changed."));
+        }
+
+        if (page.UnidentifiedUnreadableCardCount > 0)
+        {
+            return Error(timeChecked, new FormatException(
+                $"{page.UnidentifiedUnreadableCardCount} Military & First Responder offer(s) on the page could not be read or identified — the page format may have changed."));
+        }
+
+        var products = CatalogCardMapper.ToObservedProducts(page.Cards, Category, SourceName);
+        var unconfirmed = page.UnreadableCardKeywords
+            .Select(keyword => CatalogProductKey.FromOfficialId(Category, keyword))
+            .ToList();
+
+        var detail = products.Count == 1
+            ? "1 Military/First Responder offer confirmed."
+            : $"{products.Count} Military/First Responder offers confirmed.";
+        if (unconfirmed.Count > 0)
+        {
+            detail = $"Partially verified: {detail} {unconfirmed.Count} offer(s) could not be read and keep their last verified details.";
+        }
 
         return SourceResult<CatalogPayload>.Success(
             SourceId,
@@ -80,12 +109,14 @@ public sealed class MilitaryFirstResponderCatalogSource(IRetrievalHttpClient htt
                 PageUrl,
                 timeChecked,
                 RetrievalStatus.Verified,
-                products.Count == 1
-                    ? "1 Military/First Responder ticket confirmed."
-                    : $"{products.Count} Military/First Responder tickets confirmed.",
+                detail,
                 RetrievalStrategy.Html,
                 requestedDate: null),
-            new CatalogPayload(products));
+            new CatalogPayload(products)
+            {
+                UnconfirmedProductKeys = unconfirmed,
+                ProductDetails = OfficialProductDetailsReader.TryRead(response.Body, PageUrl, timeChecked, OfficialProductChannel.MilitaryFirstResponder),
+            });
     }
 
     private SourceResult<CatalogPayload> Error(DateTimeOffset timeChecked, Exception exception) =>

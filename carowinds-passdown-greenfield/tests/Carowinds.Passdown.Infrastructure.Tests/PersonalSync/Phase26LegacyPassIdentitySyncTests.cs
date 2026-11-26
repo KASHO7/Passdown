@@ -1,5 +1,6 @@
 using System.Net;
 using Carowinds.Passdown.Application.Catalog;
+using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Domain;
@@ -210,5 +211,69 @@ public sealed class Phase26LegacyPassIdentitySyncTests : IDisposable
         {
             Assert.DoesNotContain(await b.History.GetHistoryAsync(product.ProductKey), e => e.Interval.Amount == 89m && e.Interval.FirstObservedAt == LegacyCheck);
         }
+    }
+
+    // ----- Phase 34B-2: the Price History overlay's cached reader -----
+
+    private static string Json(object value) => System.Text.Json.JsonSerializer.Serialize(value);
+
+    [Fact]
+    public async Task Phase34B2_CachedReader_GivesExactlyTheUncachedResults_IncludingTheLegacyFold_OnBothComputers()
+    {
+        var (a, b) = await TwoComputersSyncedAsync();
+
+        foreach (var computer in new[] { a, b })
+        {
+            var reader = await computer.History.OpenReaderAsync();
+            var expectedProducts = await computer.History.ListTrackedProductsAsync();
+            Assert.Equal(Json(expectedProducts), Json(await reader.ListTrackedProductsAsync()));
+
+            foreach (var product in expectedProducts)
+            {
+                Assert.Equal(
+                    Json(await computer.History.GetHistoryAsync(product.ProductKey)),
+                    Json(await reader.GetHistoryAsync(product.ProductKey)));
+            }
+
+            // The folded Gold 2027 history (both identities, both computers' evidence) is identical through the reader.
+            var gold = VisibleGold(await reader.ListTrackedProductsAsync());
+            Assert.True((await reader.GetHistoryAsync(gold.ProductKey)).Count >= 2);
+        }
+    }
+
+    [Fact]
+    public async Task Phase34B2_CachedReader_IsASnapshot_AndANewReaderSeesTheNextMerge()
+    {
+        var (_, b) = await TwoComputersSyncedAsync();
+        var reader = await b.History.OpenReaderAsync();
+        var gold = VisibleGold(await reader.ListTrackedProductsAsync());
+        var before = Json(await reader.GetHistoryAsync(gold.ProductKey));
+
+        // Another computer's later, different price arrives through Personal Sync.
+        var later = new SeasonPriceHistoryInterval(gold.ProductKey, 7, 149m, PriceKind.StandardCatalog, "$149", null,
+            "Gold Season Pass — 2027", "Carowinds Memberships & Season Passes", Now.AddDays(1), Now.AddDays(2), SeasonPriceHistoryOrigin.Observed);
+        var observation = OfficialPriceObservation.FromLocalInterval(later, Guid.NewGuid());
+        Assert.NotNull(observation);
+        Assert.True((await b.Synced.MergeAsync([observation!], Now.AddDays(2))).ChangedHistory);
+
+        Assert.Equal(before, Json(await reader.GetHistoryAsync(gold.ProductKey))); // the open snapshot is stable…
+        var fresh = await b.History.OpenReaderAsync();
+        var refreshed = await fresh.GetHistoryAsync(gold.ProductKey);
+        Assert.Equal(Json(await b.History.GetHistoryAsync(gold.ProductKey)), Json(refreshed)); // …and a new one is current
+        Assert.Contains(refreshed, entry => entry.Interval.Amount == 149m);
+    }
+
+    [Fact]
+    public async Task Phase34B2_CachedReader_StillReadsThisComputersOwnIntervalsFresh()
+    {
+        var (_, b) = await TwoComputersSyncedAsync();
+        var reader = await b.History.OpenReaderAsync();
+        var key = (await b.Local.GetTrackedProductKeysAsync()).First();
+        var countBefore = (await reader.GetHistoryAsync(key)).Count;
+        var latest = await b.Local.GetLatestAsync(key);
+
+        await b.Local.InsertAsync(latest! with { Sequence = latest.Sequence + 1, Amount = latest.Amount + 10m, FirstObservedAt = Now.AddDays(3), LastConfirmedAt = Now.AddDays(3) });
+
+        Assert.Equal(countBefore + 1, (await reader.GetHistoryAsync(key)).Count);
     }
 }

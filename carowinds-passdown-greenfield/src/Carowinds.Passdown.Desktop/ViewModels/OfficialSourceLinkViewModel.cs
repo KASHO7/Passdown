@@ -54,6 +54,17 @@ public sealed partial class OfficialSourceLinkViewModel : ObservableObject
         return new OfficialSourceLinkViewModel(safe, label, launcher);
     }
 
+    /// <summary>Phase 31: a link with an explicit label (e.g. one per official page a deal was verified on).</summary>
+    public static OfficialSourceLinkViewModel? TryCreate(Uri? sourceUrl, IExternalLinkLauncher? launcher, string label)
+    {
+        if (launcher is null || string.IsNullOrWhiteSpace(label) || !OfficialSourceLinkPolicy.TryValidate(sourceUrl, out var safe))
+        {
+            return null;
+        }
+
+        return new OfficialSourceLinkViewModel(safe, label, launcher);
+    }
+
     [RelayCommand]
     private async Task OpenAsync()
     {

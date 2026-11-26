@@ -1,3 +1,5 @@
+using Carowinds.Passdown.Application.ProductDetails;
+using Carowinds.Passdown.Domain.Promotions;
 using Carowinds.Passdown.Application.Retrieval;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain;
@@ -94,7 +96,7 @@ public sealed class SeasonPassCatalogSource(IRetrievalHttpClient httpClient, ICl
             return SourceResult<CatalogPayload>.Success(
                 SourceId,
                 Evidence(timeChecked, "No Season Passes or Memberships are currently listed.", technicalDetail: null),
-                new CatalogPayload([]));
+                new CatalogPayload([]) { ProductDetails = new OfficialProductDetailsObservation(OfficialProductChannel.SeasonPasses, []) });
         }
 
         var interpretation = PassOfferInterpreter.Interpret(page.Tiers);
@@ -110,7 +112,11 @@ public sealed class SeasonPassCatalogSource(IRetrievalHttpClient httpClient, ICl
         return SourceResult<CatalogPayload>.Success(
             SourceId,
             Evidence(timeChecked, detail, technicalDetail),
-            new CatalogPayload(interpretation.Products) { UnconfirmedProductKeys = interpretation.UnconfirmedProductKeys });
+            new CatalogPayload(interpretation.Products)
+            {
+                UnconfirmedProductKeys = interpretation.UnconfirmedProductKeys,
+                ProductDetails = OfficialProductDetailsReader.TryRead(response.Body, PageUrl, timeChecked, OfficialProductChannel.SeasonPasses),
+            });
     }
 
     /// <summary>

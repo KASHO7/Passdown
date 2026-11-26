@@ -30,6 +30,15 @@
     written or deleted, whatever <Version> currently is. A LOCAL-ONLY-TEST-BUILD.txt marker is
     added at the package root. Letters, digits, '.', '_' and '-' only.
 
+.PARAMETER LocalTestVersion
+    Phase 32: only with -LocalTestLabel. Stamps the test build's displayed application version
+    (InformationalVersion, shown in Settings -> About this build) with a distinct semantic version
+    such as 0.1.0-rc.12-LOCALTEST.phase32, so a test candidate never shows a published release's
+    identity. It must contain "LOCALTEST" and differ from <Version>. Choose one that sorts above
+    every published release (e.g. "rc.12-LOCALTEST" sorts above both rc.11 and rc.12), so the in-app
+    updater never offers to install a release over the test build. Directory.Build.props, the file
+    version and the release path are not changed.
+
 .NOTES
     Frozen-release guard: without -LocalTestLabel the script refuses to run when
     artifacts/releases/Carowinds-Operations-<Version>-win-x64.zip already exists, before
@@ -44,11 +53,15 @@
 
 .EXAMPLE
     .\Build-PortableRelease.ps1 -LocalTestLabel phase29-30-morning-message
+
+.EXAMPLE
+    .\Build-PortableRelease.ps1 -LocalTestLabel RC12-Phase32-LOCALTEST -LocalTestVersion 0.1.0-rc.12-LOCALTEST.phase32
 #>
 [CmdletBinding()]
 param(
     [switch]$SkipPublish,
-    [string]$LocalTestLabel
+    [string]$LocalTestLabel,
+    [string]$LocalTestVersion
 )
 
 $ErrorActionPreference = 'Stop'
@@ -82,6 +95,22 @@ if ([string]::IsNullOrWhiteSpace($version)) {
 $version = $version.Trim()
 
 $isLocalTest = -not [string]::IsNullOrWhiteSpace($LocalTestLabel)
+$hasLocalTestVersion = -not [string]::IsNullOrWhiteSpace($LocalTestVersion)
+if ($hasLocalTestVersion) {
+    # Phase 32: a distinct displayed version is only ever for a disposable local test build.
+    if (-not $isLocalTest) {
+        Write-Error "-LocalTestVersion can only be used together with -LocalTestLabel."
+        exit 1
+    }
+    if ($LocalTestVersion -cnotmatch '^\d+\.\d+\.\d+-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*$' -or $LocalTestVersion -notmatch 'LOCALTEST') {
+        Write-Error "-LocalTestVersion must be a semantic version containing 'LOCALTEST', e.g. 0.1.0-rc.12-LOCALTEST.phase32 (got '$LocalTestVersion')."
+        exit 1
+    }
+    if ($LocalTestVersion -eq $version) {
+        Write-Error "-LocalTestVersion must differ from the source version '$version'."
+        exit 1
+    }
+}
 if ($isLocalTest) {
     if ($LocalTestLabel -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$') {
         Write-Error "-LocalTestLabel may contain only letters, digits, '.', '_' and '-' (got '$LocalTestLabel')."
@@ -119,7 +148,10 @@ else {
 if (-not $SkipPublish) {
     Write-Host ""
     Write-Host "Running Publish-Windows.ps1..."
-    if ($isLocalTest) {
+    if ($isLocalTest -and $hasLocalTestVersion) {
+        & $publishScript -OutputDirectory $publishDirectory -InformationalVersion $LocalTestVersion
+    }
+    elseif ($isLocalTest) {
         & $publishScript -OutputDirectory $publishDirectory
     }
     else {
@@ -226,12 +258,17 @@ Copy-Item -LiteralPath $licensesSource -Destination $stagingReleaseDirectory -Re
 
 if ($isLocalTest) {
     $commit = (& git -C $repoRoot rev-parse HEAD 2>$null)
+    $dirty = (& git -C $repoRoot status --porcelain --untracked-files=no -- src packaging Directory.Build.props 2>$null)
+    $source = if ($dirty) { "uncommitted source changes on top of $commit" } else { $commit }
+    $frozenSameVersion = Test-Path -LiteralPath (Join-Path $repoRoot 'artifacts' 'releases' "Carowinds-Operations-$version-win-x64.zip")
+    $versionNote = if ($frozenSameVersion) { 'same version string as a frozen release; this is NOT that release' } else { 'development version; not a published release' }
     $markerLines = @(
         'LOCAL-ONLY TEST BUILD - NOT A RELEASE',
         '',
         "Label:   $LocalTestLabel",
-        "Version: $version (same version string as the frozen release; this is NOT that release)",
-        "Commit:  $commit",
+        "Version: $version ($versionNote)",
+        $(if ($hasLocalTestVersion) { "Shown in the app as: $LocalTestVersion (local test identity; Settings > About this build)" } else { "Shown in the app as: $version" }),
+        "Source:  $source",
         '',
         'Use only in a disposable Windows test account. Do not install updates from this build.',
         'Delete the extracted folder when testing is finished.'

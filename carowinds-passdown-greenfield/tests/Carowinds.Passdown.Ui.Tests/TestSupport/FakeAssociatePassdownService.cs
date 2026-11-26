@@ -269,7 +269,7 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
             return factory(date);
         }
 
-        var draft = _savedDrafts.GetValueOrDefault(date, AssociateDraftPayload.CreateDefault());
+        var draft = _savedDrafts.GetValueOrDefault(date, NewDraftDefaults is { } defaults ? AssociateDraftPayload.CreateDefault(defaults) : AssociateDraftPayload.CreateDefault());
         var saveStatus = _savedAt.TryGetValue(date, out var savedAt)
             ? new AssociateSaveStatus(AssociateSaveState.Saved, savedAt)
             : AssociateSaveStatus.NeverSaved;
@@ -288,6 +288,9 @@ internal sealed class FakeAssociatePassdownService : IAssociatePassdownService
             ShowSchedule = ShowSchedules.TryGetValue(date, out var shows) ? shows : ShowScheduleView.NotCheckedFor(date),
         };
     }
+
+    /// <summary>Phase 31D: the Settings → Passdown Preferences a date with no saved draft starts from (null: built-in).</summary>
+    public Carowinds.Passdown.Application.Preferences.PassdownDefaultSelections? NewDraftDefaults { get; set; }
 
     /// <summary>Phase 21C: scripted official show schedule per date (default: not checked).</summary>
     public Dictionary<DateOnly, ShowScheduleView> ShowSchedules { get; } = [];

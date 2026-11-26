@@ -64,6 +64,33 @@ public sealed record ConflictDetailPresentation(
         BuildNewerActivityNote(detail.HasNewerRemoteActivity),
         detail.BuildFieldComparisons());
 
+    /// <summary>Phase 31B: an Early Ride Time conflict — the rides compare order-independently and can be edited.</summary>
+    public static ConflictDetailPresentation ForErt(SyncConflictSummary summary, ErtConflictDetail detail) => new(
+        detail.EntityType,
+        summary.EntityId,
+        summary.DisplayLabel,
+        detail.IsRemoteDeletion,
+        detail.IsLocalDeletion,
+        BuildRemoteActivityLabel(detail.RemoteModifiedUtc),
+        BuildNewerActivityNote(detail.HasNewerRemoteActivity),
+        detail.BuildFieldComparisons())
+    {
+        Ert = detail,
+    };
+
+    /// <summary>Phase 31B: set for an Early Ride Time conflict, which offers "Merge or edit rides".</summary>
+    public ErtConflictDetail? Ert { get; init; }
+
+    public bool IsErtConflict => Ert is not null;
+
+    /// <summary>Phase 31B: edited rides can be based on either side only when both sides still exist.</summary>
+    public bool CanEditErtRides => Ert is { Local: not null } or { Remote: not null };
+
+    /// <summary>Phase 31B: start time / state / note differ, so the user picks whose to keep with the edited rides.</summary>
+    public bool ShowsErtBaseChoice => Ert is { OtherFieldsDiffer: true };
+
+    public const string ErtEditHelpText = "Edit the final ride list (one ride per line). It starts as this device's rides followed by any rides only the other device has. Saving makes this the Early Ride Time on every device.";
+
     private static string BuildRemoteActivityLabel(DateTimeOffset remoteModifiedUtc) =>
         $"Changed on another device on {EasternTimestampFormat.DateAndTime(remoteModifiedUtc)}.";
 

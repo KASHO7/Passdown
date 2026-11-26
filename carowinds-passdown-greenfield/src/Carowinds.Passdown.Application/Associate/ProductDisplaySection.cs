@@ -71,6 +71,8 @@ public static class ProductDisplaySectionResolver
         SourceCategory.DatedBringAFriend => null,
         SourceCategory.DatedMilitaryFirstResponder => null,
         SourceCategory.ShowSchedule => null, // Phase 21C: operational information, never a product row.
+        SourceCategory.OperatingEvents => null, // Phase 31: official event schedule, never a product row.
+        SourceCategory.PassPerks => null, // Phase 32: official Pass Perks, reference information, never a product row.
         _ => ProductDisplaySection.Promotions,
     };
 

@@ -248,17 +248,20 @@ public sealed class Phase22ENotesHistoryTests
     }
 
     [Fact]
-    public void NotesRow_ShowsEveryFact_AsDividedRowsWithoutChips()
+    public void NotesRow_ShowsEveryFact_AsDividedRowsWithOneLifecyclePill()
     {
         var row = Template(Markup("OperationalNotesView.axaml"), "presentation:OperationalNoteRowPresentation");
 
-        foreach (var binding in new[] { "{Binding Title}", "{Binding CategoryLabel}", "{Binding PriorityLabel}", "{Binding ScheduleText}", "{Binding AccessibleSummary}" })
+        // Phase 35F: the approved prototype's row — title with the lifecycle as one small pill, a text preview, then
+        // "Category · Priority" with the schedule (the lifecycle word moved from the schedule line into the pill).
+        foreach (var binding in new[] { "{Binding Title}", "{Binding CategoryLabel}", "{Binding PriorityLabel}", "{Binding LifecycleLabel}", "{Binding ScheduleDetailText}", "{Binding ExcerptText}", "{Binding AccessibleSummary}" })
         {
             Assert.Contains(binding, row);
         }
 
         Assert.Contains("Classes=\"importanceRule\" Classes.important=\"{Binding IsImportant}\"", row);
-        Assert.Contains("Classes=\"priorityText\" Classes.important=\"{Binding IsImportant}\"", row);
+        Assert.Contains("Classes=\"rowMeta priorityText\" Classes.important=\"{Binding IsImportant}\"", row);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(row, "Classes=\"statePill\""));
         Assert.DoesNotContain("Classes=\"chip\"", row, StringComparison.Ordinal);
     }
 

@@ -1,0 +1,212 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
+             x:Class="Carowinds.Passdown.Desktop.Views.PassdownPdfPreviewView"
+             x:DataType="vm:PassdownPdfPreviewViewModel"
+             AutomationProperties.Name="PDF preview">
+
+  <!-- Phase 33: the Associate Passdown's live PDF preview pane (docs/phase33-live-pdf-preview-printing.md).
+       Shows the actual generated PDF, rasterized by PDFium — nothing here re-creates the PDF in XAML.
+       Compact toolbar that wraps (never overflows) at the pane's minimum width; every control has an
+       accessible name and is keyboard reachable (Tab), with shortcuts on the pane:
+       Ctrl+Plus / Ctrl+Minus zoom, Ctrl+0 fit width, Ctrl+9 fit page, Page Up / Page Down pages. -->
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="Ctrl+OemPlus" Command="{Binding ZoomInCommand}" />
+    <KeyBinding Gesture="Ctrl+Add" Command="{Binding ZoomInCommand}" />
+    <KeyBinding Gesture="Ctrl+OemMinus" Command="{Binding ZoomOutCommand}" />
+    <KeyBinding Gesture="Ctrl+Subtract" Command="{Binding ZoomOutCommand}" />
+    <KeyBinding Gesture="Ctrl+D0" Command="{Binding FitWidthCommand}" />
+    <KeyBinding Gesture="Ctrl+D9" Command="{Binding FitPageCommand}" />
+    <KeyBinding Gesture="PageDown" Command="{Binding NextPageCommand}" />
+    <KeyBinding Gesture="PageUp" Command="{Binding PreviousPageCommand}" />
+  </UserControl.KeyBindings>
+
+  <UserControl.Styles>
+    <Style Selector="Button.previewTool">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+      <Setter Property="Padding" Value="7,3" />
+      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="MinWidth" Value="28" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.previewTool:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+    </Style>
+    <Style Selector="Button.previewTool:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PassdownPressedBackgroundBrush}" />
+    </Style>
+    <Style Selector="Button.previewTool.selected">
+      <Setter Property="Background" Value="{DynamicResource PassdownSelectedBackgroundBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownSelectedForegroundBrush}" />
+    </Style>
+    <Style Selector="Button.previewTool.labeled">
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderStrongBrush}" />
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceBrush}" />
+    </Style>
+    <Style Selector="Button.previewTool:disabled /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextDisabledBrush}" />
+    </Style>
+    <Style Selector="Button.previewTool.glyph">
+      <Setter Property="FontSize" Value="17" />
+      <Setter Property="Padding" Value="6,0,6,2" />
+    </Style>
+    <Style Selector="Rectangle.previewDivider">
+      <Setter Property="Width" Value="1" />
+      <Setter Property="Height" Value="18" />
+      <Setter Property="Margin" Value="3,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Fill" Value="{DynamicResource PassdownBorderBrush}" />
+    </Style>
+    <Style Selector="TextBlock.previewToolText">
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border x:Name="PreviewFrame"
+          Background="{DynamicResource PassdownSurfaceBrush}"
+          BorderBrush="{DynamicResource PassdownBorderBrush}"
+          BorderThickness="1,0,0,0">
+    <Grid RowDefinitions="Auto,*">
+
+      <!-- Toolbar -->
+      <Border Grid.Row="0" Padding="10,6,6,6"
+              BorderBrush="{DynamicResource PassdownDividerBrush}" BorderThickness="0,0,0,1">
+        <StackPanel Spacing="4">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" ClipToBounds="True">
+              <TextBlock Text="PDF Preview" FontWeight="SemiBold" VerticalAlignment="Center" />
+              <TextBlock x:Name="PreviewCaptionText" Text="{Binding DocumentCaption}" Classes="previewToolText"
+                         TextTrimming="CharacterEllipsis"
+                         IsVisible="{Binding DocumentCaption, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
+            <Button Grid.Column="1" x:Name="HidePreviewButton" Classes="previewTool"
+                    Command="{Binding HidePreviewCommand}"
+                    Content="Hide Preview"
+                    AutomationProperties.Name="Hide Preview"
+                    AutomationProperties.HelpText="Hides the PDF preview so the editor uses the full width."
+                    ToolTip.Tip="Hide the PDF preview" />
+          </Grid>
+
+          <WrapPanel x:Name="PreviewToolbar" Orientation="Horizontal" ItemSpacing="2" LineSpacing="4">
+            <Button x:Name="PreviewPrintButton" Classes="previewTool labeled" Content="Print"
+                    Command="{Binding PrintCommand}"
+                    AutomationProperties.Name="Print Passdown"
+                    AutomationProperties.HelpText="{Binding PrintHelpText}"
+                    ToolTip.Tip="{Binding PrintHelpText}" />
+            <Button x:Name="PreviewSaveButton" Classes="previewTool labeled" Content="Save PDF"
+                    Command="{Binding SavePdfCommand}"
+                    AutomationProperties.Name="Save PDF"
+                    AutomationProperties.HelpText="Saves exactly the PDF shown in the preview. You choose where."
+                    ToolTip.Tip="Save this PDF" />
+            <Rectangle Classes="previewDivider" />
+            <Button x:Name="PreviousPageButton" Classes="previewTool glyph" Content="‹"
+                    Command="{Binding PreviousPageCommand}"
+                    AutomationProperties.Name="Previous page" ToolTip.Tip="Previous page (Page Up)" />
+            <TextBlock x:Name="PageIndicatorText" Classes="previewToolText" MinWidth="38" TextAlignment="Center"
+                       Text="{Binding PageIndicatorText}"
+                       AutomationProperties.Name="{Binding PageIndicatorAccessibleText}"
+                       AutomationProperties.LiveSetting="Polite" />
+            <Button x:Name="NextPageButton" Classes="previewTool glyph" Content="›"
+                    Command="{Binding NextPageCommand}"
+                    AutomationProperties.Name="Next page" ToolTip.Tip="Next page (Page Down)" />
+            <Rectangle Classes="previewDivider" />
+            <Button x:Name="ZoomOutButton" Classes="previewTool glyph" Content="−"
+                    Command="{Binding ZoomOutCommand}"
+                    AutomationProperties.Name="Zoom out" ToolTip.Tip="Zoom out (Ctrl+Minus)" />
+            <TextBlock x:Name="ZoomText" Classes="previewToolText" MinWidth="38" TextAlignment="Center"
+                       Text="{Binding ZoomText}"
+                       AutomationProperties.Name="{Binding ZoomText, StringFormat='Zoom {0}'}" />
+            <Button x:Name="ZoomInButton" Classes="previewTool glyph" Content="+"
+                    Command="{Binding ZoomInCommand}"
+                    AutomationProperties.Name="Zoom in" ToolTip.Tip="Zoom in (Ctrl+Plus)" />
+            <Button x:Name="FitWidthButton" Classes="previewTool" Content="Fit width"
+                    Classes.selected="{Binding IsFitWidth}"
+                    Command="{Binding FitWidthCommand}"
+                    AutomationProperties.Name="Fit width" ToolTip.Tip="Fit the page width to the pane (Ctrl+0)" />
+            <Button x:Name="FitPageButton" Classes="previewTool" Content="Fit page"
+                    Classes.selected="{Binding IsFitPage}"
+                    Command="{Binding FitPageCommand}"
+                    AutomationProperties.Name="Fit page" ToolTip.Tip="Show the whole page (Ctrl+9)" />
+            <Button x:Name="RefreshPreviewButton" Classes="previewTool glyph" Content="↻"
+                    Command="{Binding RefreshCommand}"
+                    AutomationProperties.Name="Refresh preview"
+                    AutomationProperties.HelpText="Rebuilds the preview from what is on screen now. It also updates on its own as you edit."
+                    ToolTip.Tip="Refresh preview" />
+          </WrapPanel>
+        </StackPanel>
+      </Border>
+
+      <!-- Page area: a white sheet on a neutral desk in both themes. -->
+      <Panel Grid.Row="1" Background="{DynamicResource PassdownPdfCanvasBrush}">
+        <ScrollViewer x:Name="PageScrollViewer"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto"
+                      AutomationProperties.Name="PDF page">
+          <Border x:Name="PaperSheet"
+                  Margin="12"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Top"
+                  Background="{DynamicResource PassdownPdfPaperBrush}"
+                  BorderBrush="{DynamicResource PassdownPdfPaperEdgeBrush}"
+                  BorderThickness="1"
+                  IsVisible="{Binding HasPage}">
+            <Image x:Name="PageImage"
+                   Source="{Binding PageImage}"
+                   Width="{Binding PageDisplayWidth}"
+                   Height="{Binding PageDisplayHeight}"
+                   Stretch="Fill"
+                   RenderOptions.BitmapInterpolationMode="HighQuality"
+                   AutomationProperties.Name="{Binding PageIndicatorAccessibleText, StringFormat='Passdown PDF, {0}'}" />
+          </Border>
+        </ScrollViewer>
+
+        <!-- Updating: the current date's previous page stays visible beneath a small chip. Phase 34B-1: shown
+             only when a refresh is still running after ~150 ms, so quick refreshes never flash it or make a
+             screen reader re-announce it on every keystroke. -->
+        <Border x:Name="UpdatingChip" Classes="chip"
+                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,10,22,0"
+                Background="{DynamicResource PassdownSurfaceElevatedBrush}"
+                BorderBrush="{DynamicResource PassdownBorderBrush}" BorderThickness="1"
+                IsVisible="{Binding IsUpdatingIndicatorVisible}">
+          <TextBlock Text="Updating…" FontSize="12" AutomationProperties.LiveSetting="Polite" />
+        </Border>
+
+        <!-- No page: loading, no document for this date, or an error (the editor stays usable). -->
+        <Border x:Name="PreviewStatusOverlay"
+                HorizontalAlignment="Center" VerticalAlignment="Center" Margin="20" MaxWidth="320"
+                Padding="16,12" CornerRadius="{DynamicResource PassdownRadiusControl}"
+                Background="{DynamicResource PassdownSurfaceBrush}"
+                BorderBrush="{DynamicResource PassdownBorderBrush}" BorderThickness="1"
+                IsVisible="{Binding ShowsStatusOverlay}">
+          <StackPanel Spacing="8">
+            <ProgressBar IsIndeterminate="True" Height="3" MinWidth="120"
+                         IsVisible="{Binding !HasError}"
+                         AutomationProperties.Name="Preparing preview" />
+            <TextBlock x:Name="PreviewStatusText" Text="{Binding StatusText, FallbackValue='Preparing preview…'}"
+                       TextWrapping="Wrap" TextAlignment="Center"
+                       Classes.muted="{Binding !HasError}"
+                       Foreground="{DynamicResource PassdownTextPrimaryBrush}"
+                       AutomationProperties.LiveSetting="Polite" />
+            <Button x:Name="PreviewTryAgainButton" Content="Try Again" Classes="secondaryAction"
+                    HorizontalAlignment="Center"
+                    Command="{Binding RefreshCommand}"
+                    IsVisible="{Binding HasError}"
+                    AutomationProperties.Name="Try building the preview again" />
+          </StackPanel>
+        </Border>
+      </Panel>
+    </Grid>
+  </Border>
+</UserControl>
