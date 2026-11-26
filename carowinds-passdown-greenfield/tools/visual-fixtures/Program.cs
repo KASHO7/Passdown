@@ -188,6 +188,23 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
     // Phase 32A: the grid's last rows (Oct 24: two redemption perks; Oct 25: all three marker types) and the legend.
     ("Calendar-PassPerksGrid", () => new Fixture(), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Other); ScrollBy(f.Window, 420); }),
     ("Settings-CalendarDisplay", () => new Fixture(), f => { Go(f, AppSection.Settings); Pump(6); ScrollToName(f.Window, "Calendar"); }),
+    // Phase 35D: Shows & Entertainment and Passdown Notes redesign, the Actions dropdown and its chevron.
+    ("P35D-Shows", () => new Fixture(), f => ShowsTab(f)),
+    ("P35D-Shows-Expanded", () => new Fixture(), f => { ShowsTab(f); f.Vm.Associate.ShowRows.First(r => r.CanExpand).IsExpanded = true; Pump(8); }),
+    ("P35D-Shows-Collapsed", () => new Fixture(), f => { ShowsTab(f); Collapse(f); }),
+    ("P35D-Shows-PreviewHidden", () => new Fixture(preview: PdfPreviewLayoutPreferences.BuiltIn with { IsPreviewVisible = false }), f => { ShowsTab(f); f.Vm.Associate.ShowRows.First(r => r.CanExpand).IsExpanded = true; Pump(8); }),
+    ("P35D-Notes", () => new Fixture(), f => NotesTab(f)),
+    ("P35D-Notes-Included", () => new Fixture(includedNote: true), f => { NotesTab(f); ScrollToName(f.Window, "Persistent operational notes"); }),
+    ("P35D-Notes-Collapsed", () => new Fixture(), f => { NotesTab(f); Collapse(f); }),
+    ("P35D-Notes-PreviewHidden", () => new Fixture(preview: PdfPreviewLayoutPreferences.BuiltIn with { IsPreviewVisible = false }), f => NotesTab(f)),
+    ("P35D-Notes-Long", () => new Fixture(), f =>
+    {
+        NotesTab(f);
+        // Blank lines included: they are typed in practice and never print (each non-empty line is one note).
+        f.Vm.Associate.OperationalNotesText = string.Join(Environment.NewLine, Enumerable.Range(1, 24).Select(i => i % 4 == 0 ? string.Empty : $"Synthetic daily note {i}: a long line that wraps inside the editor so scrolling stays predictable."));
+        Pump(12);
+    }),
+    ("P35D-Actions", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "Passdown actions"); }),
     ("Associate-Notes", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowNotesSectionCommand.Execute(null); Pump(8); }),
     // Phase 33: the live PDF preview (real QuestPDF bytes rendered by PDFium) beside the editor.
     ("Preview-Hidden", () => new Fixture(preview: PdfPreviewLayoutPreferences.BuiltIn with { IsPreviewVisible = false }), f => { Go(f, AppSection.AssociatePassdown); Pump(8); }),
@@ -543,6 +560,10 @@ static void FocusStartsWith(Window window, string prefix)
     Pump(8);
 }
 
+static void ShowsTab(Fixture f) { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowShowsSectionCommand.Execute(null); Pump(10); }
+
+static void NotesTab(Fixture f) { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowNotesSectionCommand.Execute(null); Pump(10); }
+
 static void Pump(int n)
 {
     for (var i = 0; i < n; i++)
@@ -594,7 +615,7 @@ internal sealed class Fixture
     public MainViewModel Vm { get; }
     public MainWindow Window { get; }
 
-    public Fixture(bool emptyNotes = false, bool emptyHistory = false, SyncFixture sync = SyncFixture.Off, Carowinds.Passdown.Application.Shows.ShowScheduleView? dashboardShows = null, bool showPassPerks = true,
+    public Fixture(bool includedNote = false, bool emptyNotes = false, bool emptyHistory = false, SyncFixture sync = SyncFixture.Off, Carowinds.Passdown.Application.Shows.ShowScheduleView? dashboardShows = null, bool showPassPerks = true,
         PdfPreviewLayoutPreferences? preview = null, InterfaceMotionController? motion = null)
     {
         var clock = new FakeClock(Fixtures.Now);
@@ -605,6 +626,8 @@ internal sealed class Fixture
         BusyDayFixtures.ApplyBusyDay(dashboard);
         if (dashboardShows is not null) Phase23BDashboardShowsFixtures.Apply(dashboard, dashboardShows);
         BusyDayFixtures.ApplyBusyAssociate(AssociateService, partialFailure: true);
+        Phase35DFixtures.SeedPersistentNotes(AssociateService);
+        if (includedNote) Phase35DFixtures.IncludeFirstPersistentNote(AssociateService);
         Fixtures.ApplyCalendar(CalendarService);
         var notes = new FakeOperationalNotesService { UtcNowFactory = () => Fixtures.Now };
         if (!emptyNotes) Fixtures.SeedNotes(notes);

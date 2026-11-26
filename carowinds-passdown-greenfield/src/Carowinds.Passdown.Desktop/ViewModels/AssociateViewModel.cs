@@ -622,6 +622,9 @@ public partial class AssociateViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OperationalNotesCount))]
     [NotifyPropertyChangedFor(nameof(HasOperationalNotesCount))]
+    [NotifyPropertyChangedFor(nameof(DailyNoteLineCount))]
+    [NotifyPropertyChangedFor(nameof(DailyNoteLineCountText))]
+    [NotifyPropertyChangedFor(nameof(NotesSummaryText))]
     public partial string? OperationalNotesText { get; set; }
 
     /// <summary>
@@ -635,6 +638,8 @@ public partial class AssociateViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(HasSelectedOperationalNotes))]
     [NotifyPropertyChangedFor(nameof(OperationalNotesCount))]
     [NotifyPropertyChangedFor(nameof(HasOperationalNotesCount))]
+    [NotifyPropertyChangedFor(nameof(NotesSummaryText))]
+    [NotifyPropertyChangedFor(nameof(IncludedPersistentNotesHeading))]
     public partial IReadOnlyList<AssociateSelectedOperationalNoteRowViewModel> SelectedOperationalNotes { get; set; } = [];
 
     /// <summary>
@@ -659,6 +664,31 @@ public partial class AssociateViewModel : ViewModelBase
     public bool HasOperationalNotesCount => OperationalNotesCount > 0;
 
     public bool HasAvailableOperationalNoteSuggestions => AvailableOperationalNoteSuggestions.Count > 0;
+
+    /// <summary>
+    /// Phase 35D: how many notes the daily text prints — the same non-empty-line rule the draft and PDF use
+    /// (<see cref="ParseLines"/>), so the count can never disagree with the document.
+    /// </summary>
+    public int DailyNoteLineCount => ParseLines(OperationalNotesText).Count;
+
+    /// <summary>"4 notes" under the daily editor (each prints as its own note).</summary>
+    public string DailyNoteLineCountText => DailyNoteLineCount == 1 ? "1 note" : $"{DailyNoteLineCount} notes";
+
+    /// <summary>Phase 35D: "4 daily notes · 1 persistent included" — daily text kept apart from selected persistent notes, both from live state.</summary>
+    public string NotesSummaryText =>
+        $"{(DailyNoteLineCount == 1 ? "1 daily note" : $"{DailyNoteLineCount} daily notes")} · {SelectedOperationalNotes.Count} persistent included";
+
+    /// <summary>Phase 35D: "Included in this Passdown (2)".</summary>
+    public string IncludedPersistentNotesHeading => $"Included in this Passdown ({SelectedOperationalNotes.Count})";
+
+    /// <summary>
+    /// Phase 35D: asks the app shell to open Operational Notes ("Manage notes"). Navigation only — it never
+    /// selects, resolves or edits a note, and the date, draft and selections here stay as they are.
+    /// </summary>
+    public event EventHandler? OpenOperationalNotesRequested;
+
+    [RelayCommand]
+    private void OpenOperationalNotes() => OpenOperationalNotesRequested?.Invoke(this, EventArgs.Empty);
 
     /// <summary>"Available for Aug 26" — the Associate-selected date, not Dashboard's Eastern "today" (Phase 11D Part E/U).</summary>
     public string AvailableOperationalNoteSuggestionsHeading =>
@@ -728,11 +758,49 @@ public partial class AssociateViewModel : ViewModelBase
     /// <summary>Phase 21C: the selected date's official shows (plus any selected show no longer on the schedule, explained).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasShowRows))]
+    [NotifyPropertyChangedFor(nameof(ShowsSelectionSummary))]
     [NotifyCanExecuteChangedFor(nameof(SelectAllShowsCommand))]
     [NotifyCanExecuteChangedFor(nameof(ClearShowsCommand))]
     public partial IReadOnlyList<AssociateShowRowViewModel> ShowRows { get; set; } = [];
 
     public bool HasShowRows => ShowRows.Count > 0;
+
+    /// <summary>Phase 35D: "2 of 4 shows selected" — counted from the rows on screen, never a fixed or invented number.</summary>
+    public string ShowsSelectionSummary
+    {
+        get
+        {
+            var selected = ShowRows.Count(row => row.IsSelected);
+            return ShowRows.Count == 1 ? $"{selected} of 1 show selected" : $"{selected} of {ShowRows.Count} shows selected";
+        }
+    }
+
+    /// <summary>
+    /// Phase 35D: which long show schedules are expanded, by official show id, for <see cref="_expandedShowsDate"/>
+    /// only. Presentation state: kept across a rebuild of the same date (a note added, Check Online) so the list
+    /// does not snap shut under the user, dropped when the date changes; never saved, never selection.
+    /// </summary>
+    private readonly HashSet<string> _expandedShowIds = new(StringComparer.Ordinal);
+
+    private DateOnly? _expandedShowsDate;
+
+    private void OnShowExpansionChanged(string showId, bool isExpanded)
+    {
+        if (isExpanded)
+        {
+            _expandedShowIds.Add(showId);
+        }
+        else
+        {
+            _expandedShowIds.Remove(showId);
+        }
+    }
+
+    private void OnShowSelectionChanged()
+    {
+        OnPropertyChanged(nameof(ShowsSelectionSummary));
+        ScheduleAutosave();
+    }
 
     /// <summary>Phase 21C: why there are no rows ("not published", "couldn't check", …) — null when rows are listed.</summary>
     [ObservableProperty]
@@ -747,6 +815,10 @@ public partial class AssociateViewModel : ViewModelBase
     public partial string? ShowsFreshnessText { get; set; }
 
     public bool HasShowsFreshnessText => ShowsFreshnessText is not null;
+
+    /// <summary>Phase 35D: the Shows heading's second line — the operating date, then the schedule's freshness when there is one.</summary>
+    [ObservableProperty]
+    public partial string ShowsSubtitleText { get; set; } = string.Empty;
 
     /// <summary>Phase 21C: selects every show currently on the official schedule (never a show that no longer is).</summary>
     [RelayCommand(CanExecute = nameof(HasShowRows))]
@@ -2639,11 +2711,21 @@ public partial class AssociateViewModel : ViewModelBase
     private void BuildShowRows(AssociateWorkspace workspace)
     {
         var section = workspace.Shows;
-        ShowRows = section.Rows.Select(row => new AssociateShowRowViewModel(row, ScheduleAutosave)).ToList();
+        if (_expandedShowsDate != workspace.OperatingDate)
+        {
+            _expandedShowIds.Clear();
+            _expandedShowsDate = workspace.OperatingDate;
+        }
+
+        ShowRows = section.Rows
+            .Select(row => new AssociateShowRowViewModel(row, OnShowSelectionChanged, _expandedShowIds.Contains(row.ShowId), OnShowExpansionChanged))
+            .ToList();
 
         var presentation = ShowSchedulePresentation.Build(section.Schedule, _clock.UtcNow);
         ShowsStatusText = ShowRows.Count == 0 ? presentation.StatusText : null;
         ShowsFreshnessText = presentation.FreshnessText;
+        var dateText = AssociateDateNavigationPresentation.Build(workspace.OperatingDate, EasternToday).DateText;
+        ShowsSubtitleText = presentation.FreshnessText is { } freshness ? $"{dateText} · {freshness}" : dateText;
     }
 
     internal static string? BuildHistoricalPricingNotice(AssociateWorkspace workspace) =>

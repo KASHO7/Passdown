@@ -359,8 +359,12 @@ public sealed class Phase22DAssociateWorkspaceTests
             "ParkHours.NorthGateText", "ParkHours.AvenueText", "NorthGateOverrideText", "AvenueOverrideText", "ResetNorthGateOverrideCommand", "ResetAvenueOverrideCommand",
             "ProjectedAttendanceText", "ProjectedAttendanceError", "PreSoldsText", "PreSoldsError", "EarlyRideTimeStatusText", "OpenErtEditorCommand",
             "DailyFeatureTypeOptions", "SelectedDailyFeatureTypeOption", "DailyFeatureText", "IsErtEditorOpen", "ManualHoursOverrideEnabled", "PrivateBuyoutEnabled",
-            "PrivateBuyoutDetails", "ManualHoursWarningText", "PrivateBuyoutHoursWarningText", "IncludeShows", "ShowsFreshnessText", "ShowsStatusText", "ShowRows",
-            "SelectAllShowsCommand", "ClearShowsCommand", "StateNote", "TimesText", "Venue", "IncludeDailyAdmission", "IncludeFastLane", "IncludePromotions",
+            "PrivateBuyoutDetails", "ManualHoursWarningText", "PrivateBuyoutHoursWarningText", "IncludeShows", "ShowsStatusText",
+            // Phase 35D: the schedule freshness reads as the Shows heading's second line (date · freshness), built from ShowsFreshnessText.
+            "ShowsSubtitleText", "ShowRows",
+            "SelectAllShowsCommand", "ClearShowsCommand", "StateNote", "Venue",
+            // Phase 35D: the times column binds the compact preview plus "+N more"; the full list is in AllTimes (expanded tiles) and TimesAccessibleName.
+            "TimesPreviewText", "MoreTimesText", "AllTimes", "TimesAccessibleName", "IncludeDailyAdmission", "IncludeFastLane", "IncludePromotions",
             "IncludeSeasonPasses", "IncludeAddOns", "IncludeHauntedAttractions", "IncludeOperationalNotes", "OpenPriceHistoryCommand", "HistoricalPricingNotice",
             "ProductSections", "Status.StatusText", "Status.DetailText", "OfficialPriceText", "ComparisonPriceText", "PriceQualifier", "BundleNoteText",
             "VerificationNoteText", "ViewPriceHistoryCommand",
@@ -423,18 +427,29 @@ public sealed class Phase22DAssociateWorkspaceTests
         Assert.Contains("Selector=\"controls|DailyFeatureMathPreview.attachedPreview\"", markup);
     }
 
+    /// <summary>
+    /// Phase 35D (was Phase 22D's "name; times · venue"): each show is one hairline row in three columns — name over
+    /// venue, the scheduled performances (a compact preview plus "+N more"), and View times for a long schedule, whose
+    /// expanded list shows every time. Still a divided row, never a card.
+    /// </summary>
     [Fact]
-    public void ShowsRows_AreCompactTwoLineRows()
+    public void ShowsRows_AreHairlineRows_WithNameVenueTimesAndExpansion()
     {
         var markup = Markup();
         var template = Regex.Match(markup, "<DataTemplate x:DataType=\"vm:AssociateShowRowViewModel\">.*?</DataTemplate>", RegexOptions.Singleline).Value;
 
         Assert.Contains("Classes=\"listRow\"", template);
         Assert.Contains("{Binding Name}", template);
-        Assert.Contains("{Binding TimesText}", template);
-        Assert.Contains("{Binding Venue}", template);
+        Assert.Contains("{Binding VenueText}", template);
+        Assert.Contains("{Binding TimesPreviewText, Mode=OneWay}", template); // Run.Text binds TwoWay by default
+        Assert.Contains("{Binding MoreTimesText, Mode=OneWay}", template);
+        Assert.Contains("ItemsSource=\"{Binding AllTimes}\"", template);
+        Assert.Contains("IsVisible=\"{Binding IsExpanded}\"", template);
+        Assert.Contains("Command=\"{Binding ToggleExpandedCommand}\"", template);
         Assert.Contains("{Binding AccessibleName}", template);
-        Assert.True(template.IndexOf("{Binding TimesText}", StringComparison.Ordinal) < template.IndexOf("{Binding Venue}", StringComparison.Ordinal));
+        Assert.Contains("AutomationProperties.Name=\"{Binding TimesAccessibleName}\"", template);
+        Assert.True(template.IndexOf("{Binding Name}", StringComparison.Ordinal) < template.IndexOf("{Binding VenueText}", StringComparison.Ordinal));
+        Assert.True(template.IndexOf("{Binding VenueText}", StringComparison.Ordinal) < template.IndexOf("{Binding TimesPreviewText", StringComparison.Ordinal));
         Assert.DoesNotContain("Classes=\"panel\"", template);
         Assert.DoesNotContain("Classes=\"inset\"", template);
     }

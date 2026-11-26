@@ -147,6 +147,8 @@ public partial class MainViewModel : ViewModelBase
         // resets Notes.LifecycleFilter/SelectedNote, so a supervisor's existing filter/selection state
         // there is preserved exactly as it was before Dashboard routed here.
         Dashboard.OpenOperationalNotesRequested += (_, _) => ShowOperationalNotesSection();
+        // Phase 35D: Passdown → Notes "Manage notes" — a section switch only; the Associate date and draft stay as they are.
+        Associate.OpenOperationalNotesRequested += (_, _) => ShowOperationalNotesSection();
 
         // Phase 12A Part F: "Open Passdown" from Calendar explicitly sets Associate's selected date
         // (unlike Dashboard's own deep links, which deliberately never touch it) — the Calendar's

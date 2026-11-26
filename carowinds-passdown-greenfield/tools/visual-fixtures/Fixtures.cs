@@ -34,6 +34,9 @@ internal static class BusyDayFixtures
         new("s2", "Synthetic Starlight Spectacular", "Planet Snoopy", [new TimeOnly(18, 0)]),
         new("s3", "Synthetic Carolina Nights", "Harmony Hall", [new TimeOnly(19, 30), new TimeOnly(21, 0)]),
         new("s4", "Synthetic Drumline", null, [new TimeOnly(15, 15)]),
+        // Phase 35D: a long schedule (16 times, "+12 more") and a long name, for the Shows redesign.
+        new("s5", "Synthetic Character Meet and Greet With A Deliberately Long Name That Wraps", "Gathering Spot",
+            [.. new[] { "11:15", "11:30", "11:45", "12:15", "12:30", "12:45", "14:00", "14:15", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "17:45" }.Select(TimeOnly.Parse)]),
     ];
 
     private static ShowScheduleView Shows(DateOnly date) => new(date, ShowScheduleState.Scheduled, ShowList, false, Verified, Verified);

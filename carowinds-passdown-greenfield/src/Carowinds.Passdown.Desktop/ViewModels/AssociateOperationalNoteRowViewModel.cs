@@ -52,8 +52,30 @@ public partial class AssociateOperationalNoteSuggestionRowViewModel : Observable
         AccessibleSummary = presentation.AccessibleSummary;
     }
 
+    /// <summary>
+    /// Phase 35D: the row's inclusion checkbox (always unchecked here — an available note is not in this Passdown).
+    /// Checking it runs <see cref="AddCommand"/>; on success the row is replaced by an included row, and if the
+    /// selection could not be made (for example unsaved edits blocked it) the box returns to unchecked, so it never
+    /// claims an inclusion that did not happen. Never edits, resolves or reopens the source note.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsIncluded { get; set; }
+
+    /// <summary>Phase 35D: the persistent-note meta line — "General · Normal priority · Through Aug 30".</summary>
+    public string MetaText => string.Join(" · ", new[] { CategoryLabel, PriorityLabel + " priority", CarryForwardText }.Where(part => !string.IsNullOrWhiteSpace(part)));
+
     [RelayCommand]
-    private Task Add() => _onAdd(Id);
+    private async Task Add()
+    {
+        try
+        {
+            await _onAdd(Id);
+        }
+        finally
+        {
+            IsIncluded = false;
+        }
+    }
 }
 
 /// <summary>
@@ -113,8 +135,29 @@ public partial class AssociateSelectedOperationalNoteRowViewModel : ObservableOb
         AccessibleSummary = presentation.AccessibleSummary;
     }
 
+    /// <summary>
+    /// Phase 35D: the row's inclusion checkbox (checked — this frozen copy is in this Passdown). Unchecking it runs
+    /// <see cref="RemoveCommand"/>, which removes the copy from this date's Passdown only; the source note is never
+    /// resolved, deleted or edited. If the removal could not be made the box returns to checked.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsIncluded { get; set; } = true;
+
+    /// <summary>Phase 35D: the persistent-note meta line — "General · Normal priority".</summary>
+    public string MetaText => string.Join(" · ", new[] { CategoryLabel, PriorityLabel + " priority" }.Where(part => !string.IsNullOrWhiteSpace(part)));
+
     [RelayCommand]
-    private Task Remove() => _onRemove(SourceOperationalNoteId);
+    private async Task Remove()
+    {
+        try
+        {
+            await _onRemove(SourceOperationalNoteId);
+        }
+        finally
+        {
+            IsIncluded = true;
+        }
+    }
 
     [RelayCommand]
     private Task Replace() => _onReplace(SourceOperationalNoteId);

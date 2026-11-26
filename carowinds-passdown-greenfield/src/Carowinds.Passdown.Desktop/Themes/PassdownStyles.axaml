@@ -276,6 +276,30 @@
     <Setter Property="Foreground" Value="{DynamicResource PassdownTextOnAccentBrush}" />
   </Style>
 
+  <!-- Phase 35D dropdown chevron (shared): a 12×12 box drawn with fixed coordinates (PassdownDropdownChevronGeometry,
+       Stretch None) so the glyph's visible centre is the box centre, then centred on its label. One size, one weight,
+       one gap (StackPanel.dropdownLabel) for every menu trigger — the Passdown Actions button and the date button. The
+       colour follows the button's own foreground state via the secondary text token in both themes. -->
+  <Style Selector="Path.dropdownChevron">
+    <Setter Property="Width" Value="12" />
+    <Setter Property="Height" Value="12" />
+    <Setter Property="Stretch" Value="None" />
+    <Setter Property="Stroke" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+    <Setter Property="StrokeThickness" Value="1.5" />
+    <Setter Property="StrokeLineCap" Value="Round" />
+    <Setter Property="StrokeJoin" Value="Round" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="IsHitTestVisible" Value="False" />
+  </Style>
+  <Style Selector="StackPanel.dropdownLabel">
+    <Setter Property="Orientation" Value="Horizontal" />
+    <Setter Property="Spacing" Value="7" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="StackPanel.dropdownLabel > TextBlock">
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
   <!-- Secondary: neutral outlined button — quieter than primary, clearly a control. -->
   <Style Selector="Button.secondaryAction">
     <Setter Property="Background" Value="{DynamicResource PassdownSurfaceBrush}" />

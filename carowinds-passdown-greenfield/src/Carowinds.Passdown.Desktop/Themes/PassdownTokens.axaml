@@ -21,6 +21,12 @@
   <Color x:Key="PassdownBrandNavyColor">#17324D</Color>
   <SolidColorBrush x:Key="PassdownBrandNavyBrush" Color="{StaticResource PassdownBrandNavyColor}" />
 
+  <!-- Phase 35D: the application title bar (Windows caption colour, applied through DWM — see
+       Infrastructure/Windowing/WindowsCaptionStyler). Taken from the approved reference's top bar (#1B3553), a shade
+       of the brand navy; the title text on it is white (contrast 13.3:1). Theme-invariant, like the brand navy. -->
+  <Color x:Key="PassdownTitleBarColor">#1B3553</Color>
+  <Color x:Key="PassdownTitleBarTextColor">#FFFFFF</Color>
+
   <!-- Phase 33: the PDF preview's sheet of paper stays white in both themes — it shows the printed page,
        not an app surface. -->
   <SolidColorBrush x:Key="PassdownPdfPaperBrush" Color="#FFFFFF" />
@@ -69,6 +75,14 @@
   <StreamGeometry x:Key="PassdownSidebarToggleIconGeometry">F0 M3,4.5 H21 V19.5 H3 Z M4.8,6.3 V17.7 H19.2 V6.3 Z M8.4,6.3 H10.2 V17.7 H8.4 Z</StreamGeometry>
   <StreamGeometry x:Key="PassdownChevronDownGeometry">M1.4,3.6 L2.6,2.4 L6,5.8 L9.4,2.4 L10.6,3.6 L6,8.2 Z</StreamGeometry>
   <sys:Double x:Key="PassdownNavigationIconSize">16</sys:Double>
+
+  <!-- Phase 35D: dropdown / disclosure chevrons as open strokes drawn inside their own 12×12 box, centred on (6,6), and
+       rendered with Stretch="None" (Path.dropdownChevron / Path.categoryChevron). The earlier glyphs were 2:1 shapes
+       stretched Uniform into a square box, which pins the drawing to the box's top (or left) edge — the chevron then
+       sat above the label's centre even though its box was centred. Fixed coordinates keep the visible centre on the
+       box centre at every DPI. -->
+  <StreamGeometry x:Key="PassdownDropdownChevronGeometry">M 2.5,4.25 L 6,7.75 L 9.5,4.25</StreamGeometry>
+  <StreamGeometry x:Key="PassdownDisclosureChevronRightGeometry">M 4.25,2.5 L 7.75,6 L 4.25,9.5</StreamGeometry>
 
   <!-- Fluent's own accent-driven controls (checked CheckBox/RadioButton, ToggleSwitch, text
        selection, the Fluent Calendar) follow the brand royal blue. -->

@@ -202,13 +202,6 @@
       <Setter Property="StrokeJoin" Value="Round" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
-    <Style Selector="Path.navGlyph.small">
-      <Setter Property="Width" Value="12" />
-      <Setter Property="Height" Value="12" />
-      <Setter Property="Stretch" Value="Uniform" />
-      <Setter Property="Stroke" Value="{DynamicResource PassdownTextSecondaryBrush}" />
-      <Setter Property="StrokeThickness" Value="1.5" />
-    </Style>
     <Style Selector="Path.calendarGlyph">
       <Setter Property="Width" Value="16" />
       <Setter Property="Height" Value="16" />
@@ -390,9 +383,6 @@
     </Style>
     <Style Selector="TextBlock.pageTitle.workspaceTitle">
       <Setter Property="FontSize" Value="17" />
-    </Style>
-    <Style Selector="Path.menuChevron">
-      <Setter Property="Stroke" Value="{DynamicResource PassdownTextSecondaryBrush}" />
     </Style>
 
     <!-- Phase 35B editor surface: every section scrolls on the neutral workspace; Overview is one white sheet whose
@@ -581,10 +571,12 @@
       <Setter Property="Padding" Value="10,8" />
       <Setter Property="Margin" Value="0" />
     </Style>
+    <!-- Phase 35D: same 12×12 fixed-coordinate geometry as Path.dropdownChevron (no Stretch), so the glyph's visible
+         centre is the box centre. -->
     <Style Selector="Path.categoryChevron">
-      <Setter Property="Width" Value="11" />
-      <Setter Property="Height" Value="11" />
-      <Setter Property="Stretch" Value="Uniform" />
+      <Setter Property="Width" Value="12" />
+      <Setter Property="Height" Value="12" />
+      <Setter Property="Stretch" Value="None" />
       <Setter Property="Stroke" Value="{DynamicResource PassdownTextSecondaryBrush}" />
       <Setter Property="StrokeThickness" Value="1.8" />
       <Setter Property="StrokeLineCap" Value="Round" />
@@ -707,6 +699,71 @@
       <Setter Property="Margin" Value="0,0,0,9" />
     </Style>
 
+    <!-- Phase 35D Shows & Entertainment: a quiet column-heading band, hairline rows with comfortable padding, the
+         long-schedule disclosure and the expanded time tiles (one tile per time, wrapping to the sheet's width). -->
+    <Style Selector="Border.showsTableHead">
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
+      <Setter Property="BorderThickness" Value="0,1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="Padding" Value="12,9" />
+    </Style>
+    <Style Selector="ItemsControl.showRows Border.listRow">
+      <Setter Property="Padding" Value="12,13" />
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ItemsControl.showRows Border.listRow:pointerover">
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
+    </Style>
+    <Style Selector="TextBlock.showName, TextBlock.noteTitle">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+    </Style>
+    <Style Selector="TextBlock.showVenue">
+      <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeCaption}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+    </Style>
+    <Style Selector="Run.showMore">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+    </Style>
+    <Style Selector="TextBlock.showTimes">
+      <Setter Property="FontSize" Value="12.5" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+    </Style>
+    <Style Selector="Border.showDetails">
+      <Setter Property="Margin" Value="44,12,0,0" />
+      <Setter Property="Padding" Value="13,12,5,4" />
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+    </Style>
+    <!-- The time containers are logical children of the ItemsControl (not of the WrapPanel), so the selector is a descendant one. -->
+    <Style Selector="ItemsControl.showTimeGrid ContentPresenter">
+      <Setter Property="Margin" Value="0,0,8,8" />
+      <Setter Property="Padding" Value="6,6" />
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusSmall}" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+    </Style>
+
+    <!-- Phase 35D Passdown Notes: a roomy plain-text editor (grows to a limit, then scrolls inside) and compact
+         persistent-note rows separated by hairlines. -->
+    <Style Selector="TextBox.dailyNotesEditor">
+      <Setter Property="MinHeight" Value="215" />
+      <Setter Property="MaxHeight" Value="440" />
+      <Setter Property="Padding" Value="14,12" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="LineHeight" Value="22" />
+      <Setter Property="VerticalContentAlignment" Value="Top" />
+    </Style>
+    <Style Selector="ItemsControl.persistentNotes Border.listRow">
+      <Setter Property="Padding" Value="0,12" />
+    </Style>
+
   </UserControl.Styles>
 
   <!-- Phase 35B (docs/phase35b-passdown-workspace-redesign.md): Ctrl+P prints the latest edits — the same command
@@ -783,7 +840,7 @@
                             IsVisible="{Binding DateNavigation.RelativeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                       <TextBlock Text="{Binding DateNavigation.RelativeText}" />
                     </Border>
-                    <Path Grid.Column="3" Classes="navGlyph small" Data="M 2,5 L 8,11 L 14,5" />
+                    <Path Grid.Column="3" Classes="dropdownChevron" Data="{StaticResource PassdownDropdownChevronGeometry}" />
                   </Grid>
                 </Button>
 
@@ -862,9 +919,9 @@
                     AutomationProperties.Name="Passdown actions"
                     AutomationProperties.HelpText="Print, Save PDF, Copy for Teams, PDF style, preview, Check Online and Season Price History."
                     ToolTip.Tip="Print, save, copy and other passdown actions">
-              <StackPanel Orientation="Horizontal" Spacing="6">
-                <TextBlock Text="Actions" VerticalAlignment="Center" />
-                <Path Classes="navGlyph small menuChevron" Data="M 2,5 L 8,11 L 14,5" />
+              <StackPanel Classes="dropdownLabel">
+                <TextBlock Text="Actions" />
+                <Path Classes="dropdownChevron" Data="{StaticResource PassdownDropdownChevronGeometry}" />
               </StackPanel>
               <Button.Flyout>
                 <MenuFlyout Placement="BottomEdgeAlignedRight">
@@ -1589,8 +1646,8 @@
                             AutomationProperties.Name="{Binding HeaderAccessibleName}">
                       <StackPanel Orientation="Horizontal" Spacing="9">
                         <Panel Width="12" VerticalAlignment="Center">
-                          <Path Classes="categoryChevron" Data="M6 9l6 6 6-6" IsVisible="{Binding IsBodyVisible}" />
-                          <Path Classes="categoryChevron" Data="M9 6l6 6-6 6" IsVisible="{Binding !IsBodyVisible}" />
+                          <Path Classes="categoryChevron" Data="{StaticResource PassdownDropdownChevronGeometry}" IsVisible="{Binding IsBodyVisible}" />
+                          <Path Classes="categoryChevron" Data="{StaticResource PassdownDisclosureChevronRightGeometry}" IsVisible="{Binding !IsBodyVisible}" />
                         </Panel>
                         <TextBlock Text="{Binding CategoryDisplayName}" Classes="categoryName" />
                         <TextBlock Text="{Binding SummaryText}" Classes="categoryCount" />
@@ -1880,219 +1937,275 @@
         </Border>
       </ScrollViewer>
 
-      <!-- Phase 31E: Shows section — the selected date's official shows and the per-show selection
-           (moved off Overview). Whether Shows prints is the Shows checkbox under Overview ▸ Include in
-           Passdown; this page only chooses which shows print, and says whether the section is on. -->
+      <!-- Phase 35D (docs/phase35d-shows-notes-shared-polish.md): Shows & Entertainment is one white sheet like Overview
+           and Products — heading with the date and the official schedule's freshness, the live selection count with
+           Select all / Clear, then a three-column list (show and location · scheduled performances · details). A long
+           schedule shows its first times and "+N more"; "View times" lists every time in place (presentation only —
+           never selection, never a refresh). Whether Shows prints is still the Shows checkbox under Overview ▸ Include
+           in Passdown (Phase 31D); this page only chooses which shows print, and says whether the section is on. -->
       <ScrollViewer x:Name="ShowsSectionScroll" Grid.Row="1" Classes="sectionScroll"
                     IsVisible="{Binding IsShowsSectionSelected}">
-          <!-- Fills the page up to 960px wide (readable rows; Select all / Clear stay near the names), left-aligned. -->
-          <Grid>
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="*" MaxWidth="960" />
-              <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <!-- Phase 21C: optional Shows section — the selected date's verified official shows, one
-                 checkbox per show (all of a selected show's times print). New shows are never
-                 pre-selected; selected shows the schedule no longer carries stay listed with a reason.
-                 Phase 22D: compact two-line rows (name; times · venue) separated by hairlines.
-                 Phase 31D: the PDF on/off switch moved to Include in Passdown; this panel only picks shows. -->
-            <Border x:Name="ShowsPanel" Classes="panel" VerticalAlignment="Top" AutomationProperties.Name="Shows">
-              <StackPanel Spacing="6">
-                <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="8">
-                  <TextBlock x:Name="ShowsTitle" Grid.Column="0" Text="Shows" Classes="sectionTitle" Margin="0" VerticalAlignment="Center" />
-                  <Border Grid.Column="1" Classes="sourceTag official"><TextBlock Text="Official schedule" /></Border>
-                  <Button Grid.Column="3" Content="Select all" Classes="linkAction" VerticalAlignment="Center"
-                          Command="{Binding SelectAllShowsCommand}"
-                          AutomationProperties.Name="Select every show on the official schedule" />
-                  <Button Grid.Column="4" Content="Clear" Classes="linkAction" VerticalAlignment="Center"
-                          Command="{Binding ClearShowsCommand}"
-                          AutomationProperties.Name="Clear the show selection" />
-                </Grid>
-                <!-- Phase 31D: whether Shows prints is chosen under Include in Passdown; this line keeps
-                     "is the section on the PDF" visibly separate from "which shows are selected". -->
-                <TextBlock x:Name="ShowsInclusionStatus" Text="{Binding ShowsInclusionText}" TextWrapping="Wrap"
-                           Classes="muted" Classes.fieldWarning="{Binding !IncludeShows}"
-                           AutomationProperties.Name="{Binding ShowsInclusionText}"
+        <Border x:Name="ShowsPanel" Classes="editorSheet" AutomationProperties.Name="Shows">
+          <StackPanel Spacing="0">
+
+            <Grid x:Name="ShowsHeading" ColumnDefinitions="*,Auto" ColumnSpacing="16" Margin="0,0,0,10">
+              <StackPanel Grid.Column="0" Spacing="4">
+                <WrapPanel ItemSpacing="10" LineSpacing="4">
+                  <TextBlock x:Name="ShowsTitle" Text="Shows &amp; Entertainment" Classes="overviewTitle" FontSize="16" />
+                  <Border Classes="sourceTag official"><TextBlock Text="Official schedule" /></Border>
+                </WrapPanel>
+                <!-- "Saturday, October 17, 2026 · Official schedule checked 6:05 AM ET" — the source's freshness (and a failed
+                     latest check) from ShowsFreshnessText, never a fixed claim. -->
+                <TextBlock x:Name="ShowsSubtitle" Text="{Binding ShowsSubtitleText}" Classes="overviewCaption" TextWrapping="Wrap"
+                           AutomationProperties.Name="{Binding ShowsSubtitleText}" />
+              </StackPanel>
+              <WrapPanel Grid.Column="1" x:Name="ShowsSelectionTools" ItemSpacing="10" LineSpacing="4" VerticalAlignment="Top" HorizontalAlignment="Right">
+                <TextBlock x:Name="ShowsSelectionCount" Text="{Binding ShowsSelectionSummary}" Classes="overviewCaption" VerticalAlignment="Center"
+                           IsVisible="{Binding HasShowRows}"
+                           AutomationProperties.Name="{Binding ShowsSelectionSummary}"
                            AutomationProperties.LiveSetting="Polite" />
-                <TextBlock Text="{Binding ShowsFreshnessText}" Classes="muted" TextWrapping="Wrap"
-                           IsVisible="{Binding HasShowsFreshnessText}" />
-                <TextBlock Text="{Binding ShowsStatusText}" Classes="muted" TextWrapping="Wrap"
-                           IsVisible="{Binding HasShowsStatusText}" />
-                <ItemsControl ItemsSource="{Binding ShowRows}" IsVisible="{Binding HasShowRows}">
+                <Button Content="Select all" Classes="linkAction compactLink" VerticalAlignment="Center"
+                        Command="{Binding SelectAllShowsCommand}"
+                        AutomationProperties.Name="Select every show on the official schedule" />
+                <Button Content="Clear" Classes="linkAction compactLink" VerticalAlignment="Center"
+                        Command="{Binding ClearShowsCommand}"
+                        AutomationProperties.Name="Clear the show selection" />
+              </WrapPanel>
+            </Grid>
+
+            <!-- Phase 31D: whether Shows prints is chosen under Include in Passdown; this line keeps
+                 "is the section on the PDF" visibly separate from "which shows are selected". -->
+            <TextBlock x:Name="ShowsInclusionStatus" Text="{Binding ShowsInclusionText}" TextWrapping="Wrap"
+                       Classes="overviewCaption" Classes.fieldWarning="{Binding !IncludeShows}" Margin="0,0,0,14"
+                       AutomationProperties.Name="{Binding ShowsInclusionText}"
+                       AutomationProperties.LiveSetting="Polite" />
+
+            <!-- Why there are no rows (not published, park closed, couldn't check, …) — the source state, never "no shows" unless the schedule says so. -->
+            <Border Classes="sourceBox" Margin="0,0,0,8" IsVisible="{Binding HasShowsStatusText}">
+              <TextBlock x:Name="ShowsStatusText" Text="{Binding ShowsStatusText}" TextWrapping="Wrap"
+                         AutomationProperties.Name="{Binding ShowsStatusText}" />
+            </Border>
+
+            <Border x:Name="ShowsTableHead" Classes="showsTableHead" IsVisible="{Binding HasShowRows}">
+              <Grid ColumnDefinitions="32,*,1.15*,96" ColumnSpacing="12">
+                <TextBlock Grid.Column="1" Text="Show and location" Classes="columnHeader" />
+                <TextBlock Grid.Column="2" Text="Scheduled performances" Classes="columnHeader" />
+                <TextBlock Grid.Column="3" Text="Details" Classes="columnHeader" HorizontalAlignment="Right" />
+              </Grid>
+            </Border>
+
+            <!-- Phase 21C: one checkbox per show (all of a selected show's times print). New shows are never
+                 pre-selected; selected shows the schedule no longer carries stay listed with a reason. -->
+            <ItemsControl x:Name="ShowRowsList" Classes="showRows" ItemsSource="{Binding ShowRows}" IsVisible="{Binding HasShowRows}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:AssociateShowRowViewModel">
+                  <Border Classes="listRow">
+                    <StackPanel Spacing="0">
+                      <Grid ColumnDefinitions="32,*,1.15*,96" ColumnSpacing="12">
+                        <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected}" VerticalAlignment="Top"
+                                  AutomationProperties.Name="{Binding AccessibleName}" />
+                        <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Top">
+                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" Classes="showName" />
+                          <TextBlock Text="{Binding VenueText}" Classes="showVenue" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <!-- One flowing line: the preview times, then a quieter "· +13 more" (OneWay: Run.Text is TwoWay by default). -->
+                        <TextBlock Grid.Column="2" Classes="showTimes" TextWrapping="Wrap" VerticalAlignment="Top"
+                                   AutomationProperties.Name="{Binding TimesAccessibleName}">
+                          <Run Text="{Binding TimesPreviewText, Mode=OneWay}" /><Run Text="{Binding MoreTimesText, Mode=OneWay}" Classes="showMore" />
+                        </TextBlock>
+                        <Button Grid.Column="3" Content="{Binding ToggleText}" Classes="linkAction compactLink showToggle"
+                                HorizontalAlignment="Right" VerticalAlignment="Top"
+                                Command="{Binding ToggleExpandedCommand}" IsVisible="{Binding CanExpand}"
+                                AutomationProperties.Name="{Binding ToggleAccessibleName}" />
+                      </Grid>
+                      <!-- Every performance time, one tile each, so nothing is hidden behind "+N more". -->
+                      <Border Classes="showDetails" IsVisible="{Binding IsExpanded}">
+                        <StackPanel Spacing="10">
+                          <TextBlock Text="{Binding AllTimesHeading}" Classes="columnHeader" />
+                          <ItemsControl Classes="showTimeGrid" ItemsSource="{Binding AllTimes}">
+                            <ItemsControl.ItemsPanel>
+                              <ItemsPanelTemplate>
+                                <WrapPanel ItemWidth="112" ItemSpacing="0" LineSpacing="0" />
+                              </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                          </ItemsControl>
+                        </StackPanel>
+                      </Border>
+                      <TextBlock Text="{Binding StateNote}" Classes="fieldWarning" TextWrapping="Wrap" Margin="44,6,0,0"
+                                 IsVisible="{Binding HasStateNote}" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Border Classes="sourceBox" IsVisible="{Binding HasShowRows}">
+              <TextBlock Text="Selected shows print in the Associate Passdown when Shows is included. Performance times and locations come from the official Carowinds schedule for this operating date; a scheduled time is not a confirmation that a show is running."
+                         TextWrapping="Wrap" Classes="overviewCaption" />
+            </Border>
+          </StackPanel>
+        </Border>
+      </ScrollViewer>
+
+      <!-- Phase 35D: Passdown Notes is one white sheet with two clearly separate parts — the daily text typed for this
+           Passdown (each non-empty line prints as its own note; plain text, unchanged serialization) and the persistent
+           Operational Notes chosen for this date. Storage and lifecycle stay separate (Part AA): checking a persistent
+           note selects a frozen copy for this date only, unchecking removes that copy — the source note is never
+           resolved, reopened, edited or deleted, and nothing is ever included automatically. -->
+      <ScrollViewer Grid.Row="1" x:Name="NotesSectionScroll" Classes="sectionScroll"
+                    IsVisible="{Binding IsNotesSectionSelected}">
+        <Border x:Name="NotesSheet" Classes="editorSheet" AutomationProperties.Name="Passdown Notes">
+          <StackPanel Spacing="0">
+
+            <Grid x:Name="NotesHeading" ColumnDefinitions="*,Auto" ColumnSpacing="16" Margin="0,0,0,20">
+              <StackPanel Grid.Column="0" Spacing="4">
+                <TextBlock Text="Passdown Notes" Classes="overviewTitle" FontSize="16" />
+                <TextBlock Text="Write notes for the selected date, then choose which persistent notes to include."
+                           Classes="overviewCaption" TextWrapping="Wrap" />
+              </StackPanel>
+              <TextBlock Grid.Column="1" x:Name="NotesSummary" Text="{Binding NotesSummaryText}" Classes="overviewCaption" VerticalAlignment="Top"
+                         AutomationProperties.Name="{Binding NotesSummaryText}" />
+            </Grid>
+
+            <!-- Daily Passdown Notes (Part E): comfortable multiline entry, independent of the persistent notes below. -->
+            <Border x:Name="DailyNotesSection" Classes="overviewSection" AutomationProperties.Name="Daily notes">
+              <StackPanel Spacing="0">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,0,0,10">
+                  <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="Daily notes" Classes="overviewTitle" FontSize="14" />
+                    <Border Classes="sourceTag"><TextBlock Text="Entered here" /></Border>
+                  </StackPanel>
+                  <TextBlock Grid.Column="1" Text="Saved automatically · One line per printed note" Classes="overviewCaption" VerticalAlignment="Center" />
+                </Grid>
+                <TextBox x:Name="DailyNotesTextBox" Classes="dailyNotesEditor"
+                         spell:SpellCheck.IsEnabled="True"
+                         Text="{Binding OperationalNotesText}"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         PlaceholderText="Important operational notes, one line per note"
+                         AutomationProperties.Name="Operational notes"
+                         AutomationProperties.HelpText="Each non-empty line becomes its own note in the Passdown. Saved automatically." />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,8,0,0">
+                  <TextBlock Grid.Column="0" Text="Each non-empty line becomes its own note in the Passdown."
+                             Classes="overviewCaption" TextWrapping="Wrap" />
+                  <TextBlock Grid.Column="1" x:Name="DailyNoteLineCount" Text="{Binding DailyNoteLineCountText}" Classes="overviewCaption"
+                             AutomationProperties.Name="{Binding DailyNoteLineCountText}" AutomationProperties.LiveSetting="Polite" />
+                </Grid>
+              </StackPanel>
+            </Border>
+
+            <!-- Persistent Operational Notes (Phase 11D Parts T/U/V): included frozen copies first, then what is available
+                 for this date. Each row's checkbox is the existing Add/Remove — never an edit of the source note. -->
+            <Border x:Name="PersistentNotesSection" Classes="overviewSection last" AutomationProperties.Name="Persistent operational notes">
+              <StackPanel Spacing="0">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,0,0,6">
+                  <TextBlock Grid.Column="0" Text="Persistent operational notes" Classes="overviewTitle" FontSize="14" />
+                  <Button Grid.Column="1" x:Name="ManageOperationalNotesButton" Content="Manage notes" Classes="linkAction compactLink"
+                          Command="{Binding OpenOperationalNotesCommand}"
+                          AutomationProperties.Name="Manage notes in Operational Notes"
+                          AutomationProperties.HelpText="Opens Operational Notes. This Passdown's date and selections stay as they are." />
+                </Grid>
+                <TextBlock Text="Persistent notes are kept in Operational Notes. They are never added to a Passdown automatically."
+                           Classes="overviewCaption" TextWrapping="Wrap" Margin="0,0,0,14" />
+
+                <!-- Included: frozen copies the supervisor has explicitly selected for this date. -->
+                <TextBlock x:Name="IncludedPersistentNotesHeading" Text="{Binding IncludedPersistentNotesHeading}" Classes="columnHeader"
+                           AutomationProperties.Name="Included persistent operational notes" />
+                <!-- Phase 11E Part H: inclusion freezes a copy — said once for the section, not per row. -->
+                <TextBlock Text="Included notes keep the version selected for this passdown."
+                           Classes="fieldHint" Margin="0,3,0,0"
+                           IsVisible="{Binding HasSelectedOperationalNotes}" />
+                <TextBlock Text="No persistent operational notes included."
+                           Classes="overviewCaption" Margin="0,8,0,0"
+                           IsVisible="{Binding !HasSelectedOperationalNotes}" />
+
+                <ItemsControl Classes="persistentNotes" ItemsSource="{Binding SelectedOperationalNotes}"
+                              IsVisible="{Binding HasSelectedOperationalNotes}">
                   <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:AssociateShowRowViewModel">
-                      <Border Classes="listRow" Padding="0,6">
-                        <StackPanel Spacing="0">
-                          <CheckBox IsChecked="{Binding IsSelected}" VerticalAlignment="Top"
-                                    AutomationProperties.Name="{Binding AccessibleName}">
-                            <StackPanel Spacing="2">
-                              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                              <WrapPanel Orientation="Horizontal" ItemSpacing="6">
-                                <TextBlock Text="{Binding TimesText}" TextWrapping="Wrap" />
-                                <TextBlock Text="·" Classes="muted" IsVisible="{Binding HasVenue}" />
-                                <TextBlock Text="{Binding Venue}" Classes="muted" IsVisible="{Binding HasVenue}" />
-                              </WrapPanel>
+                    <DataTemplate x:DataType="vm:AssociateSelectedOperationalNoteRowViewModel">
+                      <Border Classes="listRow" AutomationProperties.Name="{Binding AccessibleSummary}">
+                        <StackPanel Spacing="6">
+                          <Grid ColumnDefinitions="32,*,Auto" ColumnSpacing="10">
+                            <CheckBox Grid.Column="0" VerticalAlignment="Top"
+                                      IsChecked="{Binding IsIncluded, Mode=TwoWay}"
+                                      Command="{Binding RemoveCommand}"
+                                      AutomationProperties.Name="{Binding Title, StringFormat='Include {0} in this passdown'}"
+                                      AutomationProperties.HelpText="{Binding Title, StringFormat='Uncheck to remove {0} from this passdown. The original note is not changed.'}" />
+                            <StackPanel Grid.Column="1" Spacing="3">
+                              <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" Classes="noteTitle" />
+                              <TextBlock Text="{Binding MetaText}" Classes="overviewCaption" TextWrapping="Wrap" />
+                              <TextBlock Text="{Binding Body}"
+                                         IsVisible="{Binding HasBody}"
+                                         Classes="muted" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" />
+                              <TextBlock Text="{Binding DateRangeText}" Classes="fieldHint" Margin="0" />
                             </StackPanel>
-                          </CheckBox>
-                          <TextBlock Text="{Binding StateNote}" Classes="fieldWarning" TextWrapping="Wrap" Margin="32,0,0,0"
-                                     IsVisible="{Binding HasStateNote}" />
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
+                              <Border Classes="chip" IsVisible="{Binding IsImportant}">
+                                <TextBlock Text="Important" Classes="priorityText important" />
+                              </Border>
+                              <Border Classes="sourceTag official"><TextBlock Text="Included" /></Border>
+                            </StackPanel>
+                          </Grid>
+
+                          <!-- Source-changed awareness (Phase 11E Parts G-L): informational only — never touches the
+                               frozen copy above unless the supervisor explicitly clicks Replace. -->
+                          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" Margin="42,0,0,0" IsVisible="{Binding HasSourceStatus}">
+                            <TextBlock Grid.Column="0" Text="{Binding SourceStatusText}" Classes="fieldHint" Margin="0"
+                                       TextWrapping="Wrap" VerticalAlignment="Center" />
+                            <Button Grid.Column="1"
+                                    Content="Replace with Current Version"
+                                    Classes="secondaryAction"
+                                    Command="{Binding ReplaceCommand}"
+                                    IsVisible="{Binding ShowReplaceAction}"
+                                    AutomationProperties.Name="{Binding Title, StringFormat='Replace {0} with current version'}" />
+                          </Grid>
                         </StackPanel>
                       </Border>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
-              </StackPanel>
-            </Border>
-          </Grid>
-      </ScrollViewer>
 
-      <ScrollViewer Grid.Row="1" Classes="sectionScroll"
-                    IsVisible="{Binding IsNotesSectionSelected}">
-        <StackPanel Spacing="12">
+                <!-- Available (Phase 11D Parts E/U): relevant for the Associate-selected date, minus what is already included.
+                     Selecting is explicit — nothing here is ever included automatically. -->
+                <TextBlock Text="{Binding AvailableOperationalNoteSuggestionsHeading}" Classes="columnHeader" Margin="0,20,0,0"
+                           AutomationProperties.Name="Available persistent operational notes" />
+                <TextBlock Text="No persistent operational notes are available for this date."
+                           Classes="overviewCaption" Margin="0,8,0,0"
+                           IsVisible="{Binding !HasAvailableOperationalNoteSuggestions}" />
 
-          <!-- Daily Passdown Notes (Part E): full width, comfortable multiline entry. Deliberately
-               independent of the persistent-note sections below (Part AA) — selecting/deselecting a
-               persistent note never reads or writes this text. -->
-          <Border Classes="panel">
-            <StackPanel Spacing="6">
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <TextBlock Text="Daily Passdown Notes" Classes="sectionTitle" Margin="0" VerticalAlignment="Center" />
-                <Border Classes="sourceTag"><TextBlock Text="Entered here" /></Border>
-              </StackPanel>
-              <TextBox spell:SpellCheck.IsEnabled="True"
-                       Text="{Binding OperationalNotesText}"
-                       AcceptsReturn="True"
-                       TextWrapping="Wrap"
-                       MinHeight="180"
-                       Background="{DynamicResource PassdownSurfaceSecondaryBrush}"
-                       PlaceholderText="Important operational notes, one line per note"
-                       AutomationProperties.Name="Operational notes" />
-              <TextBlock Text="Each line prints as its own note. Saved automatically."
-                         Classes="fieldHint" Margin="0" />
-            </StackPanel>
-          </Border>
-
-          <!-- Included Persistent Notes (Phase 11D Part T/V): frozen copies the supervisor has
-               explicitly selected for this date — structurally distinct from the manual notes above,
-               never merged into that text box. Phase 22D: hairline-separated rows, not a box per note. -->
-          <Border Classes="panel">
-            <StackPanel Spacing="4">
-              <TextBlock Text="Included Persistent Notes" Classes="sectionTitle" Margin="0"
-                         AutomationProperties.Name="Included persistent operational notes" />
-
-              <!-- Phase 11E Part H: plain-language explanation that inclusion freezes a copy — shown
-                   once for the section, not per row, since it is true for every included note. -->
-              <TextBlock Text="Included notes keep the version selected for this passdown."
-                         Classes="fieldHint" Margin="0"
-                         IsVisible="{Binding HasSelectedOperationalNotes}" />
-
-              <TextBlock Text="No persistent operational notes included."
-                         Classes="muted"
-                         IsVisible="{Binding !HasSelectedOperationalNotes}" />
-
-              <ItemsControl ItemsSource="{Binding SelectedOperationalNotes}"
-                            IsVisible="{Binding HasSelectedOperationalNotes}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:AssociateSelectedOperationalNoteRowViewModel">
-                    <Border Classes="listRow" AutomationProperties.Name="{Binding AccessibleSummary}">
-                      <StackPanel Spacing="6">
-                        <Grid ColumnDefinitions="Auto,*,Auto">
-                          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top" Margin="0,0,10,0">
-                            <Border Classes="chip" IsVisible="{Binding IsImportant}">
-                              <TextBlock Text="Important" Classes="priorityText important" />
-                            </Border>
-                            <Border Classes="chip">
-                              <TextBlock Text="{Binding CategoryLabel}" />
-                            </Border>
-                          </StackPanel>
-
-                          <StackPanel Grid.Column="1" Spacing="2" Margin="0,0,16,0">
-                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                            <TextBlock Text="{Binding Body}"
-                                       IsVisible="{Binding HasBody}"
-                                       Classes="muted" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" />
+                <ItemsControl Classes="persistentNotes" ItemsSource="{Binding AvailableOperationalNoteSuggestions}"
+                              IsVisible="{Binding HasAvailableOperationalNoteSuggestions}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:AssociateOperationalNoteSuggestionRowViewModel">
+                      <Border Classes="listRow" AutomationProperties.Name="{Binding AccessibleSummary}">
+                        <Grid ColumnDefinitions="32,*,Auto" ColumnSpacing="10">
+                          <CheckBox Grid.Column="0" VerticalAlignment="Top"
+                                    IsChecked="{Binding IsIncluded, Mode=TwoWay}"
+                                    Command="{Binding AddCommand}"
+                                    AutomationProperties.Name="{Binding Title, StringFormat='Include {0} in this passdown'}"
+                                    AutomationProperties.HelpText="{Binding Title, StringFormat='Check to add note {0} to this passdown. The original note is not changed.'}" />
+                          <StackPanel Grid.Column="1" Spacing="3">
+                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" Classes="noteTitle" />
+                            <TextBlock Text="{Binding MetaText}" Classes="overviewCaption" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding DateRangeText}" Classes="fieldHint" Margin="0" />
                           </StackPanel>
-
-                          <!-- Remove means "remove from this passdown", never "delete/resolve the source note" (spec Part S) — the automation name spells this out explicitly. -->
-                          <Button Grid.Column="2"
-                                  Content="Remove"
-                                  Classes="secondaryAction"
-                                  Command="{Binding RemoveCommand}"
-                                  VerticalAlignment="Top"
-                                  AutomationProperties.Name="{Binding Title, StringFormat='Remove {0} from this passdown'}" />
-                        </Grid>
-
-                        <!-- Source-changed awareness (Phase 11E Parts G-L): informational only — never
-                             touches the frozen Title/Body/etc. above unless the supervisor explicitly
-                             clicks Replace. -->
-                        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasSourceStatus}">
-                          <TextBlock Grid.Column="0" Text="{Binding SourceStatusText}" Classes="fieldHint" Margin="0"
-                                     TextWrapping="Wrap" VerticalAlignment="Center" />
-                          <Button Grid.Column="1"
-                                  Content="Replace with Current Version"
-                                  Classes="secondaryAction"
-                                  Command="{Binding ReplaceCommand}"
-                                  IsVisible="{Binding ShowReplaceAction}"
-                                  AutomationProperties.Name="{Binding Title, StringFormat='Replace {0} with current version'}" />
-                        </Grid>
-                      </StackPanel>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </StackPanel>
-          </Border>
-
-          <!-- Available persistent-note suggestions (Phase 11D Part E/U): relevant for the
-               Associate-selected date, minus whatever is already included above. Selecting is
-               explicit (Add) — nothing here is ever auto-included. -->
-          <Border Classes="panel">
-            <StackPanel Spacing="4">
-              <TextBlock Text="{Binding AvailableOperationalNoteSuggestionsHeading}" Classes="sectionTitle" Margin="0"
-                         AutomationProperties.Name="Available persistent operational notes" />
-
-              <TextBlock Text="No persistent operational notes are available for this date."
-                         Classes="muted"
-                         IsVisible="{Binding !HasAvailableOperationalNoteSuggestions}" />
-
-              <ItemsControl ItemsSource="{Binding AvailableOperationalNoteSuggestions}"
-                            IsVisible="{Binding HasAvailableOperationalNoteSuggestions}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:AssociateOperationalNoteSuggestionRowViewModel">
-                    <Border Classes="listRow" AutomationProperties.Name="{Binding AccessibleSummary}">
-                      <Grid ColumnDefinitions="Auto,*,Auto">
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top" Margin="0,0,10,0">
-                          <Border Classes="chip" IsVisible="{Binding IsImportant}">
+                          <Border Grid.Column="2" Classes="chip" IsVisible="{Binding IsImportant}" VerticalAlignment="Top">
                             <TextBlock Text="Important" Classes="priorityText important" />
                           </Border>
-                          <Border Classes="chip">
-                            <TextBlock Text="{Binding CategoryLabel}" />
-                          </Border>
-                        </StackPanel>
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
 
-                        <StackPanel Grid.Column="1" Spacing="2" Margin="0,0,16,0">
-                          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                          <TextBlock Text="{Binding DateRangeText}" Classes="fieldHint" Margin="0" />
-                          <TextBlock Text="{Binding CarryForwardText}" Classes="fieldHint" Margin="0"
-                                     IsVisible="{Binding HasCarryForwardText}" />
-                        </StackPanel>
-
-                        <Button Grid.Column="2"
-                                Content="Add"
-                                Classes="secondaryAction"
-                                Command="{Binding AddCommand}"
-                                VerticalAlignment="Top"
-                                AutomationProperties.Name="{Binding Title, StringFormat='Add note {0}'}" />
-                      </Grid>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </StackPanel>
-          </Border>
-
-        </StackPanel>
+                <Border Classes="sourceBox">
+                  <TextBlock Text="Persistent notes stay independent of daily notes. Unchecking a note removes it from this date's Passdown only; it never resolves, edits or deletes the original note."
+                             TextWrapping="Wrap" Classes="overviewCaption" />
+                </Border>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </Border>
       </ScrollViewer>
 
     </Grid>
