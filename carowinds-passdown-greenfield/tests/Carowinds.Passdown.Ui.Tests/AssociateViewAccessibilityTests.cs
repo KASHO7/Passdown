@@ -225,7 +225,10 @@ public class AssociateViewAccessibilityTests
         var markup = File.ReadAllText(FindRepoFile("src/Carowinds.Passdown.Desktop/Views/AssociateView.axaml"));
 
         Assert.Contains("StringFormat='Include {0} on the PDF'", markup);
-        Assert.Contains("StringFormat='Display price override for {0}'", markup);
+        // Phase 35C: the row's display price is text with an Edit control ("Edit display price for X, currently $Y",
+        // built by the row view model); the anchored popover's input is "Display price for X".
+        Assert.Contains("AutomationProperties.Name=\"{Binding EditPriceAutomationName}\"", markup);
+        Assert.Contains("AutomationProperties.Name=\"{Binding InputAccessibleName}\"", markup);
         Assert.Contains("StringFormat='Use official price for {0}'", markup);
         Assert.Contains("StringFormat='Remove {0}'", markup);
         Assert.Contains("StringFormat='Remove {0} from this passdown'", markup);

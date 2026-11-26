@@ -29,6 +29,30 @@ public partial class AssociateView : UserControl
             ApplyPreviewLayout();
         };
         PreviewSplitter.DragCompleted += (_, _) => CommitSplitterWidth();
+
+        // Phase 35C: the price popover — focus moves into it on open; scrolling or resizing the Products list closes it
+        // unsaved, so it can never float detached from the row it edits.
+        PriceEditorPopup.Opened += (_, _) =>
+        {
+            PriceEditorPanel.Classes.Remove("entering"); // fades to full opacity only under Window.motion
+            FocusPriceEditorInput();
+        };
+        PriceEditorPopup.Closed += (_, _) => PriceEditorPanel.Classes.Add("entering");
+        PriceEditorPanel.AddHandler(KeyDownEvent, PriceEditorPanel_OnKeyDown, RoutingStrategies.Tunnel);
+        ProductsSectionScroll.ScrollChanged += (_, e) =>
+        {
+            if (e.OffsetDelta != default)
+            {
+                _priceEditor?.CancelIfOpen();
+            }
+        };
+        ProductsSectionScroll.SizeChanged += (_, e) =>
+        {
+            if (e.WidthChanged || e.HeightChanged)
+            {
+                _priceEditor?.CancelIfOpen();
+            }
+        };
         PreviewSplitter.AddHandler(KeyUpEvent, (_, e) =>
         {
             if (e.Key is Key.Left or Key.Right)
@@ -39,10 +63,23 @@ public partial class AssociateView : UserControl
     }
 
     private PassdownPdfPreviewViewModel? _preview;
+    private PriceEditorViewModel? _priceEditor;
+    private Control? _priceEditAnchor;
 
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);
+        if (_priceEditor is not null)
+        {
+            _priceEditor.Closed -= PriceEditor_OnClosed;
+        }
+
+        _priceEditor = (DataContext as AssociateViewModel)?.PriceEditor;
+        if (_priceEditor is not null)
+        {
+            _priceEditor.Closed += PriceEditor_OnClosed;
+        }
+
         if (_preview is not null)
         {
             _preview.PropertyChanged -= Preview_OnPropertyChanged;
@@ -219,6 +256,61 @@ public partial class AssociateView : UserControl
         if (DataContext is AssociateViewModel viewModel)
         {
             viewModel.RegroupCountFields();
+        }
+    }
+
+    /// <summary>
+    /// Phase 35C: the Edit control that was activated (pointer, Enter or Space) becomes the popover's anchor. Click is
+    /// raised before the button's command runs, so the anchor is set before the editor opens.
+    /// </summary>
+    private void PriceEditButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control anchor)
+        {
+            // A partly hidden row is scrolled fully into view and laid out first, so that scroll is finished before the
+            // editor opens (a later scroll closes it) and the popover is placed against the control's final position.
+            anchor.BringIntoView();
+            anchor.UpdateLayout();
+            _priceEditAnchor = anchor; // focus returns here
+            // Placed against the whole display-price cell (price + "Manual override" hint), so the hint stays visible.
+            PriceEditorPopup.PlacementTarget = anchor.Parent is StackPanel { Classes: var classes } cell && classes.Contains("priceCell") ? cell : anchor;
+        }
+    }
+
+    /// <summary>Phase 35C: Escape anywhere in the popover cancels; Enter in the price input saves (Enter on a button activates it).</summary>
+    private void PriceEditorPanel_OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (_priceEditor is not { IsOpen: true } editor)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Escape)
+        {
+            editor.CancelCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter && e.Source is Visual source && (ReferenceEquals(source, PriceEditorTextBox) || source.FindAncestorOfType<TextBox>() == PriceEditorTextBox))
+        {
+            editor.SaveCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
+
+    private void FocusPriceEditorInput()
+    {
+        PriceEditorTextBox.Focus(NavigationMethod.Tab);
+        PriceEditorTextBox.SelectAll();
+    }
+
+    /// <summary>Phase 35C: focus returns to the Edit control that opened the editor, when it still exists on screen.</summary>
+    private void PriceEditor_OnClosed(object? sender, bool committed)
+    {
+        var anchor = _priceEditAnchor;
+        _priceEditAnchor = null;
+        if (anchor is not null && anchor.IsAttachedToVisualTree() && anchor.IsEffectivelyVisible)
+        {
+            anchor.Focus(NavigationMethod.Tab);
         }
     }
 }

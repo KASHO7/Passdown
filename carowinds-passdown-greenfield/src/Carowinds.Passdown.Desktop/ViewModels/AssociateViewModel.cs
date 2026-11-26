@@ -248,6 +248,164 @@ public partial class AssociateViewModel : ViewModelBase
 
     public bool IsShowsSectionSelected => SelectedSection == AssociateSection.Shows;
 
+    // Phase 35C: leaving Products closes an open price editor without saving.
+    partial void OnSelectedSectionChanged(AssociateSection value) => PriceEditor?.CancelIfOpen();
+
+    // ------------------------------------------------------------------ Phase 35C: Products price popover, collapse, search
+
+    /// <summary>
+    /// Phase 35C: the one anchored "Edit display price" popover (docs/phase35c-products-pricing-redesign.md). It
+    /// targets a row instance and the date in edit; a date switch, section switch or list rebuild closes it unsaved,
+    /// and Save re-checks both so a stale editor can never write to another product or date.
+    /// </summary>
+    public PriceEditorViewModel PriceEditor { get; }
+
+    /// <summary>Category names the associate collapsed this session (view state only — never printed or saved).</summary>
+    private readonly HashSet<string> _collapsedProductSections = new(StringComparer.Ordinal);
+
+    /// <summary>Phase 35C: filters product and custom rows by visible words. View state only; never saved.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNoProductSearchMatches))]
+    public partial string? ProductSearchText { get; set; }
+
+    /// <summary>Phase 35C: a search is active and matches no product or custom row.</summary>
+    public bool HasNoProductSearchMatches => !string.IsNullOrWhiteSpace(ProductSearchText)
+        && !ProductSections.Any(section => section.IsSectionVisible)
+        && !CustomProducts.Any(row => row.IsSearchMatch);
+
+    partial void OnProductSearchTextChanged(string? value)
+    {
+        PriceEditor?.CancelIfOpen();
+        ApplyProductSearch();
+    }
+
+    private void ApplyProductSearch()
+    {
+        foreach (var section in ProductSections)
+        {
+            section.ApplySearch(ProductSearchText);
+        }
+
+        var active = !string.IsNullOrWhiteSpace(ProductSearchText);
+        foreach (var row in CustomProducts)
+        {
+            row.IsSearchMatch = !active || row.MatchesSearch(ProductSearchText!);
+        }
+
+        OnPropertyChanged(nameof(HasNoProductSearchMatches));
+        OnPropertyChanged(nameof(CustomProductsSummaryText));
+    }
+
+    /// <summary>Phase 35C: "2 items · 1 included" for the Custom &amp; Internal Items heading.</summary>
+    public string CustomProductsSummaryText
+    {
+        get
+        {
+            var visible = CustomProducts.Where(row => row.IsSearchMatch).ToList();
+            return visible.Count == 0 && CustomProducts.Count == 0
+                ? "No items"
+                : $"{visible.Count} {(visible.Count == 1 ? "item" : "items")} · {visible.Count(row => row.IncludeOnPdf)} included";
+        }
+    }
+
+    private void OpenPriceEditor(IPriceEditTarget target)
+    {
+        var date = _draftDateInEdit ?? SelectedDate;
+        if (!IsPriceEditTargetCurrent(target, date))
+        {
+            return;
+        }
+
+        PriceEditor.Open(target, date);
+    }
+
+    /// <summary>
+    /// Phase 35C: the editor's target is still a row on screen for the date it was opened on, and that date is still
+    /// both the selected date and the date in edit (no switch is in progress).
+    /// </summary>
+    private bool IsPriceEditTargetCurrent(IPriceEditTarget target, DateOnly date) =>
+        SelectedDate == date
+        && (_draftDateInEdit ?? SelectedDate) == date
+        && target switch
+        {
+            ProductRowViewModel row => ProductSections.Any(section => section.Products.Contains(row)),
+            CustomProductRowViewModel custom => CustomProducts.Contains(custom),
+            _ => false,
+        };
+
+    private void OnProductSectionExpandedChanged(ProductCategorySectionViewModel section)
+    {
+        if (section.IsExpanded)
+        {
+            _collapsedProductSections.Remove(section.CategoryDisplayName);
+        }
+        else
+        {
+            _collapsedProductSections.Add(section.CategoryDisplayName);
+            if (PriceEditor.Target is ProductRowViewModel row && section.Products.Contains(row))
+            {
+                PriceEditor.CancelIfOpen(); // its anchor is about to disappear.
+            }
+        }
+    }
+
+    partial void OnProductSectionsChanged(IReadOnlyList<ProductCategorySectionViewModel> value)
+    {
+        PriceEditor?.CancelIfOpen(); // rows were rebuilt — the editor's row no longer exists.
+        OnPropertyChanged(nameof(HasNoProductSearchMatches));
+    }
+
+    partial void OnCustomProductsChanged(ObservableCollection<CustomProductRowViewModel> oldValue, ObservableCollection<CustomProductRowViewModel> newValue)
+    {
+        if (PriceEditor?.Target is CustomProductRowViewModel)
+        {
+            PriceEditor.CancelIfOpen();
+        }
+
+        if (oldValue is not null)
+        {
+            oldValue.CollectionChanged -= OnCustomProductsCollectionChanged;
+            foreach (var row in oldValue)
+            {
+                row.PropertyChanged -= OnCustomProductRowPropertyChanged;
+            }
+        }
+
+        newValue.CollectionChanged += OnCustomProductsCollectionChanged;
+        foreach (var row in newValue)
+        {
+            row.PropertyChanged += OnCustomProductRowPropertyChanged;
+        }
+
+        OnPropertyChanged(nameof(CustomProductsSummaryText));
+    }
+
+    private void OnCustomProductsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        foreach (var row in e.NewItems?.OfType<CustomProductRowViewModel>() ?? [])
+        {
+            row.PropertyChanged += OnCustomProductRowPropertyChanged;
+            row.IsSearchMatch = string.IsNullOrWhiteSpace(ProductSearchText) || row.MatchesSearch(ProductSearchText);
+        }
+
+        foreach (var row in e.OldItems?.OfType<CustomProductRowViewModel>() ?? [])
+        {
+            row.PropertyChanged -= OnCustomProductRowPropertyChanged;
+            PriceEditor.CancelIfTarget(row);
+        }
+
+        OnPropertyChanged(nameof(CustomProductsSummaryText));
+        OnPropertyChanged(nameof(HasNoProductSearchMatches));
+    }
+
+    private void OnCustomProductRowPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(CustomProductRowViewModel.IncludeOnPdf))
+        {
+            OnPropertyChanged(nameof(CustomProductsSummaryText));
+        }
+    }
+
     [RelayCommand]
     private void ShowOverviewSection() => SelectedSection = AssociateSection.Overview;
 
@@ -709,6 +867,8 @@ public partial class AssociateViewModel : ViewModelBase
         _importantDetailsService = importantDetailsService;
         OfficialDataStatus = officialDataStatus;
         OfficialDetails = new OfficialDetailsDialogViewModel(externalLinkLauncher);
+        PriceEditor = new PriceEditorViewModel(IsPriceEditTargetCurrent);
+        CustomProducts.CollectionChanged += OnCustomProductsCollectionChanged;
 
         // Phase 32: the Pass Perks panel (Products) reads the cached official perks only.
         PassPerks = passPerksService is null ? null : new PassPerksPanelViewModel(passPerksService, OfficialDetails.Open, logger);
@@ -1504,6 +1664,8 @@ public partial class AssociateViewModel : ViewModelBase
 
     partial void OnSelectedDateChanged(DateOnly value)
     {
+        PriceEditor?.CancelIfOpen(); // Phase 35C: an open price edit belongs to the previous date — discarded, never saved.
+
         // Phase 33: the page on screen belongs to the previous date — cleared at once, never shown as this one's.
         Preview.NotifySelectedDateChanged();
         Preview.ClearActionMessage();
@@ -1794,7 +1956,7 @@ public partial class AssociateViewModel : ViewModelBase
     private void AddCustomProduct()
     {
         var entry = new CustomProductEntry(Guid.NewGuid().ToString("N"), "New custom item", Price: null, Notes: null, IncludeOnPdf: true);
-        CustomProducts.Add(new CustomProductRowViewModel(entry, ScheduleAutosave, RemoveCustomProduct));
+        CustomProducts.Add(new CustomProductRowViewModel(entry, ScheduleAutosave, RemoveCustomProduct, OpenPriceEditor));
         OnPropertyChanged(nameof(HasCustomProducts));
         ScheduleAutosave();
     }
@@ -2449,23 +2611,28 @@ public partial class AssociateViewModel : ViewModelBase
             }
 
             var sectionName = ProductDisplaySectionDisplay.FriendlyName(section);
-            var rows = products.Select(product => new ProductRowViewModel(product, ScheduleAutosave, RequestPriceHistory, OfficialDetails.Open)).ToList();
+            var rows = products.Select(product => new ProductRowViewModel(product, ScheduleAutosave, RequestPriceHistory, OfficialDetails.Open, OpenPriceEditor)).ToList();
             foreach (var row in rows)
             {
                 row.SectionName = sectionName;
                 row.ApplyImportantDetails(_importantDetailsIndex.Find(row.Product), _externalLinkLauncher);
             }
 
-            result.Add(new ProductCategorySectionViewModel(
+            var categorySection = new ProductCategorySectionViewModel(
                 sectionName, status, rows, PassSourcePresentation.SourceNote(section, products),
-                OfficialSourceLinkViewModel.TryCreate(PassSourcePresentation.SourceUrl(section, products), _externalLinkLauncher)));
+                OfficialSourceLinkViewModel.TryCreate(PassSourcePresentation.SourceUrl(section, products), _externalLinkLauncher),
+                isExpanded: !_collapsedProductSections.Contains(sectionName),
+                expandedChanged: OnProductSectionExpandedChanged);
+            categorySection.ApplySearch(ProductSearchText);
+            result.Add(categorySection);
         }
 
         ProductSections = result;
         HistoricalPricingNotice = BuildHistoricalPricingNotice(workspace);
 
         CustomProducts = new ObservableCollection<CustomProductRowViewModel>(
-            workspace.Draft.CustomProducts.Select(custom => new CustomProductRowViewModel(custom, ScheduleAutosave, RemoveCustomProduct)));
+            workspace.Draft.CustomProducts.Select(custom => new CustomProductRowViewModel(custom, ScheduleAutosave, RemoveCustomProduct, OpenPriceEditor)));
+        ApplyProductSearch();
     }
 
     /// <summary>Phase 21C: rows from the workspace's reconciled Shows section — this date's only.</summary>

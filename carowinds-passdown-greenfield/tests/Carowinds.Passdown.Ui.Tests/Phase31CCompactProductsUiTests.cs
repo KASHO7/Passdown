@@ -561,8 +561,10 @@ public class Phase31CCompactProductsUiTests
 
         Assert.DoesNotContain("Terms and details", view, StringComparison.Ordinal);
         Assert.DoesNotContain("Important details and deadlines for {0}", view, StringComparison.Ordinal);
-        // Deal rows, product rows and (Phase 32) Pass Perk rows each have one small View details link.
-        Assert.Equal(3, CountOf(view, "Content=\"View details\""));
+        // Deal rows and (Phase 32) Pass Perk rows each have one small View details link; Phase 35C product rows show
+        // "Details" in their own right-aligned column (accessible name still "View details for X").
+        Assert.Equal(2, CountOf(view, "Content=\"View details\""));
+        Assert.Equal(1, CountOf(view, "Content=\"Details\""));
         Assert.Equal(3, CountOf(view, "AutomationProperties.Name=\"{Binding ViewDetailsAutomationName}\""));
         Assert.Contains("<Style Selector=\"Button.compactLink\">", view, StringComparison.Ordinal);
         Assert.Contains("<DataTemplate DataType=\"vm:DealItemViewModel\"", view, StringComparison.Ordinal);

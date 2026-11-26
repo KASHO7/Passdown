@@ -363,8 +363,10 @@ public sealed class Phase22DAssociateWorkspaceTests
             "SelectAllShowsCommand", "ClearShowsCommand", "StateNote", "TimesText", "Venue", "IncludeDailyAdmission", "IncludeFastLane", "IncludePromotions",
             "IncludeSeasonPasses", "IncludeAddOns", "IncludeHauntedAttractions", "IncludeOperationalNotes", "OpenPriceHistoryCommand", "HistoricalPricingNotice",
             "ProductSections", "Status.StatusText", "Status.DetailText", "OfficialPriceText", "ComparisonPriceText", "PriceQualifier", "BundleNoteText",
-            "VerificationNoteText", "ViewPriceHistoryCommand", "DisplayPriceOverrideText", "OverridePlaceholderText", "DisplayPriceOverrideError",
-            "ResetToOfficialCommand", "AddCustomProductCommand", "CustomProducts", "OperationalNotesText", "SelectedOperationalNotes",
+            "VerificationNoteText", "ViewPriceHistoryCommand",
+            // Phase 35C: the per-row override TextBox, placeholder, inline error and Use official link moved into the one
+            // anchored price popover (EffectivePriceText + EditPriceCommand on the row; EditText/ErrorText/UseOfficialCommand there).
+            "EffectivePriceText", "EditPriceCommand", "EditText", "ErrorText", "UseOfficialCommand", "AddCustomProductCommand", "CustomProducts", "OperationalNotesText", "SelectedOperationalNotes",
             "AvailableOperationalNoteSuggestions", "ReplaceCommand", "AddCommand", "OperationalNotesCount", "IsOverviewSectionSelected",
             "IsProductsSectionSelected", "IsNotesSectionSelected",
         ];
@@ -444,7 +446,7 @@ public sealed class Phase22DAssociateWorkspaceTests
         var template = Regex.Match(markup, "<DataTemplate x:DataType=\"vm:ProductRowViewModel\">.*?</DataTemplate>", RegexOptions.Singleline).Value;
 
         Assert.Contains("Text=\"{Binding OfficialPriceText}\" Classes=\"officialPrice\"", template);
-        Assert.Contains("ColumnDefinitions=\"Auto,*,120,180\"", template);
+        Assert.Contains("ColumnDefinitions=\"28,*,100,158,96\"", template); // Phase 35C: Inc · Product · Official · Display price · Details
         Assert.Contains("Text=\"OFFICIAL\"", markup);
         Assert.Contains("Text=\"DISPLAY PRICE\"", markup);
         Assert.Contains("Selector=\"TextBlock.officialPrice\"", markup);

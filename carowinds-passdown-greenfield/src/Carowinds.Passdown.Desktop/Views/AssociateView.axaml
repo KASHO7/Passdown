@@ -555,6 +555,158 @@
       <Setter Property="Padding" Value="0,8" />
     </Style>
 
+    <!-- Phase 35C Products & Pricing: collapsible category headings, one table per category, hairline rows, the
+         display price as text with an explicit Edit control, and the anchored price popover. -->
+    <Style Selector="TextBox.productSearch">
+      <Setter Property="MinHeight" Value="34" />
+      <Setter Property="MaxWidth" Value="320" />
+      <Setter Property="MinWidth" Value="180" />
+    </Style>
+    <Style Selector="Button.categoryHead">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+      <Setter Property="Padding" Value="10,8" />
+      <Setter Property="MinHeight" Value="34" />
+    </Style>
+    <Style Selector="Button.categoryHead:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
+    </Style>
+    <Style Selector="Button.categoryHead:pressed">
+      <Setter Property="RenderTransform" Value="scale(1)" />
+    </Style>
+    <Style Selector="Border.categoryBand.customBand">
+      <Setter Property="Padding" Value="10,8" />
+      <Setter Property="Margin" Value="0" />
+    </Style>
+    <Style Selector="Path.categoryChevron">
+      <Setter Property="Width" Value="11" />
+      <Setter Property="Height" Value="11" />
+      <Setter Property="Stretch" Value="Uniform" />
+      <Setter Property="Stroke" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+      <Setter Property="StrokeThickness" Value="1.8" />
+      <Setter Property="StrokeLineCap" Value="Round" />
+      <Setter Property="StrokeJoin" Value="Round" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.categoryName">
+      <Setter Property="FontSize" Value="12.5" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.categoryCount">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Grid.productColumns">
+      <Setter Property="Margin" Value="7,12,7,0" />
+    </Style>
+    <Style Selector="Grid.productColumns > TextBlock">
+      <Setter Property="Margin" Value="0,0,0,7" />
+    </Style>
+    <Style Selector="Border.priceRow">
+      <Setter Property="BorderThickness" Value="0,1,0,0" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="Padding" Value="7,10" />
+      <Setter Property="MinHeight" Value="56" />
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.priceRow:pointerover">
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
+    </Style>
+    <Style Selector="TextBlock.productName">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+    </Style>
+    <Style Selector="TextBlock.productDesc">
+      <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeCaption}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.officialPrice.noOfficialValue, TextBlock.displayPrice.noOfficialValue">
+      <Setter Property="FontWeight" Value="Normal" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+    </Style>
+    <Style Selector="Button.priceEdit">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+      <Setter Property="Padding" Value="6,4" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.priceEdit:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderBrush}" />
+    </Style>
+    <Style Selector="Button.priceEdit:pressed">
+      <Setter Property="RenderTransform" Value="scale(1)" />
+    </Style>
+    <Style Selector="TextBlock.displayPrice">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="MaxWidth" Value="112" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Path.editGlyph">
+      <Setter Property="Width" Value="12" />
+      <Setter Property="Height" Value="12" />
+      <Setter Property="Stretch" Value="Uniform" />
+      <Setter Property="Stroke" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+      <Setter Property="StrokeThickness" Value="1.6" />
+      <Setter Property="StrokeLineCap" Value="Round" />
+      <Setter Property="StrokeJoin" Value="Round" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.overrideHint">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+      <Setter Property="Margin" Value="7,0,0,0" />
+    </Style>
+    <Style Selector="Button.rowLink">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Padding" Value="3,2" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+    </Style>
+    <Style Selector="Button.removeLink">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownErrorBrush}" />
+    </Style>
+    <Style Selector="TextBox.customField">
+      <Setter Property="MinHeight" Value="30" />
+      <Setter Property="FontSize" Value="12.5" />
+    </Style>
+    <Style Selector="Border.pricePopover">
+      <Setter Property="Width" Value="290" />
+      <Setter Property="Background" Value="{DynamicResource PassdownSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderStrongBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusPopup}" />
+      <Setter Property="Padding" Value="15" />
+      <Setter Property="BoxShadow" Value="0 10 30 0 #38000000" />
+    </Style>
+    <!-- Resting state while closed; removed on open (a fade only where Window.motion declares the transition). -->
+    <Style Selector="Border.pricePopover.entering">
+      <Setter Property="Opacity" Value="0.35" />
+    </Style>
+    <Style Selector="TextBlock.popoverTitle">
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+      <Setter Property="Margin" Value="0,0,0,9" />
+    </Style>
+
   </UserControl.Styles>
 
   <!-- Phase 35B (docs/phase35b-passdown-workspace-redesign.md): Ctrl+P prints the latest edits — the same command
@@ -1369,131 +1521,101 @@
         </Border>
       </ScrollViewer>
 
-      <ScrollViewer Grid.Row="1" Classes="sectionScroll"
+      <!-- Phase 35C (docs/phase35c-products-pricing-redesign.md): Products & Pricing is one white sheet like Overview —
+           a heading with search and Add custom item, collapsible category groups (summary counts follow the checkboxes),
+           table-like rows separated by hairlines, display prices as plain text with an explicit Edit control that opens
+           the one anchored price popover (PriceEditorPopup below), then the reference information (Current Deals,
+           Pass Perks) that does not print as individual products. -->
+      <ScrollViewer Grid.Row="1" x:Name="ProductsSectionScroll" Classes="sectionScroll"
                     IsVisible="{Binding IsProductsSectionSelected}">
-          <StackPanel Spacing="12">
+        <Border x:Name="ProductsSheet" Classes="editorSheet">
+          <StackPanel Spacing="0">
 
-            <!-- Phase 22D: one heading row — whose prices these are, and the entry point to the read-only
-                 Season Price History screen (Phase 20A; also the way to reach retired products'
-                 history; the same screen is under More). -->
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-              <StackPanel Grid.Column="0" Classes="groupHeader" VerticalAlignment="Center">
-                <TextBlock Text="{Binding DateNavigation.DateText, StringFormat='Prices for {0}'}" />
-                <Border Classes="sourceTag official"><TextBlock Text="Official" /></Border>
+            <!-- Heading: title, what this page does, search and the two page actions. -->
+            <Grid x:Name="ProductsHeading" ColumnDefinitions="*,Auto" ColumnSpacing="16" Margin="0,0,0,14">
+              <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+                <WrapPanel ItemSpacing="10" LineSpacing="4">
+                  <TextBlock Text="Products &amp; Pricing" Classes="overviewTitle" FontSize="16" />
+                  <StackPanel Classes="groupHeader" VerticalAlignment="Center" Margin="0">
+                    <TextBlock Text="{Binding DateNavigation.DateText, StringFormat='Prices for {0}'}" />
+                    <Border Classes="sourceTag official"><TextBlock Text="Official" /></Border>
+                  </StackPanel>
+                </WrapPanel>
+                <TextBlock Text="Select what prints. Official prices remain unchanged when you edit a display value."
+                           Classes="overviewCaption" TextWrapping="Wrap" />
               </StackPanel>
-              <Button Grid.Column="1" Content="Season pass price history"
-                      Classes="secondaryAction"
+              <Button Grid.Column="1" Content="Season pass price history" VerticalAlignment="Top"
+                      Classes="linkAction compactLink"
                       Command="{Binding OpenPriceHistoryCommand}"
                       AutomationProperties.Name="Open season pass and add-on price history" />
             </Grid>
 
+            <WrapPanel x:Name="ProductsTools" ItemSpacing="8" LineSpacing="8" Margin="0,0,0,4">
+              <TextBox x:Name="ProductSearchBox" Classes="productSearch" Width="320"
+                       Text="{Binding ProductSearchText}"
+                       PlaceholderText="Search products and offers"
+                       AutomationProperties.Name="Search products" />
+              <Button Content="Add custom item"
+                      Classes="secondaryAction"
+                      Command="{Binding AddCustomProductCommand}"
+                      AutomationProperties.Name="Add a custom or internal product" />
+            </WrapPanel>
+
+            <!-- Phase 35C: an edit refused because its date or product changed says so here (nothing was saved). -->
+            <TextBlock Text="{Binding PriceEditor.Notice}" IsVisible="{Binding PriceEditor.HasNotice}"
+                       Classes="fieldWarning" TextWrapping="Wrap" Margin="0,8,0,0"
+                       AutomationProperties.LiveSetting="Assertive"
+                       AutomationProperties.Name="{Binding PriceEditor.Notice}" />
+
             <!-- Phase 21A: a past date shows only prices recorded for that exact date, never today's
                  catalog; this says so, and says plainly when nothing was recorded. -->
-            <Border Classes="panel" IsVisible="{Binding HasHistoricalPricingNotice}">
+            <Border Classes="sourceBox" IsVisible="{Binding HasHistoricalPricingNotice}" Margin="0,12,0,0">
               <TextBlock Text="{Binding HistoricalPricingNotice}" TextWrapping="Wrap"
                          AutomationProperties.Name="{Binding HistoricalPricingNotice}" />
             </Border>
 
-            <!-- Phase 31: official deals — current, upcoming, previously verified and expired kept
-                 apart, with last-checked/last-error status and an explicit empty state. Read from the
-                 cached official deals document (checked with the Promotions refresh). -->
-            <Border Classes="panel" IsVisible="{Binding HasDealsPanel}">
-              <StackPanel Spacing="4">
-                <Border Classes="categoryBand">
-                  <TextBlock Text="Current Deals" />
-                </Border>
-                <TextBlock Text="{Binding DealsStatusText}" FontSize="12" TextWrapping="Wrap" Margin="2,0,0,2"
-                           Classes="muted" Classes.fieldWarning="{Binding IsDealsStatusWarning}"
-                           AutomationProperties.Name="{Binding DealsStatusText}" />
-                <TextBlock Text="{Binding DealsEmptyText}" IsVisible="{Binding HasDealsEmptyText}" Margin="2,0,0,4"
-                           TextWrapping="Wrap" AutomationProperties.Name="{Binding DealsEmptyText}" />
-                <!-- Phase 31C: every deal group uses the view-level compact DealItemViewModel row template
-                     (name, price, one short description, confirmed deadline, View details). -->
-                <ItemsControl ItemsSource="{Binding CurrentDeals}" IsVisible="{Binding HasCurrentDeals}" />
-                <TextBlock Text="Upcoming offers" Classes="subsectionTitle" IsVisible="{Binding HasUpcomingDeals}" Margin="2,10,0,0" />
-                <ItemsControl ItemsSource="{Binding UpcomingDeals}" IsVisible="{Binding HasUpcomingDeals}" />
-                <Expander Header="{Binding PreviouslyVerifiedDealsHeaderText}" IsVisible="{Binding HasPreviouslyVerifiedDeals}"
-                          Classes="disclosure" Margin="0,6,0,0"
-                          AutomationProperties.Name="{Binding PreviouslyVerifiedDealsHeaderText}">
-                  <ItemsControl ItemsSource="{Binding PreviouslyVerifiedDeals}" />
-                </Expander>
-                <Expander Header="{Binding ExpiredDealsHeaderText}" IsVisible="{Binding HasExpiredDeals}"
-                          Classes="disclosure" Margin="0,6,0,0"
-                          AutomationProperties.Name="{Binding ExpiredDealsHeaderText}">
-                  <ItemsControl ItemsSource="{Binding ExpiredDeals}" />
-                </Expander>
-              </StackPanel>
-            </Border>
-
-            <!-- Phase 32: official Pass Perks for one month (publicly advertised rewards, not a guest's wallet).
-                 Read from the cached official document; the month picker re-formats cached data and never
-                 retrieves online. Details open in the shared View details dialog. -->
-            <Border Classes="panel" IsVisible="{Binding HasPassPerksPanel}">
-              <StackPanel Spacing="4" DataContext="{Binding PassPerks}" x:DataType="vm:PassPerksPanelViewModel">
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                  <Border Grid.Column="0" Classes="categoryBand">
-                    <TextBlock Text="Pass Perks" />
-                  </Border>
-                  <ComboBox Grid.Column="1" ItemsSource="{Binding Months}" SelectedItem="{Binding SelectedMonth}"
-                            MinWidth="200" VerticalAlignment="Center"
-                            AutomationProperties.Name="Pass Perks month" />
-                </Grid>
-                <TextBlock Text="{Binding StatusText}" FontSize="12" TextWrapping="Wrap" Margin="2,0,0,2"
-                           Classes="muted" Classes.fieldWarning="{Binding IsStatusWarning}"
-                           AutomationProperties.Name="{Binding StatusText}" />
-                <TextBlock Text="{Binding HistoryNoticeText}" IsVisible="{Binding HasHistoryNoticeText}" Margin="2,0,0,2"
-                           FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"
-                           AutomationProperties.Name="{Binding HistoryNoticeText}" />
-                <TextBlock Text="{Binding EmptyStateText}" IsVisible="{Binding HasEmptyStateText}" Margin="2,0,0,4"
-                           TextWrapping="Wrap" AutomationProperties.Name="{Binding EmptyStateText}" />
-                <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding HasItems}" />
-                <WrapPanel ItemSpacing="4" Margin="2,4,0,0">
-                  <TextBlock Text="{Binding IndividualPassNote}" Classes="muted" FontSize="12" TextWrapping="Wrap" MaxWidth="640"
-                             VerticalAlignment="Center" Margin="0,0,8,0" />
-                  <Button Content="Program terms" Command="{Binding ViewProgramTermsCommand}" IsVisible="{Binding HasProgramTerms}"
-                          Classes="linkAction compactLink"
-                          AutomationProperties.Name="View Pass Perks program terms" />
-                </WrapPanel>
-              </StackPanel>
-            </Border>
+            <TextBlock Text="No matching products. Try a different search." IsVisible="{Binding HasNoProductSearchMatches}"
+                       Classes="muted" HorizontalAlignment="Center" Margin="0,24,0,12" />
 
             <!-- Products (Part F): editable, data-driven per-category product sections. No product
                  names or category counts are hard-coded — sections and rows come straight from the
-                 composed workspace. Phase 22D: the official price has its own right-aligned column so
-                 amounts line up; the display-price box (a manual override) stays in the last column. -->
-            <ItemsControl ItemsSource="{Binding ProductSections}"
+                 composed workspace. -->
+            <ItemsControl x:Name="ProductCategoryList" ItemsSource="{Binding ProductSections}"
                           IsVisible="{Binding HasProductSections}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <StackPanel Spacing="12" />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:ProductCategorySectionViewModel">
-                  <Border Classes="panel">
-                    <StackPanel Spacing="2">
-                      <Border Classes="categoryBand">
-                        <TextBlock Text="{Binding CategoryDisplayName}" />
-                      </Border>
+                  <StackPanel Spacing="0" Margin="0,12,0,0" IsVisible="{Binding IsSectionVisible}">
+                    <Button Classes="categoryHead" Command="{Binding ToggleExpandedCommand}"
+                            AutomationProperties.Name="{Binding HeaderAccessibleName}">
+                      <StackPanel Orientation="Horizontal" Spacing="9">
+                        <Panel Width="12" VerticalAlignment="Center">
+                          <Path Classes="categoryChevron" Data="M6 9l6 6 6-6" IsVisible="{Binding IsBodyVisible}" />
+                          <Path Classes="categoryChevron" Data="M9 6l6 6-6 6" IsVisible="{Binding !IsBodyVisible}" />
+                        </Panel>
+                        <TextBlock Text="{Binding CategoryDisplayName}" Classes="categoryName" />
+                        <TextBlock Text="{Binding SummaryText}" Classes="categoryCount" />
+                      </StackPanel>
+                    </Button>
 
+                    <StackPanel Spacing="0" IsVisible="{Binding IsBodyVisible}">
                       <!-- Category source status (freshness / not published / could not check): one
                            compact block, still never hidden. -->
-                      <StackPanel Spacing="1" IsVisible="{Binding HasStatus}" Margin="2,0,0,6">
-                        <TextBlock Text="{Binding Status.StatusText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                      <StackPanel Spacing="1" IsVisible="{Binding HasStatus}" Margin="7,8,7,2">
+                        <TextBlock Text="{Binding Status.StatusText}" FontWeight="SemiBold" FontSize="12" TextWrapping="Wrap" />
                         <TextBlock Text="{Binding Status.DetailText}"
                                    IsVisible="{Binding Status.DetailText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                   Classes="muted" TextWrapping="Wrap" />
+                                   Classes="muted" FontSize="12" TextWrapping="Wrap" />
                       </StackPanel>
 
                       <!-- Phase 25: official-source attribution (Season Passes / Memberships only). -->
                       <TextBlock Text="{Binding SourceNoteText}" IsVisible="{Binding HasSourceNote}"
-                                 Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="2,0,0,4"
+                                 Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="7,8,7,0"
                                  AutomationProperties.Name="{Binding SourceNoteText}" />
 
                       <!-- Phase 26: the verified official page, opened in the default browser. A real
                            Button (Tab/Enter/Space, visible focus); its text is the accessible name. -->
-                      <StackPanel Spacing="2" IsVisible="{Binding HasSourceLink}" Margin="2,0,0,6">
-                        <Button Classes="linkAction" HorizontalAlignment="Left"
+                      <StackPanel Spacing="2" IsVisible="{Binding HasSourceLink}" Margin="7,2,7,0">
+                        <Button Classes="linkAction" HorizontalAlignment="Left" FontSize="12" Padding="0,2"
                                 Content="{Binding SourceLink.Label}"
                                 Command="{Binding SourceLink.OpenCommand}"
                                 AutomationProperties.Name="{Binding SourceLink.Label}"
@@ -1503,91 +1625,93 @@
                                    Classes="muted" TextWrapping="Wrap" />
                       </StackPanel>
 
-                      <!-- Column headers (Part 4: denser, table-like product presentation). -->
-                      <Grid ColumnDefinitions="Auto,*,120,180" IsVisible="{Binding HasProducts}" Margin="0,2,0,2">
-                        <TextBlock Grid.Column="1" Text="ITEM" Classes="columnHeader" Margin="28,0,16,0" />
-                        <TextBlock Grid.Column="2" Text="OFFICIAL" Classes="columnHeader" HorizontalAlignment="Right" Margin="0,0,16,0" />
-                        <TextBlock Grid.Column="3" Text="DISPLAY PRICE" Classes="columnHeader" />
+                      <!-- Column headers: one table for the whole category. -->
+                      <Grid Classes="productColumns" ColumnDefinitions="28,*,100,158,96" IsVisible="{Binding HasProducts}">
+                        <TextBlock Grid.Column="0" Text="INC" Classes="columnHeader" />
+                        <TextBlock Grid.Column="1" Text="PRODUCT / DESCRIPTION" Classes="columnHeader" />
+                        <TextBlock Grid.Column="2" Text="OFFICIAL" Classes="columnHeader" HorizontalAlignment="Right" />
+                        <TextBlock Grid.Column="3" Text="DISPLAY PRICE" Classes="columnHeader" Margin="14,0,0,7" />
+                        <TextBlock Grid.Column="4" Text="DETAILS" Classes="columnHeader" HorizontalAlignment="Right" />
                       </Grid>
 
                       <ItemsControl ItemsSource="{Binding Products}">
                         <ItemsControl.ItemTemplate>
                           <DataTemplate x:DataType="vm:ProductRowViewModel">
-                            <Border Classes="productRow">
-                              <Grid ColumnDefinitions="Auto,*,120,180">
-                                <!-- Phase 25: a fixed-width slot keeps a non-printable row's text aligned under ITEM. -->
-                                <Panel Grid.Column="0" MinWidth="30">
-                                  <CheckBox IsChecked="{Binding IncludeOnPdf}"
-                                            IsVisible="{Binding CanIncludeOnPdf}"
-                                            VerticalAlignment="Top"
-                                            Margin="0,2,10,0"
-                                            AutomationProperties.Name="{Binding DisplayName, StringFormat='Include {0} on the PDF'}" />
-                                </Panel>
+                            <Border Classes="priceRow" IsVisible="{Binding IsSearchMatch}">
+                              <Grid ColumnDefinitions="28,*,100,158,96">
+                                <!-- Phase 25: a fixed-width slot keeps a non-printable row's text aligned. -->
+                                <CheckBox Grid.Column="0" IsChecked="{Binding IncludeOnPdf}"
+                                          IsVisible="{Binding CanIncludeOnPdf}"
+                                          VerticalAlignment="Top" Margin="0,0,0,0" MinWidth="0" Padding="0"
+                                          AutomationProperties.Name="{Binding DisplayName, StringFormat='Include {0} on the PDF'}" />
 
-                                <StackPanel Grid.Column="1" Spacing="2" Margin="0,0,16,0">
-                                  <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <StackPanel Grid.Column="1" Spacing="2" Margin="0,2,12,0">
+                                  <TextBlock Text="{Binding DisplayName}" Classes="productName" />
                                   <!-- Phase 25: pass offers say "Reference price"; renewal offers and initiation
                                        fees are their own labeled amounts, never folded into the headline price. -->
                                   <TextBlock Text="{Binding ComparisonPriceText, StringFormat='Compare at {0}'}"
                                              IsVisible="{Binding HasCompareAtLine}"
-                                             Classes="muted" />
+                                             Classes="productDesc" />
                                   <TextBlock Text="{Binding ReferencePriceNoteText}" IsVisible="{Binding HasReferencePriceNote}"
-                                             Classes="muted" AutomationProperties.Name="{Binding ReferencePriceNoteText}" />
+                                             Classes="productDesc" AutomationProperties.Name="{Binding ReferencePriceNoteText}" />
                                   <TextBlock Text="{Binding RenewalNoteText}" IsVisible="{Binding HasRenewalNote}"
-                                             Classes="muted" FontWeight="SemiBold"
+                                             Classes="productDesc" FontWeight="SemiBold"
                                              AutomationProperties.Name="{Binding RenewalNoteText}" />
                                   <TextBlock Text="{Binding InitiationFeeNoteText}" IsVisible="{Binding HasInitiationFeeNote}"
-                                             Classes="muted" FontWeight="SemiBold"
+                                             Classes="productDesc" FontWeight="SemiBold"
                                              AutomationProperties.Name="{Binding InitiationFeeNoteText}" />
                                   <TextBlock Text="{Binding PriceQualifier}"
                                              IsVisible="{Binding HasPriceQualifier}"
-                                             Classes="muted" FontStyle="Italic" TextWrapping="Wrap" />
+                                             Classes="productDesc" FontStyle="Italic" />
                                   <TextBlock Text="{Binding BundleNoteText}"
                                              IsVisible="{Binding HasBundleNote}"
-                                             Classes="muted" FontStyle="Italic" TextWrapping="Wrap" />
+                                             Classes="productDesc" FontStyle="Italic" />
                                   <TextBlock Text="{Binding VerificationNoteText}"
                                              IsVisible="{Binding VerificationNoteText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                             Classes="fieldWarning" TextWrapping="Wrap" />
-                                  <!-- Phase 31C: one quiet line — a confirmed purchase deadline, then the small View details
-                                       link (all official terms open in the in-app dialog) and Price history (Phase 20A). -->
-                                  <WrapPanel ItemSpacing="4" Margin="0,1,0,0">
-                                    <TextBlock Text="{Binding CompactDeadlineText}" IsVisible="{Binding HasCompactDeadline}"
-                                               FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                    <Button Content="View details"
-                                            Command="{Binding ViewDetailsCommand}"
-                                            IsVisible="{Binding HasViewDetails}"
-                                            Classes="linkAction compactLink"
-                                            AutomationProperties.Name="{Binding ViewDetailsAutomationName}" />
-                                    <Button Content="Price history"
-                                            Command="{Binding ViewPriceHistoryCommand}"
-                                            IsVisible="{Binding HasPriceHistory}"
-                                            Classes="linkAction compactLink"
-                                            AutomationProperties.Name="{Binding DisplayName, StringFormat='View price history for {0}'}" />
-                                  </WrapPanel>
+                                             Classes="fieldWarning" FontSize="12" TextWrapping="Wrap" />
+                                  <!-- Phase 31C: a confirmed purchase deadline, short enough for the row. -->
+                                  <TextBlock Text="{Binding CompactDeadlineText}" IsVisible="{Binding HasCompactDeadline}"
+                                             FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" />
                                 </StackPanel>
 
                                 <TextBlock Grid.Column="2" Text="{Binding OfficialPriceText}" Classes="officialPrice"
-                                           Margin="0,1,16,0" VerticalAlignment="Top"
+                                           Classes.noOfficialValue="{Binding HasNoOfficialValue}"
+                                           Margin="0,3,0,0" VerticalAlignment="Top"
                                            AutomationProperties.Name="{Binding OfficialPriceText, StringFormat='Official {0}'}" />
 
                                 <TextBlock Grid.Column="3" Text="{Binding NotPrintedNoteText}" IsVisible="{Binding HasNotPrintedNote}"
-                                           Classes="muted" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Top" />
+                                           Classes="muted" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Top" Margin="14,3,0,0" />
 
-                                <StackPanel Grid.Column="3" Spacing="2" IsVisible="{Binding CanIncludeOnPdf}">
-                                  <TextBox Text="{Binding DisplayPriceOverrideText}"
-                                           PlaceholderText="{Binding OverridePlaceholderText}"
-                                           AutomationProperties.Name="{Binding DisplayName, StringFormat='Display price override for {0}'}" />
-                                  <TextBlock Text="{Binding DisplayPriceOverrideError}"
-                                             IsVisible="{Binding DisplayPriceOverrideError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                             Classes="fieldError" TextWrapping="Wrap" />
+                                <!-- Phase 35C: the display price is plain text; the explicit Edit control beside it opens the
+                                     anchored popover. A manual value keeps a quiet label, and the official value stays visible. -->
+                                <StackPanel Grid.Column="3" Classes="priceCell" Spacing="1" IsVisible="{Binding CanIncludeOnPdf}" VerticalAlignment="Top" Margin="8,0,0,0">
+                                  <Button Classes="priceEdit" Command="{Binding EditPriceCommand}"
+                                          Click="PriceEditButton_OnClick"
+                                          ToolTip.Tip="Edit display price"
+                                          AutomationProperties.Name="{Binding EditPriceAutomationName}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                      <TextBlock Text="{Binding EffectivePriceText}" Classes="displayPrice" />
+                                      <Path Classes="editGlyph" Data="M4 20h4l11-11-4-4L4 16zM13 7l4 4" />
+                                    </StackPanel>
+                                  </Button>
+                                  <TextBlock Text="Manual override" IsVisible="{Binding HasOverride}" Classes="overrideHint" />
                                   <!-- Phase 22E: an override on a starting-price row still prints "From $x" (PDF semantics). -->
                                   <TextBlock Text="{Binding OverridePrintNoteText}" IsVisible="{Binding HasOverridePrintNote}"
-                                             Classes="muted" TextWrapping="Wrap" />
-                                  <Button Content="Use official price"
-                                          Command="{Binding ResetToOfficialCommand}"
-                                          IsVisible="{Binding HasOverride}"
-                                          Classes="linkAction"
-                                          AutomationProperties.Name="{Binding DisplayName, StringFormat='Use official price for {0}'}" />
+                                             Classes="overrideHint" TextWrapping="Wrap" />
+                                </StackPanel>
+
+                                <!-- Phase 31C/20A: View details (official terms dialog) and Price history, right-aligned. -->
+                                <StackPanel Grid.Column="4" Spacing="0" HorizontalAlignment="Right" VerticalAlignment="Top">
+                                  <Button Content="Details"
+                                          Command="{Binding ViewDetailsCommand}"
+                                          IsVisible="{Binding HasViewDetails}"
+                                          Classes="linkAction rowLink"
+                                          AutomationProperties.Name="{Binding ViewDetailsAutomationName}" />
+                                  <Button Content="History"
+                                          Command="{Binding ViewPriceHistoryCommand}"
+                                          IsVisible="{Binding HasPriceHistory}"
+                                          Classes="linkAction rowLink"
+                                          AutomationProperties.Name="{Binding DisplayName, StringFormat='View price history for {0}'}" />
                                 </StackPanel>
                               </Grid>
                             </Border>
@@ -1595,112 +1719,165 @@
                         </ItemsControl.ItemTemplate>
                       </ItemsControl>
                     </StackPanel>
-                  </Border>
+                  </StackPanel>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <!-- Phase 31: current-catalog event products whose official season has ended and that no
-                 official check has listed since — kept for reference (stored records and price history are
-                 untouched), never shown as current and never printed. -->
-            <Border Classes="panel" IsVisible="{Binding HasPastSeasonProducts}">
-              <Expander Header="{Binding PastSeasonHeaderText}" Padding="4,2"
-                        AutomationProperties.Name="{Binding PastSeasonHeaderText}">
-                <ItemsControl ItemsSource="{Binding PastSeasonProducts}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:PastSeasonProductViewModel">
-                      <Border Classes="productRow">
-                        <Grid ColumnDefinitions="*,120">
-                          <StackPanel Grid.Column="0" Spacing="2" Margin="0,0,16,0">
-                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                            <TextBlock Text="{Binding Note}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
-                          </StackPanel>
-                          <TextBlock Grid.Column="1" Text="{Binding OfficialPriceText}" Classes="muted"
-                                     HorizontalAlignment="Right" VerticalAlignment="Top" />
-                        </Grid>
-                      </Border>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </Expander>
-            </Border>
+            <!-- Custom / internal products (Part F): draft-local only, never backed by an official id; the
+                 "Custom" tag and "Entered here" say they are not source-verified catalog items. The name and notes
+                 are free text typed here; the price is shown as text and edited through the same popover. -->
+            <StackPanel x:Name="CustomProductsGroup" Spacing="0" Margin="0,12,0,0">
+              <Border Classes="categoryBand customBand">
+                <StackPanel Orientation="Horizontal" Spacing="9">
+                  <TextBlock Text="Custom &amp; Internal Items" Classes="categoryName" />
+                  <TextBlock Text="{Binding CustomProductsSummaryText}" Classes="categoryCount" />
+                  <Border Classes="sourceTag"><TextBlock Text="Entered here" /></Border>
+                </StackPanel>
+              </Border>
+              <TextBlock Text="User-entered items are not official Carowinds prices. Add group rates, buyouts, or other items not sold through the normal ticket site."
+                         Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="7,8,7,4" />
 
-            <!-- Custom / internal products (Part F): draft-local only, never backed by an official id;
-                 visually distinct from source-verified official products via the "Custom" tag on each row
-                 and a neutral (non-brand-blue) accent, since these are internal entries, not verified
-                 catalog items. -->
-            <Border Classes="panel">
-              <StackPanel Spacing="8">
-                <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
-                  <TextBlock Grid.Column="0" Text="Custom &amp; Internal Items" Classes="sectionTitle" Margin="0" VerticalAlignment="Center" />
-                  <Border Grid.Column="1" Classes="sourceTag"><TextBlock Text="Entered here" /></Border>
-                  <Button Grid.Column="3"
-                          Content="Add custom item"
-                          Classes="secondaryAction"
-                          Command="{Binding AddCustomProductCommand}"
-                          AutomationProperties.Name="Add a custom or internal product" />
-                </Grid>
-
-                <TextBlock Text="Add group rates, buyouts, or other items not sold through the normal ticket site."
-                           Classes="muted"
-                           IsVisible="{Binding !HasCustomProducts}" />
-
-                <ItemsControl ItemsSource="{Binding CustomProducts}">
-                  <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                      <StackPanel Spacing="8" />
-                    </ItemsPanelTemplate>
-                  </ItemsControl.ItemsPanel>
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:CustomProductRowViewModel">
-                      <Border Classes="inset" Margin="0">
-                        <StackPanel Spacing="8">
-                          <Grid ColumnDefinitions="Auto,Auto,*,Auto">
-                            <CheckBox Grid.Column="0"
-                                      IsChecked="{Binding IncludeOnPdf}"
-                                      VerticalAlignment="Center"
-                                      Margin="0,0,10,0"
-                                      AutomationProperties.Name="{Binding DisplayNameText, StringFormat='Include {0} on the PDF'}" />
-                            <Border Grid.Column="1" Classes="chip" Margin="0,0,10,0" VerticalAlignment="Center">
+              <ItemsControl ItemsSource="{Binding CustomProducts}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:CustomProductRowViewModel">
+                    <Border Classes="priceRow" IsVisible="{Binding IsSearchMatch}">
+                      <Grid ColumnDefinitions="28,*,100,158,96">
+                        <CheckBox Grid.Column="0"
+                                  IsChecked="{Binding IncludeOnPdf}"
+                                  VerticalAlignment="Top" MinWidth="0" Padding="0"
+                                  AutomationProperties.Name="{Binding DisplayNameText, StringFormat='Include {0} on the PDF'}" />
+                        <StackPanel Grid.Column="1" Spacing="4" Margin="0,0,12,0">
+                          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                            <Border Grid.Column="0" Classes="chip" VerticalAlignment="Center">
                               <TextBlock Text="Custom" />
                             </Border>
-                            <TextBox Grid.Column="2"
+                            <TextBox Grid.Column="1" Classes="customField"
                                      Text="{Binding DisplayNameText}"
                                      PlaceholderText="Item name"
                                      AutomationProperties.Name="Custom item name" />
-                            <Button Grid.Column="3"
-                                    Content="Remove"
-                                    Command="{Binding RemoveCommand}"
-                                    Margin="10,0,0,0"
-                                    AutomationProperties.Name="{Binding DisplayNameText, StringFormat='Remove {0}'}" />
                           </Grid>
-                          <Grid ColumnDefinitions="200,*">
-                            <StackPanel Grid.Column="0" Spacing="0">
-                              <TextBlock Text="Price" Classes="fieldLabel" />
-                              <TextBox Text="{Binding PriceText}"
-                                       PlaceholderText="Optional"
-                                       AutomationProperties.Name="Custom item price" />
-                              <TextBlock Text="{Binding PriceError}"
-                                         IsVisible="{Binding PriceError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                         Classes="fieldError" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Spacing="0" Margin="16,0,0,0">
-                              <TextBlock Text="Notes" Classes="fieldLabel" />
-                              <TextBox spell:SpellCheck.IsEnabled="True"
-                                       Text="{Binding NotesText}"
-                                       PlaceholderText="Optional"
-                                       AutomationProperties.Name="Custom item notes" />
-                            </StackPanel>
-                          </Grid>
+                          <TextBox spell:SpellCheck.IsEnabled="True"
+                                   Text="{Binding NotesText}" Classes="customField"
+                                   PlaceholderText="Notes (optional)"
+                                   AutomationProperties.Name="Custom item notes" />
                         </StackPanel>
-                      </Border>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                        <TextBlock Grid.Column="2" Text="&#x2014;" Classes="officialPrice noOfficialValue" Margin="0,7,0,0" VerticalAlignment="Top"
+                                   AutomationProperties.Name="No official price" />
+                        <StackPanel Grid.Column="3" Classes="priceCell" Spacing="1" VerticalAlignment="Top" Margin="8,2,0,0">
+                          <Button Classes="priceEdit" Command="{Binding EditPriceCommand}"
+                                  Click="PriceEditButton_OnClick"
+                                  ToolTip.Tip="Edit price"
+                                  AutomationProperties.Name="{Binding EditPriceAutomationName}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                              <TextBlock Text="{Binding PriceDisplayText}" Classes="displayPrice" Classes.noOfficialValue="{Binding !HasPrice}" />
+                              <Path Classes="editGlyph" Data="M4 20h4l11-11-4-4L4 16zM13 7l4 4" />
+                            </StackPanel>
+                          </Button>
+                          <TextBlock Text="{Binding PriceError}"
+                                     IsVisible="{Binding PriceError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                     Classes="fieldError" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Button Grid.Column="4" Content="Remove"
+                                Command="{Binding RemoveCommand}"
+                                Classes="linkAction rowLink removeLink"
+                                HorizontalAlignment="Right" VerticalAlignment="Top"
+                                AutomationProperties.Name="{Binding DisplayNameText, StringFormat='Remove {0}'}" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+
+            <!-- Phase 31: current-catalog event products whose official season has ended and that no
+                 official check has listed since — kept for reference (stored records and price history are
+                 untouched), never shown as current and never printed. -->
+            <Expander Header="{Binding PastSeasonHeaderText}" IsVisible="{Binding HasPastSeasonProducts}"
+                      Classes="disclosure" Margin="0,14,0,0"
+                      AutomationProperties.Name="{Binding PastSeasonHeaderText}">
+              <ItemsControl ItemsSource="{Binding PastSeasonProducts}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:PastSeasonProductViewModel">
+                    <Border Classes="productRow">
+                      <Grid ColumnDefinitions="*,120">
+                        <StackPanel Grid.Column="0" Spacing="2" Margin="0,0,16,0">
+                          <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                          <TextBlock Text="{Binding Note}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" Text="{Binding OfficialPriceText}" Classes="muted"
+                                   HorizontalAlignment="Right" VerticalAlignment="Top" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Expander>
+
+            <TextBlock Text="Reference information below is not automatically included as individual products in the PDF."
+                       Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="0,18,0,0" />
+
+            <!-- Phase 31: official deals — current, upcoming, previously verified and expired kept
+                 apart, with last-checked/last-error status and an explicit empty state. Read from the
+                 cached official deals document (checked with the Promotions refresh). -->
+            <StackPanel x:Name="CurrentDealsGroup" Spacing="4" Margin="0,10,0,0" IsVisible="{Binding HasDealsPanel}">
+              <Border Classes="categoryBand">
+                <TextBlock Text="Current Deals" />
+              </Border>
+              <TextBlock Text="{Binding DealsStatusText}" FontSize="12" TextWrapping="Wrap" Margin="7,2,7,2"
+                         Classes="muted" Classes.fieldWarning="{Binding IsDealsStatusWarning}"
+                         AutomationProperties.Name="{Binding DealsStatusText}" />
+              <TextBlock Text="{Binding DealsEmptyText}" IsVisible="{Binding HasDealsEmptyText}" Margin="7,0,7,4"
+                         TextWrapping="Wrap" AutomationProperties.Name="{Binding DealsEmptyText}" />
+              <!-- Phase 31C: every deal group uses the view-level compact DealItemViewModel row template
+                   (name, price, one short description, confirmed deadline, View details). -->
+              <ItemsControl ItemsSource="{Binding CurrentDeals}" IsVisible="{Binding HasCurrentDeals}" Margin="5,0" />
+              <TextBlock Text="Upcoming offers" Classes="subsectionTitle" IsVisible="{Binding HasUpcomingDeals}" Margin="7,10,0,0" />
+              <ItemsControl ItemsSource="{Binding UpcomingDeals}" IsVisible="{Binding HasUpcomingDeals}" Margin="5,0" />
+              <Expander Header="{Binding PreviouslyVerifiedDealsHeaderText}" IsVisible="{Binding HasPreviouslyVerifiedDeals}"
+                        Classes="disclosure" Margin="0,6,0,0"
+                        AutomationProperties.Name="{Binding PreviouslyVerifiedDealsHeaderText}">
+                <ItemsControl ItemsSource="{Binding PreviouslyVerifiedDeals}" />
+              </Expander>
+              <Expander Header="{Binding ExpiredDealsHeaderText}" IsVisible="{Binding HasExpiredDeals}"
+                        Classes="disclosure" Margin="0,6,0,0"
+                        AutomationProperties.Name="{Binding ExpiredDealsHeaderText}">
+                <ItemsControl ItemsSource="{Binding ExpiredDeals}" />
+              </Expander>
+            </StackPanel>
+
+            <!-- Phase 32: official Pass Perks for one month (publicly advertised rewards, not a guest's wallet).
+                 Read from the cached official document; the month picker re-formats cached data and never
+                 retrieves online. Details open in the shared View details dialog. -->
+            <StackPanel x:Name="PassPerksGroup" Spacing="4" Margin="0,14,0,0" IsVisible="{Binding HasPassPerksPanel}">
+              <StackPanel Spacing="4" DataContext="{Binding PassPerks}" x:DataType="vm:PassPerksPanelViewModel">
+                <Border Classes="categoryBand">
+                  <TextBlock Text="Pass Perks" />
+                </Border>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="7,2,0,0">
+                  <TextBlock Grid.Column="0" Text="{Binding IndividualPassNote}" Classes="muted" FontSize="12" TextWrapping="Wrap"
+                             VerticalAlignment="Center" />
+                  <ComboBox Grid.Column="1" ItemsSource="{Binding Months}" SelectedItem="{Binding SelectedMonth}"
+                            MinWidth="200" VerticalAlignment="Center"
+                            AutomationProperties.Name="Pass Perks month" />
+                </Grid>
+                <TextBlock Text="{Binding StatusText}" FontSize="12" TextWrapping="Wrap" Margin="7,0,7,2"
+                           Classes="muted" Classes.fieldWarning="{Binding IsStatusWarning}"
+                           AutomationProperties.Name="{Binding StatusText}" />
+                <TextBlock Text="{Binding HistoryNoticeText}" IsVisible="{Binding HasHistoryNoticeText}" Margin="7,0,7,2"
+                           FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"
+                           AutomationProperties.Name="{Binding HistoryNoticeText}" />
+                <TextBlock Text="{Binding EmptyStateText}" IsVisible="{Binding HasEmptyStateText}" Margin="7,0,7,4"
+                           TextWrapping="Wrap" AutomationProperties.Name="{Binding EmptyStateText}" />
+                <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding HasItems}" Margin="5,0" />
+                <Button Content="Program terms" Command="{Binding ViewProgramTermsCommand}" IsVisible="{Binding HasProgramTerms}"
+                        Classes="linkAction compactLink" HorizontalAlignment="Left" Margin="3,4,0,0"
+                        AutomationProperties.Name="View Pass Perks program terms" />
               </StackPanel>
-            </Border>
+            </StackPanel>
 
           </StackPanel>
+        </Border>
       </ScrollViewer>
 
       <!-- Phase 31E: Shows section — the selected date's official shows and the per-show selection
@@ -1936,6 +2113,50 @@
       <views:PassdownPdfPreviewView x:Name="PreviewPane" DataContext="{Binding Preview}" />
     </Panel>
     </Grid>
+
+    <!-- Phase 35C: the one anchored "Edit display price" popover. PlacementTarget is the display-price cell of the Edit
+         control that opened it (set in code-behind); it lives in the window's overlay layer, so it stays inside the window, flips above the
+         control near the bottom and slides inward near the sides. With Interface animations On it fades in over
+         PassdownMotionOverlay (an opacity transition under Window.motion); Off or Windows reduced motion = instant. It is
+         interactive from the first frame either way.
+         A click outside is a light dismiss = Cancel (nothing is saved). Tab cycles inside it; Enter saves, Escape
+         cancels; focus returns to the Edit control. Scrolling or resizing the list closes it unsaved. -->
+    <Popup x:Name="PriceEditorPopup"
+           DataContext="{Binding PriceEditor}" x:DataType="vm:PriceEditorViewModel"
+           IsOpen="{Binding IsOpen, Mode=TwoWay}"
+           Placement="BottomEdgeAlignedRight"
+           PlacementConstraintAdjustment="FlipY,SlideX,SlideY"
+           ShouldUseOverlayLayer="True"
+           IsLightDismissEnabled="True" OverlayDismissEventPassThrough="False">
+      <!-- The 6px gap is a margin (not VerticalOffset), so it stays a gap when the popover flips above the control. -->
+      <Border x:Name="PriceEditorPanel" Classes="pricePopover entering" Margin="0,6"
+              KeyboardNavigation.TabNavigation="Cycle"
+              AutomationProperties.Name="{Binding AccessibleName}">
+        <StackPanel Spacing="0">
+          <TextBlock Text="Edit display price" Classes="popoverTitle" />
+          <TextBlock Text="{Binding TargetName}" Classes="overviewLabel" TextWrapping="Wrap" TextTrimming="None" />
+          <TextBox x:Name="PriceEditorTextBox" Text="{Binding EditText}" MaxLength="120"
+                   AutomationProperties.Name="{Binding InputAccessibleName}"
+                   AutomationProperties.HelpText="{Binding OfficialLine}" />
+          <TextBlock x:Name="PriceEditorOfficialLine" Text="{Binding OfficialLine}" Classes="overviewCaption" TextWrapping="Wrap" Margin="0,8,0,0" />
+          <TextBlock Text="{Binding PrintNote}" IsVisible="{Binding HasPrintNote}" Classes="overviewCaption" TextWrapping="Wrap" Margin="0,3,0,0" />
+          <TextBlock x:Name="PriceEditorError" Text="{Binding ErrorText}" IsVisible="{Binding HasError}"
+                     Classes="fieldError" TextWrapping="Wrap"
+                     AutomationProperties.LiveSetting="Assertive"
+                     AutomationProperties.Name="{Binding ErrorText}" />
+          <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="7" Margin="0,14,0,0">
+            <Button Grid.Column="0" x:Name="PriceEditorUseOfficialButton" Content="Use official price"
+                    Command="{Binding UseOfficialCommand}" IsVisible="{Binding CanUseOfficial}"
+                    Classes="linkAction compactLink" HorizontalAlignment="Left"
+                    AutomationProperties.Name="{Binding TargetName, StringFormat='Use official price for {0}'}" />
+            <Button Grid.Column="1" x:Name="PriceEditorCancelButton" Content="Cancel" Command="{Binding CancelCommand}"
+                    Classes="secondaryAction" AutomationProperties.Name="Cancel price edit" />
+            <Button Grid.Column="2" x:Name="PriceEditorSaveButton" Content="Save" Command="{Binding SaveCommand}"
+                    Classes="primaryAction" AutomationProperties.Name="{Binding TargetName, StringFormat='Save display price for {0}'}" />
+          </Grid>
+        </StackPanel>
+      </Border>
+    </Popup>
 
   </Grid>
 </UserControl>

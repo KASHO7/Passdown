@@ -220,7 +220,7 @@ public class Phase25PassOfferUiTests
     public void NewPassText_UsesOnlyThemeTokens_NoHardCodedColors()
     {
         var markup = Markup("AssociateView");
-        var passBlock = markup[markup.IndexOf("{Binding SourceNoteText}", StringComparison.Ordinal)..markup.IndexOf("{Binding ResetToOfficialCommand}", StringComparison.Ordinal)];
+        var passBlock = markup[markup.IndexOf("{Binding SourceNoteText}", StringComparison.Ordinal)..markup.IndexOf("{Binding EditPriceCommand}", StringComparison.Ordinal)];
 
         Assert.DoesNotMatch("(Foreground|Background)=\"#", passBlock);
     }

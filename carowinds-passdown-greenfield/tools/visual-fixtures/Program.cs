@@ -139,6 +139,27 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
     ("Associate-PassdownChoices", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowOverviewSectionCommand.Execute(null); Pump(8); ScrollToName(f.Window, "Include in Passdown"); }),
     ("Associate-ShowsPage", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowShowsSectionCommand.Execute(null); Pump(8); }),
     ("Associate-ShowsPage-Off", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.IncludeShows = false; f.Vm.Associate.ShowShowsSectionCommand.Execute(null); Pump(8); }),
+    // Phase 35C: Products & Pricing redesign and the anchored price popover (in-memory fixtures only).
+    ("P35C-Products", () => new Fixture(), f => Products(f)),
+    ("P35C-Products-Collapsed", () => new Fixture(), f => { Products(f); Collapse(f); }),
+    ("P35C-Products-PreviewHidden", () => new Fixture(preview: PdfPreviewLayoutPreferences.BuiltIn with { IsPreviewVisible = false }), f => Products(f)),
+    ("P35C-Override", () => new Fixture(), f => { Products(f); FirstRow(f).DisplayPriceOverrideText = "$44.00"; Pump(8); }),
+    ("P35C-Popover", () => new Fixture(), f => { Products(f); OpenPriceEditor(f.Window, FirstRow(f).DisplayName); }),
+    ("P35C-PopoverOverride", () => new Fixture(), f => { Products(f); FirstRow(f).DisplayPriceOverrideText = "$44.00"; Pump(6); OpenPriceEditor(f.Window, FirstRow(f).DisplayName); }),
+    ("P35C-PopoverInvalid", () => new Fixture(), f =>
+    {
+        Products(f); OpenPriceEditor(f.Window, FirstRow(f).DisplayName);
+        f.Vm.Associate.PriceEditor.EditText = "Special"; f.Vm.Associate.PriceEditor.SaveCommand.Execute(null); Pump(8);
+    }),
+    ("P35C-PopoverNearBottom", () => new Fixture(), f =>
+    {
+        Products(f);
+        var name = LowestVisibleEdit(f.Window);
+        if (name is not null) { OpenPriceEditorByName(f.Window, name); }
+    }),
+    ("P35C-FocusEdit", () => new Fixture(), f => { Products(f); FocusStartsWith(f.Window, "Edit display price for " + FirstRow(f).DisplayName); }),
+    ("P35C-Search", () => new Fixture(), f => { Products(f); f.Vm.Associate.ProductSearchText = "pass"; Pump(8); }),
+    ("P35C-Scrolled", () => new Fixture(), f => { Products(f); ScrollBy(f.Window, 900); }),
     ("Associate-Products", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8); }),
     // Phase 25: the Season Passes and Memberships groups (scrolled into view).
     ("Associate-Memberships", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8); ScrollToEnd(f.Window); }),
@@ -479,6 +500,49 @@ static string ShowsGeometry(Window window)
     static string Shorten(string? text) => text is null ? "" : text.Length <= 24 ? text : text[..24] + "…";
 }
 
+static void Products(Fixture f)
+{
+    Go(f, AppSection.AssociatePassdown);
+    f.Vm.Associate.ShowProductsSectionCommand.Execute(null);
+    Pump(10);
+}
+
+static ProductRowViewModel FirstRow(Fixture f) =>
+    f.Vm.Associate.ProductSections.SelectMany(s => s.Products).First(r => r.CanEditPrice);
+
+// Phase 35C: activates an Edit control the way a click/Enter does (Click first — it anchors the popover — then the command).
+static void OpenPriceEditor(Window window, string productName) => OpenPriceEditorByName(window, FindEdit(window, "Edit display price for " + productName)?.Name2());
+
+static void OpenPriceEditorByName(Window window, string? automationName)
+{
+    var button = window.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.IsEffectivelyVisible && AutomationProperties.GetName(b) == automationName);
+    if (button is null)
+    {
+        return;
+    }
+
+    button.Focus(Avalonia.Input.NavigationMethod.Tab);
+    button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+    button.Command?.Execute(button.CommandParameter);
+    Pump(12);
+}
+
+static Button? FindEdit(Window window, string prefix) =>
+    window.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.IsEffectivelyVisible && (AutomationProperties.GetName(b) ?? string.Empty).StartsWith(prefix, StringComparison.Ordinal));
+
+static string? LowestVisibleEdit(Window window) =>
+    window.GetVisualDescendants().OfType<Button>()
+        .Where(b => b.IsEffectivelyVisible && (AutomationProperties.GetName(b) ?? string.Empty).StartsWith("Edit display price for ", StringComparison.Ordinal))
+        .Select(b => (Button: b, Y: b.TranslatePoint(new Point(0, b.Bounds.Height), window)?.Y ?? double.MaxValue))
+        .Where(x => x.Y < window.Bounds.Height - 30)
+        .OrderByDescending(x => x.Y).Select(x => AutomationProperties.GetName(x.Button)).FirstOrDefault();
+
+static void FocusStartsWith(Window window, string prefix)
+{
+    FindEdit(window, prefix)?.Focus(Avalonia.Input.NavigationMethod.Tab);
+    Pump(8);
+}
+
 static void Pump(int n)
 {
     for (var i = 0; i < n; i++)
@@ -576,4 +640,9 @@ internal sealed class Fixture
             new PriceHistoryViewModel(priceHistory));
         Window = new MainWindow { DataContext = Vm };
     }
+}
+
+internal static class VisualFixtureButtonExtensions
+{
+    public static string? Name2(this Button button) => AutomationProperties.GetName(button);
 }

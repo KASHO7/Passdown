@@ -549,6 +549,17 @@
       </Transitions>
     </Setter>
   </Style>
+  <!-- Phase 35C: the Products price popover fades in (opacity only, no movement). The view drops its "entering"
+       class as the popover opens, so this runs only under Window.motion; the popover is interactive from the first
+       frame either way. -->
+  <Style Selector="Window.motion Border.pricePopover">
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Opacity" Duration="{StaticResource PassdownMotionOverlay}" Easing="{StaticResource PassdownMotionEasing}" />
+      </Transitions>
+    </Setter>
+  </Style>
+
   <!-- Off / reduced motion: also remove Fluent's own button press-scale transition in the main window. -->
   <Style Selector="Window.noMotion Button, Window.noMotion ToggleButton, Window.noMotion RepeatButton">
     <Setter Property="Transitions" Value="{x:Null}" />

@@ -21,11 +21,12 @@ namespace Carowinds.Passdown.Desktop.ViewModels;
 /// same instance in place, mirroring how the parent's own scalar draft fields work, so an
 /// in-progress edit or focused control is never reset out from under the associate.
 /// </summary>
-public partial class ProductRowViewModel : ObservableObject
+public partial class ProductRowViewModel : ObservableObject, IPriceEditTarget
 {
     private readonly Action _notifyChanged;
     private readonly Action<string>? _openPriceHistory;
     private readonly Action<OfficialDetailsPresentation>? _openDetails;
+    private readonly Action<IPriceEditTarget>? _openPriceEditor;
     private decimal? _displayPriceOverride;
 
     public string ProductIdentity { get; }
@@ -228,7 +229,7 @@ public partial class ProductRowViewModel : ObservableObject
     [RelayCommand]
     private void ViewDetails() => _openDetails?.Invoke(BuildDetails());
 
-    public ProductRowViewModel(AssociateProduct product, Action notifyChanged, Action<string>? openPriceHistory = null, Action<OfficialDetailsPresentation>? openDetails = null)
+    public ProductRowViewModel(AssociateProduct product, Action notifyChanged, Action<string>? openPriceHistory = null, Action<OfficialDetailsPresentation>? openDetails = null, Action<IPriceEditTarget>? openPriceEditor = null)
     {
         ArgumentNullException.ThrowIfNull(product);
         ArgumentNullException.ThrowIfNull(notifyChanged);
@@ -236,6 +237,7 @@ public partial class ProductRowViewModel : ObservableObject
         _notifyChanged = notifyChanged;
         _openPriceHistory = openPriceHistory;
         _openDetails = openDetails;
+        _openPriceEditor = openPriceEditor;
         PriceHistoryProductKey = product.PriceHistoryProductKey;
 
         ProductIdentity = product.ProductIdentity;
@@ -265,6 +267,93 @@ public partial class ProductRowViewModel : ObservableObject
 
     partial void OnIncludeOnPdfChanged(bool value) => _notifyChanged();
 
+    // ------------------------------------------------------------------ Phase 35C: display price as text + popover
+
+    /// <summary>Phase 35C: whether the row matches the Products search (view state only; true when no search).</summary>
+    [ObservableProperty]
+    public partial bool IsSearchMatch { get; set; } = true;
+
+    /// <summary>Phase 35C: case-insensitive match on the row's visible words (name, notes, prices, section).</summary>
+    internal bool MatchesSearch(string query, string sectionName)
+    {
+        var needle = query.Trim();
+        return new[]
+        {
+            DisplayName, sectionName, OfficialPriceText, EffectivePriceText, PriceQualifier, ComparisonPriceText,
+            ReferencePriceNoteText, RenewalNoteText, InitiationFeeNoteText, BundleNoteText,
+        }.Any(text => text?.Contains(needle, StringComparison.OrdinalIgnoreCase) == true);
+    }
+
+    /// <summary>Phase 35C: the subdued label under a display price that differs from the official source.</summary>
+    public const string ManualOverrideText = "Manual override";
+
+    /// <summary>
+    /// Phase 35C: no official value is available for this row on this date (an unavailable pass option, or no
+    /// published amount or wording) — the official column reads muted rather than like a price.
+    /// </summary>
+    public bool HasNoOfficialValue => Product.IsUnavailablePassOption
+        || (Product.OfficialPriceAmount is null && string.IsNullOrWhiteSpace(Product.OfficialDisplayPrice));
+
+    /// <summary>Phase 35C: the Edit control's accessible name (the visible control shows the price and a pencil).</summary>
+    public string EditPriceAutomationName => $"Edit display price for {DisplayName}, currently {EffectivePriceText}";
+
+    /// <summary>Phase 35C: opens the shared anchored price editor on this row (printable rows only).</summary>
+    public bool CanEditPrice => CanIncludeOnPdf && _openPriceEditor is not null;
+
+    [RelayCommand]
+    private void EditPrice()
+    {
+        if (CanEditPrice)
+        {
+            _openPriceEditor!(this);
+        }
+    }
+
+    string IPriceEditTarget.PriceEditorName => DisplayName;
+
+    string IPriceEditTarget.PriceEditorInitialText =>
+        PriceFormatting.FormatOrNull(_displayPriceOverride ?? Product.OfficialPriceAmount) ?? string.Empty;
+
+    string IPriceEditTarget.PriceEditorOfficialLine => $"Official price: {OfficialPriceText}";
+
+    string? IPriceEditTarget.PriceEditorPrintNote => IsStartingPrice
+        ? "Starting price — prints as \u201CFrom\u201D followed by the amount."
+        : null;
+
+    bool IPriceEditTarget.PriceEditorCanUseOfficial => HasOverride;
+
+    bool IPriceEditTarget.PriceEditorAllowsBlank => false;
+
+    bool IPriceEditTarget.TryApplyPriceEdit(string? text, out string? error)
+    {
+        var candidate = text?.Trim();
+        if (IsStartingPrice && candidate is not null && candidate.StartsWith("From", StringComparison.OrdinalIgnoreCase))
+        {
+            candidate = candidate[4..]; // "From $39" on a starting-price row means the amount; "From" is printed anyway.
+        }
+
+        if (!PriceFormatting.TryParse(candidate, out var parsed, out error))
+        {
+            return false; // nothing applied: the row keeps its last valid override (spec Part E).
+        }
+
+        if (parsed is null)
+        {
+            error = PriceEditorViewModel.BlankValueMessage;
+            return false;
+        }
+
+        if (parsed == (_displayPriceOverride ?? Product.OfficialPriceAmount))
+        {
+            return true; // unchanged: no override is created, no autosave is scheduled.
+        }
+
+        DisplayPriceOverrideText = PriceFormatting.Format(parsed.Value); // the existing override path.
+        return true;
+    }
+
+    void IPriceEditTarget.UsePriceEditorOfficial() => ResetToOfficialCommand.Execute(null);
+
     partial void OnDisplayPriceOverrideTextChanged(string? value)
     {
         if (!PriceFormatting.TryParse(value, out var parsed, out var error))
@@ -279,6 +368,7 @@ public partial class ProductRowViewModel : ObservableObject
         OnPropertyChanged(nameof(HasOverride));
         OnPropertyChanged(nameof(OverridePrintNoteText));
         OnPropertyChanged(nameof(HasOverridePrintNote));
+        OnPropertyChanged(nameof(EditPriceAutomationName));
         _notifyChanged();
     }
 
