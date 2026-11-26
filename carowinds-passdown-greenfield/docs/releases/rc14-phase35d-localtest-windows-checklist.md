@@ -124,4 +124,36 @@ build (Settings → System → About) and display scaling.
 31. Overview, Products & Pricing (price popover), Calendar, History, Settings and Operational Notes behave as in the
     Phase 35C build.
 
+### H. Follow-up — compact date selector (FOLLOW-UP build only; NOT YET TESTED)
+
+The product owner confirmed items 1–31 on the first 35D build. The follow-up is a separate package; the first one is
+unchanged and kept:
+
+| | RC14-Phase35D1-LOCALTEST (follow-up) |
+|---|---|
+| Source commit | `01d3553` |
+| Version shown in the app | `0.1.0-rc.14-LOCALTEST.phase35d1` |
+| Package | `artifacts/local-test/RC14-Phase35D1-LOCALTEST/LOCAL-ONLY-RC14-Phase35D1-LOCALTEST-win-x64.zip` |
+| ZIP size | 76,101,701 bytes (72.6 MB); 308 files |
+| ZIP SHA-256 | `d0bc89d33c37a6b19a6c68f785a7d575797b9df9ce0abd7fa0cbf167191fdeb7` |
+| Mac verification | Deterministic suite 5,761 passed / 0 skipped; clean Release build 0 warnings / 0 errors; content validation (308 files); `RealReleaseZip` passed |
+
+Extract it to a new folder in `CarowindsTest` the same way. Items 1–31 need only a quick regression look with it.
+
+32. Passdown toolbar on today: ‹ [calendar icon **Nov 26, 2026** ˅] › — no "Today" badge and **no Today button**; Create
+    PDF and Actions sit closer. Hovering the date shows the full date with "(Today)".
+33. Press ‹ (or ›, or pick another day in the calendar): **Today** appears after ›; click it (and separately: Tab to it
+    and press Enter) — today's date returns, Today disappears, and the keyboard focus is on the date button.
+34. On another date with an unsaved edit (type in Daily notes), press Today: the edit is saved to the date it was typed
+    on, not to today. Then **Print** / **Save PDF** right away: the document is today's.
+35. Leave the app open across **midnight Eastern** (or set it running at 11:5x PM on a test PC, or let it sleep past
+    midnight and wake it): within about five minutes — or as soon as you click back into the window — **Today** appears,
+    the date shown does **not** change by itself, and nothing is reloaded or lost.
+36. If the PC's time zone is not Eastern (e.g. set it to Pacific or Tokyo in the test account): "today" still follows
+    Carowinds (Eastern) time — the Today button hides only on the Eastern date.
+37. Dec 31 / Jan 1: stepping across the year shows "Dec 31, 2026" / "Jan 1, 2027" correctly.
+38. At 1280×720, the 960×640 minimum, 125 % and 150 % scaling, Light and Dark: the date control is compact, nothing is
+    clipped or overlaps Create PDF / Actions, the ˅ stays centred, Today (when shown) is readable.
+39. Narrator on the date button: "Operating date" and the full date; on Today: "Today".
+
 Report each item as **Pass / Fail / Not executed**. Phase 35D is not Windows-validated until this is done.

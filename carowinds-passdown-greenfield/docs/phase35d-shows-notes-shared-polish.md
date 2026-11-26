@@ -1,6 +1,7 @@
 # Phase 35D — Shows, Passdown Notes and shared UI polish
 
-Status: **implemented locally — awaiting the product owner's Windows review.** Not pushed, tagged or published.
+Status: **35D Windows-tested and confirmed by the product owner (workspace, navy title bar, Shows, Notes, dropdown
+arrows). The compact date selector follow-up (§15) is implemented locally — awaiting Windows review.** Not pushed, tagged or published.
 Phase 35E has not been started.
 
 | | |
@@ -266,3 +267,69 @@ account.
 the approved Calendar references (`carowinds_calendar_*`, present) plus the **approved Dashboard reference, which the
 design bundle says is not present** — it must be supplied before Dashboard work starts. 35E reuses the shared tokens,
 the dropdown chevron style and the sheet styles from 35B–35D.
+
+## 15. Follow-up — compact Passdown date selector
+
+Requested after the product owner's Windows review of 35D: a more compact date selector with no Today indicator when
+the selected operating date is already today.
+
+| Before | After |
+|---|---|
+| ‹ [📅 Thursday, November 26, 2026 `Today` ˅] › **Today** — long date, a Today/Yesterday/Tomorrow badge, and a Today button that was always shown | ‹ [📅 Nov 26, 2026 ˅] › — and **Today** only when another date is selected |
+
+- **Compact date.** `AssociateDateNavigationPresentation.CompactDateText` ("MMM d, yyyy", U.S. culture: "Nov 26, 2026").
+  The full date stays in `DateText` (tooltip, screen-reader help text, the Shows heading and the Products "Prices for …"
+  line are unchanged). The tooltip is the full date plus "(Today)" / "(Yesterday)" / "(Tomorrow)" when it applies; the
+  date button keeps the name "Operating date" and its help text "Selected date: <full date> (<relative>). Choose a
+  different date."
+- **No badge.** The Today/Yesterday/Tomorrow chip and its styles are removed from the control; the relative day is still
+  spoken (help text) and shown in the tooltip.
+- **Conditional Today.** `ShowsTodayAction` = selected date ≠ today's **America/New_York** date (`EasternToday`, never the
+  computer's date or UTC). Hidden with `IsVisible`, so it takes no space and is not a Tab stop. It is the same
+  `GoToTodayCommand` (today read at click time; unsaved edits flushed to the date they belong to by the ordinary date
+  switch; no reload when already on today). Clicking it moves keyboard focus to the date button, so focus is not lost
+  when the button hides. Help text: "Returns to today's operating date in Eastern time."
+- **Width.** The date button's minimum width (only where the toolbar has room, the existing container query) drops from
+  240 px to 156 px — sized for the widest compact date ("Sep 30, 2026") so ‹ › do not shift while stepping. No margins
+  were added; spacing is the existing date-bar grid.
+- **Midnight.** No timer of its own. The existing refresh scheduler already publishes `DataChangeKind.OperatingDay`
+  when the Eastern date rolls over while the app is open (it wakes at least every 5 minutes, `MaxSleepSlice`); Associate
+  now listens and re-evaluates only the "is this today?" presentation. Returning to the window (activation — e.g. after
+  the PC slept past midnight) does the same. Opening the date picker and pressing Today already read the clock at that
+  moment. The selected date, the draft and the preview are never changed by a rollover: the user sees the Today button
+  appear and decides.
+- **PDF safety.** Unchanged pipeline: Print or Save PDF right after Today waits for or uses today's workspace and never
+  produces the previous date's document (tested).
+- **Unchanged.** ‹ / › arrows, the calendar popup (keyboard browsing, Enter to commit, its own Today link), Ctrl+P,
+  accessible names, autosave, preview, schema 18, sync format, pricing, Shows, Notes, PDF.
+
+Tests: `Phase35DCompactDateTests` (18, mixed partition) — compact and full formats incl. year boundary and single-digit
+days; Today shown only off today (±1, −45, +400 days); Today returns to the operating date; Dec 31 → Jan 1; Carowinds
+Eastern date vs UTC / Tokyo / Pacific computers and the DST fall-back night; an Eastern-midnight `OperatingDay` change
+shows Today without changing the date, loading, or moving an unsaved edit to the wrong date; window activation refreshes
+only the header; markup (compact binding, tooltip, no badge, conditional Today with the same command, picker intact).
+`Phase35DCompactDateWindowTests` (6, partial of the run-alone `Phase33PreviewWindowTests`) — at 1280×720 and 960×640,
+Light and Dark: Today hidden on today with its space reclaimed, shown on another date without clipping or overlapping
+the actions, a mouse click returns with focus on the date button; Print right after Today prints today, never the
+previous date; the date picker still opens and its Today returns; Tab order includes Today only off today. Updated:
+`Phase35B_KeyboardOrder…` (today selected → no Today stop).
+
+**Follow-up results.** Commit `01d3553` (35D-4). Deterministic suite **5,761 / 5,761**, 0 skipped (Ui mixed 1,891,
+Phase33PreviewWindow 54; others unchanged) — +24. Clean Release build (no incremental): 0 warnings, 0 errors.
+Renders (`P35D-Date-Today`, `-OtherDay`, `-OtherDayCollapsed` at 1920×1080, 1536×960, 1280×720, 960×640, Light and
+Dark — 24 captures): no horizontal overflow, nothing past the window edge; on today the control is "‹ 📅 Oct 17, 2026 ˅ ›"
+and Create PDF / Actions sit closer; on another date Today follows ›. Mac renders are not 125 % / 150 % Windows DPI
+evidence (checklist item 38).
+
+**Follow-up Windows test package** (does not replace the validated 35D candidate, which stays byte-identical):
+
+| | |
+|---|---|
+| Source commit | `01d3553` (clean tree) |
+| ZIP | `artifacts/local-test/RC14-Phase35D1-LOCALTEST/LOCAL-ONLY-RC14-Phase35D1-LOCALTEST-win-x64.zip` |
+| Size | 76,101,701 bytes (72.6 MB); 308 files |
+| SHA-256 | `d0bc89d33c37a6b19a6c68f785a7d575797b9df9ce0abd7fa0cbf167191fdeb7` |
+| Shown as | `0.1.0-rc.14-LOCALTEST.phase35d1` |
+| Validation | script content validation (folder and ZIP) passed; `RealReleaseZip` passed; marker names `01d3553`; all 948 earlier release and local-test files re-hashed byte-identical |
+
+**Follow-up Windows validation: NOT EXECUTED** (checklist section H).
