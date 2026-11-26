@@ -590,6 +590,133 @@
   </Style>
 
   <!-- ===================================================================================
+       Phase 35F: list-detail workspaces (Operational Notes, Passdown History) and Settings groups.
+       One white page header, one quiet filter bar, then two bordered cards (list, detail) on the app
+       background — no further nesting. All colours are tokens.
+       =================================================================================== -->
+
+  <Style Selector="Border.pageHeader">
+    <Setter Property="Background" Value="{DynamicResource PassdownSurfaceBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+    <Setter Property="Padding" Value="22,16" />
+    <Setter Property="MinHeight" Value="76" />
+  </Style>
+  <Style Selector="Border.filterBar">
+    <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+    <Setter Property="Padding" Value="22,10" />
+  </Style>
+  <Style Selector="TextBox.searchBox">
+    <Setter Property="MinHeight" Value="34" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="TextBox.searchBox PathIcon">
+    <Setter Property="Width" Value="14" />
+    <Setter Property="Height" Value="14" />
+    <Setter Property="Margin" Value="10,0,2,0" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+  </Style>
+  <!-- Segmented filters (Active / All / …, All records / Scheduled / …): the current one is tinted and bold,
+       and announced as the current filter — never colour alone. -->
+  <Style Selector="Button.segment">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+    <Setter Property="Padding" Value="10,7" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+  </Style>
+  <Style Selector="Button.segment:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.segment.active">
+    <Setter Property="Background" Value="{DynamicResource PassdownSelectedBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="AutomationProperties.ItemStatus" Value="Current filter" />
+  </Style>
+  <Style Selector="Button.segment.active:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PassdownSelectedBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
+  </Style>
+  <Style Selector="Button.segment:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextDisabledBrush}" />
+  </Style>
+  <Style Selector="Border.workspaceCard">
+    <Setter Property="Background" Value="{DynamicResource PassdownSurfaceBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderBrush}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusCard}" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <Style Selector="Border.listHeader">
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+    <Setter Property="Padding" Value="16,13,16,11" />
+  </Style>
+  <!-- A small state tag on a list row or record header (Active, Resolved, PDF, Scheduled …). -->
+  <Style Selector="Border.statePill">
+    <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+    <Setter Property="Padding" Value="6,2" />
+    <Setter Property="VerticalAlignment" Value="Top" />
+  </Style>
+  <Style Selector="Border.statePill TextBlock">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeTableHeader}" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+  </Style>
+  <Style Selector="Border.statePill.resolved">
+    <Setter Property="Background" Value="{DynamicResource PassdownSuccessBackgroundBrush}" />
+  </Style>
+  <Style Selector="Border.statePill.resolved TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource PassdownSuccessBrush}" />
+  </Style>
+  <Style Selector="TextBlock.eyebrow">
+    <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeTableHeader}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="LetterSpacing" Value="0.5" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+  </Style>
+  <Style Selector="TextBlock.detailTitle">
+    <Setter Property="FontSize" Value="22" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <!-- An explanatory note inside a detail or settings card. -->
+  <Style Selector="Border.noticeBox">
+    <Setter Property="Padding" Value="13,11" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+    <Setter Property="Background" Value="{DynamicResource PassdownSurfaceSecondaryBrush}" />
+  </Style>
+  <Style Selector="Border.noticeBox TextBlock">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="LineHeight" Value="18" />
+    <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <!-- In-page modal (the Operational Note editor): a scrim over the page and one bordered dialog surface. -->
+  <Style Selector="Border.modalScrim">
+    <Setter Property="Background" Value="{DynamicResource PassdownOverlayScrimBrush}" />
+  </Style>
+  <Style Selector="Border.modalDialog">
+    <Setter Property="Background" Value="{DynamicResource PassdownPopupSurfaceBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderBrush}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusPopup}" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+
+  <!-- ===================================================================================
        Lists, popups and loading feedback
        =================================================================================== -->
 

@@ -260,6 +260,34 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
         if (f.Vm.History.HistoryItems.Count > 0) { f.Vm.History.SelectedItem = f.Vm.History.HistoryItems[0]; Pump(10); }
     }),
     ("History-Empty", () => new Fixture(emptyHistory: true), f => Go(f, AppSection.History)),
+    // Phase 35F: Operational Notes list-detail, editor dialog, resolved, search and empty search.
+    ("P35F-Notes", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); if (f.Vm.Notes.Notes.Count > 0) { f.Vm.Notes.SelectedNote = f.Vm.Notes.Notes[0]; Pump(6); } }),
+    ("P35F-Notes-Collapsed", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); Collapse(f); if (f.Vm.Notes.Notes.Count > 0) { f.Vm.Notes.SelectedNote = f.Vm.Notes.Notes[0]; Pump(6); } }),
+    ("P35F-Notes-Editor", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); f.Vm.Notes.NewNoteCommand.Execute(null); Pump(8); }),
+    ("P35F-Notes-Edit", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); f.Vm.Notes.SelectedNote = f.Vm.Notes.Notes[0]; Pump(6); f.Vm.Notes.EditCommand.Execute(null); Pump(8); }),
+    ("P35F-Notes-Resolve", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); f.Vm.Notes.SelectedNote = f.Vm.Notes.Notes[0]; Pump(6); f.Vm.Notes.RequestResolveCommand.Execute(null); Pump(6); }),
+    ("P35F-Notes-Resolved", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); f.Vm.Notes.SetFilterCommand.Execute(OperationalNoteLifecycleFilter.Resolved); Pump(6); if (f.Vm.Notes.Notes.Count > 0) { f.Vm.Notes.SelectedNote = f.Vm.Notes.Notes[0]; Pump(6); } }),
+    ("P35F-Notes-Upcoming", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); f.Vm.Notes.SetFilterCommand.Execute(OperationalNoteLifecycleFilter.Upcoming); Pump(6); f.Vm.Notes.SelectedNote = f.Vm.Notes.Notes.LastOrDefault(); Pump(6); }),
+    ("P35F-Notes-Search", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); f.Vm.Notes.SearchText = "scanner"; Pump(6); }),
+    // Phase 35F: Passdown History list-detail, a record without its PDF, search, record type and empty search.
+    ("P35F-History", () => new Fixture(), f => { Go(f, AppSection.History); f.Vm.History.SelectedItem = f.Vm.History.HistoryItems[0]; Pump(10); }),
+    ("P35F-History-Collapsed", () => new Fixture(), f => { Go(f, AppSection.History); Collapse(f); f.Vm.History.SelectedItem = f.Vm.History.HistoryItems[0]; Pump(10); }),
+    ("P35F-History-Scrolled", () => new Fixture(), f => { Go(f, AppSection.History); f.Vm.History.SelectedItem = f.Vm.History.HistoryItems[0]; Pump(10); ScrollBy(f.Window, 600); }),
+    ("P35F-History-NoPdf", () => new Fixture(), f => { Go(f, AppSection.History); f.Vm.History.SelectedItem = f.Vm.History.HistoryItems.First(i => !i.HasFrozenPdf); Pump(10); }),
+    ("P35F-History-Manual", () => new Fixture(), f => { Go(f, AppSection.History); f.Vm.History.SetOriginFilterCommand.Execute(Carowinds.Passdown.Application.Finalization.FinalizationOrigin.Manual); Pump(6); f.Vm.History.SelectedItem = f.Vm.History.HistoryItems.FirstOrDefault(); Pump(10); }),
+    ("P35F-History-Search", () => new Fixture(), f => { Go(f, AppSection.History); f.Vm.History.SearchText = "pdf unavailable"; Pump(6); }),
+    ("P35F-History-SearchEmpty", () => new Fixture(), f => { Go(f, AppSection.History); f.Vm.History.SearchText = "no such date"; Pump(6); }),
+    ("P35F-History-Empty", () => new Fixture(emptyHistory: true), f => Go(f, AppSection.History)),
+    // Phase 35F: Settings section list — each entry scrolls the page to its group.
+    ("P35F-Settings", () => new Fixture(sync: SyncFixture.UpToDate), f => Go(f, AppSection.Settings)),
+    ("P35F-Settings-Collapsed", () => new Fixture(sync: SyncFixture.UpToDate), f => { Go(f, AppSection.Settings); Collapse(f); }),
+    ("P35F-Settings-Defaults", () => new Fixture(sync: SyncFixture.UpToDate), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to Passdown Defaults settings"); }),
+    ("P35F-Settings-Refresh", () => new Fixture(sync: SyncFixture.UpToDate), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to Data Refresh information"); }),
+    ("P35F-Settings-Sync", () => new Fixture(sync: SyncFixture.UpToDate), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to Personal Sync settings"); }),
+    ("P35F-Settings-SyncError", () => new Fixture(sync: SyncFixture.Error), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to Personal Sync settings"); }),
+    ("P35F-Settings-Diagnostics", () => new Fixture(sync: SyncFixture.UpToDate), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to Diagnostics"); }),
+    ("P35F-Settings-About", () => new Fixture(sync: SyncFixture.UpToDate), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to About this build"); }),
+    ("P35F-Notes-SearchEmpty", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); f.Vm.Notes.SearchText = "no such note"; Pump(6); }),
     ("Settings-Off", () => new Fixture(), f => Go(f, AppSection.Settings)),
     ("Settings-Syncing", () => new Fixture(sync: SyncFixture.UpToDate), f => Go(f, AppSection.Settings)),
     ("Settings-Conflict", () => new Fixture(sync: SyncFixture.Conflict), f => { Go(f, AppSection.Settings); f.Vm.Settings.ReviewConflictsCommand.Execute(null); Pump(8); }),
@@ -379,6 +407,13 @@ static void FocusNavigation(Window window, string automationName)
 {
     var item = window.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => AutomationProperties.GetName(b) == automationName);
     item?.Focus(Avalonia.Input.NavigationMethod.Tab);
+    Pump(8);
+}
+
+static void ClickNamed(Window window, string automationName)
+{
+    var button = window.GetVisualDescendants().OfType<Button>().First(b => AutomationProperties.GetName(b) == automationName);
+    button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
     Pump(8);
 }
 

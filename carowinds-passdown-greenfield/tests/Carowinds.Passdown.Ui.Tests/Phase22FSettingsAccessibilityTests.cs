@@ -94,8 +94,10 @@ public class Phase22FSettingsAccessibilityTests
         var markup = Markup("PersonalSyncSettingsView");
         Assert.Contains("<SelectableTextBlock Text=\"{Binding SyncRootPath}\" TextWrapping=\"Wrap\"", markup);
         Assert.Contains("Text=\"{Binding BuildExecutablePathText}\" TextWrapping=\"Wrap\"", markup);
-        Assert.Matches(new Regex("Classes=\"settingsRows\" ColumnDefinitions=\"140,\\*\""), markup);
-        Assert.Contains("MaxWidth=\"720\"", markup);
+        // Phase 35F: the approved prototype's 175px label column and 860px content width.
+        Assert.Matches(new Regex("Classes=\"settingsRows\" ColumnDefinitions=\"175,\\*\""), markup);
+        Assert.DoesNotMatch(new Regex("Classes=\"settingsRows\" ColumnDefinitions=\"\\d+,\\d"), markup); // the value column always flexes
+        Assert.Contains("MaxWidth=\"860\"", markup);
     }
 
     [Theory]
@@ -257,8 +259,9 @@ public class Phase22FSettingsAccessibilityTests
     public void HistoryGateTimes_AreLabelled_ForSightedAndScreenReaderUsers()
     {
         var markup = Markup("HistoryView");
-        Assert.Contains("<Run Text=\"North Gate · \"", markup);
-        Assert.Contains("<Run Text=\"Avenue · \"", markup);
+        // Phase 35F: each gate time is its own labelled stat ("NORTH GATE" / "AVENUE ENTRANCE" over the value).
+        Assert.Contains("<TextBlock Text=\"NORTH GATE\" Classes=\"eyebrow\" />", markup);
+        Assert.Contains("<TextBlock Text=\"AVENUE ENTRANCE\" Classes=\"eyebrow\" />", markup);
         Assert.Contains("StringFormat='North Gate: {0}'", markup);
         Assert.Contains("StringFormat='Avenue: {0}'", markup);
     }

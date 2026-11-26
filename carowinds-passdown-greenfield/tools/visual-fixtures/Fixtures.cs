@@ -265,7 +265,11 @@ internal static partial class Fixtures
             N("Synthetic: Stroller rental relocated for SCarowinds", Cat(0), OperationalNotePriority.Normal, -10, 20),
             N("Synthetic: Parking lot C closed for paving", Cat(1), OperationalNotePriority.Normal, -3, 1),
             N("Synthetic: Radio channel 6 static near the waterpark", Cat(2), OperationalNotePriority.Normal, -4, null),
-            N("Synthetic: Locker kiosk firmware update", Cat(3), OperationalNotePriority.Normal, 2, 4));
+            N("Synthetic: Locker kiosk firmware update", Cat(3), OperationalNotePriority.Normal, 2, 4),
+            // Phase 35F: a resolved note and one with several paragraphs, for the Resolved filter and the detail text.
+            N("Synthetic: Prior equipment check", Cat(3), OperationalNotePriority.Normal, -12, null, "Synthetic: checked every handheld scanner; two were sent for repair.", resolved: true),
+            N("Synthetic: December admission briefing", Cat(1), OperationalNotePriority.Normal, 5, null,
+                "Synthetic: prepare a short summary for associates ahead of the December operating dates.\nCover WinterFest hours, the Avenue entrance and the new season pass desk."));
     }
 
     private static FinalizedPassdownSnapshot Snapshot(DateOnly date) => new(

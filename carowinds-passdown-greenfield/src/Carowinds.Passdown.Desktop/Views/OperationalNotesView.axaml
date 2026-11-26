@@ -11,35 +11,16 @@
 
   <!-- Phase 11B: the persistent Operational Notes Manager — a supervisor-facing browse/create/edit/
        resolve screen for notes that may span multiple days (spec Phase 11A), distinct from Associate
-       Passdown's own daily Notes entry. Shared typography, surface, button and status styles come from Themes/PassdownStyles.axaml (Phase 22A); only this screen's own deltas live below. Nothing here writes into an Associate draft,
-       the Dashboard, or finalized History (spec Parts Y/AA/AB) — this screen only calls
-       IOperationalNotesService. -->
-  <UserControl.Styles>
-    <!-- Lifecycle filter tabs (spec Part G) — a compact, self-contained variant of MainWindow's own
-         appSectionItem strip, scoped to this screen only. -->
-    <Style Selector="Button.filterTab">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="0,0,0,2" />
-      <Setter Property="BorderBrush" Value="Transparent" />
-      <Setter Property="CornerRadius" Value="0" />
-      <Setter Property="Padding" Value="10,6" />
-      <Setter Property="FontSize" Value="12.5" />
-      <Setter Property="FontWeight" Value="Medium" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
-      <Setter Property="Cursor" Value="Hand" />
-    </Style>
-    <Style Selector="Button.filterTab:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PassdownHoverBackgroundBrush}" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
-    </Style>
-    <Style Selector="Button.filterTab.active">
-      <Setter Property="BorderBrush" Value="{DynamicResource PassdownAccentForegroundBrush}" />
-      <Setter Property="Foreground" Value="{DynamicResource PassdownAccentForegroundBrush}" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
+       Passdown's own daily Notes entry. Nothing here writes into an Associate draft, the Dashboard, or
+       finalized History (spec Parts Y/AA/AB) — this screen only calls IOperationalNotesService.
 
-    <!-- Phase 22E: divided rows instead of tall stacked blocks — a hairline under each row, 8px vertical
-         padding, and the left 3px reserved for the Important rule below. -->
+       Phase 35F (approved prototype carowinds_operational_notes_refined_prototype.html): page header with
+       the one primary New Note action; a quiet filter bar (search, lifecycle segments, Category, Priority,
+       Clear filters); a list card and a detail card; the create/edit form as an in-page dialog over a scrim.
+       Same view model, commands, validation and persistence as before — only the presentation changed.
+       Shared styles come from Themes/PassdownStyles.axaml; only this screen's deltas live below. -->
+  <UserControl.Styles>
+    <!-- Divided rows: a hairline under each row, the left 3px reserved for the Important rule. -->
     <Style Selector="ListBox.notesList ListBoxItem">
       <Setter Property="Padding" Value="0" />
       <Setter Property="CornerRadius" Value="0" />
@@ -55,327 +36,412 @@
     <Style Selector="Border.importanceRule.important">
       <Setter Property="Background" Value="{DynamicResource PassdownAccentForegroundBrush}" />
     </Style>
-
-    <Style Selector="TextBox.fieldInput">
-      <Setter Property="Margin" Value="0,0,0,0" />
+    <Style Selector="TextBlock.rowTitle">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
-
-  
+    <Style Selector="TextBlock.rowExcerpt">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="MaxLines" Value="2" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <Style Selector="TextBlock.rowMeta">
+      <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeTableHeader}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+    </Style>
+    <Style Selector="TextBlock.metaValue">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.noteBody">
+      <Setter Property="FontSize" Value="13.5" />
+      <Setter Property="LineHeight" Value="22" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="StackPanel.formField > TextBlock.fieldLabel">
+      <Setter Property="Margin" Value="0,0,0,5" />
+    </Style>
   </UserControl.Styles>
 
-  <Grid RowDefinitions="Auto,Auto,*">
+  <Grid>
 
-    <!-- Header (spec Part D) -->
-    <Border Grid.Row="0" Padding="24,16" Background="{DynamicResource PassdownSurfaceBrush}"
-            BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
-      <StackPanel Spacing="2">
-        <TextBlock Text="Operational Notes" Classes="pageTitle" />
-        <TextBlock Text="Persistent supervisor notes for upcoming and current operations. Never automatically included in a daily passdown."
-                   Classes="muted" TextWrapping="Wrap" />
-      </StackPanel>
-    </Border>
+    <!-- The page. Disabled while the editor dialog is open, so the list, filters and actions underneath can be
+         neither clicked nor tabbed to; the sidebar's existing Notes-editing guard covers navigation. -->
+    <Grid x:Name="NotesPage" RowDefinitions="Auto,Auto,*" IsEnabled="{Binding !IsEditing}">
 
-    <!-- Filter tabs + category/priority filters + New Note (spec Part G/J, Phase 11E Part A/B/V) -->
-    <Border Grid.Row="1" Padding="20,10" Background="{DynamicResource PassdownSurfaceBrush}"
-            BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}">
-      <Grid ColumnDefinitions="*,Auto">
-        <WrapPanel Grid.Column="0" Orientation="Horizontal">
-          <Button Classes="filterTab" Classes.active="{Binding IsAllFilterSelected}"
-                  Content="All" Command="{Binding SetFilterCommand}"
-                  CommandParameter="{x:Static vm:OperationalNoteLifecycleFilter.All}"
-                  AutomationProperties.Name="All notes filter" />
-          <Button Classes="filterTab" Classes.active="{Binding IsActiveFilterSelected}"
-                  Content="Active" Command="{Binding SetFilterCommand}"
-                  CommandParameter="{x:Static vm:OperationalNoteLifecycleFilter.Active}"
-                  AutomationProperties.Name="Active notes filter" />
-          <Button Classes="filterTab" Classes.active="{Binding IsUpcomingFilterSelected}"
-                  Content="Upcoming" Command="{Binding SetFilterCommand}"
-                  CommandParameter="{x:Static vm:OperationalNoteLifecycleFilter.Upcoming}"
-                  AutomationProperties.Name="Upcoming notes filter" />
-          <Button Classes="filterTab" Classes.active="{Binding IsExpiredFilterSelected}"
-                  Content="Expired" Command="{Binding SetFilterCommand}"
-                  CommandParameter="{x:Static vm:OperationalNoteLifecycleFilter.Expired}"
-                  AutomationProperties.Name="Expired notes filter" />
-          <Button Classes="filterTab" Classes.active="{Binding IsResolvedFilterSelected}"
-                  Content="Resolved" Command="{Binding SetFilterCommand}"
-                  CommandParameter="{x:Static vm:OperationalNoteLifecycleFilter.Resolved}"
-                  AutomationProperties.Name="Resolved notes filter" />
-
-          <StackPanel Orientation="Horizontal" Spacing="4" Margin="16,0,0,0" VerticalAlignment="Center">
-            <TextBlock Text="Category" Classes="muted" VerticalAlignment="Center" />
-            <ComboBox ItemsSource="{Binding CategoryFilterOptions}" SelectedItem="{Binding CategoryFilter}"
-                      MinWidth="140" AutomationProperties.Name="Category filter">
-              <ComboBox.ItemTemplate>
-                <DataTemplate x:DataType="presentation:OperationalNoteCategoryFilterOption">
-                  <TextBlock Text="{Binding Label}" />
-                </DataTemplate>
-              </ComboBox.ItemTemplate>
-            </ComboBox>
+      <!-- Header (spec Part D) -->
+      <Border Grid.Row="0" Classes="pageHeader">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Grid.Column="0" Spacing="4" VerticalAlignment="Center">
+            <TextBlock Text="Operational Notes" Classes="pageTitle" />
+            <TextBlock Text="Persistent supervisor notes for current and upcoming operations. Never added to a daily Passdown automatically."
+                       Classes="muted" FontSize="12" TextWrapping="Wrap" />
           </StackPanel>
-
-          <StackPanel Orientation="Horizontal" Spacing="4" Margin="10,0,0,0" VerticalAlignment="Center">
-            <TextBlock Text="Priority" Classes="muted" VerticalAlignment="Center" />
-            <ComboBox ItemsSource="{Binding PriorityFilterOptions}" SelectedItem="{Binding PriorityFilter}"
-                      MinWidth="110" AutomationProperties.Name="Priority filter">
-              <ComboBox.ItemTemplate>
-                <DataTemplate x:DataType="presentation:OperationalNotePriorityFilterOption">
-                  <TextBlock Text="{Binding Label}" />
-                </DataTemplate>
-              </ComboBox.ItemTemplate>
-            </ComboBox>
-          </StackPanel>
-
-          <Button Classes="secondaryAction" Content="Clear filters" Command="{Binding ClearFiltersCommand}"
-                  Margin="10,0,0,0" IsVisible="{Binding HasActiveSecondaryFilters}"
-                  AutomationProperties.Name="Clear filters" />
-        </WrapPanel>
-        <Button Grid.Column="1" Classes="primaryAction" Content="+ New Note"
-                Command="{Binding NewNoteCommand}"
-                VerticalAlignment="Center" Margin="16,0,0,0"
-                AutomationProperties.Name="New Note"
-                AutomationProperties.HelpText="Creates a new persistent operational note." />
-      </Grid>
-    </Border>
-
-    <!-- Master/detail (spec Part D) -->
-    <Grid Grid.Row="2" ColumnDefinitions="340,*">
-
-      <!-- List column (spec Part E/F) -->
-      <Border Grid.Column="0" Background="{DynamicResource PassdownSurfaceBrush}"
-              BorderThickness="0,0,1,0" BorderBrush="{DynamicResource PassdownDividerBrush}">
-        <Grid RowDefinitions="Auto,*">
-
-          <ProgressBar Grid.Row="0" IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoading}" AutomationProperties.Name="Loading operational notes" />
-
-          <TextBlock Grid.Row="1" Text="{Binding ListErrorMessage}" Classes="fieldError"
-                     Margin="16" TextWrapping="Wrap" VerticalAlignment="Top"
-                     IsVisible="{Binding ListErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-
-          <!-- Spec Part U: no notes at all. -->
-          <StackPanel Grid.Row="1" Margin="18" Spacing="10" IsVisible="{Binding ShowEmptyState}">
-            <TextBlock Text="No operational notes yet." FontWeight="SemiBold" TextWrapping="Wrap" />
-            <TextBlock Classes="muted" TextWrapping="Wrap"
-                       Text="Create a note for information that should remain visible across days." />
-            <Button Classes="secondaryAction" Content="+ New Note" Command="{Binding NewNoteCommand}"
-                    HorizontalAlignment="Left" AutomationProperties.Name="New Note (empty state)" />
-          </StackPanel>
-
-          <!-- Spec Part U: notes exist, but none match the current filter. -->
-          <StackPanel Grid.Row="1" Margin="18" Spacing="6" IsVisible="{Binding ShowFilteredEmptyState}">
-            <TextBlock Text="{Binding FilteredEmptyStateMessage}" Classes="muted" TextWrapping="Wrap" />
-          </StackPanel>
-
-          <ListBox Grid.Row="1" Classes="selectableRows notesList" ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}"
-                   Background="Transparent" BorderThickness="0"
-                   IsVisible="{Binding !ShowEmptyState}"
-                   IsEnabled="{Binding !IsEditing}"
-                   AutomationProperties.Name="Operational notes list">
-            <ListBox.ItemTemplate>
-              <!-- Phase 22E: three lines — title; category · priority; lifecycle · range (· relative). Every
-                   pre-22E fact is still on the row (the lifecycle chip became the first word of the schedule
-                   line; the carry-forward line is kept when it adds a relative fact). -->
-              <DataTemplate x:DataType="presentation:OperationalNoteRowPresentation">
-                <Grid ColumnDefinitions="Auto,*" AutomationProperties.Name="{Binding AccessibleSummary}">
-                  <Border Grid.Column="0" Classes="importanceRule" Classes.important="{Binding IsImportant}" />
-                  <StackPanel Grid.Column="1" Spacing="2" Margin="11,8,12,8">
-                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13.5" TextWrapping="Wrap" />
-                    <StackPanel Orientation="Horizontal" Spacing="4">
-                      <TextBlock Classes="muted" Text="{Binding CategoryLabel}" />
-                      <TextBlock Classes="muted" Text="·" />
-                      <TextBlock Classes="priorityText" Classes.important="{Binding IsImportant}" Text="{Binding PriorityLabel}" />
-                    </StackPanel>
-                    <TextBlock Classes="muted" Text="{Binding ScheduleText}" TextWrapping="Wrap" />
-                  </StackPanel>
-                </Grid>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-
+          <Button x:Name="NewNoteButton" Grid.Column="1" Classes="primaryAction" Content="+ New Note"
+                  Command="{Binding NewNoteCommand}"
+                  VerticalAlignment="Center" Margin="16,0,0,0"
+                  AutomationProperties.Name="New Note"
+                  AutomationProperties.HelpText="Creates a new persistent operational note." />
         </Grid>
       </Border>
 
-      <!-- Detail/editor column -->
-      <Grid Grid.Column="1">
+      <!-- Search, lifecycle segments, Category / Priority filters (spec Part G/J, Phase 11E Part A/B/V, Phase 35F search). -->
+      <Border Grid.Row="1" Classes="filterBar">
+        <WrapPanel Orientation="Horizontal" ItemSpacing="12" LineSpacing="8">
+          <TextBox x:Name="NotesSearchBox" Classes="searchBox" Width="300" Text="{Binding SearchText}"
+                   PlaceholderText="Search notes" VerticalAlignment="Center"
+                   AutomationProperties.Name="Search operational notes"
+                   AutomationProperties.HelpText="Shows only notes whose title, text or category contains every word you type.">
+            <TextBox.InnerLeftContent>
+              <PathIcon Data="{StaticResource PassdownSearchIconGeometry}" />
+            </TextBox.InnerLeftContent>
+          </TextBox>
 
-        <!-- Placeholder (spec Part D): not editing, nothing selected. -->
-        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
-                    IsVisible="{Binding ShowDetailPlaceholder}">
-          <TextBlock Text="Select a note from the list, or create a new one." Classes="muted" />
-        </StackPanel>
-
-        <!-- Read-only detail (spec Part K's default; Part O for a resolved note). -->
-        <ScrollViewer Padding="24,20,24,24" IsVisible="{Binding ShowReadOnlyDetail}">
-          <StackPanel Spacing="16">
-
-            <Grid ColumnDefinitions="*,Auto">
-              <StackPanel Grid.Column="0" Spacing="6">
-                <TextBlock Text="{Binding SelectedDetail.Title}" Classes="pageTitle" TextWrapping="Wrap" />
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                  <Border Classes="chip">
-                    <TextBlock Text="{Binding SelectedDetail.CategoryLabel}" />
-                  </Border>
-                  <Border Classes="chipAccent" IsVisible="{Binding SelectedDetail.IsImportant}">
-                    <TextBlock Text="Important" />
-                  </Border>
-                  <Border Classes="chip" IsVisible="{Binding !SelectedDetail.IsImportant}">
-                    <TextBlock Text="{Binding SelectedDetail.PriorityLabel}" />
-                  </Border>
-                  <Border Classes="chip">
-                    <TextBlock Text="{Binding SelectedDetail.LifecycleLabel}" />
-                  </Border>
-                </StackPanel>
-              </StackPanel>
-            </Grid>
-
-            <TextBlock Text="{Binding ActionMessage}" Classes="fieldError" TextWrapping="Wrap"
-                       IsVisible="{Binding ActionMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-
-            <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
-              <StackPanel Grid.Column="0" Spacing="2">
-                <TextBlock Text="EFFECTIVE FROM" Classes="subsectionTitle" />
-                <TextBlock Text="{Binding SelectedDetail.EffectiveFromText}" />
-              </StackPanel>
-              <StackPanel Grid.Column="1" Spacing="2">
-                <TextBlock Text="EFFECTIVE THROUGH" Classes="subsectionTitle" />
-                <TextBlock Text="{Binding SelectedDetail.EffectiveThroughText}" />
-              </StackPanel>
-            </Grid>
-
-            <!-- Phase 22E: stored created/updated times (display only; the stored values never change). -->
-            <TextBlock Text="{Binding SelectedDetail.RecordTimesText}" Classes="muted" TextWrapping="Wrap"
-                       IsVisible="{Binding SelectedDetail.RecordTimesText, Converter={x:Static StringConverters.IsNotNullOrEmpty}, FallbackValue=False}" />
-
-            <!-- Carry-forward relevance (Phase 11E Part E/F) — derived only, never a separate record. -->
-            <TextBlock Text="{Binding SelectedDetail.CarryForwardText}" Classes="muted"
-                       IsVisible="{Binding SelectedDetail.CarryForwardText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-
-            <!-- Spec Part O: a resolved note shows Resolved + its timestamp, and is otherwise read-only for good (no Edit/Resolve controls below). -->
-            <StackPanel Spacing="2" IsVisible="{Binding SelectedDetail.IsResolved}">
-              <TextBlock Text="RESOLVED" Classes="subsectionTitle" />
-              <TextBlock Text="{Binding SelectedDetail.ResolvedAtText}" />
-            </StackPanel>
-
-            <StackPanel Spacing="4">
-              <TextBlock Text="NOTE" Classes="subsectionTitle" />
-              <TextBlock Text="{Binding SelectedDetail.Body}" TextWrapping="Wrap"
-                         IsVisible="{Binding SelectedDetail.Body, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-              <TextBlock Text="No additional detail entered." Classes="muted"
-                         IsVisible="{Binding SelectedDetail.Body, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
-            </StackPanel>
-
-            <!-- Action row: Edit/Resolve, or the inline resolve confirmation (spec Part N). Neither
-                 control appears for a resolved note (spec Part O). -->
-            <StackPanel Spacing="10" IsVisible="{Binding !SelectedDetail.IsResolved}">
-
-              <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding !IsConfirmingResolve}">
-                <Button Content="Edit" Classes="secondaryAction" Command="{Binding EditCommand}"
-                        AutomationProperties.Name="Edit" />
-                <Button Content="Resolve" Classes="warningAction" Command="{Binding RequestResolveCommand}"
-                        AutomationProperties.Name="Resolve" />
-              </StackPanel>
-
-              <StackPanel Spacing="8" IsVisible="{Binding IsConfirmingResolve}">
-                <TextBlock Text="Mark this operational note resolved? This preserves the note but removes it from the Active list."
-                           TextWrapping="Wrap" FontWeight="Medium" />
-                <StackPanel Orientation="Horizontal" Spacing="10">
-                  <Button Content="Yes, Resolve" Classes="warningAction" Command="{Binding ConfirmResolveCommand}"
-                          IsEnabled="{Binding !IsResolving}"
-                          AutomationProperties.Name="Confirm Resolve" />
-                  <Button Content="Cancel" Classes="secondaryAction" Command="{Binding CancelResolveCommand}"
-                          AutomationProperties.Name="Cancel Resolve" />
-                </StackPanel>
-              </StackPanel>
-
-            </StackPanel>
-
+          <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center"
+                      AutomationProperties.Name="Note status filters">
+            <Button Classes="segment" Classes.active="{Binding IsActiveFilterSelected}"
+                    Content="Active" Command="{Binding SetFilterCommand}"
+                    CommandParameter="{x:Static vm:OperationalNoteLifecycleFilter.Active}"
+                    AutomationProperties.Name="Active notes filter" />
+            <Button Classes="segment" Classes.active="{Binding IsAllFilterSelected}"
+                    Content="All" Command="{Binding SetFilterCommand}"
+                    CommandParameter="{x:Static vm:OperationalNoteLifecycleFilter.All}"
+                    AutomationProperties.Name="All notes filter" />
+            <Button Classes="segment" Classes.active="{Binding IsUpcomingFilterSelected}"
+                    Content="Upcoming" Command="{Binding SetFilterCommand}"
+                    CommandParameter="{x:Static vm:OperationalNoteLifecycleFilter.Upcoming}"
+                    AutomationProperties.Name="Upcoming notes filter" />
+            <Button Classes="segment" Classes.active="{Binding IsExpiredFilterSelected}"
+                    Content="Expired" Command="{Binding SetFilterCommand}"
+                    CommandParameter="{x:Static vm:OperationalNoteLifecycleFilter.Expired}"
+                    AutomationProperties.Name="Expired notes filter" />
+            <Button Classes="segment" Classes.active="{Binding IsResolvedFilterSelected}"
+                    Content="Resolved" Command="{Binding SetFilterCommand}"
+                    CommandParameter="{x:Static vm:OperationalNoteLifecycleFilter.Resolved}"
+                    AutomationProperties.Name="Resolved notes filter" />
           </StackPanel>
-        </ScrollViewer>
 
-        <!-- Create/edit editor (spec Part J/K/L/M). -->
-        <ScrollViewer Padding="24,20,24,24" IsVisible="{Binding ShowEditor}">
-          <StackPanel Spacing="14">
-
-            <TextBlock Text="New Operational Note" Classes="pageTitle" IsVisible="{Binding IsCreating}" />
-            <TextBlock Text="Edit Operational Note" Classes="pageTitle" IsVisible="{Binding !IsCreating}" />
-
-            <StackPanel Spacing="4">
-              <TextBlock Text="TITLE" Classes="subsectionTitle" />
-              <TextBox spell:SpellCheck.IsEnabled="True"
-                       Text="{Binding EditorTitle}" MaxLength="200"
-                       PlaceholderText="e.g. South Gate scanner #3 out of service"
-                       AutomationProperties.Name="Note title" />
+          <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+              <TextBlock Text="Category" Classes="muted" VerticalAlignment="Center" />
+              <ComboBox ItemsSource="{Binding CategoryFilterOptions}" SelectedItem="{Binding CategoryFilter}"
+                        MinWidth="140" AutomationProperties.Name="Category filter">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="presentation:OperationalNoteCategoryFilterOption">
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
             </StackPanel>
 
-            <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
-              <StackPanel Grid.Column="0" Spacing="4">
-                <TextBlock Text="CATEGORY" Classes="subsectionTitle" />
-                <ComboBox ItemsSource="{Binding EditorCategoryOptions}" SelectedItem="{Binding EditorCategory}"
-                          HorizontalAlignment="Stretch" AutomationProperties.Name="Category">
-                  <ComboBox.ItemTemplate>
-                    <DataTemplate x:DataType="presentation:OperationalNoteCategoryOption">
-                      <TextBlock Text="{Binding Label}" />
-                    </DataTemplate>
-                  </ComboBox.ItemTemplate>
-                </ComboBox>
-              </StackPanel>
-              <StackPanel Grid.Column="1" Spacing="4">
-                <TextBlock Text="PRIORITY" Classes="subsectionTitle" />
-                <ComboBox ItemsSource="{Binding EditorPriorityOptions}" SelectedItem="{Binding EditorPriority}"
-                          HorizontalAlignment="Stretch" AutomationProperties.Name="Priority">
-                  <ComboBox.ItemTemplate>
-                    <DataTemplate x:DataType="presentation:OperationalNotePriorityOption">
-                      <TextBlock Text="{Binding Label}" />
-                    </DataTemplate>
-                  </ComboBox.ItemTemplate>
-                </ComboBox>
-              </StackPanel>
-            </Grid>
-
-            <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
-              <StackPanel Grid.Column="0" Spacing="4">
-                <TextBlock Text="EFFECTIVE FROM" Classes="subsectionTitle" />
-                <CalendarDatePicker SelectedDate="{Binding EditorEffectiveFromForPicker}"
-                                    SelectedDateFormat="Custom" CustomDateFormatString="MMM d, yyyy"
-                                    HorizontalAlignment="Stretch"
-                                    AutomationProperties.Name="Effective From" />
-              </StackPanel>
-              <StackPanel Grid.Column="1" Spacing="4">
-                <TextBlock Text="EFFECTIVE THROUGH" Classes="subsectionTitle" />
-                <CalendarDatePicker SelectedDate="{Binding EditorEffectiveThroughForPicker}"
-                                    SelectedDateFormat="Custom" CustomDateFormatString="MMM d, yyyy"
-                                    HorizontalAlignment="Stretch"
-                                    IsEnabled="{Binding !EditorUntilResolved}"
-                                    AutomationProperties.Name="Effective Through" />
-                <CheckBox Content="Until resolved" IsChecked="{Binding EditorUntilResolved}"
-                          AutomationProperties.Name="Effective Through is until resolved" />
-              </StackPanel>
-            </Grid>
-
-            <StackPanel Spacing="4">
-              <TextBlock Text="NOTE (OPTIONAL)" Classes="subsectionTitle" />
-              <TextBox spell:SpellCheck.IsEnabled="True"
-                       Text="{Binding EditorBody}" MaxLength="4000"
-                       AcceptsReturn="True" TextWrapping="Wrap" MinHeight="160"
-                       PlaceholderText="Additional operational detail"
-                       AutomationProperties.Name="Note body" />
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+              <TextBlock Text="Priority" Classes="muted" VerticalAlignment="Center" />
+              <ComboBox ItemsSource="{Binding PriorityFilterOptions}" SelectedItem="{Binding PriorityFilter}"
+                        MinWidth="110" AutomationProperties.Name="Priority filter">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="presentation:OperationalNotePriorityFilterOption">
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
             </StackPanel>
 
-            <TextBlock Text="{Binding EditorValidationMessage}" Classes="fieldError" TextWrapping="Wrap"
-                       IsVisible="{Binding EditorValidationMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <Button Classes="textAction" Content="Clear filters" Command="{Binding ClearFiltersCommand}"
+                    VerticalAlignment="Center" IsVisible="{Binding HasActiveSecondaryFilters}"
+                    AutomationProperties.Name="Clear filters" />
+          </StackPanel>
+        </WrapPanel>
+      </Border>
 
-            <StackPanel Orientation="Horizontal" Spacing="10">
-              <Button Content="Save" Classes="primaryAction" Command="{Binding SaveCommand}"
-                      AutomationProperties.Name="Save" />
+      <!-- List card + detail card (spec Part D). The list keeps a fixed width; the detail takes the rest. -->
+      <Grid Grid.Row="2" ColumnDefinitions="320,*" ColumnSpacing="16" Margin="22,18,22,18">
+
+        <!-- List (spec Part E/F) -->
+        <Border Grid.Column="0" Classes="workspaceCard">
+          <Grid RowDefinitions="Auto,Auto,*">
+            <Border Grid.Row="0" Classes="listHeader">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding ListHeadingText}" FontWeight="SemiBold" FontSize="13" />
+                <TextBlock Grid.Column="1" Text="{Binding NoteCountText}" Classes="muted" FontSize="11.5" VerticalAlignment="Center"
+                           AutomationProperties.LiveSetting="Polite" />
+              </Grid>
+            </Border>
+
+            <ProgressBar Grid.Row="1" IsIndeterminate="True" Height="3" IsVisible="{Binding IsLoading}" AutomationProperties.Name="Loading operational notes" />
+
+            <TextBlock Grid.Row="2" Text="{Binding ListErrorMessage}" Classes="fieldError"
+                       Margin="16" TextWrapping="Wrap" VerticalAlignment="Top"
+                       IsVisible="{Binding ListErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+            <!-- Spec Part U: no notes at all. -->
+            <StackPanel Grid.Row="2" Margin="16" Spacing="10" IsVisible="{Binding ShowEmptyState}">
+              <TextBlock Text="No operational notes yet." FontWeight="SemiBold" TextWrapping="Wrap" />
+              <TextBlock Classes="muted" TextWrapping="Wrap"
+                         Text="Create a note for information that should remain visible across days." />
+              <Button Classes="secondaryAction" Content="+ New Note" Command="{Binding NewNoteCommand}"
+                      HorizontalAlignment="Left" AutomationProperties.Name="New Note (empty state)" />
+            </StackPanel>
+
+            <!-- Spec Part U: notes exist, but none match the current filter or search. -->
+            <TextBlock Grid.Row="2" Margin="16" Text="{Binding FilteredEmptyStateMessage}" Classes="muted" TextWrapping="Wrap"
+                       IsVisible="{Binding ShowFilteredEmptyState}" AutomationProperties.LiveSetting="Polite" />
+
+            <ListBox Grid.Row="2" Classes="selectableRows notesList" ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}"
+                     Background="Transparent" BorderThickness="0"
+                     IsVisible="{Binding !ShowEmptyState}"
+                     IsEnabled="{Binding !IsEditing}"
+                     AutomationProperties.Name="Operational notes list">
+              <ListBox.ItemTemplate>
+                <!-- Phase 35F: title with its lifecycle pill; a short preview of the note's text; category · priority
+                     with the schedule (range and any relative phrase). Every fact the Phase 22E row showed is still here. -->
+                <DataTemplate x:DataType="presentation:OperationalNoteRowPresentation">
+                  <Grid ColumnDefinitions="Auto,*" AutomationProperties.Name="{Binding AccessibleSummary}">
+                    <Border Grid.Column="0" Classes="importanceRule" Classes.important="{Binding IsImportant}" />
+                    <StackPanel Grid.Column="1" Spacing="5" Margin="12,11,14,11">
+                      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <TextBlock Grid.Column="0" Text="{Binding Title}" Classes="rowTitle" />
+                        <Border Grid.Column="1" Classes="statePill" Classes.resolved="{Binding IsResolvedLifecycle}">
+                          <TextBlock Text="{Binding LifecycleLabel}" />
+                        </Border>
+                      </Grid>
+                      <TextBlock Text="{Binding ExcerptText}" Classes="rowExcerpt" />
+                      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Top">
+                          <TextBlock Classes="rowMeta" Text="{Binding CategoryLabel}" />
+                          <TextBlock Classes="rowMeta" Text="·" />
+                          <TextBlock Classes="rowMeta priorityText" Classes.important="{Binding IsImportant}" Text="{Binding PriorityLabel}" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" Text="{Binding ScheduleDetailText}" Classes="rowMeta" TextAlignment="Right" TextWrapping="Wrap" />
+                      </Grid>
+                    </StackPanel>
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Grid>
+        </Border>
+
+        <!-- Detail -->
+        <Border Grid.Column="1" Classes="workspaceCard">
+          <Grid>
+
+            <!-- Placeholder (spec Part D): nothing selected. -->
+            <TextBlock Text="Select a note from the list, or create a new one." Classes="muted"
+                       VerticalAlignment="Center" HorizontalAlignment="Center" Margin="24" TextWrapping="Wrap"
+                       IsVisible="{Binding SelectedDetail, Converter={x:Static ObjectConverters.IsNull}}" />
+
+            <!-- Read-only detail (spec Part K's default; Part O for a resolved note). -->
+            <ScrollViewer x:Name="NoteDetailScroll" IsVisible="{Binding SelectedDetail, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <StackPanel Spacing="18" Margin="30,26,30,34" MaxWidth="920" HorizontalAlignment="Left">
+
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                  <StackPanel Grid.Column="0" Spacing="7">
+                    <TextBlock Text="OPERATIONAL NOTE" Classes="eyebrow" />
+                    <TextBlock Text="{Binding SelectedDetail.Title}" Classes="detailTitle" />
+                    <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="6">
+                      <Border Classes="chip">
+                        <TextBlock Text="{Binding SelectedDetail.CategoryLabel}" />
+                      </Border>
+                      <Border Classes="chipAccent" IsVisible="{Binding SelectedDetail.IsImportant}">
+                        <TextBlock Text="Important" />
+                      </Border>
+                      <Border Classes="chip" IsVisible="{Binding !SelectedDetail.IsImportant}">
+                        <TextBlock Text="{Binding SelectedDetail.PriorityLabel, StringFormat='{}{0} priority'}" />
+                      </Border>
+                      <Border Classes="chip">
+                        <TextBlock Text="{Binding SelectedDetail.LifecycleLabel}" />
+                      </Border>
+                    </WrapPanel>
+                  </StackPanel>
+
+                  <!-- Action row: Edit / Resolve. Neither control appears for a resolved note (spec Part O). -->
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top"
+                              IsVisible="{Binding !SelectedDetail.IsResolved, FallbackValue=False}">
+                    <Button x:Name="EditNoteButton" Content="Edit" Classes="secondaryAction" Command="{Binding EditCommand}"
+                            AutomationProperties.Name="Edit" />
+                    <Button Content="Resolve" Classes="secondaryAction" Command="{Binding RequestResolveCommand}"
+                            AutomationProperties.Name="Resolve"
+                            AutomationProperties.HelpText="Marks this note resolved after you confirm. The note is kept, never deleted." />
+                  </StackPanel>
+                </Grid>
+
+                <!-- Spec Part N: the inline resolve confirmation. -->
+                <Border Classes="noticeBox" IsVisible="{Binding IsConfirmingResolve}">
+                  <StackPanel Spacing="10">
+                    <TextBlock Text="Mark this operational note resolved? This preserves the note but removes it from the Active list."
+                               FontWeight="Medium" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <Button Content="Yes, Resolve" Classes="warningAction" Command="{Binding ConfirmResolveCommand}"
+                              IsEnabled="{Binding !IsResolving}"
+                              AutomationProperties.Name="Confirm Resolve" />
+                      <Button Content="Cancel" Classes="secondaryAction" Command="{Binding CancelResolveCommand}"
+                              AutomationProperties.Name="Cancel Resolve" />
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+
+                <TextBlock Text="{Binding ActionMessage}" Classes="fieldError" TextWrapping="Wrap"
+                           IsVisible="{Binding ActionMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           AutomationProperties.LiveSetting="Assertive" />
+
+                <Border Classes="divider" Margin="0" />
+
+                <StackPanel Spacing="14">
+                  <Grid ColumnDefinitions="*,*" ColumnSpacing="20">
+                    <StackPanel Grid.Column="0" Spacing="6">
+                      <TextBlock Text="EFFECTIVE FROM" Classes="eyebrow" />
+                      <TextBlock Text="{Binding SelectedDetail.EffectiveFromText}" Classes="metaValue" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Spacing="6">
+                      <TextBlock Text="EFFECTIVE THROUGH" Classes="eyebrow" />
+                      <TextBlock Text="{Binding SelectedDetail.EffectiveThroughText}" Classes="metaValue" />
+                    </StackPanel>
+                  </Grid>
+                  <!-- Spec Part O: a resolved note shows Resolved + its timestamp, and is otherwise read-only for good. -->
+                  <StackPanel Spacing="6" IsVisible="{Binding SelectedDetail.IsResolved, FallbackValue=False}">
+                    <TextBlock Text="RESOLVED" Classes="eyebrow" />
+                    <TextBlock Text="{Binding SelectedDetail.ResolvedAtText}" Classes="metaValue" />
+                  </StackPanel>
+                  <!-- Carry-forward relevance (Phase 11E Part E/F) — derived only, never a separate record. -->
+                  <TextBlock Text="{Binding SelectedDetail.CarryForwardText}" Classes="muted"
+                             IsVisible="{Binding SelectedDetail.CarryForwardText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+
+                <Border Classes="divider" Margin="0" />
+
+                <StackPanel Spacing="10">
+                  <TextBlock Text="Note details" Classes="sectionTitle" Margin="0" />
+                  <TextBlock Text="{Binding SelectedDetail.Body}" Classes="noteBody"
+                             IsVisible="{Binding SelectedDetail.Body, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  <TextBlock Text="No additional detail entered." Classes="muted"
+                             IsVisible="{Binding SelectedDetail.Body, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
+                </StackPanel>
+
+                <Border Classes="noticeBox">
+                  <StackPanel Spacing="2">
+                    <TextBlock Text="Persistent operational note" FontWeight="SemiBold" />
+                    <TextBlock Text="Notes are never printed in the daily Associate Passdown automatically. A note can be included for a date from the Passdown Notes tab. Resolving a note does not change finalized Passdown records." />
+                  </StackPanel>
+                </Border>
+
+                <!-- Phase 22E: stored created/updated times (display only; the stored values never change). -->
+                <TextBlock Text="{Binding SelectedDetail.RecordTimesText}" Classes="muted" FontSize="11.5" TextWrapping="Wrap"
+                           IsVisible="{Binding SelectedDetail.RecordTimesText, Converter={x:Static StringConverters.IsNotNullOrEmpty}, FallbackValue=False}" />
+              </StackPanel>
+            </ScrollViewer>
+          </Grid>
+        </Border>
+      </Grid>
+    </Grid>
+
+    <!-- Create/edit editor (spec Part J/K/L/M) as an in-page dialog. Escape and × cancel (the editor's values are
+         discarded, nothing is saved); Save Note saves through the same command and validation as before. -->
+    <Border x:Name="NoteEditorOverlay" Classes="modalScrim" IsVisible="{Binding ShowEditor}">
+      <Border x:Name="NoteEditorDialog" Classes="modalDialog" MaxWidth="610" MaxHeight="760" Margin="20"
+              VerticalAlignment="Center"
+              AutomationProperties.Name="Operational note editor">
+        <Border.KeyBindings>
+          <KeyBinding Gesture="Escape" Command="{Binding CancelCommand}" />
+        </Border.KeyBindings>
+        <Grid RowDefinitions="Auto,*,Auto">
+          <Border Grid.Row="0" BorderThickness="0,0,0,1" BorderBrush="{DynamicResource PassdownDividerBrush}" Padding="22,14,14,14">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Grid.Column="0" Text="New Operational Note" Classes="sectionTitle" FontSize="17" Margin="0"
+                         VerticalAlignment="Center" IsVisible="{Binding IsCreating}" />
+              <TextBlock Grid.Column="0" Text="Edit Operational Note" Classes="sectionTitle" FontSize="17" Margin="0"
+                         VerticalAlignment="Center" IsVisible="{Binding !IsCreating}" />
+              <Button Grid.Column="1" Classes="iconAction" Content="×" FontSize="16" Command="{Binding CancelCommand}"
+                      ToolTip.Tip="Close without saving"
+                      AutomationProperties.Name="Close editor without saving" />
+            </Grid>
+          </Border>
+
+          <ScrollViewer Grid.Row="1">
+            <StackPanel Spacing="14" Margin="22,18,22,18">
+
+              <StackPanel Classes="formField">
+                <TextBlock Text="Title" Classes="fieldLabel" />
+                <TextBox x:Name="EditorTitleBox" spell:SpellCheck.IsEnabled="True"
+                         Text="{Binding EditorTitle}" MaxLength="200"
+                         PlaceholderText="e.g. South Gate scanner #3 out of service"
+                         AutomationProperties.Name="Note title" />
+              </StackPanel>
+
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+                <StackPanel Grid.Column="0" Classes="formField">
+                  <TextBlock Text="Category" Classes="fieldLabel" />
+                  <ComboBox ItemsSource="{Binding EditorCategoryOptions}" SelectedItem="{Binding EditorCategory}"
+                            HorizontalAlignment="Stretch" AutomationProperties.Name="Category">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="presentation:OperationalNoteCategoryOption">
+                        <TextBlock Text="{Binding Label}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Classes="formField">
+                  <TextBlock Text="Priority" Classes="fieldLabel" />
+                  <ComboBox ItemsSource="{Binding EditorPriorityOptions}" SelectedItem="{Binding EditorPriority}"
+                            HorizontalAlignment="Stretch" AutomationProperties.Name="Priority">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="presentation:OperationalNotePriorityOption">
+                        <TextBlock Text="{Binding Label}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
+              </Grid>
+
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+                <StackPanel Grid.Column="0" Classes="formField">
+                  <TextBlock Text="Effective from" Classes="fieldLabel" />
+                  <CalendarDatePicker SelectedDate="{Binding EditorEffectiveFromForPicker}"
+                                      SelectedDateFormat="Custom" CustomDateFormatString="MMM d, yyyy"
+                                      HorizontalAlignment="Stretch"
+                                      AutomationProperties.Name="Effective From" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Classes="formField">
+                  <TextBlock Text="Effective through" Classes="fieldLabel" />
+                  <CalendarDatePicker SelectedDate="{Binding EditorEffectiveThroughForPicker}"
+                                      SelectedDateFormat="Custom" CustomDateFormatString="MMM d, yyyy"
+                                      HorizontalAlignment="Stretch"
+                                      IsEnabled="{Binding !EditorUntilResolved}"
+                                      AutomationProperties.Name="Effective Through" />
+                  <CheckBox Content="Until resolved" IsChecked="{Binding EditorUntilResolved}" Margin="0,4,0,0"
+                            AutomationProperties.Name="Effective Through is until resolved" />
+                </StackPanel>
+              </Grid>
+
+              <StackPanel Classes="formField">
+                <TextBlock Text="Details (optional)" Classes="fieldLabel" />
+                <TextBox spell:SpellCheck.IsEnabled="True"
+                         Text="{Binding EditorBody}" MaxLength="4000"
+                         AcceptsReturn="True" TextWrapping="Wrap" MinHeight="126"
+                         PlaceholderText="Record the observation, context, or follow-up information"
+                         AutomationProperties.Name="Note body" />
+              </StackPanel>
+
+              <TextBlock Text="{Binding EditorValidationMessage}" Classes="fieldError" TextWrapping="Wrap"
+                         IsVisible="{Binding EditorValidationMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                         AutomationProperties.LiveSetting="Assertive" />
+            </StackPanel>
+          </ScrollViewer>
+
+          <Border Grid.Row="2" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource PassdownDividerBrush}" Padding="22,12">
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
               <Button Content="Cancel" Classes="secondaryAction" Command="{Binding CancelCommand}"
                       AutomationProperties.Name="Cancel" />
+              <Button Content="Save Note" Classes="primaryAction" Command="{Binding SaveCommand}"
+                      AutomationProperties.Name="Save" />
             </StackPanel>
-
-          </StackPanel>
-        </ScrollViewer>
-
-      </Grid>
-
-    </Grid>
+          </Border>
+        </Grid>
+      </Border>
+    </Border>
   </Grid>
 
 </UserControl>

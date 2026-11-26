@@ -507,7 +507,10 @@ public partial class Phase32PassPerksUiTests
     {
         var view = Markup("src/Carowinds.Passdown.Desktop/Views/PersonalSyncSettingsView.axaml");
 
-        Assert.Contains("Content=\"Show Pass Perks on Calendar\"", view, StringComparison.Ordinal);
+        // Phase 35F: a labelled switch row (the label beside it, the same accessible name and binding as the 32 check box).
+        Assert.Contains("<TextBlock Text=\"Show Pass Perks on Calendar\" Classes=\"fieldLabel\" />", view, StringComparison.Ordinal);
+        Assert.Contains("<ToggleSwitch x:Name=\"ShowPassPerksOnCalendar\"", view, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Show Pass Perks on Calendar\"", view, StringComparison.Ordinal);
         Assert.Contains("IsChecked=\"{Binding CalendarDisplay.ShowPassPerks}\"", view, StringComparison.Ordinal);
     }
 

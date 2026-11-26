@@ -426,7 +426,8 @@ public class Phase31DPassdownPreferencesTests
         var section = Element(Markup("PersonalSyncSettingsView"), "PassdownPreferencesSection");
         var markup = Markup("PersonalSyncSettingsView");
 
-        Assert.Contains("<TextBlock Text=\"Passdown Preferences\" Classes=\"sectionTitle\"", markup);
+        // Phase 35F: the group is titled "Passdown Defaults" (approved Settings prototype); same settings and bindings.
+        Assert.Contains("<TextBlock Text=\"Passdown Defaults\" Classes=\"sectionTitle\"", markup);
         Assert.Contains("Text=\"Choose which sections are selected automatically when starting a new Passdown.\"", section);
         foreach (var (property, label) in new[]
                  {

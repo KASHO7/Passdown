@@ -1213,10 +1213,11 @@ public class Phase15ERealWindowLayoutTests
         Assert.NotEmpty(items);
         Assert.All(items, item =>
         {
-            // Title, "Category · Priority", "Lifecycle · range": three blocks (was five plus a chip), 16px padding + spacing.
+            // Phase 35F: title with its lifecycle pill, a text preview (at most two lines), "Category · Priority" with the
+            // schedule: three blocks, 22px padding + 2×5px spacing (the approved prototype's row rhythm).
             var (blocks, content) = Phase22ERowContent(item, window);
             Assert.Equal(3, blocks);
-            Assert.True(item.Bounds.Height <= content + 22, $"note row {item.Bounds.Height:F0}px for {content:F0}px of text");
+            Assert.True(item.Bounds.Height <= content + 36, $"note row {item.Bounds.Height:F0}px for {content:F0}px of text");
         });
         var listRight = AbsoluteBounds(list, window).Right;
         Assert.All(list.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible && t.Bounds.Width > 0),
@@ -1256,7 +1257,8 @@ public class Phase15ERealWindowLayoutTests
             // Date (+ PDF tag on the same line) and "Finalized … · origin": two lines, no chip row.
             var (blocks, content) = Phase22ERowContent(item, window);
             Assert.Equal(2, blocks);
-            Assert.True(item.Bounds.Height <= content + 20, $"history row {item.Bounds.Height:F0}px for {content:F0}px of text");
+            // Phase 35F: 24px padding, the PDF pill and 4px between the lines (the approved prototype's row rhythm).
+            Assert.True(item.Bounds.Height <= content + 32, $"history row {item.Bounds.Height:F0}px for {content:F0}px of text");
         });
         Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => AutomationProperties.GetName(b) == "Open Final PDF" && b.IsEffectivelyVisible);
 
@@ -1333,7 +1335,8 @@ public class Phase15ERealWindowLayoutTests
         await viewModel.PendingLoad;
         var window = RealizeInWindow(new PersonalSyncSettingsView { DataContext = viewModel }, 1280, 860);
 
-        var checkBox = window.GetVisualDescendants().OfType<CheckBox>().Single(c => AutomationProperties.GetName(c) == "Enable Personal Sync");
+        // Phase 35F: Enable Personal Sync is a switch (same PersonalSyncEnabled binding as the earlier check box).
+        var checkBox = window.GetVisualDescendants().OfType<ToggleSwitch>().Single(c => AutomationProperties.GetName(c) == "Enable Personal Sync");
         checkBox.Focus();
         var seen = new List<string?> { AutomationProperties.GetName(checkBox) };
         for (var i = 0; i < 8; i++)
@@ -1849,11 +1852,21 @@ public class Phase15ERealWindowLayoutTests
 
         window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        // One Tab stop for the group: Tab leaves the theme options. Since Phase 35A the next stop is the Interface
-        // animations group, on its own checked option.
+        // One Tab stop for the group: Tab leaves the theme options. Since Phase 35F the next stop is the Interface
+        // animations switch (35A had a second radio group there).
         var next = window.FocusManager!.GetFocusedElement();
         Assert.False(next is RadioButton { GroupName: "Appearance" }, "Tab must leave the theme group");
-        Assert.True(next is RadioButton { GroupName: "InterfaceAnimations", IsChecked: true }, "Tab lands on the checked Interface animations option");
+        Assert.True(next is ToggleSwitch { Name: "InterfaceAnimationsSwitch" }, "Tab lands on the Interface animations switch");
+
+        // Phase 35F: the options sit side by side, so Left / Right move the selection too (Up / Down still do, above).
+        AppearanceOption(window, "Light").Focus();
+        window.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(Application.Preferences.AppearancePreference.Dark, harness.Controller.Preference);
+        window.KeyPressQwerty(PhysicalKey.ArrowLeft, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(Application.Preferences.AppearancePreference.Light, harness.Controller.Preference);
+        Assert.Equal(1, CheckedAppearanceOptions(window));
         Assert.Equal(Application.Preferences.AppearancePreference.Light, harness.Controller.Preference); // Tab never changes it
 
         window.Close();
@@ -1870,13 +1883,13 @@ public class Phase15ERealWindowLayoutTests
         viewModel.SelectedSection = AppSection.Settings;
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        // Shift+Tab back from the next stop on the page. Phase 31D put the Passdown Preferences checkboxes after
-        // Appearance; Phase 35A put the Interface animations group (one Tab stop) between them, so Shift+Tab goes
-        // checkbox → animations group → theme group.
+        // Shift+Tab back from the next stop on the page. Phase 31D put the Passdown defaults checkboxes after
+        // Appearance; the Interface animations control sits between them (a radio group in 35A, one switch since
+        // 35F), so Shift+Tab goes checkbox → animations switch → theme group.
         window.GetVisualDescendants().OfType<CheckBox>().Single(c => AutomationProperties.GetName(c) == "Select Daily Admission automatically for a new Passdown").Focus();
         window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.Shift);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        Assert.True(window.FocusManager!.GetFocusedElement() is RadioButton { GroupName: "InterfaceAnimations", IsChecked: true });
+        Assert.True(window.FocusManager!.GetFocusedElement() is ToggleSwitch { Name: "InterfaceAnimationsSwitch" });
         window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.Shift);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
@@ -2164,9 +2177,9 @@ public class Phase15ERealWindowLayoutTests
             Assert.True(bounds.Right <= AbsoluteBounds(panel, window).Right + 1);
         }
 
-        // Stacked top to bottom in the stated order, never overlapping.
-        Assert.True(AbsoluteBounds(options[0], window).Bottom <= AbsoluteBounds(options[1], window).Top + 0.5);
-        Assert.True(AbsoluteBounds(options[1], window).Bottom <= AbsoluteBounds(options[2], window).Top + 0.5);
+        // Phase 35F: side by side (as in the approved prototype) in the stated order, never overlapping.
+        Assert.True(AbsoluteBounds(options[0], window).Right <= AbsoluteBounds(options[1], window).Left + 0.5);
+        Assert.True(AbsoluteBounds(options[1], window).Right <= AbsoluteBounds(options[2], window).Left + 0.5);
 
         var scroll = window.GetVisualDescendants().OfType<ScrollViewer>().Single(s => s.Name == "SettingsScroll");
         Assert.True(scroll.Extent.Width <= scroll.Viewport.Width + 1, $"horizontal overflow {scroll.Extent.Width - scroll.Viewport.Width:F0}px");
@@ -2519,36 +2532,111 @@ public class Phase15ERealWindowLayoutTests
         viewModel.SelectedSection = AppSection.Settings;
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        RadioButton Option(string name) => window.GetVisualDescendants().OfType<RadioButton>().Single(r => r.Name == name);
-        var on = Option("InterfaceAnimationsOnOption");
-        var off = Option("InterfaceAnimationsOffOption");
+        // Phase 35F: one switch (35A had an On / Off radio group) bound to the same saved choice.
+        var toggle = window.GetVisualDescendants().OfType<ToggleSwitch>().Single(r => r.Name == "InterfaceAnimationsSwitch");
         var note = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "InterfaceAnimationsSystemNote");
-        Assert.True(on.IsChecked);
-        Assert.True(on.IsEffectivelyVisible && AbsoluteBounds(on, window).Right <= window.ClientSize.Width);
+        Assert.True(toggle.IsChecked);
+        Assert.True(toggle.IsEffectivelyVisible && AbsoluteBounds(toggle, window).Right <= window.ClientSize.Width);
         Assert.False(note.IsEffectivelyVisible); // Windows allows animation: nothing to explain
         Assert.Contains("motion", window.Classes);
 
-        // Arrow key from the checked option selects Off, applies at once and saves locally.
-        Assert.True(on.Focus(NavigationMethod.Tab));
-        window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
-        window.KeyReleaseQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+        // Space on the focused switch turns it Off, applies at once and saves locally.
+        Assert.True(toggle.Focus(NavigationMethod.Tab));
+        window.KeyPressQwerty(PhysicalKey.Space, RawInputModifiers.None);
+        window.KeyReleaseQwerty(PhysicalKey.Space, RawInputModifiers.None);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.True(viewModel.Settings.Appearance.PendingMotionSave.IsCompletedSuccessfully); // the fake store saves synchronously
-        Assert.True(off.IsChecked);
+        Assert.False(toggle.IsChecked);
         Assert.DoesNotContain("motion", window.Classes);
         Assert.Equal(Application.Preferences.InterfaceAnimationPreference.Off, store.Stored);
 
         // Back On, then Windows turns Animation effects off: motion off, choice kept, the note explains it.
-        on.IsChecked = true;
+        toggle.IsChecked = true;
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(Application.Preferences.InterfaceAnimationPreference.On, store.Stored);
         os.Value = Application.Preferences.SystemReducedMotion.Requested;
         viewModel.OnWindowActivated();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        Assert.True(on.IsChecked);
+        Assert.True(toggle.IsChecked);
         Assert.True(note.IsEffectivelyVisible);
         Assert.Equal(AppearanceSettingsViewModel.MotionOverriddenByWindowsText, note.Text);
         Assert.Contains("noMotion", window.Classes);
         Assert.Equal(AppSection.Settings, viewModel.SelectedSection);
+        window.Close();
+    }
+
+    // ==================================================================================
+    // Phase 35F — Settings section list, Operational Notes editor dialog
+    // ==================================================================================
+
+    [Theory]
+    [InlineData(1280d, 860d)]
+    [InlineData(960d, 640d)]
+    public async Task Settings_SectionList_ScrollsTheGroupToTheTop_AndMarksItCurrent_WithoutChangingAnything(double width, double height)
+    {
+        var viewModel = CreateBusySettings();
+        await viewModel.PendingLoad;
+        var window = RealizeInWindow(new PersonalSyncSettingsView { DataContext = viewModel }, width, height);
+        var scroll = window.GetVisualDescendants().OfType<ScrollViewer>().Single(s => s.Name == "SettingsScroll");
+        Button Entry(string name) => window.GetVisualDescendants().OfType<Button>().Single(b => AutomationProperties.GetName(b) == name);
+        var enabledBefore = viewModel.PersonalSyncEnabled;
+
+        Assert.Contains("active", Entry("Go to Appearance settings").Classes);
+        Assert.Equal("Current section", AutomationProperties.GetItemStatus(Entry("Go to Appearance settings")));
+
+        Entry("Go to Personal Sync settings").Focus(NavigationMethod.Tab);
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        window.KeyReleaseQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var section = window.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "PersonalSyncSection");
+        var top = AbsoluteBounds(section, window).Top - AbsoluteBounds(scroll, window).Top;
+        Assert.True(scroll.Offset.Y > 0, "the page scrolled");
+        Assert.InRange(top, 0, 40); // the group starts at the top of the view (the page padding above it)
+        Assert.Single(window.GetVisualDescendants().OfType<Button>(), b => b.Classes.Contains("settingsNavItem") && b.Classes.Contains("active"));
+        Assert.Contains("active", Entry("Go to Personal Sync settings").Classes);
+        Assert.True(Entry("Go to Personal Sync settings").IsFocused); // focus stays on the list
+        Assert.Equal(enabledBefore, viewModel.PersonalSyncEnabled);
+
+        Entry("Go to About this build").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(scroll.Extent.Height - scroll.Viewport.Height, scroll.Offset.Y, 1.0); // short last group: the page end
+        Assert.Contains("active", Entry("Go to About this build").Classes);
+
+        AssertNoControlClipsHorizontally(window);
+        window.Close();
+    }
+
+    [Fact]
+    public async Task OperationalNotes_EditorDialog_FocusesTheTitle_EscapeCancels_AndFocusReturnsToNewNote()
+    {
+        var service = new FakeOperationalNotesService();
+        var viewModel = new OperationalNotesViewModel(service, CreateClock());
+        await viewModel.PendingLoad;
+        var window = RealizeInWindow(new OperationalNotesView { DataContext = viewModel }, 1280, 860);
+        var newNote = window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "NewNoteButton");
+
+        newNote.Focus(NavigationMethod.Tab);
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        window.KeyReleaseQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.True(viewModel.IsEditing);
+        var title = window.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "EditorTitleBox");
+        Assert.True(title.IsFocused, "the dialog opens on its Title box");
+        var page = window.GetVisualDescendants().OfType<Grid>().Single(g => g.Name == "NotesPage");
+        Assert.False(page.IsEffectivelyEnabled); // nothing behind the dialog can be used
+        var dialog = window.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "NoteEditorDialog");
+        Assert.True(AbsoluteBounds(dialog, window).Right <= window.ClientSize.Width);
+
+        title.Text = "Typed but cancelled";
+        window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+        window.KeyReleaseQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.False(viewModel.IsEditing);
+        Assert.Empty(await service.ListAsync()); // nothing was saved
+        Assert.True(newNote.IsFocused, "focus returns to New Note");
         window.Close();
     }
 }

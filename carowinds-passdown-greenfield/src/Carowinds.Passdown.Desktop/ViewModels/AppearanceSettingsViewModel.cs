@@ -88,6 +88,17 @@ public partial class AppearanceSettingsViewModel : ViewModelBase
         set => SelectAnimation(InterfaceAnimationPreference.Off, value);
     }
 
+    /// <summary>
+    /// Phase 35F: the Settings switch for Interface animations — the same saved On / Off choice as
+    /// <see cref="IsAnimationsOnSelected"/> / <see cref="IsAnimationsOffSelected"/>, expressed as one boolean.
+    /// It reports the saved choice, not the effective motion: Windows reduced motion never flips it.
+    /// </summary>
+    public bool AreAnimationsOn
+    {
+        get => SelectedAnimationPreference == InterfaceAnimationPreference.On;
+        set => SelectAnimation(value ? InterfaceAnimationPreference.On : InterfaceAnimationPreference.Off, isChecked: true);
+    }
+
     /// <summary>True when cosmetic transitions are actually shown (choice On and the OS not requesting reduced motion).</summary>
     public bool IsMotionEffective => _motion.IsMotionEffective;
 
@@ -129,6 +140,7 @@ public partial class AppearanceSettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(SelectedAnimationPreference));
         OnPropertyChanged(nameof(IsAnimationsOnSelected));
         OnPropertyChanged(nameof(IsAnimationsOffSelected));
+        OnPropertyChanged(nameof(AreAnimationsOn));
         OnPropertyChanged(nameof(IsMotionEffective));
         OnPropertyChanged(nameof(MotionSystemText));
     }

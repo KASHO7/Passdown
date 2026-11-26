@@ -37,6 +37,41 @@ public sealed record OperationalNoteRowPresentation(
         _ => $"{LifecycleLabel} · {DateRangeText}",
     };
 
+    /// <summary>
+    /// Phase 35F: the schedule line under the lifecycle pill — <see cref="ScheduleText"/> without its leading
+    /// lifecycle word, which the row already shows as the pill ("Oct 17 – Oct 24 · Expires today").
+    /// </summary>
+    public string ScheduleDetailText => ScheduleText.StartsWith($"{LifecycleLabel} · ", StringComparison.Ordinal)
+        ? ScheduleText[(LifecycleLabel.Length + 3)..]
+        : ScheduleText;
+
+    /// <summary>
+    /// Phase 35F: a one-glance preview of the note's text for the list row — whitespace collapsed, at most
+    /// <see cref="ExcerptLength"/> characters, or "No additional detail entered." when the note has none. Display only.
+    /// </summary>
+    public string ExcerptText { get; init; } = NoDetailText;
+
+    /// <summary>Phase 35F: the lifecycle pill takes the resolved (success) tint only for a resolved note.</summary>
+    public bool IsResolvedLifecycle => LifecycleState == OperationalNoteLifecycleState.Resolved;
+
+    /// <summary>Whether <see cref="ExcerptText"/> is the "no detail" placeholder rather than the note's own text.</summary>
+    public bool HasExcerpt { get; init; }
+
+    internal const string NoDetailText = "No additional detail entered.";
+
+    internal const int ExcerptLength = 140;
+
+    internal static (string Text, bool HasText) Excerpt(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return (NoDetailText, false);
+        }
+
+        var collapsed = string.Join(' ', body.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return (collapsed.Length <= ExcerptLength ? collapsed : $"{collapsed[..ExcerptLength].TrimEnd()}…", true);
+    }
+
     /// <summary>"South Gate scanner, Important, General, Active · Oct 17 – Oct 24" — what a screen reader announces for the row.</summary>
     public string AccessibleSummary => IsImportant
         ? $"{Title}, Important, {CategoryLabel}, {ScheduleText}"
@@ -47,6 +82,7 @@ public sealed record OperationalNoteRowPresentation(
         ArgumentNullException.ThrowIfNull(note);
 
         var lifecycle = OperationalNoteLifecycle.Derive(note, referenceDate);
+        var (excerpt, hasExcerpt) = Excerpt(note.Body);
         return new OperationalNoteRowPresentation(
             note.Id,
             note.Title,
@@ -58,7 +94,11 @@ public sealed record OperationalNoteRowPresentation(
             OperationalNoteDateRangeFormatter.Format(note, lifecycle, referenceDate),
             OperationalNoteCarryForwardFormatter.Format(lifecycle, note.EffectiveFrom, note.EffectiveThrough, referenceDate),
             lifecycle,
-            LifecycleLabelFor(lifecycle));
+            LifecycleLabelFor(lifecycle))
+        {
+            ExcerptText = excerpt,
+            HasExcerpt = hasExcerpt,
+        };
     }
 
     internal static string LifecycleLabelFor(OperationalNoteLifecycleState lifecycle) => lifecycle switch

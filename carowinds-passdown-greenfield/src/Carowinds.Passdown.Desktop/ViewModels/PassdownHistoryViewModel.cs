@@ -25,15 +25,44 @@ public partial class PassdownHistoryViewModel : ViewModelBase
     private readonly IFinalizedPdfLauncher _pdfLauncher;
     private readonly ILogger<PassdownHistoryViewModel>? _logger;
 
+    private IReadOnlyList<PassdownHistorySummaryPresentation> _allItems = [];
     private int _detailLoadVersion;
     private Task _pendingLoad = Task.CompletedTask;
     private Task _pendingDetailLoad = Task.CompletedTask;
     private Task _pendingSelectByDate = Task.CompletedTask;
 
+    /// <summary>The finalized records the current search and filters show (all of them when nothing narrows the list), newest first.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasHistory))]
-    [NotifyPropertyChangedFor(nameof(ShowEmptyState))]
+    [NotifyPropertyChangedFor(nameof(ShowFilteredEmptyState))]
+    [NotifyPropertyChangedFor(nameof(RecordCountText))]
     public partial IReadOnlyList<PassdownHistorySummaryPresentation> HistoryItems { get; set; } = [];
+
+    /// <summary>
+    /// Phase 35F: the search box. Matches each record's own metadata only — its date (long, short and numeric
+    /// forms), finalized time, origin and PDF availability — so searching never opens a stored snapshot and never
+    /// reads anything but the already-loaded list. Every word must match.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActiveFilters))]
+    public partial string SearchText { get; set; } = string.Empty;
+
+    /// <summary>Phase 35F: the record-type segment — all records, or only Scheduled / Recovery / Manual finalizations.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActiveFilters))]
+    [NotifyPropertyChangedFor(nameof(IsAllOriginsSelected))]
+    [NotifyPropertyChangedFor(nameof(IsScheduledSelected))]
+    [NotifyPropertyChangedFor(nameof(IsRecoverySelected))]
+    [NotifyPropertyChangedFor(nameof(IsManualSelected))]
+    public partial FinalizationOrigin? OriginFilter { get; set; }
+
+    /// <summary>Phase 35F: the Year filter — "All years" or one of the years that have finalized records.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActiveFilters))]
+    public partial HistoryYearOption YearFilter { get; set; } = HistoryYearOption.AllYears;
+
+    /// <summary>Phase 35F: "All years" plus each year that has at least one finalized record, newest first.</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<HistoryYearOption> YearOptions { get; set; } = [HistoryYearOption.AllYears];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelection))]
@@ -47,6 +76,7 @@ public partial class PassdownHistoryViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmptyState))]
+    [NotifyPropertyChangedFor(nameof(ShowFilteredEmptyState))]
     public partial bool IsLoadingList { get; set; }
 
     [ObservableProperty]
@@ -91,7 +121,28 @@ public partial class PassdownHistoryViewModel : ViewModelBase
         _pendingLoad = LoadHistoryAsync();
     }
 
-    public bool HasHistory => HistoryItems.Count > 0;
+    /// <summary>Whether any finalized record exists at all (whatever the search and filters show).</summary>
+    public bool HasHistory => _allItems.Count > 0;
+
+    /// <summary>Phase 35F: records exist, but none match the current search or filters.</summary>
+    public bool ShowFilteredEmptyState => !IsLoadingList && HasHistory && HistoryItems.Count == 0;
+
+    /// <summary>Phase 35F: whether the search, record type or year narrows the list (drives Clear filters).</summary>
+    public bool HasActiveFilters => !string.IsNullOrWhiteSpace(SearchText) || OriginFilter is not null || YearFilter.Year is not null;
+
+    /// <summary>Phase 35F: "1 record" / "17 records" — how many records the list shows.</summary>
+    public string RecordCountText => HistoryItems.Count == 1 ? "1 record" : $"{HistoryItems.Count} records";
+
+    public bool IsAllOriginsSelected => OriginFilter is null;
+
+    public bool IsScheduledSelected => OriginFilter == FinalizationOrigin.Scheduled;
+
+    public bool IsRecoverySelected => OriginFilter == FinalizationOrigin.Recovery;
+
+    public bool IsManualSelected => OriginFilter == FinalizationOrigin.Manual;
+
+    /// <summary>Phase 35F: Manual finalizations are rare; their segment is offered only when such a record exists.</summary>
+    public bool HasManualRecords => _allItems.Any(item => item.OriginText == nameof(FinalizationOrigin.Manual));
 
     public bool HasSelection => SelectedItem is not null;
 
@@ -123,10 +174,65 @@ public partial class PassdownHistoryViewModel : ViewModelBase
     private async Task SelectByDateCoreAsync(DateOnly date)
     {
         await PendingLoad.ConfigureAwait(true);
-        var match = HistoryItems.FirstOrDefault(item => item.PassdownDate == date);
+        var match = _allItems.FirstOrDefault(item => item.PassdownDate == date);
         if (match is not null)
         {
+            // Phase 35F: a search or filter must never hide the record the Calendar asked for.
+            if (!HistoryItems.Contains(match))
+            {
+                ClearFilters();
+            }
+
             SelectedItem = match;
+        }
+    }
+
+    partial void OnSearchTextChanged(string value) => ApplyFilters();
+
+    partial void OnOriginFilterChanged(FinalizationOrigin? value) => ApplyFilters();
+
+    partial void OnYearFilterChanged(HistoryYearOption value) => ApplyFilters();
+
+    [RelayCommand]
+    private void SetOriginFilter(FinalizationOrigin? origin) => OriginFilter = origin;
+
+    /// <summary>Phase 35F: clears the search, record type and year at once.</summary>
+    [RelayCommand]
+    private void ClearFilters()
+    {
+        SearchText = string.Empty;
+        OriginFilter = null;
+        YearFilter = HistoryYearOption.AllYears;
+    }
+
+    /// <summary>
+    /// Phase 35F: narrows the loaded records in memory (newest first is kept). A selected record that the
+    /// filters now hide is deselected rather than shown beside a list that no longer contains it. Nothing is
+    /// read from storage and no record changes.
+    /// </summary>
+    private void ApplyFilters()
+    {
+        IEnumerable<PassdownHistorySummaryPresentation> filtered = _allItems;
+        if (OriginFilter is { } origin)
+        {
+            filtered = filtered.Where(item => item.OriginText == origin.ToString());
+        }
+
+        if (YearFilter.Year is { } year)
+        {
+            filtered = filtered.Where(item => item.PassdownDate.Year == year);
+        }
+
+        if (!string.IsNullOrWhiteSpace(SearchText))
+        {
+            var terms = SearchText.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            filtered = filtered.Where(item => terms.All(term => item.SearchKey.Contains(term, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        HistoryItems = filtered.ToList();
+        if (SelectedItem is { } selected && !HistoryItems.Contains(selected))
+        {
+            SelectedItem = null;
         }
     }
 
@@ -137,18 +243,33 @@ public partial class PassdownHistoryViewModel : ViewModelBase
         try
         {
             var summaries = await _historyService.ListAsync().ConfigureAwait(true);
-            HistoryItems = summaries.Select(PassdownHistorySummaryPresentation.Build).ToList();
+            SetAllItems(summaries.Select(PassdownHistorySummaryPresentation.Build).ToList());
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger?.LogError(ex, "Failed to load finalized-passdown history.");
             ListErrorMessage = "History could not be loaded right now. Try again later.";
-            HistoryItems = [];
+            SetAllItems([]);
         }
         finally
         {
             IsLoadingList = false;
         }
+    }
+
+    private void SetAllItems(IReadOnlyList<PassdownHistorySummaryPresentation> items)
+    {
+        _allItems = items;
+        YearOptions = [HistoryYearOption.AllYears, .. items.Select(item => item.PassdownDate.Year).Distinct().OrderDescending().Select(HistoryYearOption.For)];
+        if (YearFilter.Year is { } year && !items.Any(item => item.PassdownDate.Year == year))
+        {
+            YearFilter = HistoryYearOption.AllYears;
+        }
+
+        OnPropertyChanged(nameof(HasHistory));
+        OnPropertyChanged(nameof(ShowEmptyState));
+        OnPropertyChanged(nameof(HasManualRecords));
+        ApplyFilters();
     }
 
     /// <summary>
@@ -327,4 +448,14 @@ public partial class PassdownHistoryViewModel : ViewModelBase
         public Task<PdfOpenResult> OpenAsync(byte[] pdfBytes, string suggestedFileName, CancellationToken cancellationToken = default) =>
             Task.FromResult(PdfOpenResult.Failed("Opening PDFs is not available."));
     }
+}
+
+/// <summary>Phase 35F: one choice in the History Year filter — "All years" (<see cref="Year"/> null) or a single year.</summary>
+public sealed record HistoryYearOption(int? Year, string Label)
+{
+    public static HistoryYearOption AllYears { get; } = new(null, "All years");
+
+    public static HistoryYearOption For(int year) => new(year, year.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+    public override string ToString() => Label;
 }

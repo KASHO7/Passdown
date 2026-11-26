@@ -328,15 +328,14 @@ public class Phase35AInterfaceMotionTests
 
         var section = AnimationsMarkup();
         Assert.Contains("Text=\"Interface animations\"", section);
-        Assert.Equal(2, Regex.Matches(section, "<RadioButton ").Count);
-        Assert.True(section.IndexOf("Content=\"On\"", StringComparison.Ordinal) < section.IndexOf("Content=\"Off\"", StringComparison.Ordinal));
-        Assert.Contains("IsChecked=\"{Binding Appearance.IsAnimationsOnSelected}\"", section);
-        Assert.Contains("IsChecked=\"{Binding Appearance.IsAnimationsOffSelected}\"", section);
+        // Phase 35F (approved Settings motion prototype): one switch replaces the On / Off radio pair. It is bound to
+        // the same saved choice (AreAnimationsOn reads and writes SelectedAnimationPreference) and is one Tab stop.
+        Assert.Single(Regex.Matches(section, "<ToggleSwitch "));
+        Assert.DoesNotContain("<RadioButton ", section);
+        Assert.Contains("x:Name=\"InterfaceAnimationsSwitch\"", section);
+        Assert.Contains("IsChecked=\"{Binding Appearance.AreAnimationsOn}\"", section);
         Assert.Contains("AutomationProperties.Name=\"Interface animations\"", section);
-        Assert.Contains("AutomationProperties.Name=\"Interface animations on\"", section);
-        Assert.Contains("AutomationProperties.Name=\"Interface animations off\"", section);
-        Assert.Contains("KeyboardNavigation.TabNavigation=\"Once\"", section);
-        Assert.Contains("XYFocus.NavigationModes=\"Keyboard\"", section);
+        Assert.Contains("AutomationProperties.HelpText=\"Turn short interface transitions on or off on this computer\"", section);
     }
 
     [Fact]

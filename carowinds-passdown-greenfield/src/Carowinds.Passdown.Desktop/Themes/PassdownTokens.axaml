@@ -84,6 +84,9 @@
   <StreamGeometry x:Key="PassdownDropdownChevronGeometry">M 2.5,4.25 L 6,7.75 L 9.5,4.25</StreamGeometry>
   <StreamGeometry x:Key="PassdownDisclosureChevronRightGeometry">M 4.25,2.5 L 7.75,6 L 4.25,9.5</StreamGeometry>
 
+  <!-- Phase 35F: the magnifier inside the Operational Notes and History search boxes (24-unit, filled ring + handle). -->
+  <StreamGeometry x:Key="PassdownSearchIconGeometry">F0 M10,3 A7,7 0 1 0 10,17 A7,7 0 1 0 10,3 Z M10,4.9 A5.1,5.1 0 1 1 10,15.1 A5.1,5.1 0 1 1 10,4.9 Z M14.6,16 L16,14.6 L21.2,19.8 L19.8,21.2 Z</StreamGeometry>
+
   <!-- Fluent's own accent-driven controls (checked CheckBox/RadioButton, ToggleSwitch, text
        selection, the Fluent Calendar) follow the brand royal blue. -->
   <Color x:Key="SystemAccentColor">#1E5AA8</Color>
