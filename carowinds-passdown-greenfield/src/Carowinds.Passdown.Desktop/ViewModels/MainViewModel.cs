@@ -319,7 +319,13 @@ public partial class MainViewModel : ViewModelBase
     /// Phase 35A: the main window was activated. Re-reads the operating system's reduced-motion setting (changing it
     /// in Windows Settings means leaving this app). Never navigates, saves or refreshes anything.
     /// </summary>
-    public void OnWindowActivated() => Settings.Appearance.RefreshSystemMotion();
+    public void OnWindowActivated()
+    {
+        Settings.Appearance.RefreshSystemMotion();
+        // Phase 35D follow-up: returning to the app after the Eastern date changed (e.g. the PC slept past midnight)
+        // updates the date header's Today button at once. Presentation only — never loads or changes the date.
+        Associate.RefreshTodayIndicators();
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDashboardSectionSelected))]

@@ -186,6 +186,9 @@ public partial class Phase33PreviewWindowTests
     public async Task Phase35B_ToolbarTabsAndOverview_FitWithoutOverlap(double width, double height, string theme)
     {
         var w = await RealizeWorkspaceAsync(width, height, theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light);
+        // Phase 35D follow-up: Today shows only off today — use the previous day so the widest toolbar (with Today) is checked.
+        w.ViewModel.PreviousDayCommand.Execute(null);
+        PumpUntil(() => w.ViewModel.PendingLoad.IsCompleted);
         w.ViewModel.ManualHoursOverrideEnabled = true;
         w.ViewModel.ManualOpeningTimeText = "9:00 AM";
         w.ViewModel.PrivateBuyoutEnabled = true;
@@ -347,7 +350,8 @@ public partial class Phase33PreviewWindowTests
 
         string[] expected =
         [
-            "Previous day", "Operating date", "Next day", "Today", "Create PDF", "Passdown actions",
+            // Phase 35D follow-up: today is selected here, so the Today button is hidden and is not a Tab stop.
+            "Previous day", "Operating date", "Next day", "Create PDF", "Passdown actions",
             "Overview section", "Products section", "Shows section", "Notes section", "North Gate override time",
         ];
         Assert.Equal(expected, order.Take(expected.Length));

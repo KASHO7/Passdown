@@ -228,6 +228,13 @@ public partial class AssociateView : UserControl
     }
 
     /// <summary>
+    /// Phase 35D follow-up: the toolbar's Today button hides once today is selected, so keyboard focus moves to the
+    /// date button beside it instead of being lost with the hidden button. Focus only — Click runs before the
+    /// button's GoToTodayCommand, which still does the date change.
+    /// </summary>
+    private void DateTodayButton_OnClick(object? sender, RoutedEventArgs e) => DateButton.Focus(NavigationMethod.Tab);
+
+    /// <summary>
     /// Phase 13E Part Q: pressing Enter in a Manual Hours/Private Buyout time field commits/normalizes
     /// it immediately, the same as Tab/click-away, instead of waiting for a later, unrelated focus
     /// change — and consumes the key so it can never fall through to an unrelated default button. Pure

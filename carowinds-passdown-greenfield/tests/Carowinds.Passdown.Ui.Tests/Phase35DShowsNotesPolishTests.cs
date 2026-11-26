@@ -423,7 +423,7 @@ public class Phase35DShowsNotesPolishTests
         Assert.Contains("<Setter Property=\"VerticalAlignment\" Value=\"Center\" />", style);
 
         var markup = Markup();
-        Assert.Equal(2, Regex.Matches(markup, Regex.Escape("<Path Classes=\"dropdownChevron\"") + "|" + Regex.Escape("<Path Grid.Column=\"3\" Classes=\"dropdownChevron\"")).Count);
+        Assert.Equal(2, Regex.Matches(markup, "<Path[^>]*Classes=\"dropdownChevron\"").Count); // Actions and the date button
         Assert.DoesNotContain("M 2,5 L 8,11 L 14,5", markup); // the old stretched 2:1 glyph
         Assert.DoesNotContain("navGlyph small", markup);
         Assert.DoesNotContain("M6 9l6 6 6-6", markup);

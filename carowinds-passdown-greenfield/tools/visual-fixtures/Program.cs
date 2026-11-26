@@ -205,6 +205,10 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
         Pump(12);
     }),
     ("P35D-Actions", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); OpenFlyout(f.Window, "Passdown actions"); }),
+    // Phase 35D follow-up: the compact date selector on today (no Today button) and on another date (Today shown).
+    ("P35D-Date-Today", () => new Fixture(), f => Go(f, AppSection.AssociatePassdown)),
+    ("P35D-Date-OtherDay", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.PreviousDayCommand.Execute(null); Pump(12); }),
+    ("P35D-Date-OtherDayCollapsed", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); Collapse(f); f.Vm.Associate.NextDayCommand.Execute(null); Pump(12); }),
     ("Associate-Notes", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowNotesSectionCommand.Execute(null); Pump(8); }),
     // Phase 33: the live PDF preview (real QuestPDF bytes rendered by PDFium) beside the editor.
     ("Preview-Hidden", () => new Fixture(preview: PdfPreviewLayoutPreferences.BuiltIn with { IsPreviewVisible = false }), f => { Go(f, AppSection.AssociatePassdown); Pump(8); }),

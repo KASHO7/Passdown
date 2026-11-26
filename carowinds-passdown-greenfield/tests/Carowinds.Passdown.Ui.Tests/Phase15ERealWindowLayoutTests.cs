@@ -427,6 +427,9 @@ public class Phase15ERealWindowLayoutTests
         var service = new FakeAssociatePassdownService();
         var viewModel = new AssociateViewModel(service, CreateClock());
         await viewModel.PendingLoad;
+        // Phase 35D follow-up: Today shows only off today — use the previous day so the widest toolbar (with Today) is checked.
+        viewModel.PreviousDayCommand.Execute(null);
+        await viewModel.PendingLoad;
         viewModel.ManualHoursOverrideEnabled = true;
         viewModel.ManualOpeningTimeText = "9:00 AM";
         viewModel.ManualClosingTimeText = "10:00 PM";

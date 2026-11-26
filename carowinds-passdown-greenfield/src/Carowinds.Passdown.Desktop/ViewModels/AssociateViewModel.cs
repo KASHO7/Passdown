@@ -970,6 +970,13 @@ public partial class AssociateViewModel : ViewModelBase
                 {
                     _uiDispatcher.Post(() => _pendingOfficialDataReload = HandleOfficialDataChangedAsync(change));
                 }
+                else if (change.Kind is DataChangeKind.OperatingDay)
+                {
+                    // Phase 35D follow-up: the Eastern date rolled over while the app stayed open (published by the
+                    // existing refresh scheduler — no timer of our own). Only the "is this today?" presentation
+                    // changes: the selected date, draft and preview stay exactly as they are.
+                    _uiDispatcher.Post(RefreshTodayIndicators);
+                }
             };
         }
     }

@@ -172,7 +172,8 @@
          narrower toolbar the date trims instead, so it can never push into Next day or the actions. -->
     <ContainerQuery Name="workspaceToolbar" Query="min-width:1000">
       <Style Selector="Button.dateButton">
-        <Setter Property="MinWidth" Value="240" />
+        <!-- Phase 35D follow-up: sized for the compact date ("Sep 30, 2026" is the widest) instead of the long form. -->
+        <Setter Property="MinWidth" Value="156" />
       </Style>
     </ContainerQuery>
     <Style Selector="Button.dateTodayButton">
@@ -214,24 +215,6 @@
       <Setter Property="FontSize" Value="13.5" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="VerticalAlignment" Value="Center" />
-    </Style>
-    <!-- Today/Yesterday/Tomorrow next to the date: the word carries the meaning; "Today" additionally
-         gets the accent chip. -->
-    <Style Selector="Border.relativeDayChip">
-      <Setter Property="Background" Value="{DynamicResource PassdownChipBrush}" />
-      <Setter Property="CornerRadius" Value="{DynamicResource PassdownRadiusControl}" />
-      <Setter Property="Padding" Value="8,1" />
-      <Setter Property="VerticalAlignment" Value="Center" />
-    </Style>
-    <Style Selector="Border.relativeDayChip TextBlock">
-      <Setter Property="FontSize" Value="11" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
-    <Style Selector="Border.relativeDayChip.today">
-      <Setter Property="Background" Value="{DynamicResource PassdownChipAccentBrush}" />
-    </Style>
-    <Style Selector="Border.relativeDayChip.today TextBlock">
-      <Setter Property="Foreground" Value="{DynamicResource PassdownChipAccentForegroundBrush}" />
     </Style>
     <Style Selector="TextBlock.buttonDetail">
       <Setter Property="FontWeight" Value="Normal" />
@@ -831,16 +814,13 @@
                       </StackPanel>
                     </Flyout>
                   </Button.Flyout>
-                  <!-- Minimum width so stepping through ordinary dates doesn't shift the controls beside it. -->
-                  <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+                  <!-- Phase 35D follow-up: the compact date ("Nov 26, 2026"); the full date (and Today / Yesterday /
+                       Tomorrow) is the tooltip and the screen-reader help text. No separate Today badge. -->
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                     <Path Grid.Column="0" Classes="calendarGlyph" Data="M 1.5,3.5 H 14.5 V 14.5 H 1.5 Z M 1.5,6.5 H 14.5 M 5,1.5 V 4.5 M 11,1.5 V 4.5" />
-                    <TextBlock Grid.Column="1" x:Name="SelectedDateText" Classes="selectedDate" Text="{Binding DateNavigation.DateText}"
-                               TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding DateNavigation.DateText}" />
-                    <Border Grid.Column="2" Classes="relativeDayChip" Classes.today="{Binding DateNavigation.IsToday}"
-                            IsVisible="{Binding DateNavigation.RelativeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                      <TextBlock Text="{Binding DateNavigation.RelativeText}" />
-                    </Border>
-                    <Path Grid.Column="3" Classes="dropdownChevron" Data="{StaticResource PassdownDropdownChevronGeometry}" />
+                    <TextBlock Grid.Column="1" x:Name="SelectedDateText" Classes="selectedDate" Text="{Binding DateNavigation.CompactDateText}"
+                               TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding DateNavigation.ToolTipText}" />
+                    <Path Grid.Column="2" Classes="dropdownChevron" Data="{StaticResource PassdownDropdownChevronGeometry}" />
                   </Grid>
                 </Button>
 
@@ -850,11 +830,14 @@
                   <Path Classes="navGlyph" Data="M 6,2 L 12,8 L 6,14" />
                 </Button>
 
-                <Button Grid.Column="3" Content="Today" Classes="dateTodayButton"
-                        Command="{Binding GoToTodayCommand}"
+                <!-- Phase 35D follow-up: only when another date is selected (hidden on today, taking no space). The same
+                     GoToTodayCommand as before: today's Eastern date read at click time. -->
+                <Button Grid.Column="3" x:Name="DateTodayButton" Content="Today" Classes="dateTodayButton"
+                        Command="{Binding GoToTodayCommand}" Click="DateTodayButton_OnClick"
+                        IsVisible="{Binding DateNavigation.ShowsTodayAction}"
                         AutomationProperties.Name="Today"
-                        AutomationProperties.HelpText="Selects today's date in Eastern time."
-                        ToolTip.Tip="Jump to today" />
+                        AutomationProperties.HelpText="Returns to today's operating date in Eastern time."
+                        ToolTip.Tip="Return to today" />
               </Grid>
             </Border>
 
