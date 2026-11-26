@@ -42,6 +42,9 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     [NotifyCanExecuteChangedFor(nameof(OpenNotesCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenOperationalNotesCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenPricingCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenShowsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenCalendarCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenPassPerksCommand))]
     public partial OperationsDashboardSnapshot? Snapshot { get; set; }
 
     [ObservableProperty]
@@ -157,6 +160,15 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     /// pricing reference (Associate Passdown → Products) for today's Eastern date, like Open Passdown.
     /// </summary>
     public event EventHandler? OpenPricingRequested;
+
+    /// <summary>Phase 35E Dashboard: "View Shows" — today's Eastern date, Associate Passdown → Shows (where which shows print is chosen).</summary>
+    public event EventHandler? OpenShowsRequested;
+
+    /// <summary>Phase 35E Dashboard: "View Pass Perks" — today's Eastern date, Associate Passdown → Products, which holds the Pass Perks panel and its View details.</summary>
+    public event EventHandler? OpenPassPerksRequested;
+
+    /// <summary>Phase 35E Dashboard: "View in Calendar" — the Operations Calendar with the Dashboard's own operating date selected (the snapshot's Eastern date, never the computer's).</summary>
+    public event EventHandler<DateOnly>? OpenCalendarRequested;
 
     public OperationsDashboardViewModel(
         IOperationsDashboardService service,
@@ -475,6 +487,21 @@ public partial class OperationsDashboardViewModel : ViewModelBase
 
     [RelayCommand(CanExecute = nameof(CanOpenPassdown))]
     private void OpenPricing() => OpenPricingRequested?.Invoke(this, EventArgs.Empty);
+
+    [RelayCommand(CanExecute = nameof(CanOpenPassdown))]
+    private void OpenShows() => OpenShowsRequested?.Invoke(this, EventArgs.Empty);
+
+    [RelayCommand(CanExecute = nameof(CanOpenPassdown))]
+    private void OpenPassPerks() => OpenPassPerksRequested?.Invoke(this, EventArgs.Empty);
+
+    [RelayCommand(CanExecute = nameof(CanOpenPassdown))]
+    private void OpenCalendar()
+    {
+        if (Snapshot is { } snapshot)
+        {
+            OpenCalendarRequested?.Invoke(this, snapshot.OperatingDate);
+        }
+    }
 
     [RelayCommand]
     private void OpenHistory() => OpenHistoryRequested?.Invoke(this, EventArgs.Empty);

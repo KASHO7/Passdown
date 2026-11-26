@@ -1,5 +1,6 @@
 using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.OperationalNotes;
+using Carowinds.Passdown.Application.PassPerks;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Domain;
@@ -241,4 +242,22 @@ public sealed record OperationsDashboardSnapshot(
     /// do not set it — never a fabricated price.
     /// </summary>
     public DashboardAdmissionSummary Admission { get; init; } = DashboardAdmissionSummary.NotChecked;
+
+    /// <summary>
+    /// Phase 35E Dashboard: today's official exact dated ticket and Fast Lane prices
+    /// (<see cref="DashboardPricingSelector"/>), projected from the same composed workspace. Empty for
+    /// construction sites that do not set it — never a fabricated price.
+    /// </summary>
+    public DashboardPricingSummary Pricing { get; init; } = DashboardPricingSummary.Empty;
+
+    /// <summary>
+    /// Phase 35E Dashboard: the cached official Pass Perks (<see cref="IPassPerksService.GetOverviewAsync"/>,
+    /// a local read that never retrieves online). Null when no Pass Perks service is wired, the cache could
+    /// not be read (<see cref="PassPerksLoadFailed"/>), or the cached overview is for a different operating
+    /// date than this snapshot. A public listing only — never what an individual pass has earned.
+    /// </summary>
+    public PassPerksOverview? PassPerks { get; init; }
+
+    /// <summary>Phase 35E Dashboard: reading the cached Pass Perks failed; only that section degrades.</summary>
+    public bool PassPerksLoadFailed { get; init; }
 }

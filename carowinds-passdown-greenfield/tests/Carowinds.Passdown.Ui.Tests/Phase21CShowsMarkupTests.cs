@@ -51,7 +51,8 @@ public class Phase21CShowsMarkupTests
     public void Dashboard_BindsTheSharedShowsPresentation_AndCalendarItsCompactSummary()
     {
         var dashboard = Markup("src/Carowinds.Passdown.Desktop/Views/DashboardView.axaml");
-        Assert.Contains("{Binding ShowsPresentation.Heading}", dashboard);
+        // Phase 35E Dashboard: the approved card title replaces the "Today's Shows" heading binding.
+        Assert.Contains("Text=\"Shows &amp; Entertainment\"", dashboard);
         Assert.Contains("{Binding ShowsPresentation.StatusText}", dashboard);
         // Phase 23B: the Dashboard rows are view models over ShowsPresentation.Rows (in-memory expansion state).
         Assert.Contains("ItemsSource=\"{Binding ShowRows}\"", dashboard);

@@ -96,6 +96,15 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
     ("Settings-AnimationsOff", () => new Fixture(motion: ShellMotion.Create(InterfaceAnimationPreference.Off, SystemReducedMotion.NotRequested)), f => { Go(f, AppSection.Settings); ScrollToName(f.Window, "Interface animations"); }),
     ("Settings-AnimationsWindowsReduced", () => new Fixture(motion: ShellMotion.Create(InterfaceAnimationPreference.On, SystemReducedMotion.Requested)), f => { Go(f, AppSection.Settings); ScrollToName(f.Window, "Interface animations"); }),
     ("Dashboard", () => new Fixture(), f => Go(f, AppSection.Dashboard)),
+    // Phase 35E Dashboard follow-up: the approved Admissions Overview in its real states (synthetic data).
+    ("Dashboard35E-Typical", () => new Fixture(), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard35E-TypicalEnd", () => new Fixture(), f => { Go(f, AppSection.Dashboard); ScrollToEnd(f.Window); }),
+    ("Dashboard35E-Collapsed", () => new Fixture(), f => { Go(f, AppSection.Dashboard); Collapse(f); }),
+    ("Dashboard35E-NothingYet", () => new Fixture(dashboardVariant: DashboardVariant.NothingYet), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard35E-Stale", () => new Fixture(dashboardVariant: DashboardVariant.Stale), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard35E-LongText", () => new Fixture(dashboardVariant: DashboardVariant.LongText), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard35E-Focus", () => new Fixture(), f => { Go(f, AppSection.Dashboard); FocusNamed(f.Window, "Open Passdown"); }),
+    ("Dashboard35E-SourceDetails", () => new Fixture(), f => { Go(f, AppSection.Dashboard); f.Vm.Dashboard.IsSourceDetailsExpanded = true; Pump(8); ScrollToEnd(f.Window); }),
     // Phase 23B: Today's Shows density/overlap. "-Top" keeps the page at the top (above-the-fold view);
     // the others scroll the Shows panel into view.
     ("DashboardShows-TypicalTop", () => new Fixture(dashboardShows: Phase23BDashboardShowsFixtures.Scheduled(Phase23BDashboardShowsFixtures.Typical)), f => Go(f, AppSection.Dashboard)),
@@ -655,7 +664,7 @@ internal sealed class Fixture
     public MainWindow Window { get; }
 
     public Fixture(bool includedNote = false, bool emptyNotes = false, bool emptyHistory = false, SyncFixture sync = SyncFixture.Off, Carowinds.Passdown.Application.Shows.ShowScheduleView? dashboardShows = null, bool showPassPerks = true,
-        PdfPreviewLayoutPreferences? preview = null, InterfaceMotionController? motion = null)
+        PdfPreviewLayoutPreferences? preview = null, InterfaceMotionController? motion = null, DashboardVariant dashboardVariant = DashboardVariant.Typical)
     {
         var clock = new FakeClock(Fixtures.Now);
         var passPerks = Phase32Fixtures.Service();
@@ -664,6 +673,7 @@ internal sealed class Fixture
         var dashboard = new FakeOperationsDashboardService();
         BusyDayFixtures.ApplyBusyDay(dashboard);
         if (dashboardShows is not null) Phase23BDashboardShowsFixtures.Apply(dashboard, dashboardShows);
+        Phase35EDashboardFixtures.Apply(dashboard, dashboardVariant);
         BusyDayFixtures.ApplyBusyAssociate(AssociateService, partialFailure: true);
         Phase35DFixtures.SeedPersistentNotes(AssociateService);
         if (includedNote) Phase35DFixtures.IncludeFirstPersistentNote(AssociateService);

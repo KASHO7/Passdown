@@ -56,6 +56,64 @@ public sealed record OperationsDashboardPresentation(
     /// <summary>The snapshot's park-status classification (kept so the headline above never re-derives it).</summary>
     public DashboardParkStatus ParkStatus { get; init; }
 
+    /// <summary>Phase 35E Dashboard: the line under the park-hours value — which kind of hours these are, never a promise the park will operate.</summary>
+    public string? ParkHoursSupportText => ParkStatus switch
+    {
+        DashboardParkStatus.Open => "Published park schedule",
+        DashboardParkStatus.Closed => "Published park schedule",
+        DashboardParkStatus.CustomHours => "Manual hours for today",
+        DashboardParkStatus.PrivateBuyout => "Private buyout",
+        _ => null,
+    };
+
+    public bool HasParkHoursSupportText => ParkHoursSupportText is not null;
+
+    /// <summary>Phase 35E Dashboard: Avenue Entrance opening (the existing effective value: override, else opening −45 min).</summary>
+    public string AvenueText { get; init; } = NoGateTimeText;
+
+    public string AvenueSupportText { get; init; } = string.Empty;
+
+    /// <summary>Phase 35E Dashboard: North Gate opening (the existing effective value: override, else opening −30 min).</summary>
+    public string NorthGateText { get; init; } = NoGateTimeText;
+
+    public string NorthGateSupportText { get; init; } = string.Empty;
+
+    /// <summary>Shown instead of a gate time when there are no opening hours to calculate it from.</summary>
+    public const string NoGateTimeText = "Not available";
+
+    /// <summary>Phase 35E Dashboard: "Nov 22, 2026" — the operating date the whole page describes (gate footer).</summary>
+    public string OperatingDateShortText { get; init; } = string.Empty;
+
+    /// <summary>Phase 35E Dashboard: "Last saved locally 8:16 AM ET" — the draft's local autosave time; never implies Personal Sync.</summary>
+    public string? LastSavedLocallyText { get; init; }
+
+    public bool HasLastSavedLocallyText => LastSavedLocallyText is not null;
+
+    /// <summary>Phase 35E Dashboard: today's passdown lifecycle state (drives which detail line the card shows).</summary>
+    public DashboardPassdownStatus PassdownStatus { get; init; }
+
+    /// <summary>
+    /// Phase 35E Dashboard: the passdown card's detail line. A draft's save time is already the card's
+    /// "Last saved locally" line, so only No Draft / Finalized carry one here.
+    /// </summary>
+    public string? PassdownCardDetailText => PassdownStatus == DashboardPassdownStatus.DraftInProgress ? null : PassdownStatusDetailText;
+
+    public bool HasPassdownCardDetailText => PassdownCardDetailText is not null;
+
+    /// <summary>Phase 35E Dashboard: the neutral note beside the passdown status.</summary>
+    public string PassdownStatusNoteText { get; init; } = string.Empty;
+
+    /// <summary>Phase 35E Dashboard: "4 scheduled shows · 22 performances" from today's recorded official schedule, or null.</summary>
+    public string? ShowsSummaryText { get; init; }
+
+    public bool HasShowsSummaryText => ShowsSummaryText is not null;
+
+    /// <summary>Phase 35E Dashboard: today's official dated ticket and Fast Lane prices.</summary>
+    public DashboardPricingPresentation Pricing { get; init; } = DashboardPricingPresentation.Empty;
+
+    /// <summary>Phase 35E Dashboard: the operating month's advertised Pass Perks from the cached official page.</summary>
+    public DashboardPassPerksPresentation? PassPerks { get; init; }
+
     /// <summary>Phase 22C: the compact date label above the Operations Overview heading (e.g. "FRIDAY, OCTOBER 16, 2026").</summary>
     public string OperatingDayCaption => OperatingDayLabel.ToUpperInvariant();
 
@@ -132,6 +190,28 @@ public sealed record OperationsDashboardPresentation(
             ? PassdownHistorySummaryPresentation.Build(summary)
             : null;
 
+        var effective = snapshot.ParkStatus.Hours.Effective;
+        var hasOpening = effective.Status == EffectiveHoursStatus.Open;
+        string GateSupport(bool overridden, int minutes, string? time) => overridden
+            ? "Manual time for today"
+            : time is not null ? $"{minutes} min before opening" : hasOpening ? string.Empty : "Needs published park hours";
+
+        string? showsSummary = null;
+        if (snapshot.TodayShows.State == Application.Shows.ShowScheduleState.Scheduled && snapshot.TodayShows.Shows.Count > 0)
+        {
+            var shows = snapshot.TodayShows.Shows.Count;
+            var performances = snapshot.TodayShows.Shows.Sum(show => show.Times.Count);
+            showsSummary = $"{shows} scheduled show{(shows == 1 ? string.Empty : "s")} · {performances} performance{(performances == 1 ? string.Empty : "s")}";
+        }
+
+        var passdownNote = snapshot.PassdownStatus.Status == DashboardPassdownStatus.Finalized
+            ? "Finalized record is read-only in History"
+            : "Autosaves on this computer as you edit";
+
+        string? lastSavedLocally = snapshot.PassdownStatus.Status == DashboardPassdownStatus.DraftInProgress && snapshot.PassdownStatus.LastSavedAt is { } lastSaved
+            ? $"Last saved locally {EasternTimestampFormat.Relative(lastSaved, snapshot.GeneratedAt)}"
+            : null;
+
         return new OperationsDashboardPresentation(
             dayLabel,
             parkHours,
@@ -152,6 +232,17 @@ public sealed record OperationsDashboardPresentation(
         {
             Admission = DashboardAdmissionPresentation.Build(snapshot.Admission, snapshot.GeneratedAt),
             ParkStatus = snapshot.ParkStatus.Status,
+            PassdownStatus = snapshot.PassdownStatus.Status,
+            AvenueText = parkHours.AvenueText ?? NoGateTimeText,
+            AvenueSupportText = GateSupport(effective.IsAvenueOverridden, 45, parkHours.AvenueText),
+            NorthGateText = parkHours.NorthGateText ?? NoGateTimeText,
+            NorthGateSupportText = GateSupport(effective.IsNorthGateOverridden, 30, parkHours.NorthGateText),
+            OperatingDateShortText = snapshot.OperatingDate.ToString("MMM d, yyyy", PresentationCulture.UnitedStates),
+            LastSavedLocallyText = lastSavedLocally,
+            PassdownStatusNoteText = passdownNote,
+            ShowsSummaryText = showsSummary,
+            Pricing = DashboardPricingPresentation.Build(snapshot.Pricing, snapshot.GeneratedAt),
+            PassPerks = DashboardPassPerksPresentation.Build(snapshot.PassPerks, snapshot.PassPerksLoadFailed, snapshot.OperatingDate),
         };
     }
 

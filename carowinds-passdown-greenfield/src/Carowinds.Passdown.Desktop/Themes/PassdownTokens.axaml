@@ -202,6 +202,11 @@
       <SolidColorBrush x:Key="PassdownPerkQualifyingBrush" Color="#1E5AA8" />
       <SolidColorBrush x:Key="PassdownPerkRedemptionBrush" Color="#1F7A7D" />
       <SolidColorBrush x:Key="PassdownPerkDeadlineBrush" Color="#8F5F14" />
+      <!-- Phase 35E Dashboard: the 3 px top rule that groups each Dashboard card (decorative only; every card also has a title). -->
+      <SolidColorBrush x:Key="PassdownCardRuleBlueBrush" Color="#326CAE" />
+      <SolidColorBrush x:Key="PassdownCardRuleTealBrush" Color="#238D92" />
+      <SolidColorBrush x:Key="PassdownCardRuleAmberBrush" Color="#BC873E" />
+      <SolidColorBrush x:Key="PassdownCardRuleSlateBrush" Color="#728295" />
 
       <!-- Fluent resource overrides: color only, so Fluent's own templates and behavior are kept. -->
       <SolidColorBrush x:Key="SystemControlFocusVisualPrimaryBrush" Color="#1B1F24" />
@@ -285,6 +290,10 @@
       <SolidColorBrush x:Key="PassdownPerkQualifyingBrush" Color="#8DB9EB" />
       <SolidColorBrush x:Key="PassdownPerkRedemptionBrush" Color="#6CC4C6" />
       <SolidColorBrush x:Key="PassdownPerkDeadlineBrush" Color="#DDB065" />
+      <SolidColorBrush x:Key="PassdownCardRuleBlueBrush" Color="#4F86C6" />
+      <SolidColorBrush x:Key="PassdownCardRuleTealBrush" Color="#3FA3A7" />
+      <SolidColorBrush x:Key="PassdownCardRuleAmberBrush" Color="#C99A55" />
+      <SolidColorBrush x:Key="PassdownCardRuleSlateBrush" Color="#7E8DA0" />
 
       <SolidColorBrush x:Key="SystemControlFocusVisualPrimaryBrush" Color="#E8EAED" />
       <SolidColorBrush x:Key="FlyoutPresenterBackground" Color="#2B3038" />

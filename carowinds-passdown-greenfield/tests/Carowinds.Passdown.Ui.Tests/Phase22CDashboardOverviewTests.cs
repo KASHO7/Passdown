@@ -320,17 +320,22 @@ public class Phase22CDashboardOverviewTests
     [Fact]
     public void Overview_ReadsInPriorityOrder_HoursAdmissionPassdownNotesOfficialData_ThenShows()
     {
+        // Phase 35E Dashboard: the approved Admissions Overview order — gate operations (hours, Avenue, North
+        // Gate, Early Ride Time), then today's passdown and shows, then pricing, operational notes and Pass Perks,
+        // then Official Data. One page heading.
         var markup = DashboardMarkup;
         var order = new[]
         {
-            "Text=\"PARK HOURS\"", "Text=\"DAILY ADMISSION\"", "Text=\"PASSDOWN\"", "Text=\"OPERATIONAL NOTES\"",
-            "Text=\"OFFICIAL DATA\"", "Text=\"{Binding ShowsPresentation.Heading}\"", "Text=\"Today at a Glance\"", "Text=\"Latest Finalized\"",
+            "Text=\"PARK OPERATING HOURS\"", "Text=\"AVENUE ENTRANCE\"", "Text=\"NORTH GATE\"", "Text=\"EARLY RIDE TIME\"",
+            "Text=\"Today's Associate Passdown\"", "Text=\"Shows &amp; Entertainment\"", "Text=\"Daily Ticket Pricing\"",
+            "Text=\"Operational Notes\"", "Text=\"{Binding Presentation.PassPerks.Heading}\"", "Text=\"OFFICIAL DATA\"",
         }.Select(token => markup.IndexOf(token, StringComparison.Ordinal)).ToList();
 
         Assert.All(order, index => Assert.True(index > 0));
         Assert.Equal(order.OrderBy(i => i), order);
         Assert.Single(Regex.Matches(markup, "Classes=\"pageTitle\"")); // one page heading, no repeated titles
-        Assert.Contains("Text=\"Operations Overview\" Classes=\"pageTitle\"", markup);
+        Assert.Contains("Text=\"Admissions Overview\" Classes=\"pageTitle\"", markup);
+        Assert.DoesNotContain("Operations Overview", markup);
     }
 
     [Fact]

@@ -389,14 +389,19 @@ public sealed class Phase23BDashboardShowsTests
     [Fact]
     public void DashboardMarkup_StacksNameThenTimesThenVenue_InReadingOrder()
     {
+        // Phase 35E Dashboard: the approved row puts the venue in its own right-hand Auto column. The Phase 23B
+        // defect (times running under the venue) stays impossible: name and times share the star column, the
+        // times wrap in a WrapPanel, and the venue can only sit beside them, never on top.
         var template = DashboardShowsTemplate();
 
-        var name = template.IndexOf("Classes=\"showName\" Text=\"{Binding Name}\"", StringComparison.Ordinal);
+        var name = template.IndexOf("Classes=\"rowName showName\" Text=\"{Binding Name}\"", StringComparison.Ordinal);
         var times = template.IndexOf("Text=\"{Binding VisibleTimesText}\"", StringComparison.Ordinal);
         var toggle = template.IndexOf("<ToggleButton", StringComparison.Ordinal);
         var venue = template.IndexOf("Text=\"{Binding Venue}\"", StringComparison.Ordinal);
         Assert.True(name > 0 && name < times && times < toggle && toggle < venue, "reading order must be name, times, disclosure, venue");
-        Assert.DoesNotContain("ColumnDefinitions", template); // no name · times · venue columns any more
+        Assert.Contains("<Grid ColumnDefinitions=\"*,Auto\" ColumnSpacing=\"12\">", template);
+        Assert.Contains("<StackPanel Grid.Column=\"0\" Spacing=\"4\">", template);
+        Assert.Matches("<TextBlock Grid.Column=\"1\" Classes=\"muted showVenue\" Text=\"\\{Binding Venue\\}\"", template);
         Assert.DoesNotContain("Orientation=\"Horizontal\" Spacing", template); // no unconstrained horizontal StackPanel
         Assert.Contains("<WrapPanel Orientation=\"Horizontal\">", template);
     }
@@ -417,12 +422,14 @@ public sealed class Phase23BDashboardShowsTests
     }
 
     [Fact]
-    public void DashboardMarkup_UsesTheColumnsPanel_AndKeepsFreshnessUntrimmed()
+    public void DashboardMarkup_ListsShowsInOneColumn_AndKeepsFreshnessUntrimmed()
     {
+        // Phase 35E Dashboard: the approved Shows card is one list in the left column (the Phase 23B
+        // multi-column ShowColumnsPanel is no longer used on the Dashboard).
         var markup = Markup("src/Carowinds.Passdown.Desktop/Views/DashboardView.axaml");
 
         Assert.Contains("ItemsSource=\"{Binding ShowRows}\"", markup);
-        Assert.Contains("<controls:ShowColumnsPanel MinColumnWidth=\"340\" MaxColumns=\"3\" ColumnSpacing=\"24\" />", markup);
+        Assert.DoesNotContain("ShowColumnsPanel", markup);
         var freshness = Regex.Match(markup, "<TextBlock Grid.Column=\"1\" Text=\"\\{Binding ShowsPresentation.FreshnessText\\}\"[^>]*/>", RegexOptions.Singleline).Value;
         Assert.Contains("TextWrapping=\"Wrap\"", freshness);
         Assert.DoesNotContain("TextTrimming", freshness);
@@ -433,7 +440,7 @@ public sealed class Phase23BDashboardShowsTests
     public void DashboardMarkup_ShowStyles_UseOnlySharedThemeTokens()
     {
         var markup = Markup("src/Carowinds.Passdown.Desktop/Views/DashboardView.axaml");
-        var start = markup.IndexOf("<Style Selector=\"Border.dashboardShowRow\">", StringComparison.Ordinal);
+        var start = markup.IndexOf("<Style Selector=\"Border.dashCard\">", StringComparison.Ordinal);
         var end = markup.IndexOf("<Style Selector=\"TextBlock.statValue.unavailable\">", StringComparison.Ordinal);
         var styles = markup[start..end];
 

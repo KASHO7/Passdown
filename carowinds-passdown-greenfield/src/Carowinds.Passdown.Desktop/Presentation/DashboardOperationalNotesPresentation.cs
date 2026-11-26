@@ -25,6 +25,9 @@ public sealed record DashboardOperationalNoteItemPresentation(
         ? $"Important. {CategoryLabel}. {Title}. {DateRangeText}."
         : $"{CategoryLabel}. {Title}. {DateRangeText}.";
 
+    /// <summary>Phase 35E Dashboard: the line under the title — "Active since Oct 22 · Supervisor Note" (Important is its own word before it).</summary>
+    public string DashboardMetaText => $"{DateRangeText} · {CategoryLabel}";
+
     public static DashboardOperationalNoteItemPresentation Build(DashboardOperationalNoteItem item, DateOnly referenceDate)
     {
         ArgumentNullException.ThrowIfNull(item);

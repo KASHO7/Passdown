@@ -143,6 +143,29 @@ public partial class MainViewModel : ViewModelBase
             ShowAssociateSection();
         };
 
+        // Phase 35E Dashboard: "View Shows" and the Pass Perks card's "Details" open today's
+        // passdown (same flush-then-load path) on Shows and on Products (which holds the Pass Perks panel).
+        Dashboard.OpenShowsRequested += (_, _) =>
+        {
+            Associate.SelectEasternToday();
+            Associate.SelectedSection = AssociateSection.Shows;
+            ShowAssociateSection();
+        };
+        Dashboard.OpenPassPerksRequested += (_, _) =>
+        {
+            Associate.SelectEasternToday();
+            Associate.SelectedSection = AssociateSection.Products;
+            ShowAssociateSection();
+        };
+
+        // Phase 35E Dashboard: "View in Calendar" selects the Dashboard's operating date through the
+        // Calendar's own SelectDate command (one local read) — the Passdown date is not touched.
+        Dashboard.OpenCalendarRequested += (_, date) =>
+        {
+            Calendar.SelectDateCommand.Execute(date);
+            ShowOperationsCalendarSection();
+        };
+
         // Phase 11C Part O/P: generic navigation to the existing Operational Notes section — never
         // resets Notes.LifecycleFilter/SelectedNote, so a supervisor's existing filter/selection state
         // there is preserved exactly as it was before Dashboard routed here.

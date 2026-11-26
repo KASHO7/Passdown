@@ -31,7 +31,7 @@ dotnet run -c Release --project tools/visual-fixtures -- <outDir> [label] [scena
 
 `<label>-geometry.txt` records, for each capture, the page's vertical scroll, any horizontal overflow,
 and any button pushed past the window's right edge. When Today's Shows is present it also records the panel's
-page top and height, where Today at a Glance starts, the entry width and column count, and how many text
+page top and height, where Today at a Glance starts (none since Phase 35E), the entry width and column count, and how many text
 or button rectangles inside the panel overlap.
 
 ## Scenarios
@@ -39,6 +39,7 @@ or button rectangles inside the panel overlap.
 | Area | Scenarios |
 |---|---|
 | Dashboard | busy operating day: 38,500 projected and 21,240 pre-solds, verified Park Ticket, partial source failure (Fast Lane unavailable, Promotions stale), Important note, shows, Daily Feature math |
+| Dashboard (Phase 35E follow-up) | `Dashboard35E-*`: the approved Admissions Overview — typical day with today's dated price list and the month's Pass Perks (top and scrolled to the end), sidebar collapsed, nothing checked yet / no draft, stale hours and prices with a failed show check and an unreadable Pass Perks cache, long names with a finalized passdown, keyboard focus on Open Passdown, Source details expanded. Synthetic data in `Phase35EDashboardFixtures.cs` |
 | Dashboard Shows (Phase 23B) | `DashboardShows-*`: typical and busy days (page top and scrolled to the panel), busy with one list expanded, one show, no shows, not published, stale, failed latest check with last-known-good — 10:45 AM ET on the operating date |
 | Calendar | busy day with Shows collapsed and expanded, WinterFest (Dec 5, noon–9 PM), New Year's Eve (3 PM–1 AM), historical (Sep 12), Not Published (Mar 2027), stale hours, show check failed, a date change held mid-load, a failed local read |
 | Associate | Overview, Products (exact, From, Military/First Responder, override, stale), Notes, Shows, autosave failure, Season Price History overlay |

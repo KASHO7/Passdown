@@ -35,7 +35,7 @@ namespace Carowinds.Passdown.Ui.Tests;
 /// that guarantee is occasionally violated (a known, pre-existing, documented flake — not something
 /// this phase introduced or was able to eliminate without a riskier mechanism that deadlocked outright).
 /// </summary>
-public class Phase15ERealWindowLayoutTests
+public partial class Phase15ERealWindowLayoutTests
 {
     private static readonly DateOnly FixedDate = new(2026, 8, 21);
 
@@ -707,15 +707,33 @@ public class Phase15ERealWindowLayoutTests
 
         AssertNoControlClipsHorizontally(window);
 
-        // The four principal areas sit in two columns at every supported width (MinWidth is 960).
+        // Phase 35E Dashboard: the four gate areas sit in one row when the content is wide enough and 2 × 2
+        // below that; the card columns stay side by side at every supported width (MinWidth is 960).
         var overview = window.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "OperationsOverview");
-        var tiles = overview.GetVisualDescendants().OfType<StackPanel>().Where(p => p.Classes.Contains("overviewTile")).ToList();
-        Assert.Equal(4, tiles.Count);
-        var tileBounds = tiles.Select(t => AbsoluteBounds(t, window)).ToList();
-        Assert.Equal(tileBounds[0].Top, tileBounds[1].Top, 1);
-        Assert.True(tileBounds[1].Left > tileBounds[0].Right, "admission must sit beside park hours");
-        Assert.True(tileBounds[2].Top >= tileBounds[0].Bottom, "passdown must sit under park hours");
-        Assert.All(tileBounds, b => Assert.True(b.Right <= window.ClientSize.Width + 1.0));
+        var gates = new[] { "GateHoursColumn", "GateAvenueColumn", "GateNorthColumn", "GateErtColumn" }
+            .Select(name => AbsoluteBounds(overview.GetVisualDescendants().OfType<Border>().Single(b => b.Name == name), window)).ToList();
+        if (width - 48 >= DashboardView.WideMinWidth)
+        {
+            Assert.All(gates, g => Assert.Equal(gates[0].Top, g.Top, 1));
+            for (var i = 1; i < gates.Count; i++)
+            {
+                Assert.True(gates[i].Left >= gates[i - 1].Right - 0.5, $"gate area {i} must follow area {i - 1} on the same row");
+            }
+        }
+        else
+        {
+            Assert.Equal(gates[0].Top, gates[1].Top, 1);
+            Assert.True(gates[1].Left >= gates[0].Right - 0.5, "Avenue Entrance sits beside park hours");
+            Assert.True(gates[2].Top >= gates[0].Bottom - 0.5, "North Gate starts a second row");
+            Assert.Equal(gates[2].Top, gates[3].Top, 1);
+        }
+
+        Assert.All(gates, b => Assert.True(b.Right <= window.ClientSize.Width + 1.0));
+        var primary = AbsoluteBounds(window.GetVisualDescendants().OfType<StackPanel>().Single(p => p.Name == "DashboardPrimaryColumn"), window);
+        var secondary = AbsoluteBounds(window.GetVisualDescendants().OfType<StackPanel>().Single(p => p.Name == "DashboardSecondaryColumn"), window);
+        Assert.Equal(primary.Top, secondary.Top, 1);
+        Assert.True(secondary.Left >= primary.Right + 15, "pricing, notes and perks sit to the right of the passdown and shows");
+        Assert.True(secondary.Right <= window.ClientSize.Width + 1.0);
 
         // A genuine source problem stays visible while the details are collapsed.
         var attention = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "DataAttentionText");
@@ -1527,8 +1545,10 @@ public class Phase15ERealWindowLayoutTests
     [Theory]
     [InlineData(960d, 640d)]
     [InlineData(1920d, 1000d)]
-    public void DashboardView_ShowEntry_ReadsNameThenTimesThenVenue_TopToBottom(double width, double height)
+    public void DashboardView_ShowEntry_ReadsNameThenTimes_WithTheVenueBesideThem_NeverOnTop(double width, double height)
     {
+        // Phase 35E Dashboard: the approved row keeps name and times in the left column and the venue in its own
+        // right-hand column (Phase 23B's defect — times running under the venue — stays impossible).
         var (window, _, _) = RealizeShowsDashboard(width, height, ThemeVariant.Light);
 
         foreach (var cell in ShowCells(window))
@@ -1537,9 +1557,11 @@ public class Phase15ERealWindowLayoutTests
             var name = AbsoluteBounds(texts.Single(t => t.Classes.Contains("showName")), window);
             var times = AbsoluteBounds(texts.Single(t => t.Classes.Contains("showTimes")), window);
             Assert.True(times.Top >= name.Bottom - 0.5, "times start under the name");
-            if (texts.SingleOrDefault(t => t.Classes.Contains("showVenue")) is { } venue)
+            if (texts.SingleOrDefault(t => t.Classes.Contains("showVenue")) is { } venueText)
             {
-                Assert.True(AbsoluteBounds(venue, window).Top >= times.Bottom - 0.5, "venue starts under the times — never beside them");
+                var venue = AbsoluteBounds(venueText, window);
+                Assert.True(venue.Left >= Math.Max(name.Right, times.Right) - 0.5, "the venue sits to the right of the name and times");
+                Assert.Equal(name.Top, venue.Top, 1);
             }
         }
 
@@ -1547,20 +1569,19 @@ public class Phase15ERealWindowLayoutTests
     }
 
     [Theory]
-    [InlineData(960d, 640d, 2)]
-    [InlineData(1280d, 860d, 3)]
-    [InlineData(1920d, 1000d, 3)]
-    public void DashboardView_Shows_FillColumnsRowByRow_InScheduleOrder(double width, double height, int columns)
+    [InlineData(960d, 640d)]
+    [InlineData(1280d, 860d)]
+    [InlineData(1920d, 1000d)]
+    public void DashboardView_Shows_AreOneListInScheduleOrder(double width, double height)
     {
         var (window, viewModel, _) = RealizeShowsDashboard(width, height, ThemeVariant.Light);
         var cells = ShowCells(window).Select(c => AbsoluteBounds(c, window)).ToList();
 
-        Assert.Equal(columns, cells.Select(c => Math.Round(c.Left)).Distinct().Count());
+        Assert.Equal(viewModel.ShowRows.Count, cells.Count);
+        Assert.Single(cells.Select(c => Math.Round(c.Left)).Distinct());
         for (var i = 1; i < cells.Count; i++)
         {
-            var sameLine = i % columns != 0;
-            Assert.True(sameLine ? Math.Abs(cells[i].Top - cells[i - 1].Top) < 0.5 && cells[i].Left > cells[i - 1].Right : cells[i].Top >= cells[i - 1].Bottom - 0.5,
-                $"entry {i} ({viewModel.ShowRows[i].Name}) is out of row-by-row order");
+            Assert.True(cells[i].Top >= cells[i - 1].Bottom - 0.5, $"entry {i} ({viewModel.ShowRows[i].Name}) is out of schedule order");
         }
 
         window.Close();
