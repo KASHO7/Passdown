@@ -370,6 +370,15 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     /// <summary>Phase 32: whether Pass Perks markers and the selected-date list are shown (Settings → Calendar; default on).</summary>
     public bool ShowPassPerks => _passPerksService is not null && (_calendarDisplay?.ShowPassPerks ?? true);
 
+    /// <summary>
+    /// Phase 35E: the same shared Settings → Calendar preference, so the Calendar's own "Show Perks" box and the
+    /// Settings checkbox are one value saved by one store. Null when the Calendar was built without it.
+    /// </summary>
+    public CalendarDisplaySettingsViewModel? CalendarDisplay => _calendarDisplay;
+
+    /// <summary>Phase 35E: the in-Calendar "Show Perks" box is offered only when Pass Perks and the shared preference both exist.</summary>
+    public bool CanTogglePassPerks => _passPerksService is not null && _calendarDisplay is not null;
+
     /// <summary>Phase 32: perks with a confirmed date-specific entry on <see cref="SelectedDate"/> (begins, ends, deadline, short window).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedDatePassPerks))]

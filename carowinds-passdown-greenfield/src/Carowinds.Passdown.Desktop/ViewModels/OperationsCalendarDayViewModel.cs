@@ -74,6 +74,16 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
     /// </summary>
     public string PassdownStatusLabel { get; }
 
+    /// <summary>
+    /// Phase 35E: the day cell's quiet lifecycle line — "Draft in progress" or "Finalized" — and
+    /// <see langword="null"/> for a date with no passdown, so ordinary empty dates carry no "No Draft" text.
+    /// Same Finalized-over-Draft precedence as <see cref="PassdownStatusLabel"/>; <see cref="AutomationName"/>
+    /// still states every status, including "No draft".
+    /// </summary>
+    public string? PassdownCellText { get; }
+
+    public bool HasPassdownCellText => PassdownCellText is not null;
+
     /// <summary>"2 Notes" / "2 Notes · 1 Important" (spec Part E/F/Z), or <see langword="null"/> when no relevant notes exist for this date — a day cell shows no line at all rather than a meaningless "0 Notes".</summary>
     public string? NotesSummaryText { get; }
 
@@ -152,6 +162,7 @@ public sealed partial class OperationsCalendarDayViewModel : ObservableObject
         var passdownStatus = OperationsCalendarPassdownPresentation.DeriveStatus(day.HasFinalizedPassdown, day.HasAssociateDraft);
         var passdownPresentation = OperationsCalendarPassdownPresentation.Build(passdownStatus);
         PassdownStatusLabel = passdownPresentation.CellLabel;
+        PassdownCellText = passdownStatus == OperationsCalendarPassdownStatus.NoDraft ? null : passdownPresentation.AccessibilityText;
 
         var notesPresentation = OperationsCalendarNotesPresentation.Build(day.RelevantOperationalNoteCount, day.ImportantOperationalNoteCount);
         NotesSummaryText = notesPresentation.CellText;

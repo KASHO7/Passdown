@@ -16,7 +16,7 @@ namespace Carowinds.Passdown.Ui.Tests;
 /// View-model and presentation assertions only; markup is asserted through binding strings (this
 /// assembly's thread-affinity rule). Perks mirror the official November 2026 Carowinds list.
 /// </summary>
-public class Phase32PassPerksUiTests
+public partial class Phase32PassPerksUiTests
 {
     private static readonly TimeSpan Est = TimeSpan.FromHours(-5);
     private static readonly DateTimeOffset Checked = new(2026, 11, 21, 7, 0, 0, Est);

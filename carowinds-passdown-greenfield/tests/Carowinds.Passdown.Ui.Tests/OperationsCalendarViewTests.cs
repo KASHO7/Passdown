@@ -18,7 +18,7 @@ namespace Carowinds.Passdown.Ui.Tests;
 /// XAML loader — every binding/DataTemplate/converter path — for a populated grid, an empty/error
 /// state, and dense metadata, and that its key actions carry an accessible label (spec Part I).
 /// </summary>
-public class OperationsCalendarViewTests
+public partial class OperationsCalendarViewTests
 {
     private static readonly DateOnly FixedToday = new(2026, 8, 21);
 
@@ -93,7 +93,8 @@ public class OperationsCalendarViewTests
         Assert.Contains("Calendar month grid", names);
         Assert.Contains("Selected date summary", names);
         Assert.Contains("Open Passdown", names);
-        Assert.Contains("Open History", names);
+        Assert.Contains("View Finalized History", names); // Phase 35E: the visible label is the accessible name
+        Assert.Contains("View Pricing", names); // Phase 35E
         Assert.Contains("Open Operational Notes", names);
 
         // Each day cell's own automation name (bound via ItemsControl DataTemplate) is asserted

@@ -194,6 +194,11 @@
       <SolidColorBrush x:Key="PassdownNotPublishedBrush" Color="#5F6873" />
       <SolidColorBrush x:Key="PassdownUnavailableBrush" Color="#5F6873" />
       <SolidColorBrush x:Key="PassdownNeutralStatusBackgroundBrush" Color="#EEF0F3" />
+      <!-- Phase 35E: the three Pass Perks Calendar marker kinds. Each is always paired with its own icon shape
+           and words (legend, tooltip, accessible name), so colour is never the only difference. -->
+      <SolidColorBrush x:Key="PassdownPerkQualifyingBrush" Color="#1E5AA8" />
+      <SolidColorBrush x:Key="PassdownPerkRedemptionBrush" Color="#1F7A7D" />
+      <SolidColorBrush x:Key="PassdownPerkDeadlineBrush" Color="#8F5F14" />
 
       <!-- Fluent resource overrides: color only, so Fluent's own templates and behavior are kept. -->
       <SolidColorBrush x:Key="SystemControlFocusVisualPrimaryBrush" Color="#1B1F24" />
@@ -274,6 +279,9 @@
       <SolidColorBrush x:Key="PassdownNotPublishedBrush" Color="#9EA6B0" />
       <SolidColorBrush x:Key="PassdownUnavailableBrush" Color="#9EA6B0" />
       <SolidColorBrush x:Key="PassdownNeutralStatusBackgroundBrush" Color="#2A2E35" />
+      <SolidColorBrush x:Key="PassdownPerkQualifyingBrush" Color="#8DB9EB" />
+      <SolidColorBrush x:Key="PassdownPerkRedemptionBrush" Color="#6CC4C6" />
+      <SolidColorBrush x:Key="PassdownPerkDeadlineBrush" Color="#DDB065" />
 
       <SolidColorBrush x:Key="SystemControlFocusVisualPrimaryBrush" Color="#E8EAED" />
       <SolidColorBrush x:Key="FlyoutPresenterBackground" Color="#2B3038" />
