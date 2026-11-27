@@ -146,7 +146,7 @@ public class Phase35BPassdownWorkspaceTests
         Assert.False(string.IsNullOrEmpty(AutomationProperties.GetHelpText(button)));
 
         var items = Assert.IsType<MenuFlyout>(button.Flyout).Items.OfType<MenuItem>().ToList();
-        Assert.Equal(12, items.Count); // Print, Save PDF, 3 × Copy, Show/Hide Preview, 3 × PDF style, Include Weather Outlook (Phase 37F follow-up), Check Online, Price History
+        Assert.Equal(11, items.Count); // Print, Save PDF, 3 × Copy, Show/Hide Preview, 3 × PDF style, Check Online, Price History
         Assert.All(items.Where(i => i.Name != "TogglePreviewMenuItem"), i => Assert.False(string.IsNullOrEmpty(AutomationProperties.GetName(i))));
         Assert.Contains("AutomationProperties.Name=\"{Binding Preview.TogglePreviewLabel}\"", Element(Markup, "TogglePreviewMenuItem"));
         Assert.Equal(4, Assert.IsType<MenuFlyout>(button.Flyout).Items.OfType<Separator>().Count()); // output · copy · preview · style · online
@@ -317,7 +317,8 @@ public class Phase35BPassdownWorkspaceTests
     {
         var include = Element(Markup, "IncludeInPassdownPanel");
 
-        string[] order = ["IncludeDailyAdmission", "IncludeFastLane", "IncludePromotions", "IncludeSeasonPasses", "IncludeAddOns", "IncludeHauntedAttractions", "IncludeOperationalNotes", "IncludeShows"];
+        string[] order = ["IncludeDailyAdmission", "IncludeFastLane", "IncludePromotions", "IncludeSeasonPasses", "IncludeAddOns", "IncludeHauntedAttractions", "IncludeOperationalNotes", "IncludeShows",
+            "IncludeWeatherOutlook"]; // Phase 37F: the Weather Outlook device preference, directly below Shows
         Assert.Equal(order, Regex.Matches(include, "<CheckBox [^>]*IsChecked=\"\\{Binding (Include\\w+)\\}\"", RegexOptions.Singleline).Select(m => m.Groups[1].Value));
         Assert.Contains("IsVisible=\"{Binding ShowHauntedOption}\"", include);
         Assert.Contains("{Binding HauntedSeasonNote}", include);
@@ -325,7 +326,7 @@ public class Phase35BPassdownWorkspaceTests
         Assert.DoesNotContain("ShowRows", include); // which shows print is chosen on the Shows section
         Assert.DoesNotContain("SelectedOperationalNotes", include); // persistent-note selection stays on Notes
         Assert.DoesNotContain("IncludeOnPdf", include); // product selection stays on Products
-        Assert.Equal(8, Regex.Matches(include, "AutomationProperties.Name=\"Include [^\"]+ in the Passdown\"").Count);
+        Assert.Equal(9, Regex.Matches(include, "AutomationProperties.Name=\"Include [^\"]+ in the Passdown\"").Count); // Phase 37F: + Weather Outlook
     }
 
     [Fact]

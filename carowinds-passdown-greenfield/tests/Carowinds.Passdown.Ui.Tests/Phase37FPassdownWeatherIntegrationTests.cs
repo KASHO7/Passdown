@@ -530,24 +530,35 @@ public class Phase37FPassdownWeatherIntegrationTests
     }
 
     [Fact]
-    public void Checkbox_IsLabelledExactly_AndBoundToThePreference()
+    public void Checkbox_IsInIncludeInPassdown_DirectlyBelowShows_AndNotInTheActionsMenu()
     {
-        // Compiled bindings verify the path at build time; the live two-way binding is checked in a real window
-        // (Phase33PreviewWindowTests.IncludeWeatherOutlook_IsACheckItemInTheActionsMenu_AndBindsBothWays, run alone).
+        // Compiled bindings verify the path at build time; the live two-way binding, position and keyboard order are
+        // checked in a real window (Phase33PreviewWindowTests.WeatherOutlookCheckbox_…, run alone, Light and Dark).
         var markup = File.ReadAllText(Path.Combine(RepositoryRoot(), "src", "Carowinds.Passdown.Desktop", "Views", "AssociateView.axaml"));
-        var start = markup.IndexOf("<MenuItem x:Name=\"IncludeWeatherOutlookMenuItem\"", StringComparison.Ordinal);
+        var includeStart = markup.IndexOf("x:Name=\"IncludeChoices\"", StringComparison.Ordinal);
+        var include = markup[includeStart..markup.IndexOf("</WrapPanel>", includeStart, StringComparison.Ordinal)];
+
+        var start = include.IndexOf("<CheckBox x:Name=\"IncludeWeatherOutlookCheckBox\"", StringComparison.Ordinal);
         Assert.True(start >= 0);
-        var element = markup[start..markup.IndexOf("/>", start, StringComparison.Ordinal)];
+        var element = include[start..include.IndexOf("/>", start, StringComparison.Ordinal)];
+        Assert.Contains("Content=\"Weather Outlook\"", element, StringComparison.Ordinal);
+        Assert.Contains("IsChecked=\"{Binding IncludeWeatherOutlook}\"", element, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Include Weather Outlook in the Passdown\"", element, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.HelpText=", element, StringComparison.Ordinal);
 
-        Assert.Contains("Header=\"Include Weather Outlook\"", element, StringComparison.Ordinal);
-        Assert.Contains("ToggleType=\"CheckBox\"", element, StringComparison.Ordinal);
-        Assert.Contains("IsChecked=\"{Binding IncludeWeatherOutlook, Mode=TwoWay}\"", element, StringComparison.Ordinal);
-        Assert.Contains("AutomationProperties.Name=\"Include Weather Outlook\"", element, StringComparison.Ordinal);
+        // Shows, then the one empty non-interactive cell, then Weather Outlook — the last item, two cells after Shows.
+        var shows = include.IndexOf("x:Name=\"IncludeShowsCheckBox\"", StringComparison.Ordinal);
+        var spacer = include.IndexOf("x:Name=\"IncludeWeatherOutlookSpacer\"", StringComparison.Ordinal);
+        Assert.True(shows < spacer && spacer < start);
+        var spacerElement = include[spacer..include.IndexOf("/>", spacer, StringComparison.Ordinal)];
+        Assert.Contains("Focusable=\"False\"", spacerElement, StringComparison.Ordinal);
+        Assert.Contains("IsHitTestVisible=\"False\"", spacerElement, StringComparison.Ordinal);
+        Assert.DoesNotContain("<CheckBox", include[(start + 1)..], StringComparison.Ordinal);
 
-        // In the Passdown Actions menu, right after the PDF style choices.
-        Assert.True(start > markup.IndexOf("Header=\"PDF Style: Modern\"", StringComparison.Ordinal));
-        Assert.True(start > markup.IndexOf("x:Name=\"PassdownActionsButton\"", StringComparison.Ordinal));
-        Assert.True(start < markup.IndexOf("Check Online (refresh official information)", StringComparison.Ordinal));
+        // One control for the preference, and none left in the Actions menu.
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(markup, System.Text.RegularExpressions.Regex.Escape("{Binding IncludeWeatherOutlook")));
+        Assert.DoesNotContain("IncludeWeatherOutlookMenuItem", markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Header=\"Include Weather Outlook\"", markup, StringComparison.Ordinal);
     }
 
     private static string RepositoryRoot()

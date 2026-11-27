@@ -900,7 +900,7 @@
                  saves, or changes the date. Nothing destructive lives here (finalization stays automatic, Phase 9). -->
             <Button x:Name="PassdownActionsButton" Classes="secondaryAction"
                     AutomationProperties.Name="Passdown actions"
-                    AutomationProperties.HelpText="Print, Save PDF, Copy for Teams, PDF style, Include Weather Outlook, preview, Check Online and Season Price History."
+                    AutomationProperties.HelpText="Print, Save PDF, Copy for Teams, PDF style, preview, Check Online and Season Price History."
                     ToolTip.Tip="Print, save, copy and other passdown actions">
               <StackPanel Classes="dropdownLabel">
                 <TextBlock Text="Actions" />
@@ -961,14 +961,6 @@
                             CommandParameter="{x:Static preferences:AssociatePassdownTemplate.Modern}"
                             AutomationProperties.Name="Modern PDF style"
                             AutomationProperties.HelpText="Uses the Modern template for Create PDF and the next finalized PDF. Never changes passdown data." />
-                  <!-- Phase 37F follow-up: the device preference for the PDF Weather Outlook (preview, Print, Save PDF, Create
-                       PDF), beside the PDF style. A check item here keeps the approved toolbar unchanged at the minimum
-                       window width. Off prints the original layout; it never changes passdown data or requests weather. -->
-                  <MenuItem x:Name="IncludeWeatherOutlookMenuItem"
-                            Header="Include Weather Outlook" ToggleType="CheckBox"
-                            IsChecked="{Binding IncludeWeatherOutlook, Mode=TwoWay}"
-                            AutomationProperties.Name="Include Weather Outlook"
-                            AutomationProperties.HelpText="Adds the National Weather Service forecast for this date's park hours to the Passdown PDF when one is available. Remembered on this computer." />
                   <Separator />
                   <!-- Refresh official information: explicit, never automatic (the quiet auto-check of missing or
                        stale data for this date is separate, Phase 19A). -->
@@ -1557,6 +1549,15 @@
                   <CheckBox x:Name="IncludeShowsCheckBox" Content="Shows" IsChecked="{Binding IncludeShows}"
                             AutomationProperties.Name="Include Shows in the Passdown"
                             AutomationProperties.HelpText="Prints the shows selected in the Shows panel" />
+                  <!-- Phase 37F: one empty, non-interactive cell so Weather Outlook always sits directly below Shows (the panel
+                       fills two 240-px columns row by row, and Shows changes column with the seasonal SCarowinds option). -->
+                  <Border x:Name="IncludeWeatherOutlookSpacer" Height="1" Focusable="False" IsHitTestVisible="False"
+                          AutomationProperties.AccessibilityView="Raw" />
+                  <!-- Phase 37F: the device preference "Include Weather Outlook" (saved on this computer, default on; not draft
+                       data). Preview, Print, Save PDF and Create PDF follow it; off prints no weather and the original layout. -->
+                  <CheckBox x:Name="IncludeWeatherOutlookCheckBox" Content="Weather Outlook" IsChecked="{Binding IncludeWeatherOutlook}"
+                            AutomationProperties.Name="Include Weather Outlook in the Passdown"
+                            AutomationProperties.HelpText="Prints the National Weather Service forecast for this date's park hours when one is available. Remembered on this computer." />
                 </WrapPanel>
                 <!-- Phase 31: why the seasonal option is not offered, or why a saved choice no longer applies. -->
                 <TextBlock Text="{Binding HauntedSeasonNote}" IsVisible="{Binding HasHauntedSeasonNote}"

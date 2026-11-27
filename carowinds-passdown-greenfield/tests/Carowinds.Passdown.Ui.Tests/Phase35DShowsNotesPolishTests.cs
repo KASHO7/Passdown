@@ -442,7 +442,6 @@ public class Phase35DShowsNotesPolishTests
         [
             "Print…", "Save PDF…", "Copy for Teams: Operations Summary", "Copy for Teams: Today's Pricing", "Copy for Teams: Operations + Pricing",
             "{Binding Preview.TogglePreviewLabel}", "PDF Style: Classic", "PDF Style: Compact", "PDF Style: Modern",
-            "Include Weather Outlook", // Phase 37F follow-up: the PDF Weather Outlook device preference, beside the PDF style
             "Check Online (refresh official information)", "Season Price History…",
         ], headers);
         Assert.Contains("InputGesture=\"Ctrl+P\"", button);
