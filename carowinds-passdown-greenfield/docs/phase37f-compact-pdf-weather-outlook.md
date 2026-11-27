@@ -1,6 +1,6 @@
 # Phase 37F — Compact PDF Weather Outlook
 
-Status: implemented locally / awaiting Windows validation (local test candidate `RC15-Phase37F2-LOCALTEST`, which supersedes `RC15-Phase37F-LOCALTEST`) / not owner-accepted / not published.
+Status: implemented locally / awaiting Windows validation (local test candidate `RC15-Phase37F3-LOCALTEST`, which supersedes `RC15-Phase37F2-LOCALTEST` and `RC15-Phase37F-LOCALTEST`) / not owner-accepted / not published.
 
 | | |
 |---|---|
@@ -237,7 +237,7 @@ package details) and this record commit.
 | `PassdownWeatherOutlookPreferences` / `IPassdownWeatherOutlookPreferenceStore` / in-memory store | `Application/Preferences/PassdownWeatherOutlookPreferences.cs` | Device preference `IncludeWeatherOutlook`, built-in default **on** |
 | `FilePassdownWeatherOutlookPreferenceStore` | `Infrastructure/Preferences/` | `passdown-weather-outlook.json` in the local application-data folder, the shared atomic writer, nullable field so a missing value means on; unreadable → on. Registered as a singleton in `App.axaml.cs`. Not in drafts, Personal Sync, SQLite or finalized snapshots |
 | `AssociateViewModel.IncludeWeatherOutlook` | Desktop | Loaded before the first date starts loading; preview/Print/Save captures report Waiting until it is known and Create PDF awaits it, so no document is built with the default when "off" is saved. A change calls `Preview.NotifyContentChanged()` (the existing leading-edge refresh, no new delay) and saves the preference; it never marks the draft unsaved. When off, `CaptureWeatherOutlook` returns null without reading the monitor |
-| Check item "Include Weather Outlook" | `AssociateView.axaml`, Passdown **Actions** menu, directly after the PDF Style choices | `ToggleType="CheckBox"`, two-way bound, automation name "Include Weather Outlook" |
+| Control (superseded location; see "Relocation" below) | `AssociateView.axaml`, Passdown **Actions** menu, directly after the PDF Style choices | `ToggleType="CheckBox"`, two-way bound, automation name "Include Weather Outlook" |
 
 **Placement decision.** A visible checkbox on the Passdown action bar beside Create PDF was implemented first and
 failed three existing Phase 35B/35D real-window tests at the 960 × 640 minimum window (the operating-date control was
@@ -276,12 +276,51 @@ Follow-up validation (macOS development host; not Windows validation):
 | Windows local-test candidate | `artifacts/local-test/RC15-Phase37F2-LOCALTEST/LOCAL-ONLY-RC15-Phase37F2-LOCALTEST-win-x64.zip` from `829d219` (production source identical to `14f973a`), shown as `0.1.0-rc.15-LOCALTEST.phase37f2`; 76,472,064 bytes, 308 files; SHA-256 `fce0071103f22ab8f0a4174c9094606a241bbf0e9f2eb588602a63a14b139468`. Same packaging command with the new label and version (PowerShell 7.6.10 tool in scratch); content validation (folder and ZIP), `RealReleaseZip` (bogus path fails), marker and forbidden-content checks passed; all 13,626 earlier artifact files re-hashed byte-identical, so the first 37F ZIP was not overwritten. Supersedes `RC15-Phase37F-LOCALTEST` for testing |
 | Windows validation | NOT EXECUTED |
 
+## Relocation — Weather Outlook checkbox in Include in Passdown
+
+Authorization: owner brief "Phase 37F — Move Weather Outlook Toggle" (2026-11-27).
+
+- The control is now a checkbox **Weather Outlook** in Overview → **Include in Passdown**, the last item of the
+  two-column `IncludeChoices` grid. The Actions menu item was removed (one control only). Same binding
+  (`IncludeWeatherOutlook`), same `passdown-weather-outlook.json` device preference, same default (on), same view-model
+  logic, PDF path, forecast logic and layouts — unchanged.
+- **Directly below Shows.** The grid is a `WrapPanel` with `ItemWidth` 240 filling two columns row by row. An empty,
+  non-focusable, hit-test-invisible 1-px `Border` (`IncludeWeatherOutlookSpacer`, raw for accessibility) after Shows puts
+  Weather Outlook two cells later, i.e. in Shows' column on the next row. Measured in a real window: Shows at the right
+  column and Weather Outlook directly below it; with the seasonal SCarowinds / Haunt box hidden the panel keeps that
+  cell (fixed `ItemWidth`), so the position is the same in and out of season (tested).
+- Styling and behaviour match the neighbouring checkboxes: no local style, same classes, height and font; automation
+  name "Include Weather Outlook in the Passdown" in the panel's pattern, plus a help text saying it is remembered on
+  this computer; Tab moves Shows → Weather Outlook and Space toggles it (tested). Changing it refreshes the preview
+  through the existing leading-edge scheduling (tested).
+- The action bar, Actions menu and keyboard order are exactly as before Phase 37F; the two Actions-menu tests changed in
+  the follow-up are back to their original assertions (11 items, original header list).
+
+Tests: Ui `Phase37FPassdownWeatherIntegrationTests` markup test retargeted (checkbox in `IncludeChoices` after Shows and
+the spacer, the only control bound to the preference, no Actions item); `Phase33PreviewWindowTests.Phase37FWeatherOutlook`
+replaced by a four-case real-window test (960 × 640 Light and Dark, 1280 × 720 Light, 1920 × 1080 Dark: visible, inside the
+window, directly below Shows in and out of season, same styling, Tab and Space, both binding directions, preview refresh,
+no menu duplicate); `Phase35BPassdownWorkspaceTests.IncludeInPassdown_KeepsEveryChoiceInOrder_AsSectionSwitchesOnly`
+extended (order now ends with `IncludeWeatherOutlook`; named choices 8 → 9; every other assertion unchanged).
+
+Renders (headless Skia, not Windows evidence): `tools/visual-fixtures` scenario `Associate-PassdownChoices` at 960 × 640
+and 1280 × 720, Light and Dark, in the git-ignored `artifacts/design-review/Phase37F-WEATHER-TOGGLE/`: the checkbox is
+visible below Shows, no horizontal overflow, no button past the right edge.
+
+| Check | Result |
+|---|---|
+| Deterministic partitions | PASS — 6,408 / 6,408, 0 skipped: Domain 488, Application 1,499, Infrastructure 1,435, Documents 634, Ui mixed 2,088, run-alone 30 + 158 + 2 + 7 + 4 + 63 |
+| Repository guards | PASS — 31 / 31 |
+| Clean Release build | PASS — 0 warnings, 0 errors (solution, `tools/visual-fixtures`, `tools/perf-benchmarks`) |
+| Windows local-test candidate | F3-CANDIDATE |
+| Windows validation | NOT EXECUTED |
+
 ## Known limitations
 
 - **Windows validation pending**: Windows rendering, printing (colour and grayscale), DPI and timing.
 - Finalized History PDFs carry no weather (finalization runs after the day; see §6).
 - A weather change alone does not refresh a visible preview; Print/Save always use current weather and then show it.
-- The Include Weather Outlook option is in the Actions menu, not on the action bar (see the follow-up's placement decision).
+- The Include Weather Outlook preference is the "Weather Outlook" checkbox in Overview → Include in Passdown (relocation below); unlike the other choices there it is a device preference, not part of the date's draft.
 - In the first moments after start, before the device preference has loaded, Print/Save PDF report "still loading" like a date that is still loading.
 - A forecast older than 3 hours is omitted, so a PDF made offline after a long gap has no weather.
 - Rain timing is named only for a dry-then-wetter pattern crossing 30%; other changes (for example clearing later) are
