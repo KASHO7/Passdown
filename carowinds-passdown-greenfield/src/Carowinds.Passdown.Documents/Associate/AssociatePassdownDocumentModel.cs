@@ -136,4 +136,11 @@ public sealed record AssociatePassdownDocumentModel(
     /// heading, no reserved space). Never consulted by Teams Copy.
     /// </summary>
     public IReadOnlyList<PdfShow> Shows { get; init; } = [];
+
+    /// <summary>
+    /// Phase 37F: the compact Weather Outlook for this document's operating date, frozen for this one generation, or
+    /// null when no valid forecast was available — every template then prints no weather and reserves no space.
+    /// Never copied into a finalized snapshot, a draft or Personal Sync.
+    /// </summary>
+    public PdfWeatherOutlook? Weather { get; init; }
 }

@@ -95,37 +95,25 @@ public sealed class CompactAssociatePassdownTemplateRenderer : IAssociatePassdow
         {
             strip.Spacing(m.SummarySpacing);
 
-            strip.Item().Text(text =>
+            if (model.Weather is { } weather)
             {
-                Label(text, "HOURS");
-                text.Span(model.ParkHours.HeadlineText).FontSize(10).Bold();
-
-                if (model.ParkHours.BadgeText is { } badge)
+                // Phase 37F: the Weather Outlook sits at the right of the hours/gates and attendance lines (same spacing),
+                // within their height; Early Ride keeps the full width below. The strip never grows for weather.
+                strip.Item().Row(row =>
                 {
-                    text.Span($" ({badge})").FontSize(7f).Italic().FontColor(MutedTextColor);
-                }
-
-                text.Span("     ");
-                Label(text, "NG");
-                text.Span(model.ParkHours.NorthGateText ?? "-").FontSize(BodySize).Bold();
-                text.Span("     ");
-                Label(text, "AVE");
-                text.Span(model.ParkHours.AvenueText ?? "-").FontSize(BodySize).Bold();
-            });
-
-            if (model.ParkHours.PrivateBuyoutDetails is { } details)
-            {
-                strip.Item().Text($"Buyout: {details}").FontSize(7f).FontColor(MutedTextColor);
+                    row.RelativeItem().Column(top =>
+                    {
+                        top.Spacing(m.SummarySpacing);
+                        ComposeHoursAndCounts(top, model);
+                    });
+                    row.ConstantItem(WeatherGap);
+                    row.ConstantItem(WeatherWidth).Dynamic(new PdfWeatherOutlookComponent(weather, WeatherStyle, WeatherHeightBudget(m), WeatherLevels));
+                });
             }
-
-            strip.Item().Text(text =>
+            else
             {
-                Label(text, "ATTENDANCE");
-                text.Span(PdfFormatting.FormatCount(model.Attendance.ProjectedAttendance)).FontSize(BodySize).Bold();
-                text.Span("     ");
-                Label(text, "PRE-SOLDS");
-                text.Span(PdfFormatting.FormatCount(model.Attendance.PreSolds)).FontSize(BodySize).Bold();
-            });
+                ComposeHoursAndCounts(strip, model);
+            }
 
             strip.Item().Text(text =>
             {
@@ -133,6 +121,63 @@ public sealed class CompactAssociatePassdownTemplateRenderer : IAssociatePassdow
                 text.Span(PdfFormatting.ErtLineText(model.EarlyRideTime.Kind, model.EarlyRideTime.Rides, model.OperatingDate)).FontSize(BodySize).Bold();
             });
         });
+
+    private static void ComposeHoursAndCounts(ColumnDescriptor strip, AssociatePassdownDocumentModel model)
+    {
+        strip.Item().Text(text =>
+        {
+            Label(text, "HOURS");
+            text.Span(model.ParkHours.HeadlineText).FontSize(10).Bold();
+
+            if (model.ParkHours.BadgeText is { } badge)
+            {
+                text.Span($" ({badge})").FontSize(7f).Italic().FontColor(MutedTextColor);
+            }
+
+            text.Span("     ");
+            Label(text, "NG");
+            text.Span(model.ParkHours.NorthGateText ?? "-").FontSize(BodySize).Bold();
+            text.Span("     ");
+            Label(text, "AVE");
+            text.Span(model.ParkHours.AvenueText ?? "-").FontSize(BodySize).Bold();
+        });
+
+        if (model.ParkHours.PrivateBuyoutDetails is { } details)
+        {
+            strip.Item().Text($"Buyout: {details}").FontSize(7f).FontColor(MutedTextColor);
+        }
+
+        strip.Item().Text(text =>
+        {
+            Label(text, "ATTENDANCE");
+            text.Span(PdfFormatting.FormatCount(model.Attendance.ProjectedAttendance)).FontSize(BodySize).Bold();
+            text.Span("     ");
+            Label(text, "PRE-SOLDS");
+            text.Span(PdfFormatting.FormatCount(model.Attendance.PreSolds)).FontSize(BodySize).Bold();
+        });
+    }
+
+    // ---------------------------------------------------------------- Phase 37F Weather Outlook
+
+    /// <summary>Width of the Weather Outlook at the right of the strip; the hours/gates line keeps the rest (wide enough with a badge).</summary>
+    private const float WeatherWidth = 204f;
+
+    private const float WeatherGap = 12f;
+
+    /// <summary>The height of the two strip lines beside the outlook, slightly rounded down: the outlook never adds a line to Compact.</summary>
+    private static float WeatherHeightBudget(Metrics m) => 12f + 9.9f + m.SummarySpacing - 0.5f;
+
+    private static readonly WeatherOutlookStyle WeatherStyle =
+        new(LabelSize: LabelSize, LabelLetterSpacing: 0f, LabelColor: MutedTextColor, HeadlineSize: 10f, SecondarySize: 7.5f, SecondaryColor: InkColor,
+            AttributionSize: LabelSize, AttributionColor: MutedTextColor, IconSize: 10f, InkColor: InkColor, LineSpacing: 0f);
+
+    /// <summary>Two lines at most: full (label, icon, temperature, condition / rain, source) → condensed → minimal (icon, temperature, short condition / source).</summary>
+    private static readonly IReadOnlyList<IReadOnlyList<WeatherLine>> WeatherLevels =
+    [
+        [new(Label: true, Icon: true, Temperature: true, Condition: WeatherPartForm.Full), new(Rain: WeatherPartForm.Full, Attribution: WeatherPartForm.Short)],
+        [new(Label: true, Icon: true, Temperature: true, Condition: WeatherPartForm.Short), new(Rain: WeatherPartForm.Short, Attribution: WeatherPartForm.Short)],
+        [new(Icon: true, Temperature: true, Condition: WeatherPartForm.Short), new(Attribution: WeatherPartForm.Short)],
+    ];
 
     /// <summary>
     /// Phase 21C/22C: the selected shows as one compact wrapping line — "Show A (1:00, 3:00 PM)  •  Show B

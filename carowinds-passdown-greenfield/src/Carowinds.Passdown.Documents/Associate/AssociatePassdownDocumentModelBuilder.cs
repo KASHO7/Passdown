@@ -22,7 +22,11 @@ public static class AssociatePassdownDocumentModelBuilder
 {
     private const string CustomProductCategoryName = "Custom / Internal Items";
 
-    public static AssociatePassdownDocumentModel Build(AssociateWorkspace workspace, DateTimeOffset generatedAt)
+    /// <param name="weather">
+    /// Phase 37F: the Weather Outlook captured for this generation (optional). Used only when it was selected for this
+    /// workspace's operating date, so another date's forecast can never print; otherwise the document has no weather.
+    /// </param>
+    public static AssociatePassdownDocumentModel Build(AssociateWorkspace workspace, DateTimeOffset generatedAt, PdfWeatherOutlook? weather = null)
     {
         ArgumentNullException.ThrowIfNull(workspace);
 
@@ -41,6 +45,7 @@ public static class AssociatePassdownDocumentModelBuilder
             FormatTimestamp(generatedAt))
         {
             Shows = BuildShows(workspace),
+            Weather = weather is not null && weather.OperatingDate == workspace.OperatingDate ? weather : null,
         };
     }
 
