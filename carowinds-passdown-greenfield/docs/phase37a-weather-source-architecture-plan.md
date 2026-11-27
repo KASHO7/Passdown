@@ -390,3 +390,26 @@ weather; personal task tracking; seasonal themes; Manager workflow; Morning Mess
 | D6 | "Refresh weather" placement (proposed: weather detail only; Check Online unchanged) |
 | D7 | Day-cell weather indicators (proposed: none) |
 | D8 | Confirm in-park reference points on each side of the state line |
+
+## Later sign-off: owner decisions received (2026-11-27)
+
+Added after this record's first commit (`4c15115`); the sections above are kept as written.
+
+The product owner approved a product specification amendment, "Approved Product Specification Amendment —
+Weather Information". It resolves:
+
+- **D1 — approved.** NWS is an explicitly approved source for weather information only. The amendment does not
+  widen the Carowinds/Six Flags source requirement for any park-specific information. Coverage must include the
+  North Carolina and South Carolina portions of the property. Weather is informational only and stays outside
+  Personal Sync, drafts, finalized History and PDF output. Alternative providers, accuracy comparisons, historical
+  weather and operational automation are outside the approved scope.
+- **D2 — confirmed.** Weather is Phase 37. The §2 provisional label no longer applies.
+
+`AGENT_BUILD_SPEC.md` now records the amendment as approved but not yet implemented: §4.4, the §6.1 exception,
+§6.6 (requirements), short cross-references in §8, §9.2 and §16.3, and acceptance criteria in §22.13. The
+specification states no phase number, per its §25.4; this record is the cited authority. With that update, the
+§20 discrepancy is resolved.
+
+Still open: D3 (User-Agent contact), D4 (Dashboard mock-up), D5 (alert interval), D6 (refresh placement), D7 (day
+cells) and D8 (in-park reference points). D4 and D8 must be settled before Weather C; D3 and D8 before Weather B
+code goes live. No implementation milestone has started.

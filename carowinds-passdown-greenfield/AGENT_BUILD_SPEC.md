@@ -129,6 +129,10 @@ Do not restore its production interface, services, dependencies, or synchronizat
 
 Preserve compatibility safeguards required for existing installations and historical files.
 
+### 4.4 Approved, not yet implemented
+
+Weather information (§6.6) is approved by the product owner (2026-11-27, recorded in `docs/phase37a-weather-source-architecture-plan.md`). It is not active functionality until an implementation milestone delivers it and that milestone is validated and approved for release. Do not describe it as available before then.
+
 ---
 
 ## 5. Core operational principles
@@ -177,6 +181,8 @@ Supported operational data may include:
 - Other explicitly approved official operational information.
 
 Do not use third-party ticket websites, search-engine snippets, unofficial estimates, or fabricated fallback values.
+
+Approved exception: weather information comes from the U.S. National Weather Service (§6.6). That exception covers weather only. It does not widen the Carowinds/Six Flags source requirement for ticket pricing, operating schedules, shows, promotions, Pass Perks, or any other park-specific official information.
 
 Official source URLs and structures may change. The application must tolerate individual source failures without losing unrelated operational functionality.
 
@@ -234,6 +240,31 @@ Reject results that silently fall back to today, a default date, or another oper
 A starting-at marketing price is not an exact-date price.
 
 Do not treat a successfully retrieved response as valid for the requested date without appropriate verification.
+
+### 6.6 Weather information
+
+Status: approved, not yet implemented (§4.4). Authority: the product owner's approved specification amendment of 2026-11-27, recorded in `docs/phase37a-weather-source-architecture-plan.md`, which also holds the source research and architecture plan.
+
+**Source.** Carowinds Operations may retrieve and display publicly available weather forecasts, observations, and official weather alerts from the U.S. National Weather Service (NWS/NOAA). NWS is an explicitly approved source for weather information and the primary provider for the initial implementation.
+
+**Location.** Weather information is associated with Carowinds' fixed geographic location, with appropriate coverage of both the North Carolina and South Carolina portions of the property. Official alerts must reflect NWS geographic applicability for both portions. Never use the computer's location, GPS, or a location permission.
+
+**Presentation and integrity.** Weather data must be:
+
+- Attributed to its source.
+- Timestamped.
+- Cached responsibly, respecting the provider's caching guidance and avoiding unnecessary requests.
+- Clearly labelled as an observation, a forecast, or an active official alert, and clearly marked when stale or unavailable.
+
+A station observation is not a measurement taken at the park and must be identified by its station and time. A forecast value must never be presented as a current observation. A failed retrieval must not replace previously retrieved weather with fabricated or empty values. An expired alert must never be presented as active. Weather must not be shown for dates outside the provider's available forecast, and current weather must not be presented as a historical observation.
+
+**Informational only.** Weather information must not automatically determine park closures, ride operations, lightning clearance, or other operational safety decisions. It does not replace official warning channels or established park procedures, and the application must not present itself as an emergency-warning or continuous-monitoring system.
+
+**Initial scope.** A compact Dashboard summary (§8) and forecast details for the Calendar's selected date (§9). Date selection and navigation remain local operations (§7.1).
+
+**Exclusions.** Weather data stays outside Personal Sync, Passdown drafts, finalized History, and PDF output unless a future feature explicitly authorizes those changes. Alternative providers, forecast-accuracy comparisons, historical weather, and operational automation are outside the approved scope.
+
+**Validation.** Each implementation milestone requires its own validation and release approval (§22.13).
 
 ---
 
@@ -377,6 +408,8 @@ Any further Dashboard redesign must follow an explicitly approved visual referen
 
 Preserve the existing Dashboard functionality until a replacement is authorized.
 
+An approved compact weather summary (§6.6, not yet implemented) may be added. It must keep the existing Dashboard content intact, must not push essential operations content out of view unnecessarily, and follows an approved visual reference as above.
+
 ---
 
 ## 9. Operations Calendar
@@ -414,6 +447,8 @@ Preserve the approved Calendar design, including:
 - Appropriate empty and unavailable states.
 
 Do not communicate event or operational status by color alone.
+
+Approved weather forecast details for the selected date (§6.6, not yet implemented) must not crowd the day cells or change the existing open/closed, draft/finalized, or Pass Perks presentation.
 
 ### 9.3 Pass Perks
 
@@ -953,6 +988,8 @@ Preserve the established supported synchronization entities, including applicabl
 
 Additional synchronized entities require explicit approval and compatibility analysis.
 
+Weather information (§6.6) is not synchronized.
+
 ### 16.4 Conflict handling
 
 Conflicting edits must not be silently overwritten.
@@ -1457,6 +1494,18 @@ Implementation completion, automated test success, Windows validation, product-o
 Do not represent one status as proof of another.
 
 Deferred features are not active acceptance requirements.
+
+### 22.13 Weather information (approved, not yet implemented)
+
+These criteria apply once weather information (§6.6) is implemented:
+
+- Every weather value shows its NWS source and its time.
+- Observed, forecast, alert, stale, and unavailable information are distinguishable without relying on color alone.
+- Alerts cover both the North Carolina and South Carolina portions of the park, and expired alerts are never shown as active.
+- Date selection and navigation cause no weather retrieval; startup, Passdown editing, autosave, PDF preview, printing, and navigation never wait for weather.
+- A provider outage or failed refresh keeps last-known-good weather with an honest status and leaves the rest of the application usable.
+- No weather data appears in Personal Sync, Passdown drafts, finalized History, or PDF output.
+- No weather information drives an operational decision automatically.
 
 ---
 

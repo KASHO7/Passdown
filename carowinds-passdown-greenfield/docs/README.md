@@ -69,9 +69,9 @@ Notable groups:
   test infrastructure reliability: [phase36b-test-infrastructure-reliability.md](phase36b-test-infrastructure-reliability.md);
   Early Ride Time editor extraction: [phase36c-ert-editor-maintainability.md](phase36c-ert-editor-maintainability.md)
   ([Windows checklist](releases/rc15-phase36c-localtest-windows-checklist.md)).
-- Weather integration (Phase 37, number provisional) — **proposed, not implemented**:
+- Weather integration (Phase 37) — **approved (`../AGENT_BUILD_SPEC.md` §6.6), not implemented**:
   [phase37a-weather-source-architecture-plan.md](phase37a-weather-source-architecture-plan.md) (NWS source research,
-  architecture and milestone plan; awaiting owner decisions).
+  architecture and milestone plan; remaining owner decisions D3–D8).
 - Defect record: [rc9-price-history-legacy-identity-defect.md](rc9-price-history-legacy-identity-defect.md).
 
 ## Research (not product features)

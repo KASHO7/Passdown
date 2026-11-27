@@ -4,7 +4,7 @@
 
 **Post-RC.14 production change (Phase 36C, `07ae59b`–`18fac73`, local only):** the Associate workspace's Early Ride Time editor is a child view model (`EarlyRideTimeEditorViewModel`) and three view models marshal background notifications through `IUiDispatcher`; no project, dependency, schema, sync, PDF or retrieval change. Production source therefore no longer equals `3d603f0`; see [Phase 36C](phase36c-ert-editor-maintainability.md) and [Desktop UI](architecture/desktop-ui.md). The product owner reported a successful Windows test of the `RC15-Phase36C-LOCALTEST` candidate (2026-11-27; owner statement, no per-item results; Claude ran no Windows test).
 
-**Proposed, not implemented:** Weather integration (NWS) is planned in [Phase 37A](phase37a-weather-source-architecture-plan.md) and awaits owner approval; nothing in the guides below describes it as current.
+**Approved, not implemented:** Weather integration (NWS) is approved product scope (`AGENT_BUILD_SPEC.md` §6.6) and planned in [Phase 37A](phase37a-weather-source-architecture-plan.md); no weather code exists, and nothing in the guides below describes it as current.
 
 Release state from records: `0.1.0-rc.14` published 2026-11-27T00:56Z as a GitHub prerelease ([RC.14 readiness](releases/rc14-release-readiness.md)); not merged to `main`. The owner reported a successful genuine RC.13 → RC.14 in-app update on Windows (RC.14 readiness §15). Phase 35 (35A–35G) is implemented; the product owner accepted the final 35G local candidate on Windows overall, without per-item checklist results ([Phase 35G](phase35g-final-uiux-polish-readiness.md)). Refresh this status from actual repository evidence at each phase close.
 
