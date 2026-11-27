@@ -1,4 +1,4 @@
-Carowinds Operations 0.1.0-rc.13 — Tester Guide
+Carowinds Operations 0.1.0-rc.14 — Tester Guide
 =================================================
 
 Thanks for testing this app. You do not need any technical background. Follow the
@@ -30,8 +30,8 @@ Going back to an older version: copying an older app over this one is NOT a safe
 way to undo the upgrade. If you ever need to go back, close the app, put your
 dated backup folder back in place, and then run the older version.
 
-Coming from rc.11 or rc.12 there is no database change. Coming from rc.10 or older, this
-version changes the format of the app's database the first time it starts (it
+Coming from rc.11, rc.12 or rc.13 there is no database change. Coming from rc.10 or
+older, this version changes the format of the app's database the first time it starts (it
 adds one table for official reference pages; nothing you saved is changed).
 Before it does, it saves its own checked copy in the "backups" folder inside
 %LOCALAPPDATA%\Carowinds Passdown. Your own dated backup (above) is still the
@@ -58,7 +58,7 @@ If more than one computer uses Personal Sync with the same shared folder:
 
 3. Extract the ZIP
 -------------------
-Right-click Carowinds-Operations-0.1.0-rc.13-win-x64.zip and choose
+Right-click Carowinds-Operations-0.1.0-rc.14-win-x64.zip and choose
 "Extract All...". Pick a NEW, empty folder you can write to (Desktop, Documents).
 Do NOT run the app from inside the ZIP without extracting it first.
 
@@ -77,10 +77,10 @@ then "Run anyway" only if you got the ZIP from the person who asked you to test.
 
 5. Check the version
 ---------------------
-Click the gear icon (Settings) at the right end of the navigation strip, scroll to
-"About this build". It should say:
+Click "Settings" at the bottom of the navigation on the left, then "About" in the
+list of Settings sections. "About this build" should say:
 
-    Version 0.1.0-rc.13 (followed by a short code in brackets)
+    Version 0.1.0-rc.14 (followed by a short code in brackets)
     Running from  <the folder you just extracted>
 
 If it shows an older number, or a different folder, you opened an older copy (for
@@ -88,7 +88,7 @@ example through Windows Search or the Start menu). Close it and start
 Carowinds.Passdown.Desktop.exe from the folder you just extracted.
 
 About the single .exe file: you may also see
-Carowinds-Operations-0.1.0-rc.13-win-x64-singlefile.exe. It is EXPERIMENTAL.
+Carowinds-Operations-0.1.0-rc.14-win-x64-singlefile.exe. It is EXPERIMENTAL.
 Please test with the ZIP. The single .exe does not carry the license notices or
 the automatic-refresh helpers, so it must not be handed out on its own. It also
 cannot update itself: its Settings › Application Updates says "Manual update
@@ -96,8 +96,11 @@ required".
 
 Installing this version by hand from the ZIP (as described above) does NOT open
 "What's New" when it first starts — that only happens after an update installed
-from inside the app. Only use rc.12's in-app "Install Update" for rc.13 if whoever
+from inside the app. Only use rc.13's in-app "Install Update" for rc.14 if whoever
 asked you to test gave you a special test update and a backed-up test profile.
+
+If you used a LOCAL-ONLY test build before (its About shows "LOCALTEST"), it will
+not offer rc.14 as an update. Extract this ZIP into a new folder instead.
 
 
 6. Look around the main screens
@@ -321,15 +324,15 @@ the new location.
 15. Save-failure check (testers asked to do this only)
 -------------------------------------------------------
 Only use a test copy of your data for this (back up first, step 1).
-This version shows "Save failed — changes not saved" in the Draft chip when the
-app genuinely cannot save (hover over it to see why), and a "Retry Save" button.
+This version shows "Save failed" in the save status near the top of the Passdown
+screen when the app genuinely cannot save (hover over it to see why), and a "Retry Save" button.
 If you are asked to test this by making the data folder read-only:
-  - Make a change and check the chip text and the Retry Save button.
+  - Make a change and check the save status text and the Retry Save button.
   - Try changing the date, Check Online, and adding a note. Each should be
     refused with an explanation. The app must NOT freeze, and Task Manager
     should not show it using lots of CPU.
-  - Make the folder writable again and click Retry Save. The chip should say
-    the changes were saved, and your edits should still be there.
+  - Make the folder writable again and click Retry Save. The save status should
+    say the changes were saved, and your edits should still be there.
   - Closing the app while the save is failing shows a warning the first time.
     Closing a second time closes the app and your unsaved changes are lost.
   - A save can occasionally take up to about five seconds if the data file is
