@@ -179,6 +179,69 @@
       <Setter Property="FontSize" Value="12" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
+    <!-- Phase 37C Weather card (approved D4 mock-up): section labels, the observed temperature, forecast values,
+         and the stale / unavailable / alert strips. Status is always stated in words; colour only reinforces it. -->
+    <Style Selector="TextBlock.wxKind">
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="LetterSpacing" Value="0.6" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+      <Setter Property="Margin" Value="0,0,0,3" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.wxSource">
+      <Setter Property="FontSize" Value="{DynamicResource PassdownFontSizeCaption}" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+      <Setter Property="Margin" Value="0,3,0,0" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.wxSide">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+      <Setter Property="TextAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Bottom" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.wxUnavailable">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource PassdownUnavailableBrush}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="Border.wxStatus">
+      <Setter Property="Background" Value="{DynamicResource PassdownNeutralStatusBackgroundBrush}" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="Padding" Value="16,8" />
+    </Style>
+    <Style Selector="Border.wxStatus.stale">
+      <Setter Property="Background" Value="{DynamicResource PassdownStaleBackgroundBrush}" />
+    </Style>
+    <Style Selector="Border.wxAlertStrip">
+      <Setter Property="Background" Value="{DynamicResource PassdownWarningBackgroundBrush}" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="Padding" Value="16,9" />
+    </Style>
+    <!-- The screen-local text styles above outrank the shared status styles, so the weather card restates them. -->
+    <Style Selector="TextBlock.wxValue">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownTextPrimaryBrush}" />
+    </Style>
+    <Style Selector="TextBlock.cardMeta.statusStale, TextBlock.wxSource.statusStale, TextBlock.wxValue.statusStale">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownStaleBrush}" />
+    </Style>
+    <Style Selector="TextBlock.cardMeta.statusWarning">
+      <Setter Property="Foreground" Value="{DynamicResource PassdownWarningBrush}" />
+    </Style>
+    <Style Selector="ToggleButton#WeatherDetailsToggle:checked Path.dropdownChevron">
+      <Setter Property="RenderTransform" Value="rotate(180deg)" />
+    </Style>
+    <Style Selector="Border.wxAlertItem">
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownBorderBrush}" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="ClipToBounds" Value="True" />
+    </Style>
     <!-- "Price not available" must never look like a price. -->
     <Style Selector="TextBlock.statValue.unavailable">
       <Setter Property="FontSize" Value="16" />
@@ -450,6 +513,217 @@
             </StackPanel>
 
             <StackPanel x:Name="DashboardSecondaryColumn" Grid.Column="2" Spacing="16">
+
+              <!-- Phase 37C: Weather (owner-approved D4 mock-up, docs/phase37c-dashboard-weather-integration.md). Top of the
+                   right-hand column, so in the stacked layout it follows Shows and precedes Pricing. Informational only:
+                   NWS observed, forecast and alert values, each with its source and time; nothing here decides an
+                   operation. Showing or expanding the card never makes a request — Refresh Weather in the details is the
+                   only weather action (decision D6). -->
+              <Border x:Name="WeatherCard" Classes="dashCard" IsVisible="{Binding $self.DataContext, Converter={x:Static ObjectConverters.IsNotNull}}"
+                      DataContext="{Binding Weather}" x:DataType="vm:DashboardWeatherViewModel"
+                      AutomationProperties.Name="Weather"
+                      AutomationProperties.HelpText="{Binding Presentation.AutomationText}">
+                <DockPanel>
+                  <Border DockPanel.Dock="Top" Classes="cardRule teal" />
+                  <Border DockPanel.Dock="Top" Classes="cardTitleBand">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                      <TextBlock Grid.Column="0" Text="Weather" Classes="cardTitle" />
+                      <TextBlock Grid.Column="1" x:Name="WeatherHeaderMeta" Text="{Binding Presentation.HeaderMetaText}" Classes="cardMeta"
+                                 Classes.statusStale="{Binding Presentation.HeaderIsStale}" TextAlignment="Right" />
+                    </Grid>
+                  </Border>
+
+                  <StackPanel>
+                    <!-- Loading: nothing cached yet and the first check is pending or running. -->
+                    <StackPanel Margin="16,11,16,12" Spacing="8" IsVisible="{Binding Presentation.IsLoading}">
+                      <TextBlock Text="{x:Static presentation:DashboardWeatherPresentation.LoadingText}" Classes="muted" TextWrapping="Wrap"
+                                 AutomationProperties.LiveSetting="Polite" />
+                      <ProgressBar IsIndeterminate="True" Height="3" AutomationProperties.Name="Loading weather" />
+                      <TextBlock Text="{x:Static presentation:DashboardWeatherPresentation.LoadingAlertText}" Classes="cardMeta" />
+                    </StackPanel>
+
+                    <StackPanel IsVisible="{Binding Presentation.IsContentVisible}">
+                      <!-- Stale (stale colours) or unavailable (neutral): what happened and the alert status, in words. -->
+                      <Border x:Name="WeatherStatusStrip" Classes="wxStatus" Classes.stale="{Binding Presentation.StatusIsStale}"
+                              IsVisible="{Binding Presentation.HasStatusStrip}">
+                        <StackPanel Spacing="1">
+                          <TextBlock TextWrapping="Wrap" FontSize="12" AutomationProperties.LiveSetting="Polite">
+                            <Run Text="{Binding Presentation.StatusHeadline}" FontWeight="Bold" />
+                            <Run Text=" " />
+                            <Run Text="{Binding Presentation.StatusDetail}" Foreground="{DynamicResource PassdownTextSecondaryBrush}" />
+                          </TextBlock>
+                          <TextBlock Text="{Binding Presentation.StatusAlertText}" Classes="cardMeta" FontSize="12"
+                                     Classes.statusStale="{Binding Presentation.StatusIsStale}"
+                                     IsVisible="{Binding Presentation.HasStatusAlertText}" />
+                        </StackPanel>
+                      </Border>
+
+                      <!-- Active official NWS alert(s) for either verified point: icon and words, most severe first. -->
+                      <Border x:Name="WeatherAlertStrip" Classes="wxAlertStrip" IsVisible="{Binding Presentation.HasAlertStrip}">
+                        <Grid ColumnDefinitions="16,*" ColumnSpacing="8">
+                          <PathIcon Grid.Column="0" Width="15" Height="15" VerticalAlignment="Top" Margin="0,1,0,0"
+                                    Data="M12 2.5 1.5 21h21L12 2.5Zm-1.1 6.7h2.2v6.2h-2.2V9.2Zm0 7.6h2.2V19h-2.2v-2.2Z"
+                                    Foreground="{DynamicResource PassdownWarningBrush}" AutomationProperties.AccessibilityView="Raw" />
+                          <StackPanel Grid.Column="1" Spacing="1">
+                            <TextBlock Text="{Binding Presentation.AlertHeadline}" FontSize="12.5" FontWeight="Bold" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource PassdownWarningBrush}" AutomationProperties.LiveSetting="Polite" />
+                            <TextBlock Text="{Binding Presentation.AlertPrimaryText}" FontSize="12.5" FontWeight="SemiBold" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource PassdownTextPrimaryBrush}" />
+                            <TextBlock Text="{Binding Presentation.AlertSecondaryText}" Classes="cardMeta"
+                                       IsVisible="{Binding Presentation.HasAlertSecondaryText}" />
+                          </StackPanel>
+                        </Grid>
+                      </Border>
+
+                      <StackPanel Margin="16,11,16,4">
+                        <!-- Observed: the station's own reading, identified by station, distance and time (never "at the park"). -->
+                        <StackPanel x:Name="WeatherObserved" AutomationProperties.Name="Observed conditions">
+                          <TextBlock Text="{Binding Presentation.ObservedKindText}" Classes="wxKind" />
+                          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" IsVisible="{Binding Presentation.HasObservation}">
+                            <TextBlock Grid.Column="0" Classes="wxValue" Classes.statusStale="{Binding Presentation.ObservationIsStale}"
+                                       TextWrapping="Wrap" VerticalAlignment="Bottom">
+                              <Run Text="{Binding Presentation.TemperatureText}" FontSize="22" FontWeight="Bold" />
+                              <Run Text=" " />
+                              <Run Text="{Binding Presentation.ConditionText}" FontSize="13" FontWeight="SemiBold" />
+                            </TextBlock>
+                            <TextBlock Grid.Column="1" Text="{Binding Presentation.WindText}" Classes="wxSide" Margin="0,0,0,3"
+                                       IsVisible="{Binding Presentation.HasWindText}" />
+                          </Grid>
+                          <TextBlock Text="{Binding Presentation.ObservationSourceText}" Classes="wxSource"
+                                     Classes.statusStale="{Binding Presentation.ObservationIsStale}"
+                                     IsVisible="{Binding Presentation.HasObservation}" />
+                          <TextBlock Text="{x:Static presentation:DashboardWeatherPresentation.ObservationUnavailableText}" Classes="wxUnavailable"
+                                     IsVisible="{Binding Presentation.ShowObservationUnavailable}" />
+                        </StackPanel>
+
+                        <Border Height="1" Background="{DynamicResource PassdownDividerBrush}" Margin="0,10" />
+
+                        <!-- Forecast: today's NWS high/low and the highest hourly rain chance for a stated period. -->
+                        <StackPanel x:Name="WeatherForecast" AutomationProperties.Name="NWS forecast">
+                          <TextBlock Text="{Binding Presentation.ForecastKindText}" Classes="wxKind" />
+                          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" IsVisible="{Binding Presentation.HasForecast}">
+                            <WrapPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Bottom">
+                              <TextBlock Margin="0,0,18,0" IsVisible="{Binding Presentation.HasHigh}" VerticalAlignment="Bottom">
+                                <Run Text="High " FontSize="12" Foreground="{DynamicResource PassdownTextSecondaryBrush}" />
+                                <Run Text="{Binding Presentation.HighText}" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource PassdownTextPrimaryBrush}" />
+                              </TextBlock>
+                              <TextBlock Text="{x:Static presentation:DashboardWeatherPresentation.HighNotInForecastText}" FontSize="12" Margin="0,0,18,2"
+                                         Foreground="{DynamicResource PassdownTextSecondaryBrush}" TextWrapping="Wrap" VerticalAlignment="Bottom"
+                                         IsVisible="{Binding Presentation.ShowHighNotInForecast}" />
+                              <TextBlock IsVisible="{Binding Presentation.HasLow}" VerticalAlignment="Bottom">
+                                <Run Text="Low " FontSize="12" Foreground="{DynamicResource PassdownTextSecondaryBrush}" />
+                                <Run Text="{Binding Presentation.LowText}" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource PassdownTextPrimaryBrush}" />
+                              </TextBlock>
+                            </WrapPanel>
+                            <TextBlock Grid.Column="1" Classes="wxSide" IsVisible="{Binding Presentation.HasRainChance}">
+                              <Run Text="Rain chance " />
+                              <Run Text="{Binding Presentation.RainChanceText}" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource PassdownTextPrimaryBrush}" />
+                            </TextBlock>
+                            <TextBlock Grid.Column="1" Classes="wxSide" MaxWidth="120"
+                                       Text="{x:Static presentation:DashboardWeatherPresentation.RainChanceUnavailableText}"
+                                       IsVisible="{Binding Presentation.ShowRainChanceUnavailable}" />
+                          </Grid>
+                          <TextBlock Text="{Binding Presentation.ForecastSourceText}" Classes="wxSource"
+                                     Classes.statusStale="{Binding Presentation.ForecastIsStale}"
+                                     IsVisible="{Binding Presentation.HasForecast}" />
+                          <TextBlock Text="{x:Static presentation:DashboardWeatherPresentation.ForecastUnavailableText}" Classes="wxUnavailable"
+                                     IsVisible="{Binding Presentation.ShowForecastUnavailable}" />
+                          <TextBlock Text="{Binding Presentation.ForecastUnavailableDetail}" Classes="wxSource"
+                                     IsVisible="{Binding Presentation.ShowForecastUnavailable}" />
+                        </StackPanel>
+                      </StackPanel>
+
+                      <!-- Footer: the details disclosure and the alert check time. -->
+                      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Margin="16,2,16,8">
+                        <ToggleButton x:Name="WeatherDetailsToggle" Grid.Column="0" Classes="disclosureHeader" Margin="-8,0,0,0"
+                                      IsChecked="{Binding IsExpanded}" IsVisible="{Binding Presentation.CanExpand}"
+                                      AutomationProperties.Name="{Binding ToggleText}"
+                                      AutomationProperties.HelpText="Shows or hides weather alerts, sources and Refresh Weather. Does not check for new weather.">
+                          <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Classes="dropdownChevron" Data="{StaticResource PassdownDropdownChevronGeometry}"
+                                  Stroke="{DynamicResource PassdownAccentForegroundBrush}" />
+                            <TextBlock Text="{Binding ToggleText}" VerticalAlignment="Center" />
+                          </StackPanel>
+                        </ToggleButton>
+                        <TextBlock Grid.Column="1" x:Name="WeatherFooterText" Text="{Binding Presentation.FooterText}" Classes="cardMeta"
+                                   Classes.statusStale="{Binding Presentation.FooterIsStale}" TextAlignment="Right" />
+                      </Grid>
+
+                      <!-- Expanded details: every active alert, sources, Refresh Weather and the informational-only note. -->
+                      <Border x:Name="WeatherDetails" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource PassdownDividerBrush}"
+                              Padding="16,10,16,12" IsVisible="{Binding IsExpanded}">
+                        <StackPanel Spacing="10">
+                          <StackPanel Spacing="8" IsVisible="{Binding Presentation.HasAlerts}">
+                            <TextBlock Text="{Binding Presentation.AlertsHeading}" Classes="wxKind" />
+                            <ItemsControl x:Name="WeatherAlertItems" ItemsSource="{Binding AlertRows}"
+                                          AutomationProperties.Name="Active NWS alerts">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DashboardWeatherAlertRow">
+                                  <Border Classes="wxAlertItem" Margin="0,0,0,8" AutomationProperties.Name="{Binding Item.AccessibleName}">
+                                    <Grid ColumnDefinitions="3,*">
+                                      <Border Grid.Column="0" Background="{DynamicResource PassdownWarningBrush}" />
+                                      <StackPanel Grid.Column="1" Margin="10,7" Spacing="2">
+                                        <TextBlock Text="{Binding Item.Event}" FontSize="12.5" FontWeight="Bold" TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource PassdownTextPrimaryBrush}" />
+                                        <TextBlock Text="{Binding Item.SeverityAndTimingText}" Classes="showTimes" />
+                                        <TextBlock Text="{Binding Item.AppliesToText}" Classes="showTimes" />
+                                        <WrapPanel Orientation="Horizontal">
+                                          <TextBlock Text="{Binding Item.SourceText}" Classes="showTimes" Margin="0,0,6,0" />
+                                          <Button Content="weather.gov" Classes="linkAction cardLink" Padding="0" IsVisible="{Binding Item.HasLink}"
+                                                  Command="{Binding OpenCommand}"
+                                                  AutomationProperties.Name="{Binding Item.Event, StringFormat='Open weather.gov forecast for {0}'}" />
+                                        </WrapPanel>
+                                      </StackPanel>
+                                    </Grid>
+                                  </Border>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </StackPanel>
+
+                          <ItemsControl x:Name="WeatherDetailRows" ItemsSource="{Binding Presentation.DetailRows}" IsVisible="{Binding Presentation.HasDetailRows}">
+                            <ItemsControl.ItemTemplate>
+                              <DataTemplate x:DataType="presentation:DashboardWeatherDetailRow">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" Margin="0,0,0,3">
+                                  <TextBlock Grid.Column="0" Text="{Binding Label}" FontSize="12" Foreground="{DynamicResource PassdownTextSecondaryBrush}" />
+                                  <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="12" FontWeight="SemiBold" TextAlignment="Right" TextWrapping="Wrap"
+                                             Foreground="{DynamicResource PassdownTextPrimaryBrush}" Classes.statusStale="{Binding IsStale}" />
+                                </Grid>
+                              </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                          </ItemsControl>
+
+                          <TextBlock Text="{Binding Presentation.ObservationNoteText}" Classes="cardMeta" FontSize="11"
+                                     IsVisible="{Binding Presentation.HasObservationNote}" />
+
+                          <StackPanel Spacing="6">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                              <TextBlock Grid.Column="0" Text="{Binding Presentation.LastUpdatedText}" Classes="cardMeta"
+                                         Classes.statusStale="{Binding Presentation.LastUpdatedIsStale}" />
+                              <Button Grid.Column="1" x:Name="RefreshWeatherButton" Content="Refresh Weather" Classes="secondaryAction"
+                                      Padding="{DynamicResource PassdownCompactButtonPadding}" VerticalAlignment="Center"
+                                      Command="{Binding RefreshWeatherCommand}"
+                                      AutomationProperties.Name="Refresh Weather"
+                                      AutomationProperties.HelpText="Asks the National Weather Service for anything not checked within its minimum interval. Does not check official park data." />
+                            </Grid>
+                            <ProgressBar IsIndeterminate="True" Height="3" IsVisible="{Binding IsRefreshing}" AutomationProperties.Name="Refreshing weather" />
+                            <TextBlock x:Name="WeatherRefreshMessage" Text="{Binding RefreshMessage}" Classes="cardMeta"
+                                       Classes.statusWarning="{Binding RefreshMessageIsWarning}"
+                                       AutomationProperties.LiveSetting="Polite" IsVisible="{Binding HasRefreshMessage}" />
+                          </StackPanel>
+
+                          <StackPanel Spacing="2">
+                            <TextBlock Text="{x:Static presentation:DashboardWeatherPresentation.SafetyNoteText}" Classes="cardMeta" FontSize="11" />
+                            <Button Content="NWS forecast on weather.gov" Classes="linkAction cardLink" Padding="0" FontSize="11" HorizontalAlignment="Left"
+                                    Command="{Binding OpenLinkCommand}" CommandParameter="{Binding Presentation.ForecastPage}"
+                                    AutomationProperties.Name="Open NWS forecast on weather.gov" />
+                          </StackPanel>
+                        </StackPanel>
+                      </Border>
+                    </StackPanel>
+                  </StackPanel>
+                </DockPanel>
+              </Border>
 
               <!-- Daily Ticket Pricing: today's official exact dated ticket and Fast Lane prices (never a
                    manual display override). With none, the existing single admission reference explains

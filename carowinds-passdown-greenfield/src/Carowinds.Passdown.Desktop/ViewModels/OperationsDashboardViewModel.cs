@@ -175,13 +175,15 @@ public partial class OperationsDashboardViewModel : ViewModelBase
         ILogger<OperationsDashboardViewModel>? logger = null,
         IDataChangeNotifier? dataChangeNotifier = null,
         OfficialDataStatusViewModel? officialDataStatus = null,
-        IUiDispatcher? uiDispatcher = null)
+        IUiDispatcher? uiDispatcher = null,
+        DashboardWeatherViewModel? weather = null)
     {
         ArgumentNullException.ThrowIfNull(service);
 
         _service = service;
         _logger = logger;
         OfficialDataStatus = officialDataStatus;
+        Weather = weather;
 
         _pendingLoad = LoadAsync();
 
@@ -191,6 +193,14 @@ public partial class OperationsDashboardViewModel : ViewModelBase
             dataChangeNotifier.Changed += (_, change) => dispatcher.Post(() => HandleDataChange(change));
         }
     }
+
+    /// <summary>
+    /// Phase 37C: the Weather card (top of the right-hand column). Null only where no weather monitor is composed
+    /// (tests that do not supply one); the card is then not shown. Observes the shared weather monitor only.
+    /// </summary>
+    public DashboardWeatherViewModel? Weather { get; }
+
+    public bool HasWeather => Weather is not null;
 
     /// <summary>Phase 19A: the shared official-data freshness line shown in the Dashboard header (null only in tests that do not supply one).</summary>
     public OfficialDataStatusViewModel? OfficialDataStatus { get; }
@@ -302,8 +312,13 @@ public partial class OperationsDashboardViewModel : ViewModelBase
         }
     }
 
-    partial void OnSnapshotChanged(OperationsDashboardSnapshot? value) =>
+    partial void OnSnapshotChanged(OperationsDashboardSnapshot? value)
+    {
         ShowsPresentation = value is null ? null : ShowSchedulePresentation.Build(value.TodayShows, value.GeneratedAt, isDashboard: true);
+
+        // Phase 37C: today's park hours set the Weather card's rain-chance window (local text only).
+        Weather?.UpdateParkHours(value);
+    }
 
     /// <summary>
     /// Phase 21C: re-evaluates which of today's performances are still upcoming at <paramref name="nowUtc"/>

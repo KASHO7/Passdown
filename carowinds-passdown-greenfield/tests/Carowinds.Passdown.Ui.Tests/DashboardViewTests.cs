@@ -140,7 +140,8 @@ public class DashboardViewTests
 
         var view = new DashboardView { DataContext = viewModel };
         var checkOnlineBusyBar = view.GetLogicalDescendants().OfType<ProgressBar>().Single(p => p.Name == "CheckOnlineBusyBar");
-        Assert.NotSame(checkOnlineBusyBar, view.GetLogicalDescendants().OfType<ProgressBar>().Single(p => double.IsNaN(p.Width)));
+        // The page's own local-reload bar (Phase 37C added the Weather card's bars, so it is found by its accessible name).
+        Assert.NotSame(checkOnlineBusyBar, view.GetLogicalDescendants().OfType<ProgressBar>().Single(p => Avalonia.Automation.AutomationProperties.GetName(p) == "Loading dashboard"));
 
         var runTask = viewModel.CheckOnlineCommand.ExecuteAsync(null);
         Assert.True(viewModel.IsCheckingOnline);

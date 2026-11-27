@@ -106,6 +106,16 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
     ("Dashboard35E-Stale", () => new Fixture(dashboardVariant: DashboardVariant.Stale), f => Go(f, AppSection.Dashboard)),
     ("Dashboard35E-LongText", () => new Fixture(dashboardVariant: DashboardVariant.LongText), f => Go(f, AppSection.Dashboard)),
     ("Dashboard35E-Focus", () => new Fixture(), f => { Go(f, AppSection.Dashboard); FocusNamed(f.Window, "Open Passdown"); }),
+    // Phase 37C: the Weather card (approved D4 mock-up) in each state, synthetic weather (no NWS request).
+    ("Dashboard37C-Normal", () => new Fixture(weatherState: "Normal"), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard37C-Expanded-Normal", () => new Fixture(weatherState: "Normal", weatherExpanded: true), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard37C-Alerts", () => new Fixture(weatherState: "Alerts"), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard37C-Expanded-Alerts", () => new Fixture(weatherState: "Alerts", weatherExpanded: true), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard37C-Stale", () => new Fixture(weatherState: "Stale"), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard37C-Expanded-Stale", () => new Fixture(weatherState: "Stale", weatherExpanded: true), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard37C-Unavailable", () => new Fixture(weatherState: "Unavailable"), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard37C-Loading", () => new Fixture(weatherState: "Loading"), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard37C-Evening", () => new Fixture(weatherState: "Evening"), f => Go(f, AppSection.Dashboard)),
     ("Dashboard35E-SourceDetails", () => new Fixture(), f => { Go(f, AppSection.Dashboard); f.Vm.Dashboard.IsSourceDetailsExpanded = true; Pump(8); ScrollToEnd(f.Window); }),
     // Phase 23B: Today's Shows density/overlap. "-Top" keeps the page at the top (above-the-fold view);
     // the others scroll the Shows panel into view.
@@ -701,7 +711,8 @@ internal sealed class Fixture
     public MainWindow Window { get; }
 
     public Fixture(bool includedNote = false, bool emptyNotes = false, bool emptyHistory = false, SyncFixture sync = SyncFixture.Off, Carowinds.Passdown.Application.Shows.ShowScheduleView? dashboardShows = null, bool showPassPerks = true,
-        PdfPreviewLayoutPreferences? preview = null, InterfaceMotionController? motion = null, DashboardVariant dashboardVariant = DashboardVariant.Typical)
+        PdfPreviewLayoutPreferences? preview = null, InterfaceMotionController? motion = null, DashboardVariant dashboardVariant = DashboardVariant.Typical,
+        string? weatherState = null, bool weatherExpanded = false)
     {
         var clock = new FakeClock(Fixtures.Now);
         var passPerks = Phase32Fixtures.Service();
@@ -727,8 +738,26 @@ internal sealed class Fixture
             new FakeDiagnosticExportFilePicker { ResultFactory = () => DiagnosticExportSaveResult.Failed("The folder could not be written to. Choose another location.") });
         var build = BuildIdentity.FromAssembly(typeof(App).Assembly, @"C:\Users\associate\Downloads\Carowinds-Operations-0.1.0-rc.6-win-x64\Carowinds.Passdown.Desktop.exe");
 
+        // Phase 37C: the Weather card over a scripted monitor (synthetic snapshots, no NWS request). Null keeps the
+        // RC.14 Dashboard without the card, so the Dashboard35E scenarios stay comparable with earlier captures.
+        DashboardWeatherViewModel? weather = null;
+        if (weatherState is not null)
+        {
+            var snapshot = weatherState switch
+            {
+                "Normal" => WeatherUiFixtures.Normal(),
+                "Alerts" => WeatherUiFixtures.TwoAlerts(),
+                "Stale" => WeatherUiFixtures.Stale(),
+                "Unavailable" => WeatherUiFixtures.Unavailable(),
+                "Evening" => WeatherUiFixtures.EveningForecast(),
+                _ => null, // Loading
+            };
+            var weatherClock = new FakeClock(weatherState == "Evening" ? WeatherUiFixtures.Evening : WeatherUiFixtures.Morning);
+            weather = new DashboardWeatherViewModel(new FakeWeatherMonitor { Current = snapshot }, weatherClock, new ImmediateUiDispatcher()) { IsExpanded = weatherExpanded };
+        }
+
         Vm = new MainViewModel(
-            new OperationsDashboardViewModel(dashboard),
+            new OperationsDashboardViewModel(dashboard, uiDispatcher: weather is null ? null : new ImmediateUiDispatcher(), weather: weather),
             new OperationsCalendarViewModel(CalendarService, clock, passPerksService: passPerks, calendarDisplay: calendarDisplay),
             new AssociateViewModel(AssociateService, clock, autosaveDelay: (_, _) => Task.CompletedTask,
                 externalLinkLauncher: new Phase31CFixtures.NoOpLinkLauncher(), dealsService: Phase31CFixtures.Deals(), importantDetailsService: Phase31CFixtures.Details(), passPerksService: passPerks,

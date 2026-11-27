@@ -327,7 +327,12 @@ public class Phase35EDashboardTests
 
         Assert.Contains("Text=\"Admissions Overview\"", markup);
         Assert.Equal(4, Regex.Matches(markup, "Classes=\"gateColumn").Count);
-        Assert.Equal(6, Regex.Matches(markup, "Classes=\"cardRule").Count); // gate, passdown, shows, pricing, notes, perks
+        Assert.Equal(7, Regex.Matches(markup, "Classes=\"cardRule").Count); // gate, passdown, shows, weather (Phase 37C), pricing, notes, perks
+        // Phase 37C (approved D4 mock-up): the Weather card is the first card in the right-hand column, with the teal rule.
+        var secondary = markup.IndexOf("x:Name=\"DashboardSecondaryColumn\"", StringComparison.Ordinal);
+        Assert.True(secondary > 0);
+        Assert.True(markup.IndexOf("x:Name=\"WeatherCard\"", secondary, StringComparison.Ordinal) < markup.IndexOf("AutomationProperties.Name=\"Daily admission\"", secondary, StringComparison.Ordinal));
+        Assert.Contains("Classes=\"cardRule teal\"", markup[markup.IndexOf("x:Name=\"WeatherCard\"", StringComparison.Ordinal)..]);
         Assert.Contains("Classes=\"cardRule teal\"", markup);
         Assert.Contains("Classes=\"cardRule slate\"", markup);
         Assert.Contains("Classes=\"cardRule amber\"", markup);
