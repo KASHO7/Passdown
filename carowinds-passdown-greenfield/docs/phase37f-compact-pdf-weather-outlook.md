@@ -228,7 +228,9 @@ the cache only), `architecture/testing-and-performance.md` (new tests and the `p
 ## Follow-up — Include Weather Outlook option
 
 Authorization: owner brief "Phase 37F Follow-up — Optional Weather Outlook Checkbox" (2026-11-27), restoring a
-previously approved requirement the first Phase 37F brief omitted. The Weather Outlook itself is unchanged.
+previously approved requirement the first Phase 37F brief omitted. The Weather Outlook itself is unchanged. Commits:
+`14f973a` (37F-6 source and tests; reviewed source baseline), `829d219` (37F-7 docs), `10dc300` (37F-8 checklist
+package details) and this record commit.
 
 | Piece | Where | Role |
 |---|---|---|
@@ -271,7 +273,7 @@ Follow-up validation (macOS development host; not Windows validation):
 | Existing tests updated deliberately | `Phase35DShowsNotesPolishTests.ActionsMenu_KeepsEveryCommand_InOrder_WithItsShortcut` (exact header list now includes "Include Weather Outlook" after "PDF Style: Modern") and `Phase35BPassdownWorkspaceTests.ActionsMenu_HeadlessView_EveryItemIsNamed_AndTheMenuButtonIsKeyboardReachable` (item count 11 → 12; separators unchanged). Both stay exact inventories; nothing removed or loosened |
 | Repository guards | PASS — 31 / 31 |
 | Clean Release build | PASS — all `bin`/`obj` deleted, `--no-incremental`: 0 warnings, 0 errors; `tools/visual-fixtures` and `tools/perf-benchmarks` 0 / 0 |
-| Windows local-test candidate | F2-CANDIDATE |
+| Windows local-test candidate | `artifacts/local-test/RC15-Phase37F2-LOCALTEST/LOCAL-ONLY-RC15-Phase37F2-LOCALTEST-win-x64.zip` from `829d219` (production source identical to `14f973a`), shown as `0.1.0-rc.15-LOCALTEST.phase37f2`; 76,472,064 bytes, 308 files; SHA-256 `fce0071103f22ab8f0a4174c9094606a241bbf0e9f2eb588602a63a14b139468`. Same packaging command with the new label and version (PowerShell 7.6.10 tool in scratch); content validation (folder and ZIP), `RealReleaseZip` (bogus path fails), marker and forbidden-content checks passed; all 13,626 earlier artifact files re-hashed byte-identical, so the first 37F ZIP was not overwritten. Supersedes `RC15-Phase37F-LOCALTEST` for testing |
 | Windows validation | NOT EXECUTED |
 
 ## Known limitations
