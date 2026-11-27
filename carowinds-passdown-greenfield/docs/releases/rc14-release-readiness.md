@@ -248,3 +248,14 @@ rebuild or re-signing.
 
 Remaining: the owner's Windows update test (§9). Published assets and tag are frozen; any change ships as
 `0.1.0-rc.15`.
+
+## 15. Later sign-off: RC.13 → RC.14 Windows update (owner-reported, 2026-11-27)
+
+Added after publication as a separate sign-off; §1–§14 are unchanged. Published assets and the tag were not
+touched.
+
+| Check | Result |
+|---|---|
+| **RC.13 → RC.14 in-app update on Windows (§9 procedure)** | **USER-VERIFIED ON WINDOWS** — the product owner reported that the genuine update from RC.13 to RC.14 succeeded (owner statement in the 2026-11-27 Weather Milestone A brief). No per-step results from the §9 list were reported. Claude did not run, observe or independently reproduce the update |
+
+Still not executed: RC.12/RC.11 → RC.14 in-app updates (§12).
