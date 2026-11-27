@@ -1,6 +1,15 @@
 # Phase 35 — Unified Desktop UI/UX Modernization
 
-Status: **35A (shared shell and design tokens) approved by the product owner after Windows testing. 35B (Passdown workspace) implemented locally — awaiting Windows review; record: `docs/phase35b-passdown-workspace-redesign.md`. 35B and 35C (Passdown workspace; Products & Pricing and the anchored price popover) Windows-tested and confirmed by the product owner. 35D (Shows, Passdown Notes, navy title bar, dropdown chevron alignment) Windows-confirmed; its compact date-selector follow-up is awaiting Windows review; record: `docs/phase35d-shows-notes-shared-polish.md`. 35E Operations Calendar and (as a separate follow-up, `2ec6261`) the Dashboard implemented locally — both awaiting Windows review, so 35E is not yet complete; record: `docs/phase35e-dashboard-calendar-redesign.md`. 35F (Operational Notes, History, Settings) implemented locally — awaiting Windows review; record: `docs/phase35f-operational-notes-history-settings.md`. 35G not started.**
+Status: **35A–35D (shared shell and tokens; Passdown workspace; Products & Pricing; Shows, Notes, navy title bar and
+dropdown chevrons) approved by the product owner after Windows testing. Implemented locally and awaiting Windows
+confirmation in the final combined candidate: the 35D compact date selector (no separate Windows run recorded), the 35E
+Calendar (reported as Windows-tested in the 35G brief only, without a record), 35F (Operational Notes, History,
+Settings) and the 35E Dashboard follow-up. 35G (final consistency audit, clean-up, regression validation and RC.14
+readiness) implemented locally — record `docs/phase35g-final-uiux-polish-readiness.md`, Windows checklist
+`docs/releases/rc14-phase35g-localtest-windows-checklist.md`. Phase records: 35B `docs/phase35b-passdown-workspace-redesign.md`,
+35C `docs/phase35c-products-pricing-redesign.md`, 35D `docs/phase35d-shows-notes-shared-polish.md`, 35E
+`docs/phase35e-dashboard-calendar-redesign.md`, 35F `docs/phase35f-operational-notes-history-settings.md`. RC.14 is not
+published; the source version is still `0.1.0-rc.13`.**
 
 Design input: `carowinds-next-phase-uiux-handoff.md` (2026-11-22, outside the repository; read in full).
 This is an incremental Avalonia modernization of the existing application, not a rewrite. The HTML
@@ -207,6 +216,9 @@ Each has its own implementation and review gate and needs its approved reference
   Open / Save Copy; grouped Settings sections.
 - **35G Consistency and readiness** — cross-screen accessibility, DPI, dark mode and motion-off audit, Windows
   performance measurements, remove the unused Fury asset, release preparation through the normal RC process.
+  **Implemented locally** (`docs/phase35g-final-uiux-polish-readiness.md`): cross-screen audit, two wording/placeholder
+  fixes, tester-guide update, Fury banner and `ShowColumnsPanel` removed, Mac renders and timings, local test build
+  `RC14-Phase35G-LOCALTEST`. Windows validation, Windows performance and the RC.14 version bump/publication remain.
 
 ## 14. Test changes (35A) — nothing weakened silently
 

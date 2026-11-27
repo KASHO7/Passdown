@@ -23,6 +23,18 @@ dotnet run -c Release --project tools/visual-fixtures -- <outDir> [label] [scena
 - `all` (default) renders 960×640, 1280×690, 1280×860 and 1920×1000. `main` renders only 1280×860.
   `shell` (Phase 35A) renders 1920×1080, 1536×960, 1280×720 and 960×640.
   An explicit comma-separated list such as `1280x720,960x640` (Phase 35G) renders only those sizes.
+
+**Memory (Phase 35G).** Every scenario creates a full app window. A single process that renders many scenarios keeps
+growing: the first full four-size run reached about 18 GB. A fresh appearance controller per scenario removed the
+largest cause (closed windows held by a shared controller), but one process still reached about 5.8 GB after 223
+captures. For large runs start **one process per scenario** (the scenario filter is a substring) and watch memory, for
+example:
+
+```bash
+for name in Dashboard35E-Typical P35F-Settings; do dotnet run -c Release --no-build --project tools/visual-fixtures -- /tmp/vf "$name" "$name" shell; done
+```
+
+Each such process peaks at a few hundred MB.
   Every size is rendered in both Light and Dark.
 - Appearance (Phase 23C): `forced` (default) renders the Light and Dark preferences, each against the
   opposite simulated OS appearance, and keeps the `Light`/`Dark` file names. `system` renders the System
