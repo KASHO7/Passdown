@@ -5,18 +5,23 @@ namespace Carowinds.Passdown.Domain.Tests.Weather;
 public class WeatherLocationTests
 {
     [Fact]
-    public void CarowindsCandidate_IsPendingVerification_AndDoesNotPermitRetrieval()
+    public void CarowindsPark_IsVerified_ForTheRecordedPointsOnly()
     {
-        // Decision D8: no coordinate counts as accepted until the owner verifies it. Changing this status is an
-        // owner decision recorded in docs/phase37b-weather-retrieval-and-cache.md, not a code change to make a test pass.
-        Assert.Equal(WeatherReferenceVerification.PendingVerification, CarowindsWeatherLocation.Candidate.Verification);
-        Assert.False(CarowindsWeatherLocation.Candidate.IsRetrievalPermitted);
+        // Decision D8 was resolved on 2026-11-27 for exactly these coordinates (docs/phase37b-weather-retrieval-and-cache.md).
+        // Moving a point requires repeating that verification; it is not a change to make a test pass.
+        Assert.Equal(WeatherReferenceVerification.Verified, CarowindsWeatherLocation.Park.Verification);
+        Assert.True(CarowindsWeatherLocation.Park.IsRetrievalPermitted);
+        Assert.Equal([(35.1050m, -80.9420m), (35.1002m, -80.9420m)], CarowindsWeatherLocation.Park.Points.Select(point => (point.Latitude, point.Longitude)));
     }
 
     [Fact]
-    public void CarowindsCandidate_CoversBothStates_WithTheNorthCarolinaPointSupplyingTheForecast()
+    public void PendingLocation_DoesNotPermitRetrieval() =>
+        Assert.False(new WeatherLocation([CarowindsWeatherLocation.NorthCarolina], WeatherReferenceVerification.PendingVerification, "test").IsRetrievalPermitted);
+
+    [Fact]
+    public void CarowindsPark_CoversBothStates_WithTheNorthCarolinaPointSupplyingTheForecast()
     {
-        var location = CarowindsWeatherLocation.Candidate;
+        var location = CarowindsWeatherLocation.Park;
 
         Assert.Equal(["NC", "SC"], location.Points.Select(point => point.ExpectedState));
         Assert.Same(CarowindsWeatherLocation.NorthCarolina, location.ForecastPoint);
@@ -24,7 +29,7 @@ public class WeatherLocationTests
     }
 
     [Fact]
-    public void CarowindsCandidate_PointsAreTheRecordedCoordinates()
+    public void CarowindsPark_PointsFormatForNws()
     {
         Assert.Equal("35.1050,-80.9420", CarowindsWeatherLocation.NorthCarolina.ToNwsPointText());
         Assert.Equal("35.1002,-80.9420", CarowindsWeatherLocation.SouthCarolina.ToNwsPointText());

@@ -13,6 +13,8 @@ internal static class WeatherTestData
 
     public static WeatherLocation VerifiedLocation { get; } = new([PointA, PointB], WeatherReferenceVerification.Verified, "test only");
 
+    public static WeatherLocation PendingLocation { get; } = new([PointA, PointB], WeatherReferenceVerification.PendingVerification, "test only");
+
     public static WeatherPointMetadata Grid(int x = 116, int y = 59) => new(
         "GSP",
         x,

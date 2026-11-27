@@ -8,14 +8,14 @@ namespace Carowinds.Passdown.Infrastructure.Tests.Weather;
 
 /// <summary>
 /// Opt-in live check against api.weather.gov (Category=LiveSmoke; excluded from the normal suite). Five read-only
-/// GETs: both candidate points, the forecast, and active alerts for both points. Asserts structure only (the
+/// GETs: both park reference points, the forecast, and active alerts for both points. Asserts structure only (the
 /// weather changes) and that both points resolve to the expected state's zones. Writes nothing to disk.
 /// </summary>
 [Trait("Category", TestCategories.LiveSmoke)]
 public class NwsWeatherProviderLiveSmokeTests(ITestOutputHelper output)
 {
     [Fact]
-    public async Task CandidatePoints_ResolveToNcAndScZones_AndForecastAndAlertsParse()
+    public async Task ParkPoints_ResolveToNcAndScZones_AndForecastAndAlertsParse()
     {
         using var httpClient = NwsHttpTransport.CreateHttpClient();
         var provider = new NwsWeatherProvider(new NwsHttpTransport(httpClient, NwsHttpTransport.BuildUserAgent("0.1.0-rc.14-livesmoke"), TimeSpan.FromSeconds(20)));
@@ -34,7 +34,7 @@ public class NwsWeatherProviderLiveSmokeTests(ITestOutputHelper output)
         Assert.Equal(WeatherFetchOutcome.Retrieved, forecast.Outcome);
         Assert.NotEmpty(forecast.Value!.Periods);
 
-        foreach (var point in CarowindsWeatherLocation.Candidate.Points)
+        foreach (var point in CarowindsWeatherLocation.Park.Points)
         {
             var alerts = await provider.GetActiveAlertsAsync(point, WeatherConditionalHeaders.None, CancellationToken.None);
             output.WriteLine($"Alerts {point.Id}: {alerts.Outcome} {alerts.Value?.Count} (ETag {alerts.ETag ?? "none"})");

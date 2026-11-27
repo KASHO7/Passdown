@@ -73,7 +73,7 @@ Notable groups:
   [phase37a-weather-source-architecture-plan.md](phase37a-weather-source-architecture-plan.md) (NWS source research,
   architecture, milestone plan and decision register D1–D8);
   [phase37b-weather-retrieval-and-cache.md](phase37b-weather-retrieval-and-cache.md) (retrieval, parsing, cache and tests —
-  implemented locally, **not activated**; reference points pending verification).
+  implemented locally, **not activated**; reference points verified (D8)).
 - Defect record: [rc9-price-history-legacy-identity-defect.md](rc9-price-history-legacy-identity-defect.md).
 
 ## Research (not product features)

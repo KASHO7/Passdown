@@ -428,3 +428,11 @@ Added after `2bcdd57`. The owner brief "Phase 37 — Finalize Weather Decisions 
 | D6 | **Approved** | Weather-specific manual refresh only in the expanded weather details; no second global Check Online command |
 | D7 | **Approved** | No weather in Calendar month-grid cells; the selected-date panel only |
 | D8 | **Approved in principle; PENDING VERIFICATION** | Two fixed, geographically verified points inside Carowinds, one in North Carolina and one in South Carolina. Their coordinates and NWS alert applicability must be verified before retrieval is enabled. Until then no coordinate counts as accepted. The verification evidence and its status are in the [Phase 37B record](phase37b-weather-retrieval-and-cache.md) |
+
+## Later sign-off: D8 verified (2026-11-27)
+
+Added after `927a1c7`. D8 is **verified** for the unchanged points NC 35.1050, −80.9420 (Mecklenburg parcel PID
+20315208, CAROWINDS LLC) and SC 35.1002, −80.9420 (York County SC parcel 7230000001, CAROWINDS LLC). The evidence is
+county GIS and property records, Census boundaries, the official park map and live NWS checks. Details, sources,
+confidence and limitations are in the [Phase 37B record](phase37b-weather-retrieval-and-cache.md#later-sign-off-d8-verification-2026-11-27).
+Weather remains not activated; Phase 37C (UI) has not started, and D4's mock-up approval is still required.

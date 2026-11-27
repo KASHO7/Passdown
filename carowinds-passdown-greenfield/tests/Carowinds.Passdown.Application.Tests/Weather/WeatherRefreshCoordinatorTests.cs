@@ -18,7 +18,7 @@ public class WeatherRefreshCoordinatorTests
     [Fact]
     public async Task UnverifiedLocation_MakesNoRequest_AndHasNoDueTime()
     {
-        var coordinator = Coordinator(CarowindsWeatherLocation.Candidate);
+        var coordinator = Coordinator(WeatherTestData.PendingLocation);
 
         var report = await coordinator.RefreshDueAsync();
 

@@ -30,7 +30,9 @@ sync, PDF, pricing, Pass Perks or version change. Phase 37C was not started.
 | D6, D7 | Nothing implemented (UI decisions, recorded in spec §6.6) |
 | D8 | Two candidate points in `CarowindsWeatherLocation`, marked `PendingVerification`; the coordinator makes no request until they are verified (§1) |
 
-## 1. Reference points (D8) — PENDING VERIFICATION
+## 1. Reference points (D8) — PENDING VERIFICATION (as of `ad84590`)
+
+> Resolved later on 2026-11-27: see [Later sign-off: D8 verification](#later-sign-off-d8-verification-2026-11-27). This section is kept as the evidence available when `ad84590` was committed.
 
 | Point | Coordinate | U.S. Census geocoder (state / county) | NWS `/points` | NWS `/alerts/active?point=` | Inside OSM park outline |
 |---|---|---|---|---|---|
@@ -199,3 +201,80 @@ implemented but not activated. The documentation index lists this record.
   timer that calls `GetNextDueAtAsync` / `RefreshDueAsync` off the UI thread, presentation and the request-count and
   performance measurements, and must update `WeatherActivationGuardTests` deliberately.
 - About 34 requests per hour while open (§3), slightly above the 37A estimate; within NWS guidance.
+
+## Later sign-off: D8 verification (2026-11-27)
+
+Added after `927a1c7`. Authorization: owner brief "Phase 37B — Resolve D8 Geographic Verification" (2026-11-27). It
+approved Mecklenburg County and York County GIS/property records, cross-checked against the official Carowinds park
+map, as the evidence. **Result: D8 VERIFIED for the unchanged coordinates. No point was moved.** The weather code is
+still not activated (§Scope); verification only lifts the location gate for when Phase 37C wires it in.
+
+### Final reference points
+
+| | NC point | SC point |
+|---|---|---|
+| Coordinate (WGS 84) | **35.1050, −80.9420** | **35.1002, −80.9420** |
+| Jurisdiction (Census) | North Carolina, Mecklenburg County (geocoder) | South Carolina, York County (geocoder) |
+| Distance to the NC–SC line (TIGERweb county boundary) | 189 m | 229 m |
+| County parcel | Mecklenburg PID **20315208**, NC PIN **4419882651**, map 203-15-2-08, 153.46 ac | York tax map ID **7230000001**, 219.73 assessed ac (GIS 221.2) |
+| Owner of record | CAROWINDS LLC | CAROWINDS LLC |
+| Parcel description | Situs 14523 Carowinds Blvd, Charlotte (the official park address); address use Commercial; land use "Rec Area"; deed 29663-448 | Legal description "CAROWINDS ( 219.73AC)"; commercial improved; 50 buildings; complex "GUEST RELATIONS (NORTH GATE RENTALS?)"; year built 1976 |
+| Distance to the parcel edge | 175 m | 230 m |
+| Official park map area | Carousel Park / Thrill Zone: The Grand Carousel, Slingshot, Vortex, Ricochet, Kaleidoscope, Hurler, Fury 325 | Aeronautica: Air Racers, Gyro Force, The Airwalker, Gear Spin, Hover & Dodge, Afterburn, Windstar |
+| Nearest mapped attractions (OSM, supporting only) | Fury 325 station about 60 m; Grand Carousel, Slingshot, Hurler within 150 m | Plants vs. Zombies 3Z Arena about 10 m; Gyro Force, Air Racers, The Airwalker within 60 m; Afterburn station about 100 m |
+| NWS `/points` (live) | GSP 116,59; NCZ071; NCC119; `America/New_York` | GSP 116,59; SCZ009; SCC091; `America/New_York` |
+| NWS `/alerts/active?point=` (live) | 200, 0 active alerts, weak ETag | 200, 0 active alerts, weak ETag |
+
+### Sources (read-only, 2026-11-27)
+
+- Mecklenburg County POLARIS parcel page: `https://polaris3g.mecklenburgcountync.gov/pid/20315208` (owner, situs
+  address, land use, land area, deeds), rendered in the built-in browser.
+- Mecklenburg County GIS parcel layer: `https://meckags.mecklenburgcountync.gov/server/rest/services/Tax/ParcelsViewer/MapServer/0`
+  (point-in-parcel query, outline). Cross-check: the same PID from the county parcel layer published by the City of
+  Charlotte (`https://gis.charlottenc.gov/arcgis/rest/services/CountyData/Parcels/MapServer/0`).
+- York County SC parcel layer: `https://services1.arcgis.com/2AGLxyiJoNiVHKwq/arcgis/rest/services/Parcels/FeatureServer/0`,
+  the ArcGIS Online item `c27c00901daa4f0484c47a3719a8f03b` owned by `yorkcountysc_gisonline`. This is York County
+  SC's published parcel layer behind its open-data hub; its notice names York County Government, South Carolina. The
+  One Map viewer itself was not used.
+- **Rejected source:** `maps.yorkcounty.gov` appeared in search results but is York County, **Virginia** (its sample
+  records are at latitude 37.37). Nothing from it was used.
+- U.S. Census Bureau: geocoder (`geocoding.geo.census.gov`, States and Counties) and TIGERweb
+  `https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/State_County/MapServer/1` (Mecklenburg 37119 / York
+  45091 shared boundary, used for the distances above).
+- Official park map: "Digital Park Map" on `https://www.sixflags.com/carowinds/directions`, which leads to
+  `cc-26-0036-spring-map_web.pdf` (2026 spring map).
+- OpenStreetMap (Overpass `is_in` and nearby named features) only to place the map's attractions on coordinates.
+
+### Confidence and limitations
+
+- **Jurisdiction: high.** Census geocoder, Census county boundaries, county parcel records and NWS zones agree for
+  both points, each at least 189 m from the line. The Wikipedia park coordinate is only 23 m from the line, which
+  explains why NWS and Census disagree about it.
+- **Carowinds land: high.** Both points are inside parcels owned by CAROWINDS LLC, at least 175 m from the parcel
+  edges. The Mecklenburg parcel carries the official park address and "Rec Area" land use; the York parcel's legal
+  description is "CAROWINDS".
+- **Operational park area, not parking or unrelated land: moderate-high.** The official park map shows each point's
+  attraction group inside the park. The map is illustrative and not georeferenced, though, so the coordinates of
+  those attractions come from OpenStreetMap, which is community data. Parcel ownership alone does not define the
+  operational boundary, and the parcels may also contain back-of-house or parking areas. Nothing found places either
+  point in a parking area.
+- OpenStreetMap also tags a construction area named "Rip Roarin' Falls - NEW IN 2027" around the NC point. This is
+  unverified, but it is inside the park either way.
+- **Live requests:** about 45 read-only requests to public GIS, Census, OpenStreetMap and park web pages,
+  including one discarded set from the Virginia county. Then the opt-in NWS live test once (5 GETs): passed, with
+  `Total tests: 1, Passed: 1`, and the zones in the table. Responses were kept only in the session scratch folder.
+
+### Code and test changes
+
+- `CarowindsWeatherLocation.Candidate` (pending) became `CarowindsWeatherLocation.Park`, marked `Verified`, with
+  the evidence summarized in its documentation comment. Points are unchanged.
+- `WeatherLocationTests` asserts the verified status for exactly these coordinates, plus a new test that a pending
+  location never permits retrieval (7 tests, previously 6). The coordinator's zero-request test uses a test-only
+  pending location. The live test runs against `Park`.
+- `WeatherActivationGuardTests` is unchanged and still passes: nothing in Desktop composes or calls weather code.
+
+| Check | Result |
+|---|---|
+| Deterministic partitions | PASS — 6,097 / 6,097, 0 skipped (6,096 + 1 new): Domain 488, Application 1,446, Infrastructure 1,419, Documents 484, Ui mixed 2,014, run-alone 30 + 144 + 2 + 7 + 4 + 59 |
+| Release build | PASS — `dotnet build CarowindsPassdown.slnx -c Release --no-incremental`: 0 warnings, 0 errors |
+| Repository guards | PASS — 31 / 31, and again with these documentation edits in place |

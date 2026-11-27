@@ -38,11 +38,14 @@ public sealed record WeatherLocation(IReadOnlyList<WeatherReferencePoint> Points
 }
 
 /// <summary>
-/// Carowinds' candidate weather reference points (Phase 37B). Both are inside the OpenStreetMap park outline,
-/// the U.S. Census Bureau geocoder places them in Mecklenburg County, NC and York County, SC, and NWS
-/// <c>/points</c> returns the matching NC and SC zones. They stay <see cref="WeatherReferenceVerification.PendingVerification"/>
-/// because no authoritative park boundary confirms they are inside the property
-/// (docs/phase37b-weather-retrieval-and-cache.md). Do not change the status without the owner's acceptance.
+/// Carowinds' two weather reference points, one on each side of the state line (spec §6.6, decision D8),
+/// verified 2026-11-27 (docs/phase37b-weather-retrieval-and-cache.md, "D8 verification"):
+/// NC 35.1050, −80.9420 is inside Mecklenburg County parcel PID 20315208 (CAROWINDS LLC, 14523 Carowinds Blvd,
+/// land use "Rec Area"), 175 m from the parcel edge and 189 m from the Census state line, in the official park
+/// map's Carousel Park / Thrill Zone area; SC 35.1002, −80.9420 is inside York County parcel 7230000001 (CAROWINDS
+/// LLC, "CAROWINDS (219.73AC)"), 230 m from the parcel edge and 229 m from the state line, in the official park
+/// map's Aeronautica area. NWS <c>/points</c> returns NCZ071/NCC119 and SCZ009/SCC091 respectively. Do not move a
+/// point without repeating that verification.
 /// </summary>
 public static class CarowindsWeatherLocation
 {
@@ -50,8 +53,8 @@ public static class CarowindsWeatherLocation
 
     public static WeatherReferencePoint SouthCarolina { get; } = new("carowinds-sc", "Carowinds (South Carolina side)", 35.1002m, -80.9420m, "SC");
 
-    public static WeatherLocation Candidate { get; } = new(
+    public static WeatherLocation Park { get; } = new(
         [NorthCarolina, SouthCarolina],
-        WeatherReferenceVerification.PendingVerification,
-        "Candidate points; in-park position not yet confirmed against an authoritative park boundary (Phase 37 decision D8).");
+        WeatherReferenceVerification.Verified,
+        "Verified 2026-11-27 against Mecklenburg and York County parcel records, Census boundaries, the official park map and NWS (Phase 37 decision D8).");
 }
