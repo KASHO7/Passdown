@@ -37,6 +37,8 @@ public class SemanticVersionTests
 
     [Theory]
     [InlineData("0.1.0-rc.9", "0.1.0-rc.10")]
+    [InlineData("0.1.0-rc.13", "0.1.0-rc.14")] // RC.14 release preparation: the published RC.13 sees RC.14 as newer
+    [InlineData("0.1.0-rc.14", "0.1.0-rc.14-LOCALTEST.phase35g")] // a local test identity sorts above its release, so it is never offered over
     [InlineData("0.1.0-rc.7", "0.1.0-rc.8")]
     [InlineData("0.1.0-rc.99", "0.1.0")]
     [InlineData("0.1.0", "0.1.1-rc.1")]
