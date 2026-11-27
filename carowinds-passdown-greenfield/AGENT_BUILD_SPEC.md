@@ -243,7 +243,7 @@ Do not treat a successfully retrieved response as valid for the requested date w
 
 ### 6.6 Weather information
 
-Status: approved, not yet released (§4.4). The Dashboard summary is implemented locally (Phase 37C, `docs/phase37c-dashboard-weather-integration.md`) and awaits Windows validation and release approval; the Calendar forecast details are not implemented. Authority: the product owner's approved specification amendment of 2026-11-27, recorded in `docs/phase37a-weather-source-architecture-plan.md`, which also holds the source research and architecture plan.
+Status: approved, not yet released (§4.4). The Dashboard summary is implemented locally (Phase 37C, `docs/phase37c-dashboard-weather-integration.md`) and awaits Windows validation and release approval; the Passdown PDF Weather Outlook is implemented locally (Phase 37F, `docs/phase37f-compact-pdf-weather-outlook.md`) and awaits Windows validation and release approval; the Calendar forecast details are not implemented. Authority: the product owner's approved specification amendment of 2026-11-27, recorded in `docs/phase37a-weather-source-architecture-plan.md`, which also holds the source research and architecture plan.
 
 **Source.** Carowinds Operations may retrieve and display publicly available weather forecasts, observations, and official weather alerts from the U.S. National Weather Service (NWS/NOAA). NWS is an explicitly approved source for weather information and the primary provider for the initial implementation.
 
@@ -262,6 +262,16 @@ A station observation is not a measurement taken at the park and must be identif
 
 **Initial scope.** A compact Dashboard summary (§8) and forecast details for the Calendar's selected date (§9). Date selection and navigation remain local operations (§7.1).
 
+**Passdown PDF Weather Outlook.** Approved by the product owner on 2026-11-27 (brief "Phase 37F — Compact, Park-Hours-Aware PDF Weather Outlook", which also withdrew the PDF alert example of its single-day mock-up). Newly generated Associate Passdown PDFs (§15) may include a compact, informational forecast summary:
+
+- It describes the selected Passdown date's effective park operating hours (official hours, or the manual or private-buyout hours that apply), in Eastern time, including hours that end after midnight. When the PDF is created after the park has opened, it covers the rest of the hours and says which period it covers.
+- It may show: a small "Weather" label, one vector icon (never an emoji), the lowest and highest hourly forecast temperature over those hours, the dominant forecast condition, the highest hourly precipitation probability (labelled "up to", never as the chance of rain for the whole day), the approximate time precipitation becomes more likely only when the hourly forecast shows a clear rise ("possible after"), and a small NWS attribution with the forecast's issue time (or its retrieval time, labelled as such, when NWS gives none). A value the forecast does not give for every covered hour is left out; nothing is estimated or invented.
+- It never shows NWS watches, warnings, advisories, alert badges, banners or expiry times, station observations, radar or graphs. Active alerts remain the Dashboard's responsibility.
+- It is omitted, without reserving space, when the date has no effective park hours (closed or not checked; no other period is substituted), when no hourly forecast is cached, when the forecast was retrieved more than three hours earlier, when the hours have ended, or when the hourly forecast does not cover every remaining operating hour (beyond the NWS horizon or a gap). Weather never prevents a PDF from being created.
+- It fits the existing header of each template (Classic, Modern, Compact) without adding a row, a page or header height; when even its most compact form does not fit, it is omitted. It reads in black and white.
+- Each generation uses one immutable weather summary captured with the rest of the document for that document's own date; creating, previewing, printing or saving a PDF never requests weather, and a weather refresh can never change a document already being generated.
+- Weather is not added to drafts, Personal Sync, finalized snapshots or the database. Finalized PDFs keep their stored bytes; scheduled finalization, which runs after the operating day, produces no forecast for past hours.
+
 Approved presentation decisions (owner decisions D4, D6 and D7, 2026-11-27):
 
 - The Dashboard summary is a compact card at the top of the existing right-hand column, above Daily Ticket Pricing. Its visual design follows the owner-approved mock-up (D4, approved 2026-11-27; identified in `docs/phase37a-weather-source-architecture-plan.md`), which is a visual reference only: its sample values never enter the application.
@@ -271,7 +281,7 @@ Approved presentation decisions (owner decisions D4, D6 and D7, 2026-11-27):
 
 **Refresh.** Weather is refreshed only while the application is open, following provider caching guidance, minimum request intervals, error handling, and backoff. Official alerts are checked with a target of every five minutes (owner decision D5).
 
-**Exclusions.** Weather data stays outside Personal Sync, Passdown drafts, finalized History, and PDF output unless a future feature explicitly authorizes those changes. Alternative providers, forecast-accuracy comparisons, historical weather, and operational automation are outside the approved scope.
+**Exclusions.** Weather data stays outside Personal Sync, Passdown drafts and finalized History snapshots. PDF output carries only the Passdown Weather Outlook above. Other uses require a future explicitly authorized feature. Alternative providers, forecast-accuracy comparisons, historical weather, and operational automation are outside the approved scope.
 
 **Validation.** Each implementation milestone requires its own validation and release approval (§22.13).
 
@@ -914,6 +924,7 @@ Include applicable approved operational information, such as:
 - Included operational notes.
 - Daily Feature.
 - Approved verification and supporting information.
+- The compact Weather Outlook for the operating date's park hours, when a valid forecast exists (§6.6; Phase 37F, not yet released).
 
 Empty or excluded categories must not introduce unnecessary document clutter.
 
@@ -1463,6 +1474,7 @@ Distinguish development-host measurements from actual Windows performance result
 - Printing and saving work through approved workflows.
 - Finalized PDFs remain unchanged.
 - Existing approved templates are preserved.
+- Where a Weather Outlook prints (§6.6), it adds no page, header height or overlap, shows no alerts, and is omitted when no valid forecast exists.
 
 ### 22.9 Personal Sync
 
@@ -1504,7 +1516,7 @@ Do not represent one status as proof of another.
 
 Deferred features are not active acceptance requirements.
 
-### 22.13 Weather information (approved, not yet implemented)
+### 22.13 Weather information (approved, not yet released)
 
 These criteria apply once weather information (§6.6) is implemented:
 
@@ -1513,7 +1525,7 @@ These criteria apply once weather information (§6.6) is implemented:
 - Alerts cover both the North Carolina and South Carolina portions of the park, and expired alerts are never shown as active.
 - Date selection and navigation cause no weather retrieval; startup, Passdown editing, autosave, PDF preview, printing, and navigation never wait for weather.
 - A provider outage or failed refresh keeps last-known-good weather with an honest status and leaves the rest of the application usable.
-- No weather data appears in Personal Sync, Passdown drafts, finalized History, or PDF output.
+- No weather data appears in Personal Sync, Passdown drafts, or finalized History snapshots; PDF output carries only the compact Passdown Weather Outlook of §6.6, never an alert.
 - No weather information drives an operational decision automatically.
 
 ---
