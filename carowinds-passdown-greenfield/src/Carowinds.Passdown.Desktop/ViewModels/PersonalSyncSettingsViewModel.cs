@@ -1,4 +1,3 @@
-using Avalonia.Threading;
 using Carowinds.Passdown.Application.Diagnostics;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Desktop.Presentation;
@@ -138,7 +137,8 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         AppearanceSettingsViewModel? appearance = null,
         ApplicationUpdatesViewModel? updates = null,
         PassdownPreferencesSettingsViewModel? passdownPreferences = null,
-        CalendarDisplaySettingsViewModel? calendarDisplay = null)
+        CalendarDisplaySettingsViewModel? calendarDisplay = null,
+        IUiDispatcher? uiDispatcher = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(folderPicker);
@@ -164,7 +164,9 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         // A periodic/retry-triggered pass raises this from a background thread pool thread (there is
         // no user-initiated UI-thread call on that path to preserve), so the property update is
         // marshalled onto the UI thread rather than assumed to already be there.
-        coordinator.StatusChanged += (_, snapshot) => Dispatcher.UIThread.Post(() => AutomationStatus = snapshot);
+        // Phase 36C: through the injected seam (AvaloniaUiDispatcher in the app, the same Dispatcher.UIThread.Post).
+        var dispatcher = uiDispatcher ?? new AvaloniaUiDispatcher();
+        coordinator.StatusChanged += (_, snapshot) => dispatcher.Post(() => AutomationStatus = snapshot);
 
         _pendingLoad = LoadAsync();
     }

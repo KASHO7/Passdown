@@ -923,7 +923,7 @@ public partial class AssociateViewModel : ViewModelBase
         if (syncLocalChangeNotifier is not null)
         {
             syncLocalChangeNotifier.LocalDataChanged += (_, changed) =>
-                Dispatcher.UIThread.Post(() => _pendingSyncReload = HandleSyncLocalChangesAsync(changed));
+                _uiDispatcher.Post(() => _pendingSyncReload = HandleSyncLocalChangesAsync(changed)); // Phase 36C: the injected seam (AvaloniaUiDispatcher in the app).
         }
 
         // Phase 19A: newer official data (an automatic check, or a refresh started elsewhere) reloads the
