@@ -243,7 +243,7 @@ Do not treat a successfully retrieved response as valid for the requested date w
 
 ### 6.6 Weather information
 
-Status: approved, not yet implemented (§4.4). Authority: the product owner's approved specification amendment of 2026-11-27, recorded in `docs/phase37a-weather-source-architecture-plan.md`, which also holds the source research and architecture plan.
+Status: approved, not yet released (§4.4). The Dashboard summary is implemented locally (Phase 37C, `docs/phase37c-dashboard-weather-integration.md`) and awaits Windows validation and release approval; the Calendar forecast details are not implemented. Authority: the product owner's approved specification amendment of 2026-11-27, recorded in `docs/phase37a-weather-source-architecture-plan.md`, which also holds the source research and architecture plan.
 
 **Source.** Carowinds Operations may retrieve and display publicly available weather forecasts, observations, and official weather alerts from the U.S. National Weather Service (NWS/NOAA). NWS is an explicitly approved source for weather information and the primary provider for the initial implementation.
 
@@ -265,7 +265,8 @@ A station observation is not a measurement taken at the park and must be identif
 Approved presentation decisions (owner decisions D4, D6 and D7, 2026-11-27):
 
 - The Dashboard summary is a compact card at the top of the existing right-hand column, above Daily Ticket Pricing. Its visual design follows the owner-approved mock-up (D4, approved 2026-11-27; identified in `docs/phase37a-weather-source-architecture-plan.md`), which is a visual reference only: its sample values never enter the application.
-- Weather-specific manual refresh is offered only in the expanded weather details. No additional global Check Online command is added, and Check Online keeps its official-data meaning.
+- Weather-specific manual refresh is offered only in the expanded weather details. No additional global Check Online command is added, and Check Online keeps its official-data meaning. A manual refresh still respects each request's minimum interval and failure backoff, never runs alongside another weather refresh, and reports a failure as a failure.
+- The Dashboard's rain chance is the highest hourly NWS precipitation probability for today's park operating hours (from now on, once they have started), or for the rest of the day when the park is closed, has no hours or has closed; the card states that period (approved mock-up, D4).
 - Calendar month-grid day cells show no weather; weather appears only in the selected-date panel.
 
 **Refresh.** Weather is refreshed only while the application is open, following provider caching guidance, minimum request intervals, error handling, and backoff. Official alerts are checked with a target of every five minutes (owner decision D5).
@@ -416,7 +417,7 @@ Any further Dashboard redesign must follow an explicitly approved visual referen
 
 Preserve the existing Dashboard functionality until a replacement is authorized.
 
-An approved compact weather summary (§6.6, not yet implemented) may be added. It must keep the existing Dashboard content intact, must not push essential operations content out of view unnecessarily, and follows an approved visual reference as above.
+An approved compact weather summary (§6.6; implemented locally in Phase 37C, not yet released) may be added. It must keep the existing Dashboard content intact, must not push essential operations content out of view unnecessarily, and follows an approved visual reference as above.
 
 ---
 
