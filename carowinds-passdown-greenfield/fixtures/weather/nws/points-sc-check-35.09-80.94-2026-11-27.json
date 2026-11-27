@@ -1,0 +1,112 @@
+{
+  "@context": [
+    "https://geojson.org/geojson-ld/geojson-context.jsonld",
+    {
+      "@version": "1.1",
+      "wx": "https://api.weather.gov/ontology#",
+      "s": "https://schema.org/",
+      "geo": "http://www.opengis.net/ont/geosparql#",
+      "unit": "http://codes.wmo.int/common/unit/",
+      "@vocab": "https://api.weather.gov/ontology#",
+      "geometry": {
+        "@id": "s:GeoCoordinates",
+        "@type": "geo:wktLiteral"
+      },
+      "city": "s:addressLocality",
+      "state": "s:addressRegion",
+      "distance": {
+        "@id": "s:Distance",
+        "@type": "s:QuantitativeValue"
+      },
+      "bearing": {
+        "@type": "s:QuantitativeValue"
+      },
+      "value": {
+        "@id": "s:value"
+      },
+      "unitCode": {
+        "@id": "s:unitCode",
+        "@type": "@id"
+      },
+      "forecastOffice": {
+        "@type": "@id"
+      },
+      "forecastGridData": {
+        "@type": "@id"
+      },
+      "publicZone": {
+        "@type": "@id"
+      },
+      "county": {
+        "@type": "@id"
+      }
+    }
+  ],
+  "id": "https://api.weather.gov/points/35.09,-80.94",
+  "type": "Feature",
+  "geometry": {
+    "type": "Point",
+    "coordinates": [
+      -80.94,
+      35.09
+    ]
+  },
+  "properties": {
+    "@id": "https://api.weather.gov/points/35.09,-80.94",
+    "@type": "wx:Point",
+    "cwa": "GSP",
+    "type": "land",
+    "forecastOffice": "https://api.weather.gov/offices/GSP",
+    "gridId": "GSP",
+    "gridX": 116,
+    "gridY": 59,
+    "forecast": "https://api.weather.gov/gridpoints/GSP/116,59/forecast",
+    "forecastHourly": "https://api.weather.gov/gridpoints/GSP/116,59/forecast/hourly",
+    "forecastGridData": "https://api.weather.gov/gridpoints/GSP/116,59",
+    "observationStations": "https://api.weather.gov/gridpoints/GSP/116,59/stations",
+    "relativeLocation": {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.8309902,
+          35.2090447
+        ]
+      },
+      "properties": {
+        "city": "Charlotte",
+        "state": "NC",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 1236.4313469698
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 216
+        }
+      }
+    },
+    "forecastZone": "https://api.weather.gov/zones/forecast/SCZ009",
+    "county": "https://api.weather.gov/zones/county/SCC091",
+    "fireWeatherZone": "https://api.weather.gov/zones/fire/SCZ009",
+    "timeZone": "America/New_York",
+    "radarStation": "KGSP",
+    "astronomicalData": {
+      "sunrise": "2026-11-27T07:10:06-05:00",
+      "sunset": "2026-11-27T17:12:46-05:00",
+      "transit": "2026-11-27T12:11:26-05:00",
+      "civilTwilightBegin": "2026-11-27T06:42:37-05:00",
+      "civilTwilightEnd": "2026-11-27T17:40:15-05:00",
+      "nauticalTwilightBegin": "2026-11-27T06:11:28-05:00",
+      "nauticalTwilightEnd": "2026-11-27T18:11:24-05:00",
+      "astronomicalTwilightBegin": "2026-11-27T05:41:00-05:00",
+      "astronomicalTwilightEnd": "2026-11-27T18:41:52-05:00"
+    },
+    "nwr": {
+      "transmitter": "WXL70",
+      "sameCode": "045091",
+      "areaBroadcast": "https://api.weather.gov/radio/WXL70/broadcast",
+      "pointBroadcast": "https://api.weather.gov/points/35.09,-80.94/radio"
+    }
+  }
+}
