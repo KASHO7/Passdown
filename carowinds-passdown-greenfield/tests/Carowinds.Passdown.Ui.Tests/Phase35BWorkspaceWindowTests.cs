@@ -27,9 +27,15 @@ public partial class Phase33PreviewWindowTests
     private sealed record Workspace(Window Window, AssociateViewModel ViewModel, FakeAssociatePassdownService Service, ContentEchoPdfExportService Export,
         FakePdfPrintService Printer, FakePdfSaveFilePicker SavePicker, ManualDebounceScheduler PreviewDebounce, ManualDebounceScheduler Autosave);
 
-    private static async Task<Workspace> RealizeWorkspaceAsync(double width, double height, ThemeVariant? theme = null, PdfPreviewLayoutPreferences? preferences = null)
+    private static async Task<Workspace> RealizeWorkspaceAsync(double width, double height, ThemeVariant? theme = null, PdfPreviewLayoutPreferences? preferences = null, FakeErtConfigurationService? ert = null)
     {
         var service = new FakeAssociatePassdownService();
+        if (ert is not null)
+        {
+            // Phase 36C: resolve the workspace's Early Ride Time from the fake ERT store, as production's resolver does.
+            service.WorkspaceFactory = date => FakeAssociatePassdownService.DefaultWorkspace(date) with { EarlyRideTime = ert.Resolve(date) };
+        }
+
         var export = new ContentEchoPdfExportService();
         var printer = new FakePdfPrintService();
         var savePicker = new FakePdfSaveFilePicker();
@@ -47,7 +53,8 @@ public partial class Phase33PreviewWindowTests
             pdfPreviewLayoutStore: new InMemoryPdfPreviewLayoutPreferenceStore(preferences),
             pdfPageImageFactory: new FakePdfPageImageFactory(),
             previewWorkScheduler: new InlinePreviewWorkScheduler(),
-            previewDelay: debounce.Delay);
+            previewDelay: debounce.Delay,
+            ertConfigurationService: ert);
         await viewModel.PendingLoad;
         await viewModel.Preview.PendingPreferenceLoad;
 
