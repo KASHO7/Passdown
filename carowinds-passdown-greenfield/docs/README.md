@@ -65,6 +65,7 @@ Notable groups:
   `phase25`, `phase26`, `phase31*`, `phase32`, `phase33`.
 - Performance and cleanup: `phase34a*`, `phase34b1*`, `phase34b2*`, `phase34c*`.
 - UI modernization: `phase35*` through [phase35g-final-uiux-polish-readiness.md](phase35g-final-uiux-polish-readiness.md).
+- Architecture and technical-debt audit (post-RC.14): [phase36a-current-architecture-technical-debt-audit.md](phase36a-current-architecture-technical-debt-audit.md).
 - Defect record: [rc9-price-history-legacy-identity-defect.md](rc9-price-history-legacy-identity-defect.md).
 
 ## Research (not product features)
