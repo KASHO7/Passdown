@@ -247,7 +247,7 @@ Status: approved, not yet implemented (§4.4). Authority: the product owner's ap
 
 **Source.** Carowinds Operations may retrieve and display publicly available weather forecasts, observations, and official weather alerts from the U.S. National Weather Service (NWS/NOAA). NWS is an explicitly approved source for weather information and the primary provider for the initial implementation.
 
-**Location.** Weather information is associated with Carowinds' fixed geographic location, with appropriate coverage of both the North Carolina and South Carolina portions of the property. Official alerts must reflect NWS geographic applicability for both portions. Never use the computer's location, GPS, or a location permission.
+**Location.** Weather information is associated with Carowinds' fixed geographic location, with appropriate coverage of both the North Carolina and South Carolina portions of the property. Official alerts must reflect NWS geographic applicability for both portions. Never use the computer's location, GPS, or a location permission. Coverage uses two fixed reference points inside the property, one in North Carolina and one in South Carolina; their coordinates and NWS alert applicability must be verified before weather retrieval is enabled, and an unverified coordinate must never be treated as accepted (owner decision D8, 2026-11-27).
 
 **Presentation and integrity.** Weather data must be:
 
@@ -261,6 +261,14 @@ A station observation is not a measurement taken at the park and must be identif
 **Informational only.** Weather information must not automatically determine park closures, ride operations, lightning clearance, or other operational safety decisions. It does not replace official warning channels or established park procedures, and the application must not present itself as an emergency-warning or continuous-monitoring system.
 
 **Initial scope.** A compact Dashboard summary (§8) and forecast details for the Calendar's selected date (§9). Date selection and navigation remain local operations (§7.1).
+
+Approved presentation decisions (owner decisions D4, D6 and D7, 2026-11-27):
+
+- The Dashboard summary is a compact card in the existing right-hand column. Its visual design requires an owner-approved mock-up before it is implemented.
+- Weather-specific manual refresh is offered only in the expanded weather details. No additional global Check Online command is added, and Check Online keeps its official-data meaning.
+- Calendar month-grid day cells show no weather; weather appears only in the selected-date panel.
+
+**Refresh.** Weather is refreshed only while the application is open, following provider caching guidance, minimum request intervals, error handling, and backoff. Official alerts are checked with a target of every five minutes (owner decision D5).
 
 **Exclusions.** Weather data stays outside Personal Sync, Passdown drafts, finalized History, and PDF output unless a future feature explicitly authorizes those changes. Alternative providers, forecast-accuracy comparisons, historical weather, and operational automation are outside the approved scope.
 

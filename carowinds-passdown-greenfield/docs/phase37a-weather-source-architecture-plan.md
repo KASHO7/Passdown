@@ -413,3 +413,18 @@ specification states no phase number, per its §25.4; this record is the cited a
 Still open: D3 (User-Agent contact), D4 (Dashboard mock-up), D5 (alert interval), D6 (refresh placement), D7 (day
 cells) and D8 (in-park reference points). D4 and D8 must be settled before Weather C; D3 and D8 before Weather B
 code goes live. No implementation milestone has started.
+
+## Later sign-off: decisions D3–D8 (2026-11-27)
+
+Added after `2bcdd57`. The owner brief "Phase 37 — Finalize Weather Decisions and Begin 37B" decided:
+
+| ID | Status | Decision |
+|---|---|---|
+| D1 | Approved (earlier sign-off) | NWS approved for weather information only |
+| D2 | Confirmed (earlier sign-off) | Phase 37 |
+| D3 | **Approved** | A versioned `CarowindsOperations` User-Agent containing the public GitHub repository URL; no private contact information |
+| D4 | **Approved as a plan; UI not approved** | A compact Dashboard weather card in the existing right-hand column. A reviewable mock-up needs owner approval before any Phase 37C UI is implemented |
+| D5 | **Approved** | Alert checks target every five minutes while the app is open, within NWS cache headers, minimum request intervals, error handling and backoff |
+| D6 | **Approved** | Weather-specific manual refresh only in the expanded weather details; no second global Check Online command |
+| D7 | **Approved** | No weather in Calendar month-grid cells; the selected-date panel only |
+| D8 | **Approved in principle; PENDING VERIFICATION** | Two fixed, geographically verified points inside Carowinds, one in North Carolina and one in South Carolina. Their coordinates and NWS alert applicability must be verified before retrieval is enabled. Until then no coordinate counts as accepted. The verification evidence and its status are in the [Phase 37B record](phase37b-weather-retrieval-and-cache.md) |
