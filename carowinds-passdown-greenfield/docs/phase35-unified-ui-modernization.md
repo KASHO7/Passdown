@@ -1,6 +1,6 @@
 # Phase 35 — Unified Desktop UI/UX Modernization
 
-Status: **35A (shared shell and design tokens) approved by the product owner after Windows testing. 35B (Passdown workspace) implemented locally — awaiting Windows review; record: `docs/phase35b-passdown-workspace-redesign.md`. 35B and 35C (Passdown workspace; Products & Pricing and the anchored price popover) Windows-tested and confirmed by the product owner. 35D (Shows, Passdown Notes, navy title bar, dropdown chevron alignment) Windows-confirmed; its compact date-selector follow-up is awaiting Windows review; record: `docs/phase35d-shows-notes-shared-polish.md`. 35E Operations Calendar implemented locally — awaiting Windows review; 35E Dashboard not started (approved reference not supplied), so 35E is incomplete; record: `docs/phase35e-dashboard-calendar-redesign.md`. 35F (Operational Notes, History, Settings) implemented locally — awaiting Windows review; record: `docs/phase35f-operational-notes-history-settings.md`. 35G not started.**
+Status: **35A (shared shell and design tokens) approved by the product owner after Windows testing. 35B (Passdown workspace) implemented locally — awaiting Windows review; record: `docs/phase35b-passdown-workspace-redesign.md`. 35B and 35C (Passdown workspace; Products & Pricing and the anchored price popover) Windows-tested and confirmed by the product owner. 35D (Shows, Passdown Notes, navy title bar, dropdown chevron alignment) Windows-confirmed; its compact date-selector follow-up is awaiting Windows review; record: `docs/phase35d-shows-notes-shared-polish.md`. 35E Operations Calendar and (as a separate follow-up, `2ec6261`) the Dashboard implemented locally — both awaiting Windows review, so 35E is not yet complete; record: `docs/phase35e-dashboard-calendar-redesign.md`. 35F (Operational Notes, History, Settings) implemented locally — awaiting Windows review; record: `docs/phase35f-operational-notes-history-settings.md`. 35G not started.**
 
 Design input: `carowinds-next-phase-uiux-handoff.md` (2026-11-22, outside the repository; read in full).
 This is an incremental Avalonia modernization of the existing application, not a rewrite. The HTML
@@ -60,7 +60,7 @@ Historical phases, release records and their numbering are untouched.
 | `carowinds_settings_original_icon_prototype.html` + PNG | **missing** |
 | `carowinds_settings_motion_prototype.html` + 2 PNGs | **missing** |
 | `carowinds_settings_refined_prototype.html` + 3 PNGs | **missing** |
-| Approved Dashboard / Passdown Overview references | **missing** (handoff: only in the earlier conversation's screenshots) |
+| Approved Dashboard / Passdown Overview references | Dashboard: `~/Downloads/carowinds_dashboard_phase35_reference.html` + PNG (recovered 2026-11-26, used in 35E-3); Passdown Overview: used in 35B |
 | `carowinds_operations_prototype.html` (Downloads) | present but **not approved** — the handoff says not to treat it as final. Not used |
 
 Searched: the Passdown tree, `~/Downloads`, `~/Desktop`, `~/Documents` (depth 6) and Spotlight.
@@ -199,7 +199,10 @@ Each has its own implementation and review gate and needs its approved reference
   **Calendar implemented locally** (`docs/phase35e-dashboard-calendar-redesign.md`): toolbar and fixed month heading,
   flush month card, draft/finalized-only cell line, per-kind marker colours, in-page Show Perks (shared preference),
   labelled selected-date panel with pinned actions; local test build `RC14-Phase35E-LOCALTEST`, Windows validation not
-  executed. **Dashboard not started** — the approved Dashboard reference is still missing from the design bundle.
+  executed. **Dashboard implemented locally as a follow-up** (`2ec6261`) from the recovered approved reference
+  (`carowinds_dashboard_phase35_reference.html` + PNG): gate-operations card, passdown, shows, today's dated pricing,
+  operational notes, cached Pass Perks and Official Data; local test build `RC14-Phase35E-DASHBOARD-LOCALTEST`
+  (SHA-256 `0702c01f…dbd2ee`), Windows validation not executed.
 - **35F Operational Notes, History, Settings** — list/detail and filters; immutable History with stored-PDF
   Open / Save Copy; grouped Settings sections.
 - **35G Consistency and readiness** — cross-screen accessibility, DPI, dark mode and motion-off audit, Windows
