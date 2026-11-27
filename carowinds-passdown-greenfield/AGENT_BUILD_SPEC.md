@@ -264,7 +264,7 @@ A station observation is not a measurement taken at the park and must be identif
 
 Approved presentation decisions (owner decisions D4, D6 and D7, 2026-11-27):
 
-- The Dashboard summary is a compact card in the existing right-hand column. Its visual design requires an owner-approved mock-up before it is implemented.
+- The Dashboard summary is a compact card at the top of the existing right-hand column, above Daily Ticket Pricing. Its visual design follows the owner-approved mock-up (D4, approved 2026-11-27; identified in `docs/phase37a-weather-source-architecture-plan.md`), which is a visual reference only: its sample values never enter the application.
 - Weather-specific manual refresh is offered only in the expanded weather details. No additional global Check Online command is added, and Check Online keeps its official-data meaning.
 - Calendar month-grid day cells show no weather; weather appears only in the selected-date panel.
 

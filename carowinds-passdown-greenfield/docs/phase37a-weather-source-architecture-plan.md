@@ -436,3 +436,41 @@ Added after `927a1c7`. D8 is **verified** for the unchanged points NC 35.1050, �
 county GIS and property records, Census boundaries, the official park map and live NWS checks. Details, sources,
 confidence and limitations are in the [Phase 37B record](phase37b-weather-retrieval-and-cache.md#later-sign-off-d8-verification-2026-11-27).
 Weather remains not activated; Phase 37C (UI) has not started, and D4's mock-up approval is still required.
+
+## Later sign-off: D4 mock-up approved (2026-11-27)
+
+Added after `ff1f94f`. Authorization: owner brief "Phase 37C — Dashboard Weather Card Design Review" (2026-11-27),
+answered "Approve mock-up". **D4 is approved: the mock-up is the visual reference for the Phase 37C Dashboard card.**
+Approving the mock-up does not start Phase 37C; implementation needs its own go-ahead.
+
+| Approved reference | Identity |
+|---|---|
+| `artifacts/design-review/Phase37C-WEATHER-MOCKUP/phase37c-weather-card-mockup.html` (git-ignored, local) | 35,271 bytes, SHA-256 `0d212fecf80b64d1724a3805c0aab3e088e7d8526813c7301ceec29bd28b55bc` |
+| Same folder, `README.md` (design notes, spacing measurements) | SHA-256 `7081a816ad7284e4e55ae7fea6619a8205deeb68b5d32c3118414aa880835e77` |
+| Same folder, `renders/` (13 PNGs: Light/Dark normal, alerts collapsed and expanded, stale, unavailable, loading, evening) | SHA-256 of the sorted per-file hash list `02e342a89ea5eab30b22c29a31e096724c1573e3e805ea17d35566aff0c566f8` |
+
+The reference uses invented sample data. As with earlier approved references, it is a visual reference only; none of
+its values may enter the application. Its HTML renders are not Avalonia or Windows evidence.
+
+Approved as shown, which settles the open questions the mock-up raised:
+
+- **Placement:** the first card in the Dashboard's right-hand column, above Daily Ticket Pricing. In the stacked
+  (narrow) layout it follows Shows, before Pricing. This supersedes §11's "stacks after pricing". Pricing, Operational
+  Notes and Pass Perks move down by about 250 px (about 310 px with alerts) at 1280×860; nothing in the left column
+  or the gate card moves.
+- **Card rule:** the existing teal card rule.
+- **Collapsed content:** title "Weather" with "National Weather Service"; an alert strip only when an alert is active
+  for either verified point (icon and words, most severe event first); "Observed · Charlotte airport" with
+  temperature, condition, wind and "KCLT, 12 km from the park · time"; NWS forecast for today with high, low and the
+  highest hourly rain chance labelled with its exact period (today's park hours, or the rest of them in the evening);
+  a "Weather details" disclosure and the alert check time.
+- **Expanded details:** every active alert (severity, end time, NC/SC applicability, issuing office, weather.gov
+  link), short forecast, KCLT humidity and gusts, the airport-observation note, **Refresh Weather** with last update
+  (D6), and the §14 informational-only text.
+- **States:** stale values show their age and "May be out of date", with alerts reading "Alert status unknown",
+  never "No active alerts"; unavailable shows no values; loading shows "Alert status not yet checked"; after today's
+  high leaves the forecast, "Today's high not in current forecast" with no substitute.
+- No radar, chart, condition icons or animation beyond the shared progress bar.
+
+Not covered by the approval, to be checked in 37C: the medium (680–1000 px) layout, real Avalonia fonts and wrapping,
+and Windows DPI and accessibility review.
