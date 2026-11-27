@@ -102,6 +102,8 @@ public partial class AssociateViewModel : ViewModelBase
     private Task _pendingTemplatePreferenceLoad = Task.CompletedTask;
     private Task _pendingTemplatePreferenceSave = Task.CompletedTask;
     private bool _isLoadingTemplatePreference;
+    private readonly IPassdownWeatherOutlookPreferenceStore _weatherOutlookPreferenceStore;
+    private bool _isLoadingWeatherOutlookPreference;
     private bool _isRegroupingCountText;
     private CancellationTokenSource? _debounceCts;
 
@@ -864,7 +866,8 @@ public partial class AssociateViewModel : ViewModelBase
         IPreviewWorkScheduler? previewWorkScheduler = null,
         TimeSpan? previewDebounce = null,
         Func<TimeSpan, CancellationToken, Task>? previewDelay = null,
-        IWeatherMonitor? weatherMonitor = null)
+        IWeatherMonitor? weatherMonitor = null,
+        IPassdownWeatherOutlookPreferenceStore? weatherOutlookPreferenceStore = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -877,6 +880,7 @@ public partial class AssociateViewModel : ViewModelBase
         _pdfExportService = pdfExportService ?? new AssociatePassdownPdfExportService(new AssociatePassdownPdfGenerator());
         _pdfSavePicker = pdfSavePicker ?? new UnavailablePdfSaveFilePicker();
         _weatherMonitor = weatherMonitor;
+        _weatherOutlookPreferenceStore = weatherOutlookPreferenceStore ?? new InMemoryPassdownWeatherOutlookPreferenceStore();
 
         // Phase 33: the live PDF preview / Print / Save PDF. Built from the same export service as Create
         // PDF. Without a rasterizer (tests, or a renderer that failed to compose) the pane never shows and
@@ -919,6 +923,11 @@ public partial class AssociateViewModel : ViewModelBase
 
         // "Today" in the park's own wall-clock time (spec §6.5/§6.6 use the same Eastern
         // convention for "today") rather than the host machine's arbitrary local time zone.
+        // Phase 37F follow-up: "Include Weather Outlook" is a device preference like the PDF style. It is loaded before
+        // the first date starts loading, and PDF captures wait for it, so no document is ever built with the default
+        // when another choice is saved.
+        PendingWeatherOutlookPreferenceLoad = LoadWeatherOutlookPreferenceAsync();
+
         SelectedDate = DateOnly.FromDateTime(EasternTimeZone.ConvertFromUtc(clock.UtcNow).DateTime);
 
         // Phase 17C §15: loaded once here, independent of the date-load pipeline above — the
@@ -1280,6 +1289,13 @@ public partial class AssociateViewModel : ViewModelBase
             return PassdownPdfCapture.Waiting("Loading this date's preview…");
         }
 
+        if (!_weatherOutlookPreferenceLoaded)
+        {
+            // Phase 37F follow-up: the saved Include Weather Outlook choice is not known yet (first moments after start).
+            _previewWaitedForWeatherOutlookPreference = true;
+            return PassdownPdfCapture.Waiting("Loading this date's preview…");
+        }
+
         var effective = _draftDateInEdit == workspace.OperatingDate ? WithDraftApplied(workspace, BuildDraft()) : workspace;
         return PassdownPdfCapture.Ready(new PassdownPdfRequest(effective, workspace.OperatingDate, SelectedTemplateOption.Value)
         {
@@ -1288,9 +1304,91 @@ public partial class AssociateViewModel : ViewModelBase
         });
     }
 
-    /// <summary>Phase 37F: the PDF Weather Outlook for <paramref name="workspace"/> from the monitor's cached snapshot (null without weather).</summary>
+    /// <summary>
+    /// Phase 37F: the PDF Weather Outlook for <paramref name="workspace"/> from the monitor's cached snapshot (null without
+    /// weather). The follow-up's "Include Weather Outlook" is read in the same capture, so the setting and the weather of
+    /// one generation always belong together; when it is off nothing is read and the PDF has no weather.
+    /// </summary>
     private PdfWeatherOutlook? CaptureWeatherOutlook(AssociateWorkspace workspace) =>
-        PassdownWeatherOutlookSource.For(_weatherMonitor?.Current, workspace, _clock.UtcNow);
+        IncludeWeatherOutlook ? PassdownWeatherOutlookSource.For(_weatherMonitor?.Current, workspace, _clock.UtcNow) : null;
+
+    /// <summary>
+    /// Phase 37F follow-up: whether Passdown PDFs (preview, Print, Save PDF, Create PDF) include the Weather Outlook. A
+    /// device preference saved on this computer (default on); never draft data, so changing it never marks the draft
+    /// unsaved, and it refreshes the preview through the existing scheduling.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IncludeWeatherOutlook { get; set; } = PassdownWeatherOutlookPreferences.BuiltIn.IncludeWeatherOutlook;
+
+    /// <summary>Lets a test await the initial Weather Outlook preference load.</summary>
+    public Task PendingWeatherOutlookPreferenceLoad { get; private set; } = Task.CompletedTask;
+
+    /// <summary>Lets a test await the most recent Weather Outlook preference save.</summary>
+    public Task PendingWeatherOutlookPreferenceSave { get; private set; } = Task.CompletedTask;
+
+    partial void OnIncludeWeatherOutlookChanged(bool value)
+    {
+        // The preview, Print, Save PDF and Create PDF all capture this setting with the next generation.
+        Preview.NotifyContentChanged();
+
+        if (_isLoadingWeatherOutlookPreference)
+        {
+            return;
+        }
+
+        PendingWeatherOutlookPreferenceSave = SaveWeatherOutlookPreferenceAsync(value);
+    }
+
+    private bool _previewWaitedForWeatherOutlookPreference;
+    private bool _weatherOutlookPreferenceLoaded;
+
+    private async Task LoadWeatherOutlookPreferenceAsync()
+    {
+        PassdownWeatherOutlookPreferences preference;
+        try
+        {
+            preference = await _weatherOutlookPreferenceStore.LoadAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogWarning(ex, "Loading the Include Weather Outlook preference failed; using the default.");
+            preference = PassdownWeatherOutlookPreferences.BuiltIn;
+        }
+
+        var changed = preference.IncludeWeatherOutlook != IncludeWeatherOutlook;
+        _weatherOutlookPreferenceLoaded = true; // captures may proceed from here on (set before the change notifies)
+        _isLoadingWeatherOutlookPreference = true;
+        try
+        {
+            IncludeWeatherOutlook = preference.IncludeWeatherOutlook; // a change refreshes the preview itself
+        }
+        finally
+        {
+            _isLoadingWeatherOutlookPreference = false;
+        }
+
+        if (!changed && _previewWaitedForWeatherOutlookPreference)
+        {
+            // A preview capture was held back while the choice loaded: build it now (the same immediate refresh as a
+            // loaded workspace).
+            Preview.NotifyWorkspaceReplaced();
+        }
+
+        _previewWaitedForWeatherOutlookPreference = false;
+    }
+
+    private async Task SaveWeatherOutlookPreferenceAsync(bool include)
+    {
+        try
+        {
+            await _weatherOutlookPreferenceStore.SaveAsync(new PassdownWeatherOutlookPreferences(include)).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // A device preference is never worth an error dialog; the choice still applies for this session.
+            _logger?.LogWarning(ex, "Saving the Include Weather Outlook preference failed.");
+        }
+    }
 
     /// <summary>
     /// A <see cref="DateTime"/>-shaped view of <see cref="SelectedDate"/> for Avalonia's
@@ -1879,6 +1977,9 @@ public partial class AssociateViewModel : ViewModelBase
         PdfExportMessage = null;
         try
         {
+            // Phase 37F follow-up: Create PDF uses the saved Include Weather Outlook choice, never the default.
+            await PendingWeatherOutlookPreferenceLoad.ConfigureAwait(true);
+
             if (!await FlushPendingAutosaveAsync().ConfigureAwait(true))
             {
                 // Phase 23A: the PDF is built from the saved workspace, which does not hold the edits on

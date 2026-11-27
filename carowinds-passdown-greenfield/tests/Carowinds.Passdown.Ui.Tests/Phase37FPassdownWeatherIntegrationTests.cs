@@ -90,6 +90,8 @@ public class Phase37FPassdownWeatherIntegrationTests
 
         public FakeClock Clock { get; } = new(Now);
 
+        public InMemoryPassdownWeatherOutlookPreferenceStore Preferences { get; set; } = new();
+
         public AssociateViewModel Create(bool withMonitor = true)
         {
             var viewModel = new AssociateViewModel(
@@ -105,26 +107,41 @@ public class Phase37FPassdownWeatherIntegrationTests
                 pdfPageImageFactory: new FakePdfPageImageFactory(),
                 previewWorkScheduler: Scheduler,
                 previewDelay: PreviewDebounce.Delay,
-                weatherMonitor: withMonitor ? Monitor : null);
+                weatherMonitor: withMonitor ? Monitor : null,
+                weatherOutlookPreferenceStore: Preferences);
             viewModel.Preview.UpdateAvailableWidth(1500);
             viewModel.Preview.UpdateViewport(460, 700, 1.0);
             return viewModel;
         }
 
+        /// <summary>
+        /// Elapses pending preview delays (quiet window, page-render debounce) newest first until the refresh in
+        /// flight has finished — with real timers they all elapse; a single "latest" can leave the other pending.
+        /// </summary>
         public async Task SettleAsync(AssociateViewModel viewModel)
         {
-            PreviewDebounce.ElapseLatest();
+            for (var i = 0; i < 10 && !viewModel.Preview.PendingRefresh.IsCompleted; i++)
+            {
+                PreviewDebounce.ElapseLatest();
+            }
+
             await viewModel.Preview.PendingRefresh.WaitAsync(TimeSpan.FromSeconds(10));
         }
     }
 
-    private static async Task<(Rig Rig, AssociateViewModel ViewModel)> LoadedAsync(WeatherSnapshot? snapshot, bool withMonitor = true)
+    private static async Task<(Rig Rig, AssociateViewModel ViewModel)> LoadedAsync(WeatherSnapshot? snapshot, bool withMonitor = true, PassdownWeatherOutlookPreferences? saved = null)
     {
         var rig = new Rig();
+        if (saved is not null)
+        {
+            rig.Preferences = new InMemoryPassdownWeatherOutlookPreferenceStore(saved);
+        }
+
         rig.Monitor.Current = snapshot;
         var viewModel = rig.Create(withMonitor);
         await viewModel.PendingLoad;
         await viewModel.PendingTemplatePreferenceLoad;
+        await viewModel.PendingWeatherOutlookPreferenceLoad;
         await rig.SettleAsync(viewModel);
         return (rig, viewModel);
     }
@@ -294,5 +311,309 @@ public class Phase37FPassdownWeatherIntegrationTests
         var constructor = Assert.Single(typeof(AssociateViewModel).GetConstructors());
         var parameter = Assert.Single(constructor.GetParameters(), p => p.ParameterType == typeof(IWeatherMonitor));
         Assert.True(parameter.HasDefaultValue);
+
+        // Phase 37F follow-up: the device preference is the local file store, and the constructor accepts it.
+        var store = Assert.IsType<Carowinds.Passdown.Infrastructure.Preferences.FilePassdownWeatherOutlookPreferenceStore>(provider.GetRequiredService<IPassdownWeatherOutlookPreferenceStore>());
+        Assert.Equal(Carowinds.Passdown.Infrastructure.Preferences.FilePassdownWeatherOutlookPreferenceStore.DefaultPath, store.ConfigFilePath);
+        Assert.True(Assert.Single(constructor.GetParameters(), p => p.ParameterType == typeof(IPassdownWeatherOutlookPreferenceStore)).HasDefaultValue);
+    }
+
+    // ---------------------------------------------------------------- Phase 37F follow-up: Include Weather Outlook
+
+    [Fact]
+    public async Task IncludeWeatherOutlook_IsOnByDefault_WhenNothingIsSaved()
+    {
+        var (rig, viewModel) = await LoadedAsync(Snapshot(71));
+
+        Assert.True(viewModel.IncludeWeatherOutlook);
+        Assert.Equal(0, rig.Preferences.SaveCount); // loading the default writes nothing
+        Assert.NotNull(viewModel.Preview.CurrentDocument!.Weather);
+    }
+
+    [Fact]
+    public async Task TurningItOff_SavesTheDevicePreference_RefreshesThePreviewAtOnce_AndPrintsNoWeather()
+    {
+        var (rig, viewModel) = await LoadedAsync(Snapshot(71));
+        var generations = rig.Export.Calls.Count;
+        var leading = viewModel.Preview.LeadingRefreshCount;
+
+        viewModel.IncludeWeatherOutlook = false;
+
+        // Leading edge of the existing scheduling: generated immediately, no added delay or extra pass.
+        Assert.Equal(leading + 1, viewModel.Preview.LeadingRefreshCount);
+        Assert.Equal(generations + 1, rig.Export.Calls.Count);
+        await rig.SettleAsync(viewModel);
+        Assert.Equal(generations + 1, rig.Export.Calls.Count);
+
+        await viewModel.PendingWeatherOutlookPreferenceSave;
+        Assert.False(rig.Preferences.Current.IncludeWeatherOutlook);
+        Assert.Equal(1, rig.Preferences.SaveCount);
+
+        var document = viewModel.Preview.CurrentDocument!;
+        Assert.Null(document.Weather);
+        Assert.Null(rig.Export.Calls[^1].Weather);
+        Assert.DoesNotContain("NWS", Text(document.Bytes), StringComparison.Ordinal);
+        Assert.DoesNotContain("WEATHER", Text(document.Bytes), StringComparison.Ordinal);
+
+        Assert.Empty(rig.Service.SaveCalls); // a device preference, never draft data
+        Assert.Equal(0, rig.Monitor.RefreshNowCount);
+    }
+
+    [Fact]
+    public async Task TurningItBackOn_RestoresTheOutlook()
+    {
+        var (rig, viewModel) = await LoadedAsync(Snapshot(71), saved: new PassdownWeatherOutlookPreferences(false));
+        Assert.Null(viewModel.Preview.CurrentDocument!.Weather);
+
+        viewModel.IncludeWeatherOutlook = true;
+        await rig.SettleAsync(viewModel);
+
+        Assert.Equal("71°F", viewModel.Preview.CurrentDocument!.Weather!.TemperatureText);
+        Assert.True(rig.Preferences.Current.IncludeWeatherOutlook);
+    }
+
+    [Fact]
+    public async Task SavedOff_IsRestoredAfterRestart_AndTheFirstPreviewHasNoWeather()
+    {
+        var (rig, viewModel) = await LoadedAsync(Snapshot(71), saved: new PassdownWeatherOutlookPreferences(false));
+
+        Assert.False(viewModel.IncludeWeatherOutlook);
+        Assert.Equal(0, rig.Preferences.SaveCount); // restoring the saved value does not write it back
+        Assert.Null(viewModel.Preview.CurrentDocument!.Weather);
+        Assert.DoesNotContain("NWS", Text(viewModel.Preview.CurrentDocument.Bytes), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Off_PrintSaveAndCreatePdf_AllMatchThePreview()
+    {
+        var (rig, viewModel) = await LoadedAsync(Snapshot(71));
+        viewModel.IncludeWeatherOutlook = false;
+        await rig.SettleAsync(viewModel);
+        var generations = rig.Export.Calls.Count;
+        var previewBytes = viewModel.Preview.CurrentDocument!.Bytes;
+
+        await viewModel.Preview.PrintCommand.ExecuteAsync(null);
+        await viewModel.Preview.SavePdfCommand.ExecuteAsync(null);
+        Assert.Equal(generations, rig.Export.Calls.Count); // the previewed bytes are reused
+        Assert.Same(previewBytes, rig.Printer.Requests.Single().PdfBytes);
+        Assert.Same(previewBytes, rig.Picker.Calls.Single().Bytes);
+
+        await viewModel.CreatePdfCommand.ExecuteAsync(null);
+        Assert.Null(rig.Export.Calls[^1].Weather);
+        Assert.DoesNotContain("NWS", Text(rig.Picker.Calls[^1].Bytes), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task On_PrintSaveAndCreatePdf_AllMatchThePreview()
+    {
+        var (rig, viewModel) = await LoadedAsync(Snapshot(71));
+        var previewBytes = viewModel.Preview.CurrentDocument!.Bytes;
+
+        await viewModel.Preview.PrintCommand.ExecuteAsync(null);
+        await viewModel.Preview.SavePdfCommand.ExecuteAsync(null);
+        await viewModel.CreatePdfCommand.ExecuteAsync(null);
+
+        Assert.Same(previewBytes, rig.Printer.Requests.Single().PdfBytes);
+        Assert.Same(previewBytes, rig.Picker.Calls[0].Bytes);
+        Assert.Equal(viewModel.Preview.CurrentDocument!.Weather, rig.Export.Calls[^1].Weather);
+        Assert.Contains("71°F", Text(rig.Picker.Calls[^1].Bytes), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(AssociatePassdownTemplate.Classic, true)]
+    [InlineData(AssociatePassdownTemplate.Classic, false)]
+    [InlineData(AssociatePassdownTemplate.Modern, true)]
+    [InlineData(AssociatePassdownTemplate.Modern, false)]
+    [InlineData(AssociatePassdownTemplate.Compact, true)]
+    [InlineData(AssociatePassdownTemplate.Compact, false)]
+    public async Task EveryTemplate_FollowsTheSetting(AssociatePassdownTemplate template, bool include)
+    {
+        var (rig, viewModel) = await LoadedAsync(Snapshot(71), saved: new PassdownWeatherOutlookPreferences(include));
+
+        viewModel.SelectTemplateCommand.Execute(template);
+        await rig.SettleAsync(viewModel);
+
+        var document = viewModel.Preview.CurrentDocument!;
+        Assert.Equal(template, document.Template);
+        Assert.Equal(include, Text(document.Bytes).Contains("NWS", StringComparison.Ordinal));
+        Assert.Equal(include, document.Weather is not null);
+    }
+
+    [Fact]
+    public async Task On_WithMissingOrStaleForecast_StillGeneratesWithoutWeather()
+    {
+        foreach (var snapshot in new[] { null, Snapshot(71, retrievedAt: Now.AddHours(-4)) })
+        {
+            var (_, viewModel) = await LoadedAsync(snapshot);
+
+            Assert.True(viewModel.IncludeWeatherOutlook);
+            Assert.Equal(PdfPreviewStatus.Ready, viewModel.Preview.Status);
+            Assert.Null(viewModel.Preview.CurrentDocument!.Weather);
+        }
+    }
+
+    [Fact]
+    public async Task Off_StaysOffAcrossDateChanges()
+    {
+        var (rig, viewModel) = await LoadedAsync(Snapshot(71, hours: 60));
+        viewModel.IncludeWeatherOutlook = false;
+        await rig.SettleAsync(viewModel);
+
+        viewModel.SelectedDate = Today.AddDays(1);
+        await viewModel.PendingLoad;
+        await rig.SettleAsync(viewModel);
+
+        Assert.False(viewModel.IncludeWeatherOutlook);
+        Assert.Equal(Today.AddDays(1), viewModel.Preview.CurrentDocument!.Date);
+        Assert.Null(viewModel.Preview.CurrentDocument.Weather);
+
+        viewModel.IncludeWeatherOutlook = true;
+        await rig.SettleAsync(viewModel);
+        Assert.Equal(Today.AddDays(1), viewModel.Preview.CurrentDocument!.Weather!.OperatingDate);
+    }
+
+    /// <summary>Counts reads of <see cref="Current"/>; never refreshes.</summary>
+    private sealed class CountingWeatherMonitor(WeatherSnapshot snapshot) : IWeatherMonitor
+    {
+        public int CurrentReads { get; private set; }
+
+        public WeatherSnapshot? Current
+        {
+            get
+            {
+                CurrentReads++;
+                return snapshot;
+            }
+        }
+
+        public bool IsRefreshing => false;
+
+        public event EventHandler? Changed { add { } remove { } }
+
+        public void Start() => throw new InvalidOperationException("The Passdown must never start weather.");
+
+        public Task StopAsync() => Task.CompletedTask;
+
+        public Task<WeatherManualRefreshResult> RefreshNowAsync() => throw new InvalidOperationException("The Passdown must never refresh weather.");
+    }
+
+    [Fact]
+    public async Task Off_DoesNotEvenReadTheWeather_AndNothingRequestsIt()
+    {
+        var monitor = new CountingWeatherMonitor(Snapshot(71));
+        var rig = new Rig { Preferences = new InMemoryPassdownWeatherOutlookPreferenceStore(new PassdownWeatherOutlookPreferences(false)) };
+        var viewModel = new AssociateViewModel(
+            rig.Service, rig.Clock,
+            autosaveDelay: new ManualDebounceScheduler().Delay,
+            pdfExportService: rig.Export,
+            pdfSavePicker: rig.Picker,
+            templatePreferenceStore: new FakeAssociatePassdownTemplatePreferenceStore(),
+            pdfRasterizer: new FakePdfRasterizer(),
+            pdfPrintService: rig.Printer,
+            pdfPreviewLayoutStore: new InMemoryPdfPreviewLayoutPreferenceStore(),
+            pdfPageImageFactory: new FakePdfPageImageFactory(),
+            previewWorkScheduler: rig.Scheduler,
+            previewDelay: rig.PreviewDebounce.Delay,
+            weatherMonitor: monitor,
+            weatherOutlookPreferenceStore: rig.Preferences);
+        viewModel.Preview.UpdateAvailableWidth(1500);
+        viewModel.Preview.UpdateViewport(460, 700, 1.0);
+        await viewModel.PendingLoad;
+        await viewModel.PendingWeatherOutlookPreferenceLoad;
+        await rig.SettleAsync(viewModel);
+
+        await viewModel.Preview.PrintCommand.ExecuteAsync(null);
+        await viewModel.CreatePdfCommand.ExecuteAsync(null);
+
+        Assert.Equal(0, monitor.CurrentReads);
+        Assert.All(rig.Export.Calls, call => Assert.Null(call.Weather));
+    }
+
+    [Fact]
+    public void Checkbox_IsLabelledExactly_AndBoundToThePreference()
+    {
+        // Compiled bindings verify the path at build time; the live two-way binding is checked in a real window
+        // (Phase33PreviewWindowTests.IncludeWeatherOutlook_IsACheckItemInTheActionsMenu_AndBindsBothWays, run alone).
+        var markup = File.ReadAllText(Path.Combine(RepositoryRoot(), "src", "Carowinds.Passdown.Desktop", "Views", "AssociateView.axaml"));
+        var start = markup.IndexOf("<MenuItem x:Name=\"IncludeWeatherOutlookMenuItem\"", StringComparison.Ordinal);
+        Assert.True(start >= 0);
+        var element = markup[start..markup.IndexOf("/>", start, StringComparison.Ordinal)];
+
+        Assert.Contains("Header=\"Include Weather Outlook\"", element, StringComparison.Ordinal);
+        Assert.Contains("ToggleType=\"CheckBox\"", element, StringComparison.Ordinal);
+        Assert.Contains("IsChecked=\"{Binding IncludeWeatherOutlook, Mode=TwoWay}\"", element, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Include Weather Outlook\"", element, StringComparison.Ordinal);
+
+        // In the Passdown Actions menu, right after the PDF style choices.
+        Assert.True(start > markup.IndexOf("Header=\"PDF Style: Modern\"", StringComparison.Ordinal));
+        Assert.True(start > markup.IndexOf("x:Name=\"PassdownActionsButton\"", StringComparison.Ordinal));
+        Assert.True(start < markup.IndexOf("Check Online (refresh official information)", StringComparison.Ordinal));
+    }
+
+    private static string RepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "CarowindsPassdown.slnx")))
+        {
+            directory = directory.Parent;
+        }
+
+        return directory?.FullName ?? throw new InvalidOperationException("Repository root not found.");
+    }
+
+    /// <summary>A preference store whose load finishes only when the test says so (a slow disk at startup).</summary>
+    private sealed class HeldPreferenceStore(bool saved) : IPassdownWeatherOutlookPreferenceStore
+    {
+        public TaskCompletionSource Gate { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<PassdownWeatherOutlookPreferences> LoadAsync(CancellationToken cancellationToken = default)
+        {
+            await Gate.Task;
+            return new PassdownWeatherOutlookPreferences(saved);
+        }
+
+        public Task SaveAsync(PassdownWeatherOutlookPreferences preferences, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SlowPreferenceLoad_ThePreviewWaits_ThenUsesTheSavedChoice(bool saved)
+    {
+        var monitor = new CountingWeatherMonitor(Snapshot(71));
+        var store = new HeldPreferenceStore(saved);
+        var rig = new Rig();
+        var viewModel = new AssociateViewModel(
+            rig.Service, rig.Clock,
+            autosaveDelay: new ManualDebounceScheduler().Delay,
+            pdfExportService: rig.Export,
+            pdfSavePicker: rig.Picker,
+            templatePreferenceStore: new FakeAssociatePassdownTemplatePreferenceStore(),
+            pdfRasterizer: new FakePdfRasterizer(),
+            pdfPrintService: rig.Printer,
+            pdfPreviewLayoutStore: new InMemoryPdfPreviewLayoutPreferenceStore(),
+            pdfPageImageFactory: new FakePdfPageImageFactory(),
+            previewWorkScheduler: rig.Scheduler,
+            previewDelay: rig.PreviewDebounce.Delay,
+            weatherMonitor: monitor,
+            weatherOutlookPreferenceStore: store);
+        viewModel.Preview.UpdateAvailableWidth(1500);
+        viewModel.Preview.UpdateViewport(460, 700, 1.0);
+        await viewModel.PendingLoad;
+        await rig.SettleAsync(viewModel);
+
+        // The date is loaded but the saved choice is not: nothing was generated and the weather was not read.
+        Assert.Empty(rig.Export.Calls);
+        Assert.Equal(0, monitor.CurrentReads);
+        Assert.Equal(PdfPreviewStatus.Waiting, viewModel.Preview.Status);
+
+        store.Gate.SetResult();
+        await viewModel.PendingWeatherOutlookPreferenceLoad.WaitAsync(TimeSpan.FromSeconds(10));
+        await rig.SettleAsync(viewModel);
+
+        Assert.Equal(saved, viewModel.IncludeWeatherOutlook);
+        Assert.Single(rig.Export.Calls);
+        Assert.Equal(saved, viewModel.Preview.CurrentDocument!.Weather is not null);
+        Assert.Equal(saved ? 1 : 0, monitor.CurrentReads);
     }
 }

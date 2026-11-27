@@ -37,6 +37,7 @@ public class WeatherActivationGuardTests
         "src/Carowinds.Passdown.Desktop/ViewModels/DashboardWeatherViewModel.cs",
         "src/Carowinds.Passdown.Desktop/ViewModels/OperationsDashboardViewModel.cs",
         "src/Carowinds.Passdown.Desktop/ViewModels/PassdownPdfPreviewViewModel.cs",
+        "src/Carowinds.Passdown.Desktop/Views/AssociateView.axaml",
         "src/Carowinds.Passdown.Desktop/Views/DashboardView.axaml",
     ];
 

@@ -660,6 +660,9 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<ICalendarDisplayPreferenceStore>(provider => new FileCalendarDisplayPreferenceStore(
             FileCalendarDisplayPreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FileCalendarDisplayPreferenceStore>>()));
         services.AddSingleton<CalendarDisplaySettingsViewModel>();
+        // Phase 37F follow-up: "Include Weather Outlook" for Passdown PDFs — one local file, never synced.
+        services.AddSingleton<IPassdownWeatherOutlookPreferenceStore>(provider => new FilePassdownWeatherOutlookPreferenceStore(
+            FilePassdownWeatherOutlookPreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FilePassdownWeatherOutlookPreferenceStore>>()));
 
         // Phase 9A: the immutable finalized-passdown foundation.
         services.AddSingleton<IFinalizedPassdownRepository, SqliteFinalizedPassdownRepository>();
