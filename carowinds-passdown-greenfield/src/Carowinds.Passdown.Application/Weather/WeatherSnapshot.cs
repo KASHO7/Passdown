@@ -40,7 +40,16 @@ public sealed record WeatherSnapshot(
     WeatherPartStatus ObservationStatus,
     WeatherObservation? Observation,
     WeatherPartStatus AlertsStatus,
-    IReadOnlyList<WeatherAlert> ActiveAlerts);
+    IReadOnlyList<WeatherAlert> ActiveAlerts)
+{
+    /// <summary>
+    /// Phase 37C: for each active alert id, the ids of the reference points whose NWS point query returned it (or
+    /// a message it replaces), in <see cref="WeatherLocation.Points"/> order — which portion of the park it
+    /// applies to. Never widened beyond what NWS returned for a point.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> AlertCoverage { get; init; } =
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+}
 
 /// <summary>A forecast day in Eastern time: the daytime period's temperature as the high, the following night's as the low.</summary>
 public sealed record WeatherDailySummary(
@@ -72,7 +81,10 @@ public static class WeatherSnapshotBuilder
         var (observationStatus, observation) = BestObservation(document, now, policy);
         var (alertsStatus, alerts) = Alerts(document, now, policy, location);
 
-        return new WeatherSnapshot(now, location.IsRetrievalPermitted, forecastStatus, forecast, hourlyStatus, hourly, observationStatus, observation, alertsStatus, alerts);
+        return new WeatherSnapshot(now, location.IsRetrievalPermitted, forecastStatus, forecast, hourlyStatus, hourly, observationStatus, observation, alertsStatus, alerts)
+        {
+            AlertCoverage = AlertCoverage(document, alerts, location),
+        };
     }
 
     /// <summary>Daily high/low by Eastern date. Today's high is null once the forecast starts at "Tonight"; it is never filled from another source.</summary>
@@ -156,6 +168,24 @@ public static class WeatherSnapshotBuilder
 
         var fresh = now - chosen.Observation.Timestamp <= policy.ObservationStaleAfter;
         return (new WeatherPartStatus(fresh ? WeatherAvailability.Fresh : WeatherAvailability.Stale, chosen.State.CheckedAt, lastAttempt, lastFailure), chosen.Observation);
+    }
+
+    private static Dictionary<string, IReadOnlyList<string>> AlertCoverage(WeatherCacheDocument document, IReadOnlyList<WeatherAlert> active, WeatherLocation location)
+    {
+        var coverage = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        foreach (var alert in active)
+        {
+            // An Update that replaced an older message still covers the points that returned the older one.
+            var ids = new HashSet<string>(alert.ReferenceIds, StringComparer.Ordinal) { alert.Id };
+            coverage[alert.Id] = location.Points
+                .Where(point => document.Alerts.TryGetValue(point.Id, out var state)
+                    && state.Value is { } listed
+                    && listed.Any(candidate => ids.Contains(candidate.Id)))
+                .Select(point => point.Id)
+                .ToArray();
+        }
+
+        return coverage;
     }
 
     private static (WeatherPartStatus Status, IReadOnlyList<WeatherAlert> Alerts) Alerts(WeatherCacheDocument document, DateTimeOffset now, WeatherRefreshPolicy policy, WeatherLocation location)

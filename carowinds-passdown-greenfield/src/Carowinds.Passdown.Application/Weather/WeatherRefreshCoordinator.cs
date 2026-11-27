@@ -7,6 +7,19 @@ namespace Carowinds.Passdown.Application.Weather;
 /// <summary>One endpoint failure in a refresh, for diagnostics and tests.</summary>
 public sealed record WeatherEndpointFailure(string Endpoint, WeatherFailureKind Kind);
 
+/// <summary>Why a refresh runs (Phase 37C).</summary>
+public enum WeatherRefreshMode
+{
+    /// <summary>The background schedule: only endpoints whose cache expiry, target or ceiling has passed.</summary>
+    Scheduled,
+
+    /// <summary>
+    /// A person pressed Refresh Weather: every endpoint past its minimum interval (<see cref="WeatherEndpointPolicy.Floor"/>)
+    /// and any failure backoff — the provider's cache expiry is not waited for, but nothing is asked faster than the policy allows.
+    /// </summary>
+    Manual,
+}
+
 /// <summary>What one refresh did. <see cref="RequestCount"/> counts provider calls (each one logical HTTP request).</summary>
 public sealed record WeatherRefreshReport(bool Permitted, int RequestCount, bool GridChanged, IReadOnlyList<WeatherEndpointFailure> Failures)
 {
@@ -15,8 +28,8 @@ public sealed record WeatherRefreshReport(bool Permitted, int RequestCount, bool
 
 /// <summary>
 /// Coordinates weather retrieval and the local cache (Phase 37B). Separate from the official-data refresh: it
-/// never runs because of date selection or navigation, and nothing in the application calls it yet (the
-/// feature is not activated). Each call requests only the endpoints that are due under
+/// never runs because of date selection or navigation. Since Phase 37C the interactive app calls it only through
+/// the one <see cref="WeatherMonitor"/> (background schedule and Refresh Weather). Each call requests only the endpoints that are due under
 /// <see cref="WeatherRefreshPolicy"/>. Refreshes are single-flight: a call made while one runs joins it.
 /// A failure never replaces cached values. No request is made unless the location is verified (decision D8).
 /// </summary>
@@ -40,7 +53,14 @@ public sealed class WeatherRefreshCoordinator(
     /// Requests whatever is due. While a refresh is running, returns that refresh; its cancellation belongs to
     /// the caller that started it.
     /// </summary>
-    public Task<WeatherRefreshReport> RefreshDueAsync(CancellationToken cancellationToken = default)
+    public Task<WeatherRefreshReport> RefreshDueAsync(CancellationToken cancellationToken = default) =>
+        RefreshAsync(WeatherRefreshMode.Scheduled, cancellationToken);
+
+    /// <summary>
+    /// Phase 37C: <see cref="RefreshDueAsync"/> for <paramref name="mode"/>. Shares the single flight: a call made
+    /// while any refresh runs returns that refresh, whatever its mode.
+    /// </summary>
+    public Task<WeatherRefreshReport> RefreshAsync(WeatherRefreshMode mode, CancellationToken cancellationToken = default)
     {
         if (!location.IsRetrievalPermitted)
         {
@@ -54,7 +74,7 @@ public sealed class WeatherRefreshCoordinator(
                 return running;
             }
 
-            _inFlight = RunAsync(cancellationToken);
+            _inFlight = RunAsync(mode, cancellationToken);
             return _inFlight;
         }
     }
@@ -89,15 +109,19 @@ public sealed class WeatherRefreshCoordinator(
             dues.Add(_policy.Hourly.DueAt(document.Hourly));
             if (document.Stations.Value is { Count: > 0 } stations)
             {
-                dues.Add(ObservationDueAt(ObservationState(document, stations[0].Id)));
+                dues.Add(ObservationDueAt(ObservationState(document, stations[0].Id), manual: false));
             }
         }
 
         return dues.Min();
     }
 
-    private async Task<WeatherRefreshReport> RunAsync(CancellationToken cancellationToken)
+    private async Task<WeatherRefreshReport> RunAsync(WeatherRefreshMode mode, CancellationToken cancellationToken)
     {
+        var manual = mode == WeatherRefreshMode.Manual;
+        DateTimeOffset DueAt<T>(WeatherEndpointPolicy endpoint, WeatherEndpointState<T> state)
+            where T : class => manual ? endpoint.EarliestAt(state) : endpoint.DueAt(state);
+
         var document = await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
         var requests = 0;
         var gridChanged = false;
@@ -107,7 +131,7 @@ public sealed class WeatherRefreshCoordinator(
         foreach (var point in location.Points)
         {
             var state = PointState(document, point);
-            if (!IsDue(_policy.Point.DueAt(state)))
+            if (!IsDue(DueAt(_policy.Point, state)))
             {
                 continue;
             }
@@ -138,7 +162,7 @@ public sealed class WeatherRefreshCoordinator(
         // 2. Forecasts, stations and the current observation come from the forecast point's grid.
         if (PointState(document, location.ForecastPoint).Value is { } grid)
         {
-            if (IsDue(_policy.Stations.DueAt(document.Stations)))
+            if (IsDue(DueAt(_policy.Stations, document.Stations)))
             {
                 var result = await provider.GetStationsAsync(grid, cancellationToken).ConfigureAwait(false);
                 requests++;
@@ -147,7 +171,7 @@ public sealed class WeatherRefreshCoordinator(
                 _cache = document;
             }
 
-            if (IsDue(_policy.Forecast.DueAt(document.Forecast)))
+            if (IsDue(DueAt(_policy.Forecast, document.Forecast)))
             {
                 var result = await provider.GetForecastAsync(grid, document.Forecast.ConditionalHeaders, cancellationToken).ConfigureAwait(false);
                 requests++;
@@ -156,7 +180,7 @@ public sealed class WeatherRefreshCoordinator(
                 _cache = document;
             }
 
-            if (IsDue(_policy.Hourly.DueAt(document.Hourly)))
+            if (IsDue(DueAt(_policy.Hourly, document.Hourly)))
             {
                 var result = await provider.GetHourlyForecastAsync(grid, document.Hourly.ConditionalHeaders, cancellationToken).ConfigureAwait(false);
                 requests++;
@@ -169,7 +193,7 @@ public sealed class WeatherRefreshCoordinator(
             foreach (var station in (document.Stations.Value ?? []).Take(_policy.ObservationStationCount))
             {
                 var state = ObservationState(document, station.Id);
-                if (IsDue(ObservationDueAt(state)))
+                if (IsDue(ObservationDueAt(state, manual)))
                 {
                     var result = await provider.GetLatestObservationAsync(station, location.ForecastPoint, state.ConditionalHeaders, cancellationToken).ConfigureAwait(false);
                     requests++;
@@ -190,7 +214,7 @@ public sealed class WeatherRefreshCoordinator(
         foreach (var point in location.Points)
         {
             var state = AlertState(document, point);
-            if (!IsDue(_policy.Alerts.DueAt(state)))
+            if (!IsDue(DueAt(_policy.Alerts, state)))
             {
                 continue;
             }
@@ -239,9 +263,10 @@ public sealed class WeatherRefreshCoordinator(
 
     private bool IsDue(DateTimeOffset dueAt) => clock.UtcNow >= dueAt;
 
-    private DateTimeOffset ObservationDueAt(WeatherEndpointState<WeatherObservation> state)
+    private DateTimeOffset ObservationDueAt(WeatherEndpointState<WeatherObservation> state, bool manual)
     {
-        var due = _policy.Observation.DueAt(state);
+        // Even a manual refresh waits until the held observation is old enough for the station to have reported again.
+        var due = manual ? _policy.Observation.EarliestAt(state) : _policy.Observation.DueAt(state);
         if (state.Value is { } observation && state.NextAttemptNotBefore is null)
         {
             var notYetReported = observation.Timestamp + _policy.ObservationRefreshAge;

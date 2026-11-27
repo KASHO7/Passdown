@@ -36,6 +36,18 @@ public sealed record WeatherEndpointPolicy(TimeSpan Floor, TimeSpan? Target, Tim
 
         return state.NextAttemptNotBefore is { } notBefore && notBefore > due ? notBefore : due;
     }
+
+    /// <summary>
+    /// Phase 37C: the earliest instant a person-requested refresh may ask again — the minimum interval after
+    /// the last successful check (<see cref="Floor"/>) and any failure backoff or provider Retry-After, but not
+    /// the cache expiry or target. Never earlier than <see cref="DueAt{T}"/> would allow for an unchecked endpoint.
+    /// </summary>
+    public DateTimeOffset EarliestAt<T>(WeatherEndpointState<T> state)
+        where T : class
+    {
+        var earliest = state.CheckedAt is { } checkedAt ? checkedAt + Floor : DateTimeOffset.MinValue;
+        return state.NextAttemptNotBefore is { } notBefore && notBefore > earliest ? notBefore : earliest;
+    }
 }
 
 /// <summary>
