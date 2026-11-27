@@ -102,22 +102,28 @@ asked you to test gave you a special test update and a backed-up test profile.
 
 6. Look around the main screens
 --------------------------------
-At the top you should see the Fury 325 banner with just the words "CAROWINDS
-OPERATIONS" (no small chart icon in front of them), and
-the navigation:  Dashboard · Calendar · Passdown · Notes · History  plus the
-Settings gear. The current screen is underlined.
+The window's title bar is navy with the original app icon and the name
+"Carowinds Operations" (minimize, maximize and close work as in any Windows
+app). On the left is the navigation: Dashboard, Calendar, Passdown, Operational
+Notes, History, and Settings at the bottom. The current screen is highlighted
+with a bar at its left edge. The button above the list collapses the navigation
+to icons only and expands it again; the choice is remembered on this computer.
+In a narrow window the navigation shows icons only.
 
-Dashboard (opens first)
-  - Operations Overview: today's park hours, the official daily park ticket price
-    ("From $…" means a starting price; a plain price is exact), attendance and
-    pre-solds with commas (for example 38,500).
-  - Data Status: click to expand and collapse the source details. Problems stay
-    visible even when it is collapsed.
-  - Today's Shows: upcoming official show times. Each show lists its name, then
-    its times, then its venue — text should never overlap. A show with many
-    times lists a few plus a "+N more" button; clicking it shows every time,
-    and clicking again collapses the list.
-  - "Open Passdown" goes to today's passdown; "Open Notes" goes to its notes.
+Dashboard (opens first, titled "Admissions Overview")
+  - Gate card: today's park operating hours, Avenue Entrance, North Gate and
+    Early Ride Time, how each was set, and when it was last verified.
+    "View in Calendar" opens the same date in the Calendar.
+  - Today's Associate Passdown: draft status, attendance and pre-solds with
+    commas (for example 38,500), "Open Passdown" and "Review Notes".
+  - Shows & Entertainment: upcoming official show times with "+N more" for a
+    long list; "View Shows" opens the Passdown's Shows tab.
+  - Daily Ticket Pricing: only today's exact official dated prices ("View
+    Pricing" opens Products). Operational Notes and the month's Pass Perks
+    are summarized with links to their screens.
+  - Official Data: the overall data status; "View Source Details" expands the
+    per-source list. Nothing on the Dashboard is invented: blank values say
+    "Not entered" or "Not available".
 
 Calendar
   - Click "Next ›" a few times. Months up to about a year ahead should show
@@ -134,39 +140,51 @@ Calendar
     one-line legend under the grid. Hover a marker for its description; "View
     details" opens the perk's eligibility, requirements and official terms.
     The list is the public program, not anyone's personal rewards.
-  - Settings › Calendar › "Show Pass Perks on Calendar" hides and restores the
+  - "Show Perks" above the grid (and Settings › Calendar) hides and restores the
     markers at once, and the choice survives a restart.
 
 Passdown (Associate Passdown)
-  - Date bar: "‹" and "›" move one day, clicking the date opens a small calendar,
-    "Today" jumps back. Changing the date should feel instant and does not need
-    the internet.
-  - Buttons: "Check Online", "Create PDF", "Print", "Show Preview / Hide
-    Preview", "Copy ▾" (Teams text), "More ▾" (PDF style and Season Price
-    History).
+  - Date bar: "‹" and "›" move one day, clicking the date (for example
+    "Nov 26, 2026") opens a small calendar. "Today" appears only when you are
+    on another date and jumps back. Changing the date should feel instant and
+    does not need the internet.
+  - Buttons: "Create PDF" and "Actions ▾". Actions holds Print (Ctrl+P), Save
+    PDF, the three "Copy for Teams" options, Show / Hide Preview, PDF Style
+    (Classic, Compact, Modern), Check Online and Season Price History.
   - Live preview: the real PDF appears beside the editor and stays there while
     you switch between Overview, Products, Shows and Notes. A single change (a checkbox,
     a product or a show) appears almost at once; while you keep typing it
     refreshes again shortly after you pause. Drag the divider to resize it; use the page arrows, zoom,
     Fit width and Fit page. Hide Preview gives the editor the whole width. The
     layout and zoom are remembered on this computer after a restart.
-  - Sections: Overview, Products, Shows, Notes.
+  - Sections (tabs): Overview, Products, Shows, Notes.
+  - Products: click a price's edit button to open a small price editor next to
+    it. Enter saves, Esc cancels, "Use official price" removes your display
+    price. Only one editor is open at a time.
+  - Shows: tick which shows print; "Select all" / "Clear"; a long schedule
+    expands with "View times".
+  - Notes: daily notes print one note per non-empty line. Ticking a persistent
+    Operational Note only includes it in this passdown; it never edits or
+    resolves the note.
   - Overview › Include in Passdown lists the sections that print, including
     Operational Notes and Shows. The Shows section picks WHICH shows print;
     unchecking Shows under Include in Passdown keeps your picks but stops them
     printing.
   - Type an attendance number such as 38500 and click elsewhere: it should change
     to 38,500. The cursor should not jump while you type.
-  - The small "Draft" chip at the top right says when your changes were saved
+  - The save status near the top says when your changes were saved
     ("Saved on this computer at … ET").
 
-Notes (Operational Notes)
-  - Create a test note, edit it, try the filters, and resolve it. Times show
-    "ET" (Eastern time).
+Operational Notes
+  - "New Note" opens a small editor over the page: Esc or Cancel closes it
+    without saving. Create a test note, edit it, try the search and filters,
+    and resolve it (Resolve asks you to confirm). Times show "ET" (Eastern time).
 
 History
   - Finalized passdowns are read-only. "Open Final PDF" opens the original stored
-    PDF. Records from before this upgrade must still be there and unchanged.
+    PDF and "Save PDF Copy" saves a copy of it; neither creates a new PDF.
+    Search and the filters only narrow the list. Records from before this
+    upgrade must still be there and unchanged.
 
 
 7. Close and reopen
@@ -177,7 +195,8 @@ everything you typed is still there.
 
 8. Try "Check Online"
 ----------------------
-Click "Check Online" on the Passdown screen. It checks Carowinds' official
+Click Actions ▾ → "Check Online" on the Passdown screen (or "Check Online" on
+the Dashboard). It checks Carowinds' official
 sources for the selected date and may take a few seconds. Without internet it
 should fail politely and keep the last good information. That is expected.
 
@@ -189,7 +208,7 @@ Then look at Products:
   - Under the Season Passes and Memberships source note, click "View Official
     Memberships & Season Passes Page". Your web browser should open that page
     on sixflags.com.
-  - More ▾ → Season Price History still shows the older prices you had before.
+  - Actions ▾ → Season Price History still shows the older prices you had before.
   - Current Deals lists official offers (for example Black Friday deals) as
     short rows. "View details" opens the terms, deadlines and official page in
     a window; Esc or Close returns to the list.
@@ -202,18 +221,18 @@ three shows in the Shows section (and keep Shows checked under Overview ›
 Include in Passdown), and add a Daily Feature (the "∑ Math" button can insert a formula,
 for example \(\frac{d}{dx}x^2=2x\)).
 
-Then for EACH style (More ▾ → PDF Style: Classic, Compact, Modern):
+Then for EACH style (Actions ▾ → PDF Style: Classic, Compact, Modern):
   1. Click "Create PDF" and save it to your Desktop.
   2. Open it and check: prices (including "From" prices), attendance with commas,
      the formula drawn properly, Shows at the END (after Operational Notes), the
      date and time at the bottom of the page, and nothing cut off.
 
 Then, with the preview showing, try "Save PDF" in the preview toolbar and
-"Print" (in the action bar and in the preview toolbar). Print opens the normal
+"Print" (Actions ▾ → Print, Ctrl+P, and the preview toolbar). Print opens the normal
 Windows print dialog; pick a printer (or "Microsoft Print to PDF"), print one
 copy and check it matches the preview. Pressing Cancel prints nothing.
 
-Then try "Copy ▾" and each of its three options, paste into Notepad, and confirm
+Then try each of the three "Copy for Teams" options under Actions ▾, paste into Notepad, and confirm
 the text has no Shows and no Daily Feature.
 
 
@@ -241,8 +260,9 @@ the app: your choice should still apply, with no flash of the other theme.
 -------------------------------------------------------
   - Press Tab repeatedly on each screen: a visible focus outline should move in a
     sensible order. Enter or Space should press the focused button.
-  - Turn on Narrator (Ctrl+Windows+Enter). Move through the navigation, the
-    Settings gear, the Calendar day cells and the Shows "View schedule" button.
+  - Turn on Narrator (Ctrl+Windows+Enter). Move through the navigation, Settings,
+    the Calendar day cells, the Products price editor and the Shows "View
+    times" button.
     Write down anything Narrator reads as just "button" or does not read at all.
     Ctrl+Windows+Enter turns Narrator off again.
 
@@ -251,7 +271,10 @@ the app: your choice should still apply, with no flash of the other theme.
 -------------
   - Appearance: Use Windows setting, Light or Dark (see step 10). The choice is
     saved on this computer only; it is not shared through Personal Sync.
-  - Passdown Preferences: choose which sections start checked when you open a
+  - Interface animations: On by default. Off removes the small sidebar and
+    hover animations. If Windows "Animation effects" is off, the app stays
+    still even when this says On, and your choice is kept.
+  - Passdown Defaults: choose which sections start checked when you open a
     date you have not used yet. Operational Notes is checked by default. Dates
     you already started keep their own choices. Saved on this computer only.
   - Data Refresh only explains how the app behaves.

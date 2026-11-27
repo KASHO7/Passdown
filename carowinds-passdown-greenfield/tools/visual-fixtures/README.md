@@ -22,6 +22,7 @@ dotnet run -c Release --project tools/visual-fixtures -- <outDir> [label] [scena
   Use `*` for all scenarios.
 - `all` (default) renders 960×640, 1280×690, 1280×860 and 1920×1000. `main` renders only 1280×860.
   `shell` (Phase 35A) renders 1920×1080, 1536×960, 1280×720 and 960×640.
+  An explicit comma-separated list such as `1280x720,960x640` (Phase 35G) renders only those sizes.
   Every size is rendered in both Light and Dark.
 - Appearance (Phase 23C): `forced` (default) renders the Light and Dark preferences, each against the
   opposite simulated OS appearance, and keeps the `Light`/`Dark` file names. `system` renders the System
@@ -50,6 +51,7 @@ or button rectangles inside the panel overlap.
 | Shell (Phase 35A) | `Shell-*`: sidebar expanded / collapsed on Dashboard and Passdown, Calendar, Settings, keyboard focus on a destination (expanded and collapsed); `Settings-Animations*`: Interface animations On, Off and Windows reduced motion. Sidebar state and motion choice are in memory only |
 | Workspace (Phase 35B) | `Workspace-*`: Passdown toolbar, section tabs and Overview sheet with the preview — sidebar expanded / collapsed, preview hidden, a focused input, a focused section tab, Products tab selected, manual hours + private buyout + gate override open, the Early Ride Time editor open, and a long Daily Feature scrolled to the end |
 | Shows / Notes (Phase 35D) | `P35D-*`: Shows & Entertainment default, a 16-time schedule expanded, sidebar collapsed, preview hidden; Passdown Notes default, a persistent note included, sidebar collapsed, preview hidden, long daily notes with blank lines; the Actions dropdown open; `P35D-Date-*` the compact date selector on today (no Today button) and on another date (Today shown). Synthetic persistent notes come from `Phase35DFixtures.cs` (in memory) |
+| Settings long path (Phase 35G) | `G35-Settings-LongPath`: Settings → Personal Sync with a very long synthetic folder path (`SyncFixture.LongPath`), to check wrapping without horizontal overflow |
 | Appearance (Phase 23C) | `Appearance-Settings`, `Appearance-SaveFailed`; `LiveSwitch-*`: the theme flipped with Settings, Dashboard Shows expanded, Calendar Shows expanded, Products, Season Price History, date picker, Actions or Math picker already open (captured after the switch), and a simulated OS switch |
 
 To compare against an earlier commit, export that commit with `git archive` into a scratch folder,

@@ -329,7 +329,7 @@
                            Text="Missing park hours from earlier this season are filled in while Carowinds still publishes them." />
                 <TextBlock Grid.Row="4" Grid.Column="0" Text="Status and Check Online" Classes="fieldLabel" />
                 <TextBlock Grid.Row="4" Grid.Column="1" TextWrapping="Wrap" Classes="muted"
-                           Text="When each source was last verified, stale or unavailable data, and Check Online are on the Dashboard and in the Passdown's official source details." />
+                           Text="When each source was last verified and any stale or unavailable data are shown under Official Data on the Dashboard. Check Online is on the Dashboard and in the Passdown's Actions menu." />
               </Grid>
             </StackPanel>
           </Border>

@@ -169,7 +169,17 @@ public partial class OperationalNotesViewModel : ViewModelBase
 
     /// <summary>The "Until resolved" affordance (spec Part J) — checked clears/disables <see cref="EditorEffectiveThrough"/> rather than requiring the supervisor to pick a far-future date.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(EditorEffectiveThroughPlaceholder))]
     public partial bool EditorUntilResolved { get; set; } = true;
+
+    /// <summary>
+    /// Phase 35G: words for the empty Effective through picker. Without it Avalonia's date picker shows its raw
+    /// format string ("&lt;MMM d, yyyy&gt;") — most visibly while the picker is disabled by "Until resolved".
+    /// </summary>
+    public string EditorEffectiveThroughPlaceholder => EditorUntilResolved ? "Until resolved" : DatePickerPlaceholder;
+
+    /// <summary>Phase 35G: words for an empty editor date picker (never the raw format string).</summary>
+    public const string DatePickerPlaceholder = "Choose a date";
 
     [ObservableProperty]
     public partial string? EditorValidationMessage { get; set; }

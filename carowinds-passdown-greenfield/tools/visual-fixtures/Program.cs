@@ -38,6 +38,8 @@ var sizes = (args.Length > 3 ? args[3] : "all") switch
 {
     "main" => new (int W, int H)[] { (1280, 860) },
     "shell" => new (int W, int H)[] { (1920, 1080), (1536, 960), (1280, 720), (960, 640) },
+    // Phase 35G: an explicit list such as "1280x720,960x640".
+    var list when list.Contains('x') => list.Split(',').Select(s => s.Split('x')).Select(p => (int.Parse(p[0]), int.Parse(p[1]))).ToArray(),
     _ => new (int W, int H)[] { (960, 640), (1280, 690), (1280, 860), (1920, 1000) },
 };
 // Forced modes run against the opposite simulated OS, proving the preference (not the OS) decides.
@@ -295,6 +297,8 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
     ("P35F-Settings-Sync", () => new Fixture(sync: SyncFixture.UpToDate), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to Personal Sync settings"); }),
     ("P35F-Settings-SyncError", () => new Fixture(sync: SyncFixture.Error), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to Personal Sync settings"); }),
     ("P35F-Settings-Diagnostics", () => new Fixture(sync: SyncFixture.UpToDate), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to Diagnostics"); }),
+    // Phase 35G: Settings → Personal Sync with a very long folder path.
+    ("G35-Settings-LongPath", () => new Fixture(sync: SyncFixture.LongPath), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to Personal Sync settings"); }),
     ("P35F-Settings-About", () => new Fixture(sync: SyncFixture.UpToDate), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to About this build"); }),
     ("P35F-Notes-SearchEmpty", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); f.Vm.Notes.SearchText = "no such note"; Pump(6); }),
     ("Settings-Off", () => new Fixture(), f => Go(f, AppSection.Settings)),
@@ -372,6 +376,12 @@ foreach (var (w, h) in sizes)
             // Reset before every scenario: LiveSwitch-* scenarios change the appearance mid-arrange.
             appearanceStore.SaveException = null;
             simulatedOs.Switch(os);
+            // Phase 35G: a fresh controller per scenario. Each Settings view model subscribes to the controller for
+            // the app's lifetime (one window in the real app), so one shared controller kept every closed scenario
+            // window reachable — ~12 MB each, ~18 GB over a full four-size run.
+            appearance = new AppearanceThemeController(appearanceStore, simulatedOs, new ApplicationThemeVariantTarget());
+            appearance.Initialize();
+            Fixture.Appearance = appearance;
             _ = appearance.SetPreferenceAsync(preference);
             Pump(2);
 
@@ -621,7 +631,7 @@ static void Pump(int n)
     }
 }
 
-internal enum SyncFixture { Off, UpToDate, Conflict, Error }
+internal enum SyncFixture { Off, UpToDate, Conflict, Error, LongPath }
 
 /// <summary>One isolated app shell over fakes — no database, no network, no real profile.</summary>
 /// <summary>Phase 35A: an Interface animations controller with an in-memory choice and a simulated OS setting.</summary>
