@@ -10,7 +10,23 @@ Dashboard Weather card is unchanged and still shows alerts.
 
 Record: [phase37f-compact-pdf-weather-outlook.md](../phase37f-compact-pdf-weather-outlook.md).
 
-| | RC15-Phase37F-LOCALTEST |
+**Test this candidate: `RC15-Phase37F2-LOCALTEST`** — the Weather Outlook plus the follow-up **Include Weather
+Outlook** option (Actions menu). It supersedes the first Phase 37F candidate, which is kept unchanged below for
+reference and should not be tested further.
+
+| | RC15-Phase37F2-LOCALTEST (test this one) |
+|---|---|
+| Source commit | F2-COMMIT |
+| Version shown in the app | `0.1.0-rc.15-LOCALTEST.phase37f2` |
+| Package | `artifacts/local-test/RC15-Phase37F2-LOCALTEST/LOCAL-ONLY-RC15-Phase37F2-LOCALTEST-win-x64.zip` |
+| ZIP size / files | F2-SIZE |
+| ZIP SHA-256 | F2-SHA |
+| EXE inside the ZIP | `LOCAL-ONLY-RC15-Phase37F2-LOCALTEST-win-x64\Carowinds.Passdown.Desktop.exe` |
+| Mac verification | F2-VERIFY |
+
+Superseded first candidate (unchanged, do not test):
+
+| | RC15-Phase37F-LOCALTEST (superseded) |
 |---|---|
 | Source commit | `a18f8b3` (production source identical to `7ddc5f4`) |
 | Version shown in the app | `0.1.0-rc.15-LOCALTEST.phase37f` |
@@ -32,7 +48,7 @@ Test only in the disposable local account **`CarowindsTest`** with made-up Passd
 - **Never** point Personal Sync at the real shared sync folder. Use a disposable folder such as
   `C:\Users\CarowindsTest\Documents\SyncTest`.
 - Do not run `Enable Automatic Refresh.cmd`, and do not install any update from this build.
-- Settings → About shows `0.1.0-rc.15-LOCALTEST.phase37f`.
+- Settings → About shows `0.1.0-rc.15-LOCALTEST.phase37f2`.
 - The weather printed is **real NWS forecast data** for the park area. Weather is informational only; it must not
   drive any real operational decision during the test.
 - Printing: use **Microsoft Print to PDF** unless a real printer is convenient; for grayscale, choose the printer's
@@ -40,11 +56,34 @@ Test only in the disposable local account **`CarowindsTest`** with made-up Passd
 
 ## Manual checklist
 
+Run every section with **Include Weather Outlook checked** unless the item says otherwise.
+
 Mark each item **PASS / FAIL / NOT EXECUTED**, with a note or screenshot (Windows+Shift+S) for anything odd.
 Record once at the top of the report: PC model, Windows 11 build, display scaling, printer(s) used, local time of the
 test, and the park hours of each date tested.
 
 **Status of every item below: NOT EXECUTED.** No Windows run of this candidate has been reported.
+
+### 0. Include Weather Outlook option (follow-up)
+0.1 Open **Actions** on the Passdown. Directly under the three PDF Style entries there is a check item **Include
+Weather Outlook**, checked on a fresh test account.
+
+0.2 Uncheck it. The preview updates at once (no noticeable delay) and shows **no** weather; the header looks exactly
+like RC.14 (no gap where the weather was). The draft is not marked as changed.
+
+0.3 With it unchecked, Print (Microsoft Print to PDF), Save PDF and Create PDF: none of the files has weather. Repeat
+for Classic, Modern and Compact.
+
+0.4 Close and reopen the app: the item is still unchecked and the first preview has no weather. Check it again: the
+weather returns in the preview, Print, Save PDF and Create PDF; reopen the app: still checked.
+
+0.5 Change the selected date with the option unchecked: it stays unchecked for every date.
+
+0.6 Keyboard: Tab to Actions, press Enter, arrow to Include Weather Outlook, press Space or Enter: it toggles.
+Narrator reads "Include Weather Outlook" and its checked state.
+
+0.7 Personal Sync (disposable folder only): sync on this account; the option does not appear in the sync folder's
+files and does not change on another test device.
 
 ### 1. Weather for the correct operating date
 1.1 Open the app and wait until the Dashboard Weather card shows weather (about 15 seconds on first launch).

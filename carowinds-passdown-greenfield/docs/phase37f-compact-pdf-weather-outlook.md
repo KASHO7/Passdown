@@ -1,12 +1,12 @@
 # Phase 37F — Compact PDF Weather Outlook
 
-Status: implemented locally / awaiting Windows validation (local test candidate `RC15-Phase37F-LOCALTEST`) / not owner-accepted / not published.
+Status: implemented locally / awaiting Windows validation (local test candidate `RC15-Phase37F2-LOCALTEST`, which supersedes `RC15-Phase37F-LOCALTEST`) / not owner-accepted / not published.
 
 | | |
 |---|---|
 | Branch | `feature/passdown-redesign` (local; nothing pushed) |
 | Starting commit | `e3353e4` (Phase 37C-3 documentation) |
-| Ending commits | `9d5d282` (37F-1 Application), `57e3d82` (37F-2 Documents), `7ddc5f4` (37F-3 Desktop, guards, tools) `a18f8b3` (37F-4 documentation) and this package-record commit (hash in the completion report) |
+| Ending commits | `9d5d282` (37F-1 Application), `57e3d82` (37F-2 Documents), `7ddc5f4` (37F-3 Desktop, guards, tools) `a18f8b3` (37F-4 documentation), `51cf141` (37F-5 first package record); follow-up commits listed in the follow-up section |
 | Reviewed source baseline | `7ddc5f4` (tests, builds and renders ran on this source, then uncommitted and identical; the Windows candidate was built from `a18f8b3`, same production source) |
 | Dirty-tree caveats | Clean at start |
 | Authorization | Owner brief "Carowinds Operations — Phase 37F: Compact, Park-Hours-Aware PDF Weather Outlook" (2026-11-27), which approves a compact informational PDF Weather Outlook without alerts and withdraws the mock-up's PDF alert example |
@@ -225,11 +225,62 @@ the cache only), `architecture/testing-and-performance.md` (new tests and the `p
 
 **Architecture documentation:** Updated
 
+## Follow-up — Include Weather Outlook option
+
+Authorization: owner brief "Phase 37F Follow-up — Optional Weather Outlook Checkbox" (2026-11-27), restoring a
+previously approved requirement the first Phase 37F brief omitted. The Weather Outlook itself is unchanged.
+
+| Piece | Where | Role |
+|---|---|---|
+| `PassdownWeatherOutlookPreferences` / `IPassdownWeatherOutlookPreferenceStore` / in-memory store | `Application/Preferences/PassdownWeatherOutlookPreferences.cs` | Device preference `IncludeWeatherOutlook`, built-in default **on** |
+| `FilePassdownWeatherOutlookPreferenceStore` | `Infrastructure/Preferences/` | `passdown-weather-outlook.json` in the local application-data folder, the shared atomic writer, nullable field so a missing value means on; unreadable → on. Registered as a singleton in `App.axaml.cs`. Not in drafts, Personal Sync, SQLite or finalized snapshots |
+| `AssociateViewModel.IncludeWeatherOutlook` | Desktop | Loaded before the first date starts loading; preview/Print/Save captures report Waiting until it is known and Create PDF awaits it, so no document is built with the default when "off" is saved. A change calls `Preview.NotifyContentChanged()` (the existing leading-edge refresh, no new delay) and saves the preference; it never marks the draft unsaved. When off, `CaptureWeatherOutlook` returns null without reading the monitor |
+| Check item "Include Weather Outlook" | `AssociateView.axaml`, Passdown **Actions** menu, directly after the PDF Style choices | `ToggleType="CheckBox"`, two-way bound, automation name "Include Weather Outlook" |
+
+**Placement decision.** A visible checkbox on the Passdown action bar beside Create PDF was implemented first and
+failed three existing Phase 35B/35D real-window tests at the 960 × 640 minimum window (the operating-date control was
+squeezed to zero width) and changed the approved keyboard order. Rather than weaken those tests or the approved
+toolbar, the option is a check item in the Actions menu next to the PDF style — the PDF actions — where it is
+keyboard-reachable and leaves the toolbar unchanged.
+
+**Consistency.** Each capture reads the option and the cached weather together into one immutable request, and the
+preview's reuse check compares the outlook, so preview, Print, Save PDF and Create PDF always agree with the option in
+force when the document was made. Finalized PDFs are unaffected (finalization never passes weather; tested).
+
+Follow-up tests (all deterministic, no network):
+
+| Project / class | New | Covers |
+|---|---|---|
+| Ui `Phase37FPassdownWeatherIntegrationTests` | +18 (28) | On by default with no save; off saves the device preference, refreshes the preview at once (one leading-edge generation, no extra pass), prints no weather, never saves the draft; back on restores the outlook; saved off restored after restart (first preview has no weather, nothing re-saved); off and on — Print, Save PDF and Create PDF match the preview; every template on and off; missing/stale forecast with the option on; off persists across date changes; off never reads the monitor or requests weather; slow preference load — preview waits, then uses the saved choice (on and off, one generation); markup: label, check type, two-way binding, automation name, position after PDF Style |
+| Ui `Phase33PreviewWindowTests` (partial `.Phase37FWeatherOutlook`, run alone) | +2 | Real window at 1280 and 960 px: the check item in the Actions menu after PDF Style: Modern, both binding directions, nothing clipped |
+| Infrastructure `FilePassdownWeatherOutlookPreferenceStoreTests` | +9 | Missing → on (no write); saved on/off survives a new instance (restart); unreadable/missing value → on; file holds only the choice; default path is the local application-data folder |
+| Application `WeatherOutlookPreferenceBoundaryTests` | +7 | Draft payload, sync envelope, manifest, finalized snapshot, finalized sync payload, sync configuration and sync settings shapes (recursively) carry no weather member |
+| Documents `Phase37FFinalizedPdfTests` | +3 | The finalized PDF equals the weather-free document for each template |
+| Infrastructure `WeatherActivationGuardTests` | updated | `AssociateView.axaml` added to the Desktop weather file list |
+
+The first draft of the UI tests stalled: the shared test helper elapsed only the newest preview delay, so with "off"
+restored during construction it waited on the older one. The helper now elapses pending delays until the refresh
+finishes (real timers elapse all). The same tests exposed a real startup ordering issue (the first capture used the
+default before the saved choice loaded); fixed by the load-before-date ordering and capture gate above.
+
+Follow-up validation (macOS development host; not Windows validation):
+
+| Check | Result |
+|---|---|
+| Deterministic partitions | PASS — 6,406 / 6,406, 0 skipped (6,367 + 39 new): Domain 488, Application 1,499, Infrastructure 1,435, Documents 634, Ui mixed 2,088, run-alone 30 + 158 + 2 + 7 + 4 + 61 (UI partitions with `--blame-hang`, no hang) |
+| Existing tests updated deliberately | `Phase35DShowsNotesPolishTests.ActionsMenu_KeepsEveryCommand_InOrder_WithItsShortcut` (exact header list now includes "Include Weather Outlook" after "PDF Style: Modern") and `Phase35BPassdownWorkspaceTests.ActionsMenu_HeadlessView_EveryItemIsNamed_AndTheMenuButtonIsKeyboardReachable` (item count 11 → 12; separators unchanged). Both stay exact inventories; nothing removed or loosened |
+| Repository guards | PASS — 31 / 31 |
+| Clean Release build | PASS — all `bin`/`obj` deleted, `--no-incremental`: 0 warnings, 0 errors; `tools/visual-fixtures` and `tools/perf-benchmarks` 0 / 0 |
+| Windows local-test candidate | F2-CANDIDATE |
+| Windows validation | NOT EXECUTED |
+
 ## Known limitations
 
 - **Windows validation pending**: Windows rendering, printing (colour and grayscale), DPI and timing.
 - Finalized History PDFs carry no weather (finalization runs after the day; see §6).
 - A weather change alone does not refresh a visible preview; Print/Save always use current weather and then show it.
+- The Include Weather Outlook option is in the Actions menu, not on the action bar (see the follow-up's placement decision).
+- In the first moments after start, before the device preference has loaded, Print/Save PDF report "still loading" like a date that is still loading.
 - A forecast older than 3 hours is omitted, so a PDF made offline after a long gap has no weather.
 - Rain timing is named only for a dry-then-wetter pattern crossing 30%; other changes (for example clearing later) are
   summarized by the dominant condition only.
