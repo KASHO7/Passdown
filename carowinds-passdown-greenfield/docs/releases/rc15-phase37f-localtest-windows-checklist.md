@@ -16,13 +16,13 @@ candidates, which are kept unchanged below for reference and should not be teste
 
 | | RC15-Phase37F3-LOCALTEST (test this one) |
 |---|---|
-| Source commit | F3-COMMIT |
+| Source commit | `623075d` (production source identical to `14cec32`; the later commit is documentation only) |
 | Version shown in the app | `0.1.0-rc.15-LOCALTEST.phase37f3` |
 | Package | `artifacts/local-test/RC15-Phase37F3-LOCALTEST/LOCAL-ONLY-RC15-Phase37F3-LOCALTEST-win-x64.zip` |
-| ZIP size / files | F3-SIZE |
-| ZIP SHA-256 | F3-SHA |
+| ZIP size / files | 76,472,146 bytes (72.9 MB); 308 files |
+| ZIP SHA-256 | `12f9676c1ff2b5ec0a50bcc7607a272fcd230b0beb2b74c1b9b17fece8fb84f1` |
 | EXE inside the ZIP | `LOCAL-ONLY-RC15-Phase37F3-LOCALTEST-win-x64\Carowinds.Passdown.Desktop.exe` |
-| Mac verification | F3-VERIFY |
+| Mac verification | Deterministic suite 6,408 passed / 0 skipped; repository guards 31/31; clean Release build 0 warnings / 0 errors; script content validation (folder and ZIP, 308 files); `RealReleaseZip` passed (a bogus path fails); marker names `623075d`; no database, WAL/SHM, draft, weather cache, preference file, key, signature, update-manifest, PDB or PDF file in the ZIP; all 14,197 earlier artifact files (including both earlier Phase 37F ZIPs, `ad9c4def…` and `fce00711…`) re-hashed byte-identical |
 
 Superseded candidates (unchanged, do not test):
 

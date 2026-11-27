@@ -278,7 +278,8 @@ Follow-up validation (macOS development host; not Windows validation):
 
 ## Relocation — Weather Outlook checkbox in Include in Passdown
 
-Authorization: owner brief "Phase 37F — Move Weather Outlook Toggle" (2026-11-27).
+Authorization: owner brief "Phase 37F — Move Weather Outlook Toggle" (2026-11-27). Commits: `14cec32` (37F-10 source and tests;
+reviewed source baseline), `623075d` (37F-11 docs) and this package-record commit.
 
 - The control is now a checkbox **Weather Outlook** in Overview → **Include in Passdown**, the last item of the
   two-column `IncludeChoices` grid. The Actions menu item was removed (one control only). Same binding
@@ -312,7 +313,7 @@ visible below Shows, no horizontal overflow, no button past the right edge.
 | Deterministic partitions | PASS — 6,408 / 6,408, 0 skipped: Domain 488, Application 1,499, Infrastructure 1,435, Documents 634, Ui mixed 2,088, run-alone 30 + 158 + 2 + 7 + 4 + 63 |
 | Repository guards | PASS — 31 / 31 |
 | Clean Release build | PASS — 0 warnings, 0 errors (solution, `tools/visual-fixtures`, `tools/perf-benchmarks`) |
-| Windows local-test candidate | F3-CANDIDATE |
+| Windows local-test candidate | `artifacts/local-test/RC15-Phase37F3-LOCALTEST/LOCAL-ONLY-RC15-Phase37F3-LOCALTEST-win-x64.zip` from `623075d` (production source identical to `14cec32`), shown as `0.1.0-rc.15-LOCALTEST.phase37f3`; 76,472,146 bytes, 308 files; SHA-256 `12f9676c1ff2b5ec0a50bcc7607a272fcd230b0beb2b74c1b9b17fece8fb84f1`. Content validation (folder and ZIP), `RealReleaseZip` (bogus path fails), marker and forbidden-content checks passed; all 14,197 earlier artifact files re-hashed byte-identical (both earlier 37F ZIPs unchanged). Supersedes `RC15-Phase37F2-LOCALTEST` |
 | Windows validation | NOT EXECUTED |
 
 ## Known limitations
