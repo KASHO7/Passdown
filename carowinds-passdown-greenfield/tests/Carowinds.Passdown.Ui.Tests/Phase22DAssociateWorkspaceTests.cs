@@ -357,8 +357,8 @@ public sealed class Phase22DAssociateWorkspaceTests
         [
             "ParkHours.HeadlineText", "ParkHours.BadgeText", "ParkHours.VerificationText", "ParkHours.StaleNoteText", "ParkHours.WaterparkHeadlineText",
             "ParkHours.NorthGateText", "ParkHours.AvenueText", "NorthGateOverrideText", "AvenueOverrideText", "ResetNorthGateOverrideCommand", "ResetAvenueOverrideCommand",
-            "ProjectedAttendanceText", "ProjectedAttendanceError", "PreSoldsText", "PreSoldsError", "EarlyRideTimeStatusText", "OpenErtEditorCommand",
-            "DailyFeatureTypeOptions", "SelectedDailyFeatureTypeOption", "DailyFeatureText", "IsErtEditorOpen", "ManualHoursOverrideEnabled", "PrivateBuyoutEnabled",
+            "ProjectedAttendanceText", "ProjectedAttendanceError", "PreSoldsText", "PreSoldsError", "EarlyRideTimeStatusText", "EarlyRideTimeEditor.OpenErtEditorCommand",
+            "DailyFeatureTypeOptions", "SelectedDailyFeatureTypeOption", "DailyFeatureText", "EarlyRideTimeEditor.IsErtEditorOpen", "ManualHoursOverrideEnabled", "PrivateBuyoutEnabled",
             "PrivateBuyoutDetails", "ManualHoursWarningText", "PrivateBuyoutHoursWarningText", "IncludeShows", "ShowsStatusText",
             // Phase 35D: the schedule freshness reads as the Shows heading's second line (date · freshness), built from ShowsFreshnessText.
             "ShowsSubtitleText", "ShowRows",

@@ -74,7 +74,6 @@ public partial class AssociateViewModel : ViewModelBase
     private readonly IAssociatePassdownService _service;
 
     private readonly IClock _clock;
-    private readonly IErtConfigurationService _ertConfigurationService;
     private readonly IAssociatePassdownPdfExportService _pdfExportService;
     private readonly IPdfSaveFilePicker _pdfSavePicker;
     private readonly IAssociatePassdownTemplatePreferenceStore _templatePreferenceStore;
@@ -146,18 +145,11 @@ public partial class AssociateViewModel : ViewModelBase
     // the expected base of its next save, so a version Personal Sync changed underneath the editor is
     // never silently overwritten (see IAssociatePassdownService.SaveEditorDraftAsync).
     private string? _draftBaseHash;
-    private string? _monthlyErtBaseHash;
-    private string? _overrideBaseHash;
-    private ErtEditorFields? _ertEditorLoadedFields;
-
-    /// <summary>The Early Ride Time panel's editable values, captured when it was (re)loaded — a panel whose current values still equal these is "clean" and may be reloaded after a sync change.</summary>
-    private sealed record ErtEditorFields(bool MonthlyNoErt, string? MonthlyRides, string? MonthlyNote, bool UseOverride, bool OverrideNoErt, string? OverrideRides, string? OverrideReason);
+    // Phase 36C: the Early Ride Time editor's own hashes and baseline live in EarlyRideTimeEditorViewModel.
 
     internal const string DraftSyncConflictMessage =
         "This date was changed on another device while you were editing. Your edits are saved on this computer and the other version is kept too — choose which to keep under Personal Sync conflicts.";
 
-    internal const string ErtSyncConflictMessage =
-        "Early Ride Time was changed on another device while this editor was open. Your values are saved on this computer and the other version is kept too — choose which to keep under Personal Sync conflicts.";
     private int? _projectedAttendance;
     private int? _preSolds;
 
@@ -580,44 +572,11 @@ public partial class AssociateViewModel : ViewModelBase
     public partial string? PreSoldsError { get; set; }
 
     /// <summary>
-    /// Whether the single compact Early Ride Time editor panel is open (Phase 17D §3 — replaces the
-    /// Phase 17B pair of independent "Configure Monthly ERT"/"Override for this date" panels with one
-    /// panel that shows the Monthly Default and Date Override sections together, opened by one
-    /// compact [Edit] action). No routine ERT start time is collected anywhere in this editor (spec
-    /// §1/§2/§3) — associates already know Early Ride happens 30 minutes before park open.
+    /// Phase 36C: the compact Early Ride Time editor panel (Phase 17D §3), a child that owns only its own panel state and
+    /// saves through <see cref="IErtConfigurationService"/>. It reads <see cref="SelectedDate"/> through a callback and
+    /// never owns a date or touches the draft or autosave.
     /// </summary>
-    [ObservableProperty]
-    public partial bool IsErtEditorOpen { get; set; }
-
-    [ObservableProperty]
-    public partial string? MonthlyErtRidesText { get; set; }
-
-    /// <summary>"No ERT this month" (spec Part 7/11) — when checked, the rides field is ignored by <see cref="SaveMonthlyErtAsync"/> regardless of what it still shows, matching <see cref="Application.Ert.ErtConfigurationService"/>'s own server-side normalization.</summary>
-    [ObservableProperty]
-    public partial bool MonthlyErtNoErt { get; set; }
-
-    [ObservableProperty]
-    public partial string? MonthlyErtNoteText { get; set; }
-
-    /// <summary>Set only by an explicit Save Monthly attempt — never updated by simply typing, since Monthly ERT saves only on the explicit button press (spec Part 7).</summary>
-    [ObservableProperty]
-    public partial string? MonthlyErtSaveError { get; set; }
-
-    /// <summary>"[ ] Use override for {date}" (Phase 17D §3) — reveals/enables the override rides/reason fields when checked; pre-checked on open only when a date override already exists.</summary>
-    [ObservableProperty]
-    public partial bool ErtUseOverrideForDate { get; set; }
-
-    [ObservableProperty]
-    public partial string? OverrideRidesText { get; set; }
-
-    [ObservableProperty]
-    public partial bool OverrideNoErt { get; set; }
-
-    [ObservableProperty]
-    public partial string? OverrideReasonText { get; set; }
-
-    [ObservableProperty]
-    public partial string? OverrideSaveError { get; set; }
+    public EarlyRideTimeEditorViewModel EarlyRideTimeEditor { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OperationalNotesCount))]
@@ -907,7 +866,6 @@ public partial class AssociateViewModel : ViewModelBase
 
         _service = service;
         _clock = clock;
-        _ertConfigurationService = ertConfigurationService ?? new UnavailableErtConfigurationService();
         _logger = logger;
         _autosaveDebounce = autosaveDebounce ?? DefaultAutosaveDebounce;
         _autosaveDelay = autosaveDelay ?? Task.Delay;
@@ -940,6 +898,14 @@ public partial class AssociateViewModel : ViewModelBase
         OfficialDataStatus = officialDataStatus;
         OfficialDetails = new OfficialDetailsDialogViewModel(externalLinkLauncher);
         PriceEditor = new PriceEditorViewModel(IsPriceEditTargetCurrent);
+
+        // Phase 36C: created before the first SelectedDate assignment below, whose workspace load closes the panel.
+        EarlyRideTimeEditor = new EarlyRideTimeEditorViewModel(
+            ertConfigurationService ?? new UnavailableErtConfigurationService(),
+            () => SelectedDate,
+            RefreshWorkspaceAsync,
+            message => SyncConflictMessage = message,
+            logger);
         CustomProducts.CollectionChanged += OnCustomProductsCollectionChanged;
 
         // Phase 32: the Pass Perks panel (Products) reads the cached official perks only.
@@ -1014,9 +980,9 @@ public partial class AssociateViewModel : ViewModelBase
                 return; // something changed while loading (an edit, a save, a date switch): leave it alone.
             }
 
-            var ertPanelWasOpen = IsErtEditorOpen;
+            var ertPanelWasOpen = EarlyRideTimeEditor.IsErtEditorOpen;
             ApplyWorkspaceToFields(workspace);
-            IsErtEditorOpen = ertPanelWasOpen;
+            EarlyRideTimeEditor.IsErtEditorOpen = ertPanelWasOpen;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -1029,7 +995,7 @@ public partial class AssociateViewModel : ViewModelBase
         && current.OperatingDate == date
         && _draftDateInEdit == date
         && current.SaveStatus.State == AssociateSaveState.NeverSaved
-        && !_isDirty && !_saveInFlight && !IsCheckingOnline && !IsErtEditorDirty();
+        && !_isDirty && !_saveInFlight && !IsCheckingOnline && !EarlyRideTimeEditor.IsDirty;
 
     /// <summary>
     /// Phase 19A: after a date's local data is shown, quietly check it online when it is today or a
@@ -1115,7 +1081,7 @@ public partial class AssociateViewModel : ViewModelBase
                 return; // Check Online applies its own result; a load in flight reads fresh data itself.
             }
 
-            if (_isDirty || _saveInFlight || IsErtEditorDirty())
+            if (_isDirty || _saveInFlight || EarlyRideTimeEditor.IsDirty)
             {
                 _officialDataReloadDeferred = true;
                 return;
@@ -1132,10 +1098,10 @@ public partial class AssociateViewModel : ViewModelBase
     private async Task ReloadOfficialDataAsync(DateOnly date)
     {
         _officialDataReloadDeferred = false;
-        var ertPanelWasOpen = IsErtEditorOpen;
+        var ertPanelWasOpen = EarlyRideTimeEditor.IsErtEditorOpen;
 
         var workspace = await _service.LoadAssociateDateAsync(date).ConfigureAwait(true);
-        if (date != SelectedDate || _draftDateInEdit != date || _isDirty || _saveInFlight || IsCheckingOnline || IsErtEditorDirty())
+        if (date != SelectedDate || _draftDateInEdit != date || _isDirty || _saveInFlight || IsCheckingOnline || EarlyRideTimeEditor.IsDirty)
         {
             _officialDataReloadDeferred = date == SelectedDate;
             return;
@@ -1151,7 +1117,7 @@ public partial class AssociateViewModel : ViewModelBase
         }
 
         ApplyWorkspaceToFields(workspace);
-        IsErtEditorOpen = ertPanelWasOpen;
+        EarlyRideTimeEditor.IsErtEditorOpen = ertPanelWasOpen;
     }
 
     /// <summary>True when two workspaces for the same date show the same official products, prices and hours — differing at most in when they were verified.</summary>
@@ -1198,8 +1164,8 @@ public partial class AssociateViewModel : ViewModelBase
                 return;
             }
 
-            var ertPanelWasOpen = IsErtEditorOpen;
-            var ertPanelClean = !IsErtEditorDirty();
+            var ertPanelWasOpen = EarlyRideTimeEditor.IsErtEditorOpen;
+            var ertPanelClean = !EarlyRideTimeEditor.IsDirty;
 
             if (!_isDirty && !_saveInFlight)
             {
@@ -1207,7 +1173,7 @@ public partial class AssociateViewModel : ViewModelBase
                 if (date == SelectedDate && _draftDateInEdit == date && !_isDirty && !_saveInFlight)
                 {
                     ApplyWorkspaceToFields(workspace); // Closes the ERT panel but never touches its field values.
-                    IsErtEditorOpen = ertPanelWasOpen;
+                    EarlyRideTimeEditor.IsErtEditorOpen = ertPanelWasOpen;
                 }
             }
 
@@ -1216,9 +1182,9 @@ public partial class AssociateViewModel : ViewModelBase
                 await RefreshOperationalNoteSuggestionsAsync(date).ConfigureAwait(true);
             }
 
-            if (ertPanelWasOpen && ertPanelClean && (monthlyChanged || overrideChanged) && date == SelectedDate && !IsErtEditorDirty())
+            if (ertPanelWasOpen && ertPanelClean && (monthlyChanged || overrideChanged) && date == SelectedDate && !EarlyRideTimeEditor.IsDirty)
             {
-                await LoadErtEditorFieldsAsync(date).ConfigureAwait(true);
+                await EarlyRideTimeEditor.LoadErtEditorFieldsAsync(date).ConfigureAwait(true);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -1229,11 +1195,6 @@ public partial class AssociateViewModel : ViewModelBase
         }
     }
 
-    private bool IsErtEditorDirty() =>
-        IsErtEditorOpen && _ertEditorLoadedFields is { } loaded && loaded != CurrentErtEditorFields();
-
-    private ErtEditorFields CurrentErtEditorFields() =>
-        new(MonthlyErtNoErt, MonthlyErtRidesText, MonthlyErtNoteText, ErtUseOverrideForDate, OverrideNoErt, OverrideRidesText, OverrideReasonText);
 
     private async Task LoadTemplatePreferenceAsync()
     {
@@ -2184,175 +2145,6 @@ public partial class AssociateViewModel : ViewModelBase
     /// <see cref="EffectiveEarlyRideTime"/> — that value may currently be coming from a date override,
     /// and editing "the month" must always start from the month's own saved default.
     /// </summary>
-    [RelayCommand]
-    private async Task OpenErtEditorAsync()
-    {
-        var date = SelectedDate;
-        MonthlyErtSaveError = null;
-        OverrideSaveError = null;
-
-        if (await LoadErtEditorFieldsAsync(date).ConfigureAwait(true))
-        {
-            IsErtEditorOpen = true;
-        }
-    }
-
-    /// <summary>Fills the Early Ride Time panel from the persisted records and records their hashes as the base of the panel's next saves (Phase 18B REL-004). Returns false when superseded by a date switch.</summary>
-    private async Task<bool> LoadErtEditorFieldsAsync(DateOnly date)
-    {
-        var existingMonthly = await _ertConfigurationService.GetMonthlyAsync(date.Year, date.Month).ConfigureAwait(true);
-        var existingOverride = await _ertConfigurationService.GetOverrideAsync(date).ConfigureAwait(true);
-        if (date != SelectedDate)
-        {
-            return false; // superseded by a date switch while the reads were in flight.
-        }
-
-        MonthlyErtNoErt = existingMonthly?.State == ErtConfigurationState.NoErt;
-        MonthlyErtRidesText = existingMonthly is null ? null : string.Join(Environment.NewLine, existingMonthly.Rides);
-        MonthlyErtNoteText = existingMonthly?.Note;
-
-        ErtUseOverrideForDate = existingOverride is not null;
-        OverrideNoErt = existingOverride?.State == ErtConfigurationState.NoErt;
-        OverrideRidesText = existingOverride is null ? null : string.Join(Environment.NewLine, existingOverride.Rides);
-        OverrideReasonText = existingOverride?.Reason;
-
-        _monthlyErtBaseHash = IErtConfigurationService.ContentHashOf(existingMonthly);
-        _overrideBaseHash = IErtConfigurationService.ContentHashOf(existingOverride);
-        _ertEditorLoadedFields = CurrentErtEditorFields();
-        return true;
-    }
-
-    [RelayCommand]
-    private void CancelErtEditor()
-    {
-        IsErtEditorOpen = false;
-        MonthlyErtSaveError = null;
-        OverrideSaveError = null;
-    }
-
-    /// <summary>
-    /// Validates and saves the Monthly Default section (spec Part 7/33) — only ever runs on this
-    /// explicit "Save Monthly" action, never implicitly from typing. No start time is collected or
-    /// sent (Phase 17D §1). On success, reloads the workspace so <see cref="EarlyRideTimeStatusText"/>
-    /// and every other resolver-driven display refreshes together (spec Part 4's "one authoritative
-    /// resolver").
-    /// </summary>
-    [RelayCommand]
-    private async Task SaveMonthlyErtAsync()
-    {
-        var date = SelectedDate;
-        var (state, rides) = BuildErtDraftFields(MonthlyErtNoErt, MonthlyErtRidesText);
-
-        MonthlyErtSaveError = null;
-        try
-        {
-            var result = await _ertConfigurationService.SaveMonthlyFromEditorAsync(
-                new MonthlyErtDraft(date.Year, date.Month, state, StartTime: null, rides, NullIfBlank(MonthlyErtNoteText)), _monthlyErtBaseHash).ConfigureAwait(true);
-            _monthlyErtBaseHash = result.ContentHash;
-            if (result.ConflictDetected)
-            {
-                SyncConflictMessage = ErtSyncConflictMessage;
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger?.LogError(ex, "Failed to save monthly Early Ride Time for {Year}-{Month}.", date.Year, date.Month);
-            MonthlyErtSaveError = "Could not save. Try again.";
-            return;
-        }
-
-        if (date != SelectedDate)
-        {
-            return; // superseded by a date switch while the save was in flight.
-        }
-
-        await RefreshWorkspaceAsync(date).ConfigureAwait(true);
-        IsErtEditorOpen = true; // ApplyWorkspaceToFields closes it unconditionally; Phase 17D §3 keeps the shared panel open across an in-panel Save.
-        _ertEditorLoadedFields = CurrentErtEditorFields();
-    }
-
-    /// <summary>Validates and saves the Date Override section (spec Part 8/9/33) — mirrors <see cref="SaveMonthlyErtAsync"/>, scoped to <see cref="SelectedDate"/> instead of its month. No start time is collected or sent (Phase 17D §1).</summary>
-    [RelayCommand]
-    private async Task SaveOverrideAsync()
-    {
-        var date = SelectedDate;
-        var (state, rides) = BuildErtDraftFields(OverrideNoErt, OverrideRidesText);
-
-        OverrideSaveError = null;
-        try
-        {
-            var result = await _ertConfigurationService.SaveOverrideFromEditorAsync(
-                new ErtDateOverrideDraft(date, state, StartTime: null, rides, NullIfBlank(OverrideReasonText)), _overrideBaseHash).ConfigureAwait(true);
-            _overrideBaseHash = result.ContentHash;
-            if (result.ConflictDetected)
-            {
-                SyncConflictMessage = ErtSyncConflictMessage;
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger?.LogError(ex, "Failed to save Early Ride Time override for {OperatingDate}.", date);
-            OverrideSaveError = "Could not save. Try again.";
-            return;
-        }
-
-        if (date != SelectedDate)
-        {
-            return;
-        }
-
-        ErtUseOverrideForDate = true;
-        await RefreshWorkspaceAsync(date).ConfigureAwait(true);
-        IsErtEditorOpen = true;
-        _ertEditorLoadedFields = CurrentErtEditorFields();
-    }
-
-    /// <summary>Removes the selected date's override (spec Part 8/28) — the date immediately falls back to the monthly default once the workspace reloads.</summary>
-    [RelayCommand]
-    private async Task RemoveOverrideAsync()
-    {
-        var date = SelectedDate;
-        OverrideSaveError = null;
-        try
-        {
-            var result = await _ertConfigurationService.RemoveOverrideFromEditorAsync(date, _overrideBaseHash).ConfigureAwait(true);
-            _overrideBaseHash = result.ContentHash;
-            if (result.ConflictDetected)
-            {
-                SyncConflictMessage = ErtSyncConflictMessage;
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger?.LogError(ex, "Failed to remove Early Ride Time override for {OperatingDate}.", date);
-            OverrideSaveError = "Could not remove. Try again.";
-            return;
-        }
-
-        if (date != SelectedDate)
-        {
-            return;
-        }
-
-        ErtUseOverrideForDate = false;
-        OverrideNoErt = false;
-        OverrideRidesText = null;
-        OverrideReasonText = null;
-        await RefreshWorkspaceAsync(date).ConfigureAwait(true);
-        IsErtEditorOpen = true;
-        _ertEditorLoadedFields = CurrentErtEditorFields();
-    }
-
-    /// <summary>
-    /// Shared validate-and-shape step for both the monthly and override editors (spec Part 33,
-    /// revised Phase 17D §1): <see cref="ErtConfigurationState.NoErt"/> always clears rides (mirrors
-    /// <c>ErtConfigurationService</c>'s own server-side normalization); otherwise rides are parsed
-    /// with the same <see cref="ParseLines"/> newline-list idiom already used elsewhere in this class.
-    /// No start time is collected or validated — Phase 17D removes the routine ERT time field entirely.
-    /// </summary>
-    private static (ErtConfigurationState State, IReadOnlyList<string> Rides) BuildErtDraftFields(bool noErt, string? ridesText) =>
-        noErt ? (ErtConfigurationState.NoErt, []) : (ErtConfigurationState.Configured, ParseLines(ridesText));
-
     /// <summary>Reloads <see cref="Workspace"/> for <paramref name="date"/> after an ERT save/remove (spec Part 4/16) — a full <see cref="ApplyWorkspaceToFields"/> pass, mirroring how <see cref="AddOperationalNoteAsync"/>/<see cref="RemoveOperationalNoteAsync"/> already refresh the whole workspace after their own immediate, non-debounced service round-trip.</summary>
     private async Task RefreshWorkspaceAsync(DateOnly date)
     {
@@ -2587,11 +2379,9 @@ public partial class AssociateViewModel : ViewModelBase
 
             // Phase 17B: Early Ride Time is no longer part of the draft — nothing to populate here.
             // The effective-ERT display properties read workspace.EarlyRideTime directly; the
-            // compact editor panel (Phase 17D §3) populates itself on demand (OpenErtEditorAsync)
+            // compact editor panel (Phase 17D §3, EarlyRideTimeEditorViewModel since Phase 36C) populates itself on demand
             // since it needs the underlying monthly/override records, not the resolved effective value.
-            IsErtEditorOpen = false;
-            MonthlyErtSaveError = null;
-            OverrideSaveError = null;
+            EarlyRideTimeEditor.CloseForWorkspaceReplacement();
 
             OperationalNotesText = string.Join(Environment.NewLine, draft.OperationalNotes);
 
@@ -3101,21 +2891,9 @@ public partial class AssociateViewModel : ViewModelBase
         return true;
     }
 
-    private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private static string? NullIfBlank(string? value) => EditorText.NullIfBlank(value);
 
-    private static IReadOnlyList<string> ParseLines(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return [];
-        }
-
-        return text.Replace("\r\n", "\n", StringComparison.Ordinal)
-            .Split('\n')
-            .Select(line => line.Trim())
-            .Where(line => line.Length > 0)
-            .ToList();
-    }
+    private static IReadOnlyList<string> ParseLines(string? text) => EditorText.ParseLines(text);
 
     private static string? FormatTimeOrNull(TimeOnly? value) => value is { } time ? OperationalTimeFormatter.Format(time) : null;
 

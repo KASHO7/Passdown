@@ -160,7 +160,7 @@ public partial class Phase33PreviewWindowTests
         var w = await RealizeWorkspaceAsync(1280, 640);
         w.ViewModel.ManualHoursOverrideEnabled = true;
         w.ViewModel.PrivateBuyoutEnabled = true;
-        w.ViewModel.OpenErtEditorCommand.Execute(null);
+        w.ViewModel.EarlyRideTimeEditor.OpenErtEditorCommand.Execute(null);
         Pump();
         var overview = VisibleSection(w.Window);
         Assert.True(overview.Extent.Height > overview.Viewport.Height, "the Overview should scroll at this size");
@@ -253,9 +253,9 @@ public partial class Phase33PreviewWindowTests
         var edit = ByName<Button>(w.Window, "Edit Attractions for Early Ride Time");
         Assert.True(edit.IsEffectivelyVisible);
 
-        Execute(edit.Command, () => w.ViewModel.IsErtEditorOpen);
+        Execute(edit.Command, () => w.ViewModel.EarlyRideTimeEditor.IsErtEditorOpen);
 
-        Assert.True(w.ViewModel.IsErtEditorOpen);
+        Assert.True(w.ViewModel.EarlyRideTimeEditor.IsErtEditorOpen);
         Assert.True(ByName<Border>(w.Window, "Early Ride Time editor").IsEffectivelyVisible);
         Assert.True(ByName<TextBox>(w.Window, "Monthly Early Ride Time rides").IsEffectivelyVisible);
         w.Window.Close();

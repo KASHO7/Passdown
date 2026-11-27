@@ -84,7 +84,7 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
         a.PrivateBuyoutDetails = "Synthetic group buyout"; a.NorthGateOverrideText = "9:00 AM";
         Pump(10);
     }),
-    ("Workspace-ErtEditor", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.OpenErtEditorCommand.Execute(null); Pump(8); ScrollToName(f.Window, "Early Ride Time editor"); }),
+    ("Workspace-ErtEditor", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.EarlyRideTimeEditor.OpenErtEditorCommand.Execute(null); Pump(8); ScrollToName(f.Window, "Early Ride Time editor"); }),
     ("Workspace-LongContentScrolled", () => new Fixture(), f =>
     {
         Go(f, AppSection.AssociatePassdown);

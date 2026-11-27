@@ -1391,7 +1391,7 @@
                         <Border Classes="sourceTag" VerticalAlignment="Top" Margin="0,-1,0,6"><TextBlock Text="Your setting" /></Border>
                       </WrapPanel>
                       <Button Grid.Column="1" Content="Edit Attractions" Classes="linkAction compactLink" VerticalAlignment="Top" Margin="0,-3,0,0"
-                              Command="{Binding OpenErtEditorCommand}"
+                              Command="{Binding EarlyRideTimeEditor.OpenErtEditorCommand}"
                               AutomationProperties.Name="Edit Attractions for Early Ride Time"
                               ToolTip.Tip="Edit this month's Early Ride Time rides or override them for this date" />
                     </Grid>
@@ -1402,69 +1402,69 @@
 
                 <!-- Compact Early Ride Time editor (Phase 17D §3) — one panel with the Monthly Default and Date Override
                      sections together, opened by Edit Attractions. No time controls anywhere in this editor. -->
-                <Border Classes="inset" Margin="0,14,0,0" IsVisible="{Binding IsErtEditorOpen}"
+                <Border Classes="inset" Margin="0,14,0,0" IsVisible="{Binding EarlyRideTimeEditor.IsErtEditorOpen}"
                         AutomationProperties.Name="Early Ride Time editor">
                   <StackPanel Spacing="8">
                     <TextBlock Text="MONTHLY DEFAULT" Classes="subsectionTitle" Margin="0" />
                     <TextBlock Text="{Binding SelectedMonthLabel}" Classes="fieldLabel" />
                     <CheckBox Content="No ERT this month"
-                              IsChecked="{Binding MonthlyErtNoErt}"
+                              IsChecked="{Binding EarlyRideTimeEditor.MonthlyErtNoErt}"
                               AutomationProperties.Name="No Early Ride Time this month" />
-                    <StackPanel Spacing="0" IsVisible="{Binding !MonthlyErtNoErt}">
-                      <TextBox Text="{Binding MonthlyErtRidesText}"
+                    <StackPanel Spacing="0" IsVisible="{Binding !EarlyRideTimeEditor.MonthlyErtNoErt}">
+                      <TextBox Text="{Binding EarlyRideTimeEditor.MonthlyErtRidesText}"
                                AcceptsReturn="True" TextWrapping="Wrap" MinHeight="48"
                                PlaceholderText="Participating rides, one per line"
                                AutomationProperties.Name="Monthly Early Ride Time rides" />
                       <TextBlock Text="One ride per line." Classes="fieldHint" />
                     </StackPanel>
                     <TextBox spell:SpellCheck.IsEnabled="True"
-                             Text="{Binding MonthlyErtNoteText}"
+                             Text="{Binding EarlyRideTimeEditor.MonthlyErtNoteText}"
                              PlaceholderText="Note (optional)"
                              AutomationProperties.Name="Monthly Early Ride Time note" />
-                    <TextBlock Text="{Binding MonthlyErtSaveError}"
-                               IsVisible="{Binding MonthlyErtSaveError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                    <TextBlock Text="{Binding EarlyRideTimeEditor.MonthlyErtSaveError}"
+                               IsVisible="{Binding EarlyRideTimeEditor.MonthlyErtSaveError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                Classes="fieldError" TextWrapping="Wrap" />
                     <Button Content="Save Monthly" Classes="primaryAction"
-                            Command="{Binding SaveMonthlyErtCommand}"
+                            Command="{Binding EarlyRideTimeEditor.SaveMonthlyErtCommand}"
                             AutomationProperties.Name="Save Monthly Early Ride Time" />
 
                     <Rectangle Height="1" Fill="{DynamicResource PassdownDividerBrush}" Margin="0,2,0,2" />
 
                     <TextBlock Text="DATE OVERRIDE" Classes="subsectionTitle" Margin="0" />
                     <CheckBox Content="{Binding UseOverrideForDateLabel}"
-                              IsChecked="{Binding ErtUseOverrideForDate}"
+                              IsChecked="{Binding EarlyRideTimeEditor.ErtUseOverrideForDate}"
                               AutomationProperties.Name="Use an Early Ride Time override for this date" />
-                    <StackPanel Spacing="8" IsVisible="{Binding ErtUseOverrideForDate}">
+                    <StackPanel Spacing="8" IsVisible="{Binding EarlyRideTimeEditor.ErtUseOverrideForDate}">
                       <CheckBox Content="No ERT this date"
-                                IsChecked="{Binding OverrideNoErt}"
+                                IsChecked="{Binding EarlyRideTimeEditor.OverrideNoErt}"
                                 AutomationProperties.Name="No Early Ride Time this date" />
-                      <StackPanel Spacing="0" IsVisible="{Binding !OverrideNoErt}">
-                        <TextBox Text="{Binding OverrideRidesText}"
+                      <StackPanel Spacing="0" IsVisible="{Binding !EarlyRideTimeEditor.OverrideNoErt}">
+                        <TextBox Text="{Binding EarlyRideTimeEditor.OverrideRidesText}"
                                  AcceptsReturn="True" TextWrapping="Wrap" MinHeight="48"
                                  PlaceholderText="Override rides, one per line"
                                  AutomationProperties.Name="Early Ride Time override rides" />
                         <TextBlock Text="One ride per line." Classes="fieldHint" />
                       </StackPanel>
                       <TextBox spell:SpellCheck.IsEnabled="True"
-                               Text="{Binding OverrideReasonText}"
+                               Text="{Binding EarlyRideTimeEditor.OverrideReasonText}"
                                PlaceholderText="Reason (optional) — e.g. maintenance"
                                AutomationProperties.Name="Early Ride Time override reason" />
-                      <TextBlock Text="{Binding OverrideSaveError}"
-                                 IsVisible="{Binding OverrideSaveError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                      <TextBlock Text="{Binding EarlyRideTimeEditor.OverrideSaveError}"
+                                 IsVisible="{Binding EarlyRideTimeEditor.OverrideSaveError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                  Classes="fieldError" TextWrapping="Wrap" />
                       <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Content="Save Override" Classes="primaryAction"
-                                Command="{Binding SaveOverrideCommand}"
+                                Command="{Binding EarlyRideTimeEditor.SaveOverrideCommand}"
                                 AutomationProperties.Name="Save Early Ride Time override" />
                         <Button Content="Remove Override"
                                 IsVisible="{Binding EarlyRideTimeIsOverride}"
-                                Command="{Binding RemoveOverrideCommand}"
+                                Command="{Binding EarlyRideTimeEditor.RemoveOverrideCommand}"
                                 AutomationProperties.Name="Remove Early Ride Time override for this date" />
                       </StackPanel>
                     </StackPanel>
 
                     <Button Content="Close" HorizontalAlignment="Left"
-                            Command="{Binding CancelErtEditorCommand}"
+                            Command="{Binding EarlyRideTimeEditor.CancelErtEditorCommand}"
                             AutomationProperties.Name="Close Early Ride Time editor" />
                   </StackPanel>
                 </Border>

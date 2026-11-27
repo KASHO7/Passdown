@@ -12,7 +12,7 @@ namespace Carowinds.Passdown.Ui.Tests;
 /// the Phase 13F derived-from-park-hours suite this file used to carry (the coupling to
 /// <c>EffectiveHours.NorthGateOpening</c>/"North Gate" no longer exists at all). Revised Phase 17D §1/
 /// §2/§3: no routine ERT start time is collected/displayed anywhere any more, and the Configure
-/// Monthly/Override editors are one single compact panel (<see cref="AssociateViewModel.IsErtEditorOpen"/>)
+/// Monthly/Override editors are one single compact panel (<see cref="EarlyRideTimeEditorViewModel.IsErtEditorOpen"/>)
 /// opened by one [Edit] action, rather than two independently-opened panels. Complements
 /// <c>ErtPrecedenceResolverTests</c> (pure Domain precedence, no ViewModel) and
 /// <c>EffectiveErtResolverTests</c> (Application-layer resolution against real repositories).
@@ -173,9 +173,9 @@ public class AssociateViewModelEarlyRideTimeTests
         var viewModel = CreateViewModel(service, ertService);
         await viewModel.PendingLoad;
 
-        await viewModel.OpenErtEditorCommand.ExecuteAsync(null);
-        viewModel.MonthlyErtRidesText = "Fury 325\nCopperhead Strike";
-        await viewModel.SaveMonthlyErtCommand.ExecuteAsync(null);
+        await viewModel.EarlyRideTimeEditor.OpenErtEditorCommand.ExecuteAsync(null);
+        viewModel.EarlyRideTimeEditor.MonthlyErtRidesText = "Fury 325\nCopperhead Strike";
+        await viewModel.EarlyRideTimeEditor.SaveMonthlyErtCommand.ExecuteAsync(null);
 
         var call = Assert.Single(ertService.SaveMonthlyCalls);
         Assert.Equal(2026, call.Year);
@@ -184,7 +184,7 @@ public class AssociateViewModelEarlyRideTimeTests
         Assert.Null(call.StartTime);
         Assert.Equal(["Fury 325", "Copperhead Strike"], call.Rides);
 
-        Assert.True(viewModel.IsErtEditorOpen); // the panel stays open — it is one shared panel with independent Save actions.
+        Assert.True(viewModel.EarlyRideTimeEditor.IsErtEditorOpen); // the panel stays open — it is one shared panel with independent Save actions.
         Assert.Equal("Fury 325, Copperhead Strike", viewModel.EarlyRideTimeStatusText);
     }
 
@@ -196,9 +196,9 @@ public class AssociateViewModelEarlyRideTimeTests
         var viewModel = CreateViewModel(service, ertService);
         await viewModel.PendingLoad;
 
-        await viewModel.OpenErtEditorCommand.ExecuteAsync(null);
-        viewModel.MonthlyErtNoErt = true;
-        await viewModel.SaveMonthlyErtCommand.ExecuteAsync(null);
+        await viewModel.EarlyRideTimeEditor.OpenErtEditorCommand.ExecuteAsync(null);
+        viewModel.EarlyRideTimeEditor.MonthlyErtNoErt = true;
+        await viewModel.EarlyRideTimeEditor.SaveMonthlyErtCommand.ExecuteAsync(null);
 
         var call = Assert.Single(ertService.SaveMonthlyCalls);
         Assert.Equal(ErtConfigurationState.NoErt, call.State);
@@ -216,11 +216,11 @@ public class AssociateViewModelEarlyRideTimeTests
         var viewModel = CreateViewModel(service, ertService);
         await viewModel.PendingLoad;
 
-        await viewModel.OpenErtEditorCommand.ExecuteAsync(null);
-        viewModel.ErtUseOverrideForDate = true;
-        viewModel.OverrideRidesText = "Copperhead Strike";
-        viewModel.OverrideReasonText = "Fury maintenance";
-        await viewModel.SaveOverrideCommand.ExecuteAsync(null);
+        await viewModel.EarlyRideTimeEditor.OpenErtEditorCommand.ExecuteAsync(null);
+        viewModel.EarlyRideTimeEditor.ErtUseOverrideForDate = true;
+        viewModel.EarlyRideTimeEditor.OverrideRidesText = "Copperhead Strike";
+        viewModel.EarlyRideTimeEditor.OverrideReasonText = "Fury maintenance";
+        await viewModel.EarlyRideTimeEditor.SaveOverrideCommand.ExecuteAsync(null);
 
         var call = Assert.Single(ertService.SaveOverrideCalls);
         Assert.Equal(Today, call.OperatingDate);
@@ -228,7 +228,7 @@ public class AssociateViewModelEarlyRideTimeTests
         Assert.Equal(["Copperhead Strike"], call.Rides);
         Assert.Equal("Fury maintenance", call.Reason);
 
-        Assert.True(viewModel.IsErtEditorOpen); // the panel stays open, same as Save Monthly.
+        Assert.True(viewModel.EarlyRideTimeEditor.IsErtEditorOpen); // the panel stays open, same as Save Monthly.
         Assert.True(viewModel.EarlyRideTimeIsOverride);
         Assert.Equal("Copperhead Strike", viewModel.EarlyRideTimeStatusText);
     }
@@ -244,7 +244,7 @@ public class AssociateViewModelEarlyRideTimeTests
         await viewModel.PendingLoad;
         Assert.True(viewModel.EarlyRideTimeIsOverride);
 
-        await viewModel.RemoveOverrideCommand.ExecuteAsync(null);
+        await viewModel.EarlyRideTimeEditor.RemoveOverrideCommand.ExecuteAsync(null);
 
         Assert.Equal(Today, Assert.Single(ertService.RemoveOverrideCalls));
         Assert.False(viewModel.EarlyRideTimeIsOverride);
@@ -264,12 +264,12 @@ public class AssociateViewModelEarlyRideTimeTests
         var viewModel = CreateViewModel(service, ertService);
         await viewModel.PendingLoad;
 
-        await viewModel.OpenErtEditorCommand.ExecuteAsync(null);
+        await viewModel.EarlyRideTimeEditor.OpenErtEditorCommand.ExecuteAsync(null);
 
-        Assert.Contains("Fury 325", viewModel.MonthlyErtRidesText);
-        Assert.True(viewModel.ErtUseOverrideForDate);
-        Assert.Contains("Copperhead Strike", viewModel.OverrideRidesText);
-        Assert.Equal("Fury maintenance", viewModel.OverrideReasonText);
+        Assert.Contains("Fury 325", viewModel.EarlyRideTimeEditor.MonthlyErtRidesText);
+        Assert.True(viewModel.EarlyRideTimeEditor.ErtUseOverrideForDate);
+        Assert.Contains("Copperhead Strike", viewModel.EarlyRideTimeEditor.OverrideRidesText);
+        Assert.Equal("Fury maintenance", viewModel.EarlyRideTimeEditor.OverrideReasonText);
     }
 
     // Phase 17D §3: with no existing override, opening the editor leaves the "Use override" checkbox
@@ -282,9 +282,9 @@ public class AssociateViewModelEarlyRideTimeTests
         var viewModel = CreateViewModel(service, ertService);
         await viewModel.PendingLoad;
 
-        await viewModel.OpenErtEditorCommand.ExecuteAsync(null);
+        await viewModel.EarlyRideTimeEditor.OpenErtEditorCommand.ExecuteAsync(null);
 
-        Assert.False(viewModel.ErtUseOverrideForDate);
+        Assert.False(viewModel.EarlyRideTimeEditor.ErtUseOverrideForDate);
     }
 
     // Reading/editing ERT-related properties is local composition only — never a network call.

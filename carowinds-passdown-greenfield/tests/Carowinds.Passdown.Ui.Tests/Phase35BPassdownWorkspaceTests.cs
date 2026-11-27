@@ -284,12 +284,12 @@ public class Phase35BPassdownWorkspaceTests
         Assert.Contains("x:Name=\"PreSoldsTextBox\" Classes=\"countInput\"", group);
         Assert.Equal(2, Regex.Matches(group, "LostFocus=\"CountTextBox_OnLostFocus\"").Count);
         var edit = Regex.Match(group, "<Button Grid.Column=\"1\" Content=\"Edit Attractions\"[^>]*>", RegexOptions.Singleline).Value;
-        Assert.Contains("Command=\"{Binding OpenErtEditorCommand}\"", edit);
+        Assert.Contains("Command=\"{Binding EarlyRideTimeEditor.OpenErtEditorCommand}\"", edit);
         Assert.Contains("AutomationProperties.Name=\"Edit Attractions for Early Ride Time\"", edit); // visible label is in the name
         Assert.Contains("{Binding EarlyRideTimeStatusText}", group);
         Assert.Contains("<TextBlock Text=\"Your setting\" />", group);
-        Assert.Contains("IsVisible=\"{Binding IsErtEditorOpen}\"", group);
-        foreach (var command in new[] { "SaveMonthlyErtCommand", "SaveOverrideCommand", "RemoveOverrideCommand", "CancelErtEditorCommand" })
+        Assert.Contains("IsVisible=\"{Binding EarlyRideTimeEditor.IsErtEditorOpen}\"", group);
+        foreach (var command in new[] { "EarlyRideTimeEditor.SaveMonthlyErtCommand", "EarlyRideTimeEditor.SaveOverrideCommand", "EarlyRideTimeEditor.RemoveOverrideCommand", "EarlyRideTimeEditor.CancelErtEditorCommand" })
         {
             Assert.Contains($"Command=\"{{Binding {command}}}\"", group);
         }
