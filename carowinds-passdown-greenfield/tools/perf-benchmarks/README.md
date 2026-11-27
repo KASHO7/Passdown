@@ -34,6 +34,7 @@ dotnet tools/perf-benchmarks/bin/Release/net10.0/PerfBenchmarks.dll <benchmark> 
 | `db <scratchDir> [synced counts…]` | Associate date load, Calendar month, Price History open and product switch (before/after the 34B-2 reader), on a synthetic database with 3 years of dated results and the given numbers of synced price observations (e.g. `0 2000 20000`). "Caller" time is time the UI thread would be blocked (SQLite completes synchronously). The database is deleted afterwards. |
 | `refresh-requests` | Official POSTs for one 7-day rolling window through the admission and Fast Lane sources, without and with coalescing (deterministic counts). |
 | `weather [iterations]` | Phase 37C: weather cache file load, snapshot and Dashboard Weather card build (µs and bytes per call), and Dashboard realization at 1280×860 with and without the card (cached synthetic weather, headless Skia). No NWS request. |
+| `pdf-weather [iterations] [outDir]` | Phase 37F: Associate Passdown generation per template without and with the PDF Weather Outlook (median/p90 ms, PDF bytes), the outlook build (selection + wording, µs and bytes per call); with `outDir`, the PDFs and PDFium PNG renders (2 px/pt, colour and grayscale) of the representative weather scenarios. Synthetic forecasts and the Documents test fixtures; no NWS request. |
 | `all <scratchDir>` | Everything above with defaults. |
 
 Use a scratch folder outside the repository and outside any cloud-sync folder (the tool refuses OneDrive,

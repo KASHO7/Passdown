@@ -8,6 +8,9 @@ namespace Carowinds.Passdown.Infrastructure.Tests.Weather;
 /// card only, so Desktop may mention weather only in the composition root and the card's own files listed below —
 /// no Calendar weather (Phase 37D is not authorized), nothing in Associate Passdown, History, scheduled refresh or
 /// Personal Sync. Weather stays out of Personal Sync, drafts, History and PDF documents.
+/// Phase 37F (owner-approved compact PDF Weather Outlook, no alerts) deliberately extends this to the Passdown PDF:
+/// the Documents files and the three Desktop capture files listed below may carry the outlook, which is read from the
+/// monitor's cached snapshot only; finalized snapshots, drafts, sync and History still carry no weather.
 /// </summary>
 public class WeatherActivationGuardTests
 {
@@ -28,10 +31,26 @@ public class WeatherActivationGuardTests
     [
         "src/Carowinds.Passdown.Desktop/App.axaml.cs",
         "src/Carowinds.Passdown.Desktop/Presentation/DashboardWeatherPresentation.cs",
+        "src/Carowinds.Passdown.Desktop/Presentation/PassdownWeatherOutlookSource.cs",
         "src/Carowinds.Passdown.Desktop/Services/IWeatherLinkLauncher.cs",
+        "src/Carowinds.Passdown.Desktop/ViewModels/AssociateViewModel.cs",
         "src/Carowinds.Passdown.Desktop/ViewModels/DashboardWeatherViewModel.cs",
         "src/Carowinds.Passdown.Desktop/ViewModels/OperationsDashboardViewModel.cs",
+        "src/Carowinds.Passdown.Desktop/ViewModels/PassdownPdfPreviewViewModel.cs",
         "src/Carowinds.Passdown.Desktop/Views/DashboardView.axaml",
+    ];
+
+    /// <summary>Phase 37F: the only Documents files that may carry the PDF Weather Outlook.</summary>
+    private static readonly string[] DocumentsWeatherFiles =
+    [
+        "src/Carowinds.Passdown.Documents/Associate/AssociatePassdownDocumentModel.cs",
+        "src/Carowinds.Passdown.Documents/Associate/AssociatePassdownDocumentModelBuilder.cs",
+        "src/Carowinds.Passdown.Documents/Associate/IAssociatePassdownPdfExportService.cs",
+        "src/Carowinds.Passdown.Documents/Associate/PdfWeatherOutlook.cs",
+        "src/Carowinds.Passdown.Documents/Associate/Templates/ClassicAssociatePassdownTemplateRenderer.cs",
+        "src/Carowinds.Passdown.Documents/Associate/Templates/CompactAssociatePassdownTemplateRenderer.cs",
+        "src/Carowinds.Passdown.Documents/Associate/Templates/ModernAssociatePassdownTemplateRenderer.cs",
+        "src/Carowinds.Passdown.Documents/Associate/Templates/PdfWeatherOutlookComponent.cs",
     ];
 
     [Fact]
@@ -55,10 +74,39 @@ public class WeatherActivationGuardTests
     }
 
     [Fact]
-    public void Updater_AndDocuments_DoNotUseWeather()
-    {
+    public void Updater_DoesNotUseWeather() =>
         Assert.Empty(FilesMentioningWeather("src/Carowinds.Passdown.Updater"));
-        Assert.Empty(FilesMentioningWeather("src/Carowinds.Passdown.Documents"));
+
+    [Fact]
+    public void Documents_UsesWeatherOnlyForThePdfOutlook_NeverInFinalizedSnapshots() =>
+        Assert.Equal(DocumentsWeatherFiles, FilesMentioningWeather("src/Carowinds.Passdown.Documents").Select(path => path.Replace('\\', '/')).Order(StringComparer.Ordinal));
+
+    [Fact]
+    public void PdfWeatherOutlook_CarriesNoAlerts_AndCannotRetrieveOrRefresh()
+    {
+        // Phase 37F: alerts stay on the Dashboard; the PDF reads an immutable cached snapshot and requests nothing.
+        foreach (var file in DocumentsWeatherFiles.Append("src/Carowinds.Passdown.Desktop/Presentation/PassdownWeatherOutlookSource.cs"))
+        {
+            var text = RepositoryFiles.ReadText(file);
+            foreach (var forbidden in new[] { "WeatherAlert", "ActiveAlerts", "AlertCoverage", "AlertsStatus", "IWeatherMonitor", "IWeatherProvider", "WeatherRefreshCoordinator", "HttpClient", "RefreshNowAsync" })
+            {
+                Assert.DoesNotContain(forbidden, text, StringComparison.Ordinal);
+            }
+        }
+
+        Assert.DoesNotContain("Weather", RepositoryFiles.ReadText("src/Carowinds.Passdown.Documents/Associate/FinalizedPassdownSnapshotBuilder.cs"), StringComparison.Ordinal);
+        Assert.DoesNotContain("Weather", RepositoryFiles.ReadText("src/Carowinds.Passdown.Documents/Associate/AssociateTeamsTextFormatter.cs"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Passdown_OnlyReadsTheMonitorsCurrentSnapshot()
+    {
+        // No subscription, no refresh, no start: the Passdown never causes a weather request (spec §7.1, §22.13).
+        var text = RepositoryFiles.ReadText("src/Carowinds.Passdown.Desktop/ViewModels/AssociateViewModel.cs");
+        var uses = System.Text.RegularExpressions.Regex.Matches(text, @"_weatherMonitor[^\s;,)]*").Select(match => match.Value).Distinct().Order(StringComparer.Ordinal).ToArray();
+
+        Assert.Equal(["_weatherMonitor", "_weatherMonitor?.Current"], uses);
+        Assert.DoesNotContain("IWeatherMonitor", RepositoryFiles.ReadText("src/Carowinds.Passdown.Desktop/ViewModels/PassdownPdfPreviewViewModel.cs"), StringComparison.Ordinal);
     }
 
     [Theory]

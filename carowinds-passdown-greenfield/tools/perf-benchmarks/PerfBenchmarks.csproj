@@ -21,5 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Carowinds.Passdown.Desktop\Carowinds.Passdown.Desktop.csproj" />
     <Compile Include="..\..\tests\Carowinds.Passdown.Ui.Tests\TestSupport\*.cs" Link="TestSupport\%(Filename)%(Extension)" />
+    <!-- Phase 37F: the Documents test fixtures (synthetic Passdown days) for the pdf-weather renders. -->
+    <Compile Include="..\..\tests\Carowinds.Passdown.Documents.Tests\Associate\TestSupport\AssociateWorkspaceFixtures.cs" Link="TestSupport\Documents\AssociateWorkspaceFixtures.cs" />
   </ItemGroup>
 </Project>

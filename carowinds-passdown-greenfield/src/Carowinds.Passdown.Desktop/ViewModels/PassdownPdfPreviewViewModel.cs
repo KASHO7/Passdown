@@ -13,7 +13,11 @@ using Microsoft.Extensions.Logging;
 namespace Carowinds.Passdown.Desktop.ViewModels;
 
 /// <summary>What the preview should be built from, captured on the UI thread at one instant.</summary>
-public sealed record PassdownPdfRequest(AssociateWorkspace Workspace, DateOnly Date, AssociatePassdownTemplate Template);
+public sealed record PassdownPdfRequest(AssociateWorkspace Workspace, DateOnly Date, AssociatePassdownTemplate Template)
+{
+    /// <summary>Phase 37F: the Weather Outlook captured with this request (an immutable value; null prints no weather).</summary>
+    public PdfWeatherOutlook? Weather { get; init; }
+}
 
 /// <summary>A capture attempt: a request, or why there is nothing to build yet (e.g. the selected date is still loading).</summary>
 public sealed record PassdownPdfCapture(PassdownPdfRequest? Request, string? WaitingText)
@@ -27,7 +31,11 @@ public sealed record PassdownPdfCapture(PassdownPdfRequest? Request, string? Wai
 /// One generated Passdown PDF — the exact bytes the preview shows and that Print and Save PDF use.
 /// <see cref="ContentVersion"/> is the editor state version it was built from.
 /// </summary>
-public sealed record PassdownPdfDocument(byte[] Bytes, DateOnly Date, AssociatePassdownTemplate Template, int PageCount, long ContentVersion, DateTimeOffset GeneratedAt, string Fingerprint);
+public sealed record PassdownPdfDocument(byte[] Bytes, DateOnly Date, AssociatePassdownTemplate Template, int PageCount, long ContentVersion, DateTimeOffset GeneratedAt, string Fingerprint)
+{
+    /// <summary>Phase 37F: the Weather Outlook these bytes print (null = none). A request with different weather wording regenerates.</summary>
+    public PdfWeatherOutlook? Weather { get; init; }
+}
 
 /// <summary>The preview pane's state.</summary>
 public enum PdfPreviewStatus
@@ -1004,7 +1012,7 @@ public sealed partial class PassdownPdfPreviewViewModel : ViewModelBase
             return null;
         }
 
-        if (_document is { } existing && existing.ContentVersion == version && existing.Date == request.Date && existing.Template == request.Template)
+        if (_document is { } existing && existing.ContentVersion == version && existing.Date == request.Date && existing.Template == request.Template && existing.Weather == request.Weather)
         {
             if (display && !_documentDisplayed)
             {
@@ -1026,7 +1034,7 @@ public sealed partial class PassdownPdfPreviewViewModel : ViewModelBase
         try
         {
             GenerationCount++;
-            result = await _scheduler.Run(() => _exportService.GeneratePdf(request.Workspace, generatedAt, request.Template)).ConfigureAwait(true);
+            result = await _scheduler.Run(() => _exportService.GeneratePdf(request.Workspace, generatedAt, request.Template, request.Weather)).ConfigureAwait(true);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -1053,7 +1061,10 @@ public sealed partial class PassdownPdfPreviewViewModel : ViewModelBase
             return null;
         }
 
-        var document = new PassdownPdfDocument(bytes, request.Date, request.Template, Math.Max(1, result.PageCount), version, generatedAt, PdfContentFingerprint.Compute(bytes));
+        var document = new PassdownPdfDocument(bytes, request.Date, request.Template, Math.Max(1, result.PageCount), version, generatedAt, PdfContentFingerprint.Compute(bytes))
+        {
+            Weather = request.Weather,
+        };
 
         // Install as the current document unless a newer state's document is already installed, or it was
         // built before the last date change (Phase 34B-1: a late previous-date result is never installed).

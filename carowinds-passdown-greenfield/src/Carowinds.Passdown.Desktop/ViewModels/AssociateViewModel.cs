@@ -13,6 +13,7 @@ using Carowinds.Passdown.Application.PdfOutput;
 using Carowinds.Passdown.Application.Seasons;
 using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Application.Time;
+using Carowinds.Passdown.Application.Weather;
 using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Desktop.Services;
 using Carowinds.Passdown.Documents.Associate;
@@ -80,6 +81,9 @@ public partial class AssociateViewModel : ViewModelBase
     private readonly IClipboardService _clipboardService;
     private readonly IOfficialDataRefreshCoordinator? _refreshCoordinator;
     private readonly IUiDispatcher _uiDispatcher;
+
+    /// <summary>Phase 37F: read only for its current cached snapshot when a PDF is captured; never refreshed or subscribed to here.</summary>
+    private readonly IWeatherMonitor? _weatherMonitor;
 
     /// <summary>Phase 26: opens a validated official source page in the default browser (null in tests that do not supply one — no link is offered).</summary>
     private readonly IExternalLinkLauncher? _externalLinkLauncher;
@@ -859,7 +863,8 @@ public partial class AssociateViewModel : ViewModelBase
         IPdfPageImageFactory? pdfPageImageFactory = null,
         IPreviewWorkScheduler? previewWorkScheduler = null,
         TimeSpan? previewDebounce = null,
-        Func<TimeSpan, CancellationToken, Task>? previewDelay = null)
+        Func<TimeSpan, CancellationToken, Task>? previewDelay = null,
+        IWeatherMonitor? weatherMonitor = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -871,6 +876,7 @@ public partial class AssociateViewModel : ViewModelBase
         _autosaveDelay = autosaveDelay ?? Task.Delay;
         _pdfExportService = pdfExportService ?? new AssociatePassdownPdfExportService(new AssociatePassdownPdfGenerator());
         _pdfSavePicker = pdfSavePicker ?? new UnavailablePdfSaveFilePicker();
+        _weatherMonitor = weatherMonitor;
 
         // Phase 33: the live PDF preview / Print / Save PDF. Built from the same export service as Create
         // PDF. Without a rasterizer (tests, or a renderer that failed to compose) the pane never shows and
@@ -1275,8 +1281,16 @@ public partial class AssociateViewModel : ViewModelBase
         }
 
         var effective = _draftDateInEdit == workspace.OperatingDate ? WithDraftApplied(workspace, BuildDraft()) : workspace;
-        return PassdownPdfCapture.Ready(new PassdownPdfRequest(effective, workspace.OperatingDate, SelectedTemplateOption.Value));
+        return PassdownPdfCapture.Ready(new PassdownPdfRequest(effective, workspace.OperatingDate, SelectedTemplateOption.Value)
+        {
+            // Phase 37F: one immutable Weather Outlook per capture, for this workspace's own date and hours.
+            Weather = CaptureWeatherOutlook(effective),
+        });
     }
+
+    /// <summary>Phase 37F: the PDF Weather Outlook for <paramref name="workspace"/> from the monitor's cached snapshot (null without weather).</summary>
+    private PdfWeatherOutlook? CaptureWeatherOutlook(AssociateWorkspace workspace) =>
+        PassdownWeatherOutlookSource.For(_weatherMonitor?.Current, workspace, _clock.UtcNow);
 
     /// <summary>
     /// A <see cref="DateTime"/>-shaped view of <see cref="SelectedDate"/> for Avalonia's
@@ -1878,7 +1892,7 @@ public partial class AssociateViewModel : ViewModelBase
                 return;
             }
 
-            var result = _pdfExportService.GeneratePdf(workspace, DateTimeOffset.Now, SelectedTemplateOption.Value);
+            var result = _pdfExportService.GeneratePdf(workspace, DateTimeOffset.Now, SelectedTemplateOption.Value, CaptureWeatherOutlook(workspace));
 
             // Phase 13D Part AA/AB: reflects the real generated page count whenever a document was
             // actually produced — including an overflow that still generated onto extra pages.
