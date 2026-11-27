@@ -1,7 +1,8 @@
 # RC15 local Windows test candidate — Phase 37F Compact PDF Weather Outlook
 
 **LOCAL-ONLY. Not a release.** It is not pushed, tagged, signed or published, and it has no update manifest.
-RC.14 (published prerelease `v0.1.0-rc.14`) and every earlier file under `artifacts/` are unchanged.
+RC.14 (published prerelease `v0.1.0-rc.14`) and every earlier file under `artifacts/` are unchanged: all 13,060
+were re-hashed after this build.
 
 Phase 37F adds a small **Weather** summary to the Associate Passdown PDF (Classic, Modern and Compact): the forecast
 for the selected date's park hours, from the weather the app already has (Phase 37C). It shows **no alerts**. The
@@ -11,13 +12,13 @@ Record: [phase37f-compact-pdf-weather-outlook.md](../phase37f-compact-pdf-weathe
 
 | | RC15-Phase37F-LOCALTEST |
 |---|---|
-| Source commit | Not built yet (awaiting approval to install PowerShell for packaging) |
+| Source commit | `a18f8b3` (production source identical to `7ddc5f4`) |
 | Version shown in the app | `0.1.0-rc.15-LOCALTEST.phase37f` |
 | Package | `artifacts/local-test/RC15-Phase37F-LOCALTEST/LOCAL-ONLY-RC15-Phase37F-LOCALTEST-win-x64.zip` |
-| ZIP size / files | Not built yet (awaiting approval to install PowerShell for packaging) |
-| ZIP SHA-256 | Not built yet (awaiting approval to install PowerShell for packaging) |
+| ZIP size / files | 76,463,874 bytes (72.9 MB); 308 files |
+| ZIP SHA-256 | `ad9c4defcd87f0ccb25df75cac37823707b4afa2ff7b740c61c25415dd2ddd5f` |
 | EXE inside the ZIP | `LOCAL-ONLY-RC15-Phase37F-LOCALTEST-win-x64\Carowinds.Passdown.Desktop.exe` |
-| Mac verification | Not built yet (awaiting approval to install PowerShell for packaging) |
+| Mac verification | Deterministic suite 6,367 passed / 0 skipped; repository guards 31/31; clean Release build 0 warnings / 0 errors; script content validation (folder and ZIP, 308 files); `RealReleaseZip` passed (a bogus path fails); marker names `a18f8b3`; no database, WAL/SHM, draft, weather cache, key, signature, update-manifest, PDB or PDF file in the ZIP; all 13,060 earlier artifact files re-hashed byte-identical |
 
 The source `<Version>` is still `0.1.0-rc.14` (not bumped). Database schema 18, no migration. Personal Sync, the draft
 format and finalized History are unchanged.

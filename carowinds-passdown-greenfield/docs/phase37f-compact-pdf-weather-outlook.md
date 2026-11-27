@@ -6,8 +6,8 @@ Status: implemented locally / awaiting Windows validation (local test candidate 
 |---|---|
 | Branch | `feature/passdown-redesign` (local; nothing pushed) |
 | Starting commit | `e3353e4` (Phase 37C-3 documentation) |
-| Ending commits | `9d5d282` (37F-1 Application), `57e3d82` (37F-2 Documents), `7ddc5f4` (37F-3 Desktop, guards, tools) and this documentation commit (hash in the completion report) |
-| Reviewed source baseline | `7ddc5f4` (tests, builds and renders ran on this source, then uncommitted and identical) |
+| Ending commits | `9d5d282` (37F-1 Application), `57e3d82` (37F-2 Documents), `7ddc5f4` (37F-3 Desktop, guards, tools) `a18f8b3` (37F-4 documentation) and this package-record commit (hash in the completion report) |
+| Reviewed source baseline | `7ddc5f4` (tests, builds and renders ran on this source, then uncommitted and identical; the Windows candidate was built from `a18f8b3`, same production source) |
 | Dirty-tree caveats | Clean at start |
 | Authorization | Owner brief "Carowinds Operations — Phase 37F: Compact, Park-Hours-Aware PDF Weather Outlook" (2026-11-27), which approves a compact informational PDF Weather Outlook without alerts and withdraws the mock-up's PDF alert example |
 | Release status | `v0.1.0-rc.14` (tag → `3d603f0`) published and frozen; source `<Version>` `0.1.0-rc.14`; RC.15 not prepared |
@@ -194,7 +194,7 @@ All results are from the macOS development host. None of it is Windows validatio
 | Deterministic partitions (`build-and-test` skill) | PASS — 6,367 / 6,367, 0 skipped (6,184 + 183 new): Domain 488, Application 1,492, Infrastructure 1,426, Documents 631, Ui mixed 2,070, run-alone 30 + 158 + 2 + 7 + 4 + 59 (UI partitions with `--blame-hang`, no hang) |
 | Repository guards | PASS — 31 / 31 (after the documentation was written; includes the phase-record format check) |
 | Clean Release build | PASS — all `bin`/`obj` under `src`, `tests`, `tools` deleted, `dotnet build CarowindsPassdown.slnx -c Release --no-incremental`: 0 warnings, 0 errors. `tools/visual-fixtures` and `tools/perf-benchmarks`: 0 warnings, 0 errors |
-| Windows local-test candidate | NOT BUILT YET — `Build-PortableRelease.ps1` needs PowerShell, which is not installed on this Mac; installing the PowerShell .NET tool is a download awaiting the owner's approval |
+| Windows local-test candidate | `artifacts/local-test/RC15-Phase37F-LOCALTEST/LOCAL-ONLY-RC15-Phase37F-LOCALTEST-win-x64.zip` from `a18f8b3` (production source identical to `7ddc5f4`; the later commit is documentation only), shown as `0.1.0-rc.15-LOCALTEST.phase37f`; 76,463,874 bytes, 308 files; SHA-256 `ad9c4defcd87f0ccb25df75cac37823707b4afa2ff7b740c61c25415dd2ddd5f`. `Build-PortableRelease.ps1 -LocalTestLabel RC15-Phase37F-LOCALTEST -LocalTestVersion 0.1.0-rc.15-LOCALTEST.phase37f` (PowerShell 7.6.10 .NET tool installed in the session scratch folder with the owner's approval; the latest package version would not install as a .NET tool); script content validation (folder and ZIP) passed; `RealReleaseZip` passed (a bogus path fails); marker names `a18f8b3`; no database, WAL/SHM, draft, weather cache, key, signature, update manifest, PDB or PDF in the ZIP; all 13,060 earlier artifact files re-hashed byte-identical |
 | Windows validation | NOT EXECUTED — checklist [rc15-phase37f-localtest-windows-checklist.md](releases/rc15-phase37f-localtest-windows-checklist.md) |
 
 During development a draft of the refresh-during-generation UI test hung (a held thread-pool generation released while
