@@ -66,7 +66,9 @@ Notable groups:
 - Performance and cleanup: `phase34a*`, `phase34b1*`, `phase34b2*`, `phase34c*`.
 - UI modernization: `phase35*` through [phase35g-final-uiux-polish-readiness.md](phase35g-final-uiux-polish-readiness.md).
 - Architecture and technical-debt audit (post-RC.14): [phase36a-current-architecture-technical-debt-audit.md](phase36a-current-architecture-technical-debt-audit.md);
-  test infrastructure reliability: [phase36b-test-infrastructure-reliability.md](phase36b-test-infrastructure-reliability.md).
+  test infrastructure reliability: [phase36b-test-infrastructure-reliability.md](phase36b-test-infrastructure-reliability.md);
+  Early Ride Time editor extraction: [phase36c-ert-editor-maintainability.md](phase36c-ert-editor-maintainability.md)
+  ([Windows checklist](releases/rc15-phase36c-localtest-windows-checklist.md)).
 - Defect record: [rc9-price-history-legacy-identity-defect.md](rc9-price-history-legacy-identity-defect.md).
 
 ## Research (not product features)
