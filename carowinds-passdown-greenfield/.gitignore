@@ -10,3 +10,25 @@ artifacts/
 *.pem
 *.key
 *signing-key*
+
+# Repository maintenance (2026-11-26): operating-system metadata. Ignoring does not untrack
+# .DS_Store files that are already tracked or staged; removing those from the index is a separate,
+# owner-approved step (see README.md "Repository hygiene").
+.DS_Store
+._*
+.AppleDouble/
+.Spotlight-V100/
+.Trashes/
+Thumbs.db
+desktop.ini
+
+# Generated development artifacts (tests, coverage, IDE state, Python bytecode).
+TestResults/
+*.trx
+coverage/
+coverage*.xml
+coverage*.json
+.idea/
+*.swp
+__pycache__/
+*.pyc

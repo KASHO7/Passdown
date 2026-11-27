@@ -1,0 +1,6 @@
+# Repository root. Application-specific rules live in carowinds-passdown-greenfield/.gitignore.
+# Operating-system metadata. Ignoring does not untrack files that are already tracked or staged.
+.DS_Store
+._*
+Thumbs.db
+desktop.ini

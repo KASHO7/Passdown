@@ -1,0 +1,5 @@
+# Release, Git and security
+
+Published versions and artifacts are immutable; never overwrite or rebuild under the same published identity. Preserve portable packaging, release-content checks, manifest signatures, package/file hashes, safe extraction/path validation, installation recovery/rollback and database safety. Use established local-test workflow; distinguish local candidates from signed/published packages. No version bump, merge, push, tag, signing or publication unless authorized. Inspect status, protect unrelated changes and do not rewrite history or use destructive commands. Determine actual release status from evidence, not hard-coded instructions. Consult `docs/release-strategy.md`, `docs/release-manifest.md` and latest release records before packaging.
+
+Never expose credentials, signing keys, tokens, private configuration or user data. Do not package or commit user DBs, drafts, sync files or secrets. Use synthetic/sanitized fixtures. Preserve official URL allowlists, update verification and atomic writes. Report security-sensitive changes and validation. Do not bypass security or validation gates to simplify development.

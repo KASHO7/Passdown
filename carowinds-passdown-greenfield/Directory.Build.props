@@ -8,9 +8,9 @@
 
   <!--
     Phase 7A: one authoritative version source for every project (AGENT_BUILD_SPEC.md Phase 7,
-    "avoid duplicating version numbers across many scripts"). No official product version has been
-    assigned yet, so this is an explicit pre-release development version, not a product release
-    number — do not read "0.1.0-dev" as a claim about how much of the product is complete. The SDK
+    "avoid duplicating version numbers across many scripts"). Phase 7A started at the pre-release
+    development version "0.1.0-dev"; since Phase 18E the value is a numbered release candidate (see
+    below). Published candidates are immutable: never reuse a published number. The SDK
     derives AssemblyVersion/FileVersion (numeric only, e.g. 0.1.0.0) and InformationalVersion
     (includes the "-dev" suffix) from this single <Version> value; bump it by hand when a real
     release is cut. <Product> names the built exe's file-properties "Product name" field as the

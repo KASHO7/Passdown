@@ -1,141 +1,39 @@
-# Carowinds Passdown
+# Carowinds Operations — Development Instructions
 
-Authoritative product specification: `AGENT_BUILD_SPEC.md`.
+Internal project: `Carowinds.Passdown`. Target: Windows 11 x64. Determine the actual development host, SDK, branch, version and phase from the repository; do not assume historical values.
 
-## Product owner
+## Authority and scope
 
-The product owner does not write or debug source code.
+- `AGENT_BUILD_SPEC.md` is the authoritative product specification, subject to explicitly approved later decisions. `docs/architecture.md` describes the current implementation; phase/release records preserve historical evidence. Verify claims against source and tests. Report contradictions instead of silently changing behavior.
+- The product owner does not write or debug code. Handle implementation, dependencies, builds, tests, migrations, documentation and packaging. Ask only for genuine unresolved product, UX, business or release decisions. Provide prepared packages/checklists when Windows review is required.
+- This is an established local-first application. Preserve existing functionality and compatibility; do not copy, patch or reskin the retired predecessor. Prefer incremental, reversible changes; no speculative abstractions, dependencies or rewrites.
+- Manager workflow remains deferred; no Phase 5 or placeholder Manager UI/PDF/view models/navigation. Preserve required compatibility infrastructure. Morning Message is retired; do not revive it or its sync channel without explicit approval.
 
-Handle:
+## Non-negotiable contracts
 
-- source creation and editing
-- dependency setup
-- builds
-- tests
-- debugging
-- migrations
-- packaging
+- Preserve Domain/Application/Infrastructure/Documents/Desktop/Updater dependency boundaries; no cycles, business logic or I/O in Avalonia code-behind. Keep Windows integration isolated.
+- Only official Carowinds/Six Flags operational data; verify exact dates, never invent data or silently substitute dates. Selecting a date or navigating must not trigger online retrieval. Failed retrieval cannot overwrite last-known-good data.
+- Manual draft edits cannot modify official cache. Preserve correct-date autosave, conflict protection and required flushes; finalized history and stored PDFs are immutable. Never place live SQLite or WAL/SHM files in cloud-sync folders. Preserve sync compatibility and historical migrations.
+- Preserve one shared document-generation pipeline, latest-edit output and stale-date protection. Maintain accessibility, approved visuals and reduced-motion behavior. Do not add fake prototype data.
+- Keep credentials, signing keys and user data out of logs, fixtures and release packages. Never bypass update verification. Published artifacts are immutable.
+- Inspect Git status; protect unrelated work. No destructive Git operations, history rewriting, merging, pushing, tagging, signing or publishing without explicit authorization. Do not assume remote is current.
 
-Do not ask the product owner to manually edit code.
+## Required task workflow
 
-Ask only about genuine product/UX/business decisions that cannot be
-resolved from the specification.
+1. Inspect Git status, relevant source, specification sections, architecture and phase records. Read only what is relevant; identify affected contracts and applicable `.claude/rules/` files (read them explicitly if path loading has not occurred).
+2. Plan briefly; establish a baseline or reproduction appropriate to the task.
+3. Implement only authorized work; reuse established services, skills and tooling.
+4. Run focused tests and applicable `dotnet build` checks; fix failures caused by the work. Before implementation-phase completion, run the required deterministic partitions and build checks. Documentation-only work requires consistency checks, not gratuitous production edits.
+5. Review the entire diff. Complete the architecture/documentation gate below. Report evidence and stop; never automatically start the next phase.
 
-## Greenfield rule
+## Architecture documentation gate (every task)
 
-This is a new implementation.
+Review the diff for changes to dependencies, DI, state ownership, data contracts, retrieval, persistence, sync, PDF, lifecycle, threading, configuration, UI architecture, security, packaging and retired components. Update affected current-state documentation in the same change set, verify claims against source, and retire obsolete descriptions. If no architectural change, record **reviewed — no change required**; do not make meaningless edits. At phase close verify relevant paths, versions, contracts and architectural tests, record the reviewed source baseline and outstanding limitations. No phase completion without this review. Never change source merely to match stale docs. See `.claude/rules/documentation.md` for the detailed gate.
 
-Do not patch, reskin, or copy the previous application.
-Old code is reference material only.
+## Completion report
 
-## Architecture
+Report scope, changed files, decisions, tests/build results, architecture review (updated/no change/blocked), compatibility and performance effects where relevant, Windows validation status, blockers, and Git/release state. Distinguish implementation, automated validation, Windows review, owner approval and publication. Never claim unrun checks or declare broader phases complete. Relevant required failing tests block implementation completion; document pre-existing failures separately. Live website tests remain opt-in. Non-Windows testing is not Windows validation.
 
-Projects:
+## Detailed rules
 
-- Domain: pure business rules; no Avalonia, SQLite, HTTP, Playwright,
-  QuestPDF, or Windows APIs.
-- Application: use cases and abstractions; depends on Domain.
-- Infrastructure: SQLite, HTTP, Playwright, filesystem, Windows services.
-- Documents: QuestPDF/document generation.
-- Desktop: Avalonia MVVM presentation only.
-
-Do not put persistence, retrieval, business rules, or PDF generation
-in Avalonia code-behind.
-
-## Workflow
-
-Work on only the requested phase/task.
-
-For each task:
-
-1. Inspect relevant files.
-2. Read only the relevant portions of `AGENT_BUILD_SPEC.md`.
-3. Plan briefly.
-4. Implement.
-5. Run relevant tests.
-6. Run `dotnet build`.
-7. Fix failures caused by the work.
-8. Review the diff.
-9. Report results.
-10. Stop.
-
-Do not automatically start the next phase.
-
-## Retrieval rules
-
-Official Carowinds/Six Flags sources only.
-
-Prefer:
-
-1. official structured HTTP/API data
-2. direct HTTP/HTML
-3. Playwright only when necessary
-
-Never invent data or silently substitute another date.
-
-Changing the selected date must never trigger online retrieval.
-
-## Persistence
-
-Use SQLite unless a documented technical reason requires otherwise.
-
-A failed retrieval must not overwrite last-known-good data.
-
-Manual draft changes must never modify official cached values.
-
-Live SQLite databases (including WAL/SHM files) must never reside in a
-cloud-sync folder (e.g. OneDrive). See `docs/personal-sync-architecture.md`
-for the personal-sync design that depends on this invariant.
-
-## Testing
-
-Do not report a task complete while relevant tests are failing.
-
-Live website tests must be opt-in and must not make the normal build
-depend on external websites.
-
-## Git
-
-Inspect `git status` before large changes.
-
-Do not overwrite unrelated user work.
-
-Never use destructive Git operations unless explicitly requested.
-
-## Platform
-
-Development host: Fedora.
-Target platform: Windows 11 x64.
-
-Keep Windows-only behavior isolated and flag it for Windows VM testing.
-
-## Efficiency
-
-Do not reread the entire specification for every task.
-
-Read the global requirements relevant to the current task and the
-specific implementation phase being executed.
-
-Do not scan unrelated directories unless necessary.
-
-Prefer focused tests over repeatedly running the entire suite during
-implementation. Run the full suite before phase completion.
-
-## Current scope decision
-
-The Manager workflow is deferred.
-
-Do not implement Phase 5 / Manager Passdown unless explicitly requested later.
-
-For the current release:
-
-- complete the Associate workflow
-- complete Associate PDF generation
-- complete scheduling/resilience
-- complete Windows packaging and validation
-
-Do not create placeholder Manager UI, Manager PDF, Manager ViewModels,
-or Manager navigation merely to satisfy the original phase numbering.
-
-
-For Phase 4F visual/layout work, use `.claude/skills/ui-polish/SKILL.md`.
+Global documentation and release/security rules are always active. Other rules are path-scoped; explicitly consult relevant rules for cross-cutting work, shell scripts or planning before editing. Existing `.claude/skills/ui-polish/SKILL.md` and `.claude/skills/pdf-design/SKILL.md` remain in place; use as applicable. Do not load all historical phase records on every task.

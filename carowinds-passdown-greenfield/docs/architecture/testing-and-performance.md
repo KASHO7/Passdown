@@ -1,0 +1,18 @@
+# Testing and performance
+
+Current-state guide — see [review baseline](../architecture.md).
+
+Five production test projects cover Domain, Application, Infrastructure, Documents and UI. The deterministic suite runs `-c Release --filter "Category!=LiveSmoke"` per project, with Ui.Tests split into a mixed partition plus six real-window classes run alone (`OperationsCalendarViewTests`, `Phase15ERealWindowLayoutTests`, `RealWindowStartupTimingTests`, `SpellCheckNavigationLifecycleTests`, `Phase21DMathEditorWindowTests`, `Phase33PreviewWindowTests`); commands are in the `build-and-test` skill. LiveSmoke is opt-in. The [RC.14 readiness record](../releases/rc14-release-readiness.md) reports 5,893 passing deterministic tests and a 0-warning Release build; not rerun in the documentation review. No CI workflow exists in the repository; validation is run locally and recorded in phase/release records.
+
+Repository guards (`tests/Carowinds.Passdown.Infrastructure.Tests/RepositoryGuards`, 21 tests, part of the normal Infrastructure partition, added after RC.14) check mechanically testable documentation facts: the `src/` project graph equals the approved dependency table with no cycles and no Domain packages; migrations are numbered contiguously by their own `Version` and every one is registered in the Desktop composition root; the SQLite schema, latest migration and sync/draft/snapshot versions stated in [architecture.md](../architecture.md) and the persistence guide equal source; relative links and back-ticked paths in current documents, rules and skills resolve; archived documents still match their Git blobs; and phase records newer than the rule carry both maintenance status lines from the [phase record template](../templates/phase-record-template.md). They do not prove the prose is accurate. Domain.Tests and Application.Tests additionally check assembly references. Use `tools/perf-benchmarks` and visual fixtures. Phase 34B/C resolved preview delay, price history repeated scans, redundant official requests, bitmap allocations and font/package overhead; do not reopen those without evidence. Remaining concerns include large Associate workspace, test hangs/font-stack exhaustion, Windows resource/printing measurements, UI-thread SQLite contention and sync-folder lock behavior. These are candidates or hypotheses, not confirmed current defects.
+
+## Evidence and detailed implementation records
+
+- [release-manifest.md](../release-manifest.md)
+- [phase34a-repository-performance-audit.md](../phase34a-repository-performance-audit.md)
+- [phase34b1-preview-responsiveness.md](../phase34b1-preview-responsiveness.md)
+- [phase34b2-general-performance-optimization.md](../phase34b2-general-performance-optimization.md)
+- [phase34c-repository-cleanup.md](../phase34c-repository-cleanup.md)
+- [phase35f-operational-notes-history-settings.md](../phase35f-operational-notes-history-settings.md)
+- [phase35g-final-uiux-polish-readiness.md](../phase35g-final-uiux-polish-readiness.md)
+- [releases/rc14-release-readiness.md](../releases/rc14-release-readiness.md)

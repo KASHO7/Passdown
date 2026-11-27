@@ -1,934 +1,1645 @@
-# Carowinds Passdown — Greenfield Build Specification and Agent Handoff
+# Carowinds Operations — Product Specification
 
-## 1. Your role
+## 1. Purpose and authority
 
-Act as a senior Windows desktop, .NET, Avalonia, data-retrieval, UX, and document-generation engineer. Build a new **Carowinds Passdown** application from the ground up.
+This document defines the approved product requirements, functionality, business rules, user experience, operational constraints, and acceptance criteria for Carowinds Operations.
 
-Do not build a website wrapper. The finished product must be a real Windows 11 desktop application that can be extracted and run by a nontechnical employee without administrator access, a server, an account, ChatGPT, or an OpenAI sign-in.
+Carowinds Operations was originally developed as Carowinds Passdown under the internal project namespace `Carowinds.Passdown`.
 
-Read this entire specification before writing code. Create a clean new solution with deliberate boundaries, tests, and versioned local storage. Do not continue, patch, reskin, or incrementally refactor the previous application. The previous files may be inspected only to understand earlier experiments, official-source behavior, and failure modes. Independently validate every retrieval assumption before using it in the new application.
+The application is now an established Windows desktop product. Development must preserve existing functionality, user data, compatibility, and approved operational behavior.
+
+### Documentation hierarchy
+
+- `AGENT_BUILD_SPEC.md` — authoritative product requirements and acceptance criteria.
+- `CLAUDE.md` — mandatory development instructions.
+- `.claude/rules/` — specialized engineering and development requirements.
+- `docs/architecture.md` — current implemented architecture.
+- `docs/architecture/` — detailed subsystem architecture.
+- Phase records — historical implementation decisions and validation evidence.
+- Release records — release identity, compatibility, and validation evidence.
+- Production source and tests — evidence of actual implementation.
+
+Explicitly approved later product decisions supersede conflicting historical requirements.
+
+Implementation behavior does not automatically establish a new product requirement. Discrepancies between approved requirements, documentation, and implementation must be investigated.
+
+Do not silently change product requirements to match accidental implementation behavior.
+
+---
 
 ## 2. Product objective
 
-Build a polished Windows application that creates two kinds of printable operational passdowns for Carowinds Admissions:
+Carowinds Operations is a professional, local-first desktop application supporting Carowinds Admissions operational preparation, communication, and historical reference.
 
-1. **Associate Passdown** — a pre-opening, front-line operational sheet.
-2. **Manager Passdown** — a closing/end-of-day communications summary for managers.
+The application enables employees and managers to:
 
-Both outputs must be visually scannable, professional, energetic without looking childish, readable in black and white, and normally fit on one US Letter page.
+- View official park operating information.
+- Review operating schedules and events.
+- Prepare date-specific Associate Passdowns.
+- Review official products and pricing.
+- Maintain operational notes.
+- Generate, preview, print, and save professional operational documents.
+- Access finalized historical Passdowns.
+- Synchronize supported operational information between personal devices when explicitly enabled.
+- Receive verified application updates.
 
-The application must retrieve public operating hours and current public product prices from official Carowinds/Six Flags sources, cache them intelligently, support exact future dates where the official checkout supports them, and never invent data when retrieval fails.
+The application must remain approachable for nontechnical employees while providing reliable operational information and efficient workflows.
 
-## 3. Intended users and environment
+The application must not require an external custom server, artificial intelligence service, OpenAI account, or administrator access for normal operation.
 
-- Primary users are Carowinds operations managers and associates who may not be technologically advanced.
-- Target operating system: Windows 11.
-- The app should run from an extracted ZIP or a per-user installer.
-- It must not require administrator permissions.
-- It must not require a company login, GPT, OpenAI, or access to an external custom server.
-- Company computers may restrict downloads and installation. Prefer a self-contained, portable package.
-- The computer may be offline temporarily. Previously verified cached data and saved drafts must remain available.
-- Internet access is required only when refreshing official public information.
-- Store application data in the current Windows user's local application-data directory.
-- Store generated PDFs in a clearly named folder under the user's Documents folder.
+---
 
-## 4. Greenfield project and technology
+## 3. Intended users and operating environment
 
-Create a brand-new solution in a new top-level folder named `carowinds-passdown-greenfield`. Do not place new production code inside the previous `carowinds-data-retrieval-v2` source tree.
+### 3.1 Users
 
-Use this baseline stack unless a short written architecture decision demonstrates a materially better Windows-compatible alternative:
+Primary users:
 
-- Current supported .NET release and C#.
-- Avalonia desktop UI using MVVM.
-- `HttpClient` for direct official public endpoints where dependable.
-- Microsoft Playwright only as a contained fallback for pages that require browser execution.
-- QuestPDF for deterministic PDF generation.
-- SQLite or versioned atomic JSON for local-only persistence. SQLite is recommended for separate freshness policies, product history, and draft records.
-- A standard .NET test framework for unit, integration, and document tests.
+- Carowinds Admissions managers.
+- Admissions supervisors.
+- Operational leadership.
+- Associates responsible for preparing or reviewing daily operational information.
 
-Suggested new solution layout:
+The interface must not assume technical knowledge.
 
-```text
-carowinds-passdown-greenfield/
-  src/
-    Carowinds.Passdown.Desktop/
-    Carowinds.Passdown.Application/
-    Carowinds.Passdown.Domain/
-    Carowinds.Passdown.Infrastructure/
-    Carowinds.Passdown.Documents/
-  tests/
-    Carowinds.Passdown.Domain.Tests/
-    Carowinds.Passdown.Infrastructure.Tests/
-    Carowinds.Passdown.Documents.Tests/
-    Carowinds.Passdown.Ui.Tests/
-  fixtures/
-  docs/
-  packaging/
-```
+Use clear operational terminology rather than implementation terminology.
 
-The old project is **reference material only**. It may reveal useful official URLs, selectors, status vocabulary, sample outputs, and known problems, but none of its code is automatically trusted. In particular:
+### 3.2 Platform
 
-- Do not copy its UI or visual design.
-- Do not copy its cache model.
-- Do not copy its coordinator that opens all sources for every date.
-- Do not copy fixed browser delays without proving they are necessary.
-- Do not carry forward code-behind architecture into the new UI.
-- Do not use old output JSON as proof that a live source still works.
-- Do not overwrite or delete the old project; keep it available for before/after comparison.
+- Target platform: Windows 11 x64.
+- Native desktop application.
+- Portable, self-contained distribution.
+- No administrator permissions required for normal operation.
+- No separately installed runtime required for normal portable distribution.
+- No mandatory company account or external service account.
+- No required AI integration.
 
-Useful behavior must be rebuilt cleanly and covered by new tests: exact-date verification, source evidence, per-date drafts, hours overrides, buyout handling, gate calculations, local caching, black-and-white PDFs, and per-user scheduling.
+### 3.3 Offline operation
 
-## 5. Non-negotiable data principles
+The application must remain usable without an internet connection.
 
-### 5.1 Official sources only
+Offline capabilities include:
 
-Use public, official Carowinds or Six Flags sources for hours and prices. Do not use search-result snippets, third-party ticket sites, cached search engines, or guessed values.
+- Opening the application.
+- Viewing previously cached official information.
+- Creating and editing Passdown drafts.
+- Managing local operational notes.
+- Accessing finalized history.
+- Generating PDFs from available information.
+- Printing and saving documents.
 
-Current source adapters reference official URLs such as:
+Internet access is required for online functionality such as official data retrieval and application update discovery, but must not be required for ordinary local workflows.
 
-- Park hours: `https://www.sixflags.com/carowinds/park-hours`
-- Dated tickets: the official `cf-ca.buy.sixflags.com` SnapWizard checkout
-- Fast Lane: the official `cf-ca.buy.sixflags.com` FastLaneOnly checkout
-- Haunted attractions: the official `cf-ca.buy.sixflags.com` HAPWizard checkout
-- Season passes, daily tickets, special offers, Fast Lane, add-ons, and season-pass add-ons: their official pages under `sixflags.com/carowinds`
+---
 
-Official URLs and page structure may change. Keep each source isolated behind an adapter so one broken source does not break the entire application.
+## 4. Product scope
 
-### 5.2 Never fabricate or silently substitute
+### 4.1 Active product areas
 
-Every source result must use an explicit status:
+The application includes:
 
-- `Verified` — exact date or current catalog value was confirmed.
-- `Closed` — the official calendar explicitly marks the date closed.
-- `NotPublished` — the requested date or schedule is not yet published.
-- `Unavailable` — the date exists but that product/value is unavailable.
-- `Error` — the source could not be completed.
-- Add `Stale` at the presentation/domain level when only older last-known-good information exists.
+1. Dashboard.
+2. Operations Calendar.
+3. Associate Passdown.
+4. Products and Pricing.
+5. Operational Notes.
+6. Finalized Passdown History.
+7. Personal Sync.
+8. Settings.
+9. PDF Preview and Document Output.
+10. Application Updates.
 
-Never replace `NotPublished`, `Unavailable`, or `Error` with placeholder hours such as 10:00 AM–10:00 PM. Never display a price from a different date as if it were exact-date pricing.
+Some capabilities are integrated into other workspaces rather than exposed as independent navigation destinations.
 
-### 5.3 Evidence and traceability
+### 4.2 Deferred functionality
 
-For every retrieved source, retain:
+The Manager Passdown workflow remains deferred.
 
-- Source name.
-- Source URL.
-- Requested date, when applicable.
-- Confirmed date, when applicable.
-- Time checked in `America/New_York`.
+Do not implement Manager Passdown functionality without explicit product-owner authorization.
+
+Do not create placeholder Manager navigation, views, view models, forms, or PDF templates.
+
+Preserve existing compatibility infrastructure where required.
+
+### 4.3 Retired functionality
+
+Morning Message is retired.
+
+Do not restore its production interface, services, dependencies, or synchronization channels without explicit authorization.
+
+Preserve compatibility safeguards required for existing installations and historical files.
+
+---
+
+## 5. Core operational principles
+
+The following requirements apply throughout the application:
+
+- Never invent official information.
+- Never silently substitute another operating date.
+- Never present marketing prices as confirmed exact-date prices.
+- Never overwrite verified cached information because a retrieval attempt failed.
+- Never overwrite official cached values with manual draft edits.
+- Never trigger online retrieval merely because the selected date changes.
+- Never silently discard manual user entries.
+- Never silently resolve conflicting synchronized edits.
+- Never modify finalized historical Passdowns.
+- Never sacrifice operational accuracy for visual appearance.
+- Never present planned or unverified functionality as completed.
+
+When information is unavailable or uncertain, communicate that uncertainty clearly and preserve available verified information.
+
+---
+
+## 6. Official data retrieval
+
+### 6.1 Official sources
+
+Use public, official Carowinds and Six Flags sources.
+
+Supported operational data may include:
+
+- Park operating hours.
+- Operating dates and closures.
+- Entertainment schedules.
+- Special operating events.
+- Daily admission products.
+- Fast Lane products.
+- Seasonal and haunted-attraction products.
+- Season Passes.
+- Memberships.
+- Renewal offers.
+- Promotions.
+- Add-ons.
+- Season Pass add-ons.
+- Current Deals.
+- Pass Perks.
+- Other explicitly approved official operational information.
+
+Do not use third-party ticket websites, search-engine snippets, unofficial estimates, or fabricated fallback values.
+
+Official source URLs and structures may change. The application must tolerate individual source failures without losing unrelated operational functionality.
+
+### 6.2 Retrieval strategy
+
+Prefer official structured HTTP/API responses, followed by direct official HTML retrieval where appropriate.
+
+Browser automation is not an active product requirement.
+
+Do not reintroduce Playwright, Chromium, or other browser automation dependencies without an approved technical justification.
+
+Do not use private credentials, bypass authentication, submit payment information, or interact with purchase flows beyond the public retrieval requirements.
+
+### 6.3 Retrieval status
+
+Maintain explicit distinctions between:
+
+- Verified.
+- Closed.
+- NotPublished.
+- Unavailable.
+- Error.
+- Stale.
+
+Presentation wording may use approved user-friendly equivalents.
+
+An unavailable, unpublished, stale, or failed result must not be presented as currently verified.
+
+An official closure must not be inferred merely because information could not be retrieved.
+
+### 6.4 Source evidence
+
+Retain appropriate source evidence, including:
+
+- Source identity.
+- Official source URL.
+- Requested operating date, where applicable.
+- Confirmed operating date, where applicable.
+- Verification timestamp.
 - Result status.
-- Human-readable detail.
-- Technical error detail for logs.
-- Retrieval strategy used, such as direct JSON/API, page DOM, or browser fallback.
+- Relevant result details.
+- Retrieval strategy.
+- Sanitized technical diagnostics.
 
-Show a simple user-facing “last verified” indicator. Put detailed diagnostics in logs rather than exposing technical messages to ordinary users.
+Present understandable freshness and verification information to users.
 
-### 5.4 Exact-date verification
+Detailed technical errors belong in diagnostic infrastructure rather than ordinary operational workflows.
 
-For date-specific admission, Fast Lane, and haunted-attraction products:
+### 6.5 Exact-date verification
 
-1. Open the official checkout calendar.
-2. Find the requested date.
-3. Select it.
-4. Confirm the selected date from page state, heading, label, response, or another strong signal.
-5. Only then read product names and prices.
+Date-specific information must be verified for the requested operating date.
 
-Reject a response if the checkout falls back to today, a default date, or another date. “Starting at” marketing prices are not exact-date prices and must be labeled separately.
+Reject results that silently fall back to today, a default date, or another operating date.
 
-## 6. Retrieval and cache redesign
+A starting-at marketing price is not an exact-date price.
 
-### 6.1 Freshness tiers
+Do not treat a successfully retrieved response as valid for the requested date without appropriate verification.
 
-Do not refresh every source every time the user changes a date. Implement separate cache policies:
+---
 
-| Data group | Scope | Normal refresh cadence | Notes |
-|---|---|---:|---|
-| Park hours | Per date | Daily at 6:00 AM | Refresh rolling date window. |
-| Dated admission tickets | Per date | Daily at 6:00 AM | Prices may change for day-of purchase. |
-| Dated Fast Lane products | Per date | Daily at 6:00 AM | Includes Fast Lane Ultimate and reserve products if officially offered. |
-| Dated haunted/SCarowinds products | Per date | Daily while published/active | Use lightweight availability checks outside season. |
-| Short-term promotions and bundles | Catalog, with validity if known | Daily | These may expire after only a few days. |
-| Season passes | Catalog | Every 7 days | Permit manual refresh. |
-| General and season-pass add-ons | Catalog | Every 14 days | Permit manual refresh and lightweight change detection. |
+## 7. Cache, freshness, and refresh behavior
 
-Cadences should be configuration, not scattered hard-coded comparisons.
+### 7.1 Local-first access
 
-### 6.2 Separate dated data from catalog data
+Changing the selected date must be a local operation.
 
-The cache must not duplicate stable add-ons for each date. Use logically separate stores or tables:
+The application must:
 
-- `dated-results` keyed by date and source/category.
-- `catalog-results` keyed by normalized product and category.
-- `source-state` containing last attempt, last success, next due time, source fingerprint, and failure count.
-- `associate-drafts` keyed by date.
-- `manager-drafts` keyed by date or operating day/shift.
-- `product-history` or archived catalog entries for traceability.
+- Load available cached information.
+- Load the relevant local Passdown draft.
+- Combine applicable catalog information locally.
+- Display missing or unverified information accurately.
+- Avoid unnecessary network access.
 
-JSON is acceptable for the first version if writes are atomic and models are versioned. SQLite is also acceptable if it materially simplifies querying and migration. Do not introduce a server database.
+Ordinary navigation, searching, filtering, changing tabs, opening details, and modifying presentation preferences must not trigger unintended online retrieval.
 
-### 6.3 Fast date changes
+### 7.2 Freshness policies
 
-Changing the selected date must be an immediate local operation:
+Maintain separate freshness policies for different official information categories.
 
-- Never open a browser merely because the date changed.
-- Load cached date-specific values immediately.
-- Merge reusable catalog data locally.
-- Display “Not checked yet” if no cache entry exists.
-- Provide a clear `Check this date online` action.
-- A background refresh may update the view only when the user explicitly started it or when a due scheduled refresh is running.
+Preserve the original approved policy principles:
 
-Target: cached date changes should visually complete in under 250 ms on a normal Windows 11 office computer.
+- Frequently changing dated information is refreshed more frequently.
+- Short-term promotions are checked regularly.
+- Stable catalog products are refreshed according to their individual due policies.
+- Date-independent catalog information is not duplicated or retrieved for every selected date.
 
-### 6.4 Efficient retrieval
+The original baseline cadences are:
 
-Before relying on browser automation, inspect whether official pages or checkout experiences call stable public JSON/GraphQL endpoints. If a dependable official endpoint is available:
+| Information category | Baseline cadence |
+|---|---|
+| Park hours | Daily |
+| Dated admission | Daily |
+| Dated Fast Lane | Daily |
+| Seasonal dated products | According to publication and operating season |
+| Short-term promotions | Daily |
+| Season Passes | Every seven days |
+| General and Season Pass add-ons | Every fourteen days |
 
-- Prefer it for speed and consistency.
-- Preserve required public parameters, headers, locale, and park identifiers.
-- Verify exact dates in returned data.
-- Do not use private credentials or reverse-engineer authentication.
-- Keep browser/DOM retrieval as a fallback.
+Later explicitly approved source-specific policies take precedence.
 
-If browser automation is required:
+Current precise cadence values, eligibility rules, and scheduling implementation must be maintained in the relevant retrieval architecture and configuration documentation.
 
-- Start one browser per refresh job, not per source.
-- Reuse the browser context.
-- Run independent due sources concurrently with a conservative concurrency limit.
-- Block images, video, analytics, and fonts when they are not needed for page behavior.
-- Replace fixed sleep delays with specific readiness conditions wherever possible.
-- Use bounded retries with jitter for transient navigation/hydration failures.
-- Keep independent timeouts per source.
-- Cancel cleanly.
-- Close pages and browser processes reliably.
+Do not silently change freshness policies.
 
-Do not let a failure in one source cancel successful results from other sources.
+### 7.3 Scheduled refresh
 
-### 6.5 Rolling cache window
+Preserve the established refresh scheduling behavior, including:
 
-At the daily 6:00 AM refresh, prioritize:
+- Eastern operating dates.
+- Due-only refreshes.
+- Daily operational refresh scheduling.
+- Rolling date-window retrieval.
+- Missed-run handling.
+- Scheduled refresh resilience.
+- Per-user Windows scheduling where supported.
+- Independent source failure handling.
+- Last-known-good protection.
 
-1. Today.
-2. Tomorrow.
-3. The following five days.
+The original daily refresh target is 6:00 AM Eastern, with a default rolling window of today and the following six days.
 
-The default rolling window is seven days. The architecture should support a configurable longer window without redesign. Future dates outside the cache are checked only on demand.
+Any later approved scheduling changes supersede these original defaults.
 
-Refresh results should be saved source-by-source as they complete so a late failure does not discard earlier successes.
+### 7.4 Manual refresh
 
-### 6.6 Scheduling behavior
+Provide explicit online-check actions in approved operational locations.
 
-The app should refresh due data at 6:00 AM Eastern time when possible.
+Users must be able to distinguish between selecting a date locally and requesting online verification.
 
-Support both cases:
+Manual refresh must preserve:
 
-- If the app is open, its internal scheduler checks whether the daily job is due.
-- If permitted, create a per-user Windows Task Scheduler entry that runs without elevation.
+- Unsaved manual draft information.
+- Product inclusion selections.
+- Display-price overrides.
+- Operational notes.
+- Applicable workspace state.
 
-If the computer is asleep or off at 6:00 AM, refresh the next time the app opens if that day's job has not successfully run. Do not run the same full job repeatedly.
+Do not reintroduce removed refresh actions in unrelated screens solely because historical specifications mentioned them.
 
-Stable catalogs should not refresh merely because the daily job ran; only refresh them when their 7-day or 14-day due time has arrived.
+### 7.5 Last-known-good information
 
-### 6.7 Last-known-good behavior
+A failed retrieval must never destroy a previously verified value.
 
-- A failed source must not overwrite a previously verified value.
-- Preserve the latest failed attempt separately from the last successful value.
-- When using last-known-good data, clearly show its age and a non-alarming warning.
-- For printing, allow the manager to include or exclude stale products.
-- Hours must never be presented as currently official if the exact selected date was not verified.
+Retain last success and last attempt independently.
 
-## 7. Dynamic product catalog and seasonal behavior
+When older verified information is used:
 
-### 7.1 No hard-coded seasonal visibility
+- Communicate its stale status.
+- Preserve its source evidence.
+- Do not represent it as newly verified.
+- Allow applicable user controls over its inclusion in operational documents.
 
-Do not permanently show a SCarowinds or haunted-mazes section. Its visibility must be driven by successful official retrieval.
+### 7.6 Retrieval efficiency
 
-- Off season: no SCarowinds form section or PDF section.
-- When official products become published: automatically create and show the section.
-- After official products are removed or expire: automatically hide the section.
-- If the website cannot be checked: retain the last-known-good state with a stale indicator; do not infer removal.
+Official retrieval should be efficient and respectful of official services.
 
-Apply the same principle to temporary bundles, America offers, new ticket types, reserve products, and other seasonal products.
+Preserve:
 
-### 7.2 Product identity
+- Bounded concurrency.
+- Request coalescing.
+- Appropriate cancellation.
+- Timeouts.
+- Independent result handling.
+- Due-source planning.
+- Source-specific verification.
+- Existing measured retrieval optimizations.
 
-Do not identify products solely by display price or exact unnormalized heading. Create a stable normalized key using, in priority order:
+Do not introduce unnecessary repeated requests.
 
-1. Official product/package ID if available.
-2. Official product URL or checkout package identifier.
-3. Normalized source + category + product name.
+---
 
-Store at least:
+## 8. Dashboard
 
-- Stable key.
-- Current display name.
-- Category.
-- Current price and display price.
-- Comparison/gate price where explicitly shown.
-- Qualifier such as `Starting From`, `Online Price`, or `Sale Price`.
-- Date-specific flag.
-- Applicable date if date-specific.
-- First seen.
-- Last seen.
-- Last verified.
-- Visibility state.
-- Source/evidence.
-- Consecutive confirmed-absence count.
-- Archived date and reason, if archived.
+The Dashboard provides a concise operational overview for the selected or relevant operating date.
 
-### 7.3 Add, update, and remove rules
+Its purpose is to help employees understand the current operating situation without opening individual editing workspaces.
 
-- A successfully retrieved new official product appears automatically.
-- A price/name change updates the catalog but retains history if practical.
-- Never treat an `Error` as product absence.
-- If a successful retrieval does not contain a previously present product, perform a confirmation retry or a second successful absence check before archiving it.
-- If the official source explicitly marks the product expired/unavailable, it may be hidden immediately.
-- Archived products must not print by default but should remain recoverable for diagnostics/history.
-- If a product returns later, reactivate its record.
-
-### 7.4 Selected-date visibility
-
-For a selected date, show:
-
-- Exact-date products verified for that date.
-- Current non-date-specific catalog products whose source is within freshness policy.
-- Seasonal products only if applicable/published.
-- Stale catalog items only with a visible warning and user control.
-
-Do not present marketing-page `Starting From` values as the exact price for a selected date. Labels must make the distinction clear.
-
-### 7.5 Manual controls
-
-Managers need simple safeguards:
-
-- Include/exclude checkbox for each product on the PDF.
-- Edit displayed price for an internal correction without altering the official cached value.
-- Add a custom internal product or event.
-- Pin/show a normally hidden item for a specific draft.
-- Restore official value.
-- `Refresh this section` action for advanced troubleshooting.
-
-Manual draft edits must never overwrite the official cache.
-
-## 8. Associate Passdown requirements
-
-### 8.1 Required fields
-
-- Selected date.
-- Official park opening and closing time/status.
-- Manual hours override.
-- Private buyout/closed toggle, custom hours, and buyout details.
-- Projected attendance.
-- Pre-solds.
-- Early Ride Time details and participating attractions.
-- Important operational notes as concise lines/bullets.
-- Daily Fun type and text entered manually:
-  - Question of the Day.
-  - Fact of the Day.
-  - Quote of the Day.
-- Dynamic ticket, Fast Lane, pass, promotion, bundle, add-on, and seasonal product list.
-
-Do not depend on an AI service for Daily Fun. It is a normal editable field saved in the draft.
-
-### 8.2 Hours business logic
-
-Use the effective opening time, which is either verified official time or an enabled manager override:
-
-- North Gate opening = park opening minus exactly 30 minutes.
-- Avenue opening = park opening minus exactly 45 minutes.
-
-Recalculate immediately when the manager changes the override. If the park is officially closed, show `Closed` unless the private-buyout override is enabled.
-
-### 8.3 Draft behavior
-
-- Save a separate associate draft per date.
-- Auto-save after meaningful changes with a short debounce.
-- Also provide a visible Save status, such as `Saved locally at 2:14 PM`.
-- Never erase manual entries during an official-data refresh.
-- When product data refreshes, reconcile official products with per-draft include/exclude and display overrides.
-
-## 9. Manager Passdown requirements
-
-### 9.1 Purpose
-
-Build the manager passdown as an end-of-day/closing **Admissions communications log** unless the product owner later specifies a different scope. It should summarize the day for the next manager, not reproduce an email form or print every blank department heading.
-
-The supplied reference was a four-page Outlook export. Use it only as a content reference. Do not reproduce Outlook headers, recipient lists, personal names, example employee incidents, or email formatting.
-
-### 9.2 Navigation
-
-Provide a prominent mode switch or home screen with:
-
-- `Associate Passdown`
-- `Manager Passdown`
-
-Switching modes should be obvious and should not mix the two drafts. The selected operating date may be shared.
-
-### 9.3 Manager form sections
-
-#### A. Overview
+Dashboard capabilities should follow the existing approved functionality, including applicable:
 
 - Operating date.
-- Opening manager.
-- Closing manager.
-- Optional shift/period.
-- Operational success score from 1–5, with plain-language definitions.
-- Optional short headline or theme of the day.
-- Park secured toggle and secured time.
-- Submitted/prepared by and automatically recorded local timestamp.
+- Park operating status.
+- Operating hours.
+- Relevant operating events.
+- Operational summaries.
+- Current information and freshness indicators.
+- Relevant operational alerts or notes.
+- Navigation to associated workflows.
 
-#### B. Staffing snapshot
+The Dashboard must use real application information rather than static demonstration values.
 
-Inputs:
+Dashboard navigation must not trigger unintended online retrieval.
 
-- Scheduled headcount.
-- Present/here.
-- Late.
-- Call-outs.
-- No-call/no-shows.
-- Optional reassigned/sent home count.
+### Dashboard design status
 
-Calculate percentages automatically and define the denominator clearly. Validate impossible values and do not double-count late employees. If `Present` includes late employees, explain that in the UI.
+The current Dashboard follows the approved Admissions Overview visual reference, which the product owner supplied after the earlier reference gap and accepted on Windows with the final Phase 35 candidate (`docs/phase35e-dashboard-calendar-redesign.md`, `docs/phase35g-final-uiux-polish-readiness.md`).
 
-#### C. Location status matrix
+Any further Dashboard redesign must follow an explicitly approved visual reference. Do not invent or substitute a generic Dashboard redesign when the approved reference has not been supplied.
 
-Default Admissions locations:
+Preserve the existing Dashboard functionality until a replacement is authorized.
 
-- Access Control.
-- Toll Plaza.
-- Sales.
-- Guest Services.
-- Guest Experience.
-- Waterpark.
-- South Gate.
-- Lost and Found.
+---
 
-Allow configured additions/removals later. Each location has:
+## 9. Operations Calendar
 
-- `Successful`
-- `Watch`
-- `Action Needed`
-- `Closed`
+The Operations Calendar provides a date-oriented view of official operating information.
 
-Only `Watch` and `Action Needed` open a required concise note field. Successful and Closed locations should not consume narrative space in the PDF.
+### 9.1 Calendar behavior
 
-The status must remain distinguishable in black and white through text, icons, borders, or patterns—not color alone.
+Support:
 
-#### D. Top issues/trends
+- Month navigation.
+- Operating-date selection.
+- Today navigation.
+- Operating and closed-day distinctions.
+- Published operating hours.
+- Applicable operating events.
+- Relevant seasonal information.
+- Applicable Pass Perks indicators.
+- Selected-date details.
+- Approved shortcuts to related operational workflows.
 
-Allow up to three priority items for the one-page summary. Each contains:
+Operating dates follow Eastern time rather than the computer's arbitrary local timezone.
 
-- Issue/trend.
-- Operational impact.
-- Action taken.
-- Owner/next step.
-- Optional priority.
+Calendar navigation and date selection must use local information without automatically performing online retrieval.
 
-Use short fields, not one large unstructured textbox.
+### 9.2 Calendar presentation
 
-#### E. Department notes
+Preserve the approved Calendar design, including:
 
-Provide `Add Department Note` with a dropdown and short note. Suggested departments:
+- Consistent calendar grid.
+- Selected-date details panel.
+- Clearly distinguishable event markers.
+- Accessible date controls.
+- Predictable navigation.
+- Appropriate empty and unavailable states.
 
-- Admissions / Ticket Taking / Guest Services.
-- Aquatics.
-- Campground.
-- Entertainment.
-- Food and Beverage.
-- Lost and Found.
-- Marketing.
-- Merchandise / Games.
-- Park Services.
-- Rides.
-- Safety / Security.
-- IT / Maintenance and work orders.
+Do not communicate event or operational status by color alone.
 
-Only departments with notes appear in the PDF. Do not print blank prompts. Permit a custom department name.
+### 9.3 Pass Perks
 
-#### F. Actions and recognition
+Display supported official Pass Perks information according to its publication, eligibility, applicable dates, and approved presentation behavior.
 
-- Tasks/actions completed today.
-- Carryover tasks for the next shift.
-- Owner and optional due date/priority.
-- Training opportunities.
-- Shadowing/promotion/follow-up items.
-- Supervisor or associate recognition / `Caught Doing Good`.
+The Show Pass Perks preference controls its approved visibility across applicable workspaces.
 
-Keep sensitive personnel or disciplinary detail out of the general layout. If the app accepts a sensitive follow-up note, label it `Managers Only`, store it locally, and do not copy it into the associate passdown.
+Do not interpret an unsuccessful retrieval as evidence that a previously known perk has expired or disappeared.
 
-#### G. Closing checklist
+Maintain appropriate historical information and provenance.
 
-Compact checkboxes/times for:
-
-- Reports run.
-- Shift cards printed.
-- Park secured.
-- Work orders submitted or reviewed.
-- Required handoff completed.
-- Optional additional configurable checklist item.
+---
 
-### 9.4 Dynamic form behavior
+## 10. Associate Passdown
 
-- Use progressive disclosure; reveal detail fields only when needed.
-- Empty optional sections should collapse.
-- Adding a department note inserts a compact card/row.
-- Removing it removes it from the PDF.
-- A location marked Watch/Action Needed requires a note.
-- Show a live one-page capacity indicator.
-- Warn before printing if required fields are missing or content is likely to overflow.
-- Auto-save locally by date.
-
-## 10. User experience and visual design
-
-### 10.1 Overall design direction
-
-Design the new app as a credible internal operations product from its first wireframes. Do not imitate or reskin the previous interface.
-
-Use:
-
-- Strong information hierarchy.
-- Generous but efficient spacing.
-- Consistent typography and alignment.
-- Clear section titles.
-- Professional buttons with plain-language labels.
-- A restrained Carowinds-inspired identity without copying protected web assets unnecessarily.
-- A small custom coaster/track-inspired application mark already present in project assets or an improved original vector mark.
-
-Avoid:
-
-- Excessive gradients.
-- Random decorative cards.
-- Emoji as primary icons.
-- Tiny text.
-- Large empty panels.
-- Dense text dumps.
-- Overuse of uppercase.
-- Ambiguous labels such as `Sync`, `Hydrate`, or `Execute` for nontechnical users.
-
-### 10.2 Application shell
-
-Recommended structure:
-
-- Left navigation rail or a clean top-level mode selector.
-- Page title and selected date.
-- Data-status summary with last verified time.
-- Main form using well-grouped sections.
-- Sticky action area with Save, Refresh, and Create PDF.
-
-The date picker must look and behave like a professional Windows control:
-
-- Clear selected date.
-- Previous/next day or week controls.
-- Calendar flyout.
-- Visible cached/not-checked state without visual clutter.
-- Keyboard accessibility.
-- No automatic web retrieval on selection.
-
-### 10.3 Nontechnical language
-
-Examples:
-
-- `Check this date online`, not `Run probe`.
-- `Saved on this computer`, not `Persisted`.
-- `Official information could not be checked`, with an optional `View details` link.
-- `Last verified Aug 20 at 6:08 AM`.
-- `This price is from Aug 13 and may be out of date`.
-
-### 10.4 Accessibility
-
-- Support keyboard navigation and visible focus.
-- Use sufficient contrast.
-- Do not communicate status by color alone.
-- Minimum comfortable desktop text size around 13–14 px equivalent.
-- Label all controls for screen readers.
-- Use predictable tab order.
-- Do not trap focus in calendar or dialog controls.
-
-## 11. PDF requirements
-
-### 11.1 Shared requirements
-
-- US Letter, printable on ordinary office printers.
-- Associate PDF: portrait.
-- Manager PDF: preferably landscape for the status/action matrix; use portrait only if testing proves it more readable.
-- Designed first for black-and-white output.
-- High contrast, clear borders, and strong headings.
-- Do not rely on colored backgrounds to convey meaning.
-- Use an energetic original coaster-line motif, small track marks, angled section rules, or another restrained visual device.
-- Avoid heavy solid-ink coverage.
-- Include date and passdown type prominently.
-- Include preparation/verification timestamp in a small footer.
-- Never print technical error stacks or source URLs in the main passdown.
-
-### 11.2 Associate PDF layout
-
-Recommended portrait structure:
-
-1. Header: Carowinds Passdown, date, small original mark.
-2. Hours banner: park hours, North Gate, Avenue opening, special-event/buyout indicator.
-3. Metrics row: projected attendance, pre-solds, ERT.
-4. Dynamic products grouped cleanly by category.
-5. Important operational notes.
-6. Daily Question/Fact/Quote.
-7. Footer: source freshness and a brief operational message.
-
-Do not reserve empty space for hidden categories. Automatically rebalance product columns. Use readable truncation warnings in the app rather than silently cutting critical content.
-
-### 11.3 Manager PDF layout
-
-Recommended one-page landscape structure:
-
-1. Header: date, leaders, score, secured status/time.
-2. Staffing metric strip.
-3. Compact location status matrix.
-4. Priority issues/actions table.
-5. Populated department notes only.
-6. Completed/carryover actions.
-7. Closing checklist and recognition.
-8. Footer: prepared by/time and `Managers Only`.
-
-The PDF should summarize. It should not reproduce every form label or display blank sections.
-
-### 11.4 Overflow policy
-
-- Define realistic character/item limits in the form.
-- Provide live remaining-capacity guidance.
-- Use bullets and concise rows.
-- Do not reduce type below a readable threshold just to force one page.
-- For unusually busy days, keep page one as the complete executive summary and create an optional continuation page clearly labeled `Supporting Details`.
-- Typical-day fixtures must remain one page.
-
-### 11.5 PDF verification
-
-Automated tests must confirm page count and page size. Render test PDFs to images and visually inspect:
-
-- Typical associate day.
-- Heavy-product associate day.
-- Closed day.
-- Private buyout day.
-- Off-season day with no seasonal section.
-- SCarowinds day with maze products.
-- Typical manager day.
-- Heavy manager day close to capacity.
-
-## 12. Local files, privacy, and reliability
-
-- Store everything locally by default.
-- Do not automatically email, upload, or sync passdowns.
-- Do not collect payment, sign-in, or employee account credentials.
-- Avoid storing example names or sensitive content in test fixtures committed to source control.
-- Sanitize logs so they do not contain draft notes or personnel content.
-- Use atomic writes for cache and draft files.
-- Keep rolling backups or recover from a partial/corrupt JSON file.
-- Version stored data and provide migrations when models change.
-- Include an `Open data folder` action for troubleshooting.
-- Include an `Export diagnostic report` action that excludes manager notes and personal information.
-
-Snapshot/history is not a required feature. Saved per-date drafts and generated PDFs are sufficient unless it is trivial to retain cache history safely.
-
-## 13. Error handling
-
-Each source fails independently. The app must remain usable when:
-
-- The internet is unavailable.
-- One official URL changes.
-- The checkout calendar has not published a future date.
-- A page loads but never hydrates.
-- Browser runtime is missing.
-- A product category has zero published products.
-- Cache JSON is corrupted.
-- The PDF cannot be opened automatically.
-- Windows Task Scheduler cannot create a task.
-
-User-facing messages must say what is usable and what action is available. Example:
-
-> Ticket prices could not be checked. Your saved draft and previously verified prices are still available. Try again later.
-
-Keep detailed source, selector, response, and exception information in diagnostic logs.
-
-## 14. Testing requirements
-
-### 14.1 Unit tests
-
-Add tests for:
-
-- North Gate and Avenue time calculations, including times crossing midnight.
-- Effective official/override/buyout hours.
-- Cache freshness/due calculations.
-- Per-source last-known-good merging.
-- Product normalization and identity.
-- Product add/update/archive/reactivation rules.
-- `Error` not counting as absence.
-- Exact-date mismatch rejection.
-- Seasonal section visibility.
-- Manager staffing percentages and validation.
-- Dynamic location/department inclusion.
-- PDF content limiting and overflow decisions.
-- Storage migration and corrupted-file recovery.
-
-### 14.2 Retrieval contract tests
-
-Keep HTML/JSON fixtures representing official responses so parsers can be tested without live internet. Include:
-
-- Open date.
-- Closed date.
-- Not-published future date.
-- Exact dated-ticket products.
-- Fast Lane Ultimate and reserve product examples.
-- Marketing `Starting From` price.
-- SCarowinds/maze products present.
-- Seasonal products absent.
-- Product renamed or removed.
-- Partial/broken page.
-
-Fixtures must contain no private company information.
-
-### 14.3 Live smoke tests
-
-When internet access is available, run opt-in live checks against official sources. Live tests should:
-
-- Never add products to a cart.
-- Never submit payment or sign-in forms.
-- Record a sanitized result report.
-- Verify requested date equals confirmed date.
-- Report source failures separately.
-
-Do not make build success depend on official websites being online.
-
-### 14.4 UI and performance tests
-
-Verify:
-
-- Cached date selection under 250 ms target.
-- No browser process starts on date selection.
-- Refresh progress remains responsive.
-- Cancel stops outstanding retrieval.
-- Manual fields survive refresh.
-- App starts without admin rights.
-- Keyboard navigation works.
-- Layout works at common Windows scaling levels such as 100%, 125%, and 150%.
-
-## 15. Packaging and deployment
-
-Produce a portable Windows 11 x64 release ZIP containing everything needed to run the app. The intended flow is:
-
-1. Download the ZIP.
-2. Extract the entire ZIP.
-3. Open the extracted folder.
-4. Double-click `Carowinds Passdown.exe`.
+### 10.1 Purpose
+
+The Associate Passdown is a pre-opening operational document intended for front-line Admissions employees.
+
+It must be concise, professional, readable, accurate, and appropriate for ordinary office printing.
+
+The Associate Passdown remains the primary operational document workflow.
+
+### 10.2 Workspace structure
+
+Preserve the approved Passdown workspace organization:
+
+- Overview.
+- Products & Pricing.
+- Shows.
+- Notes.
+- Live PDF companion.
+
+The workspace provides:
+
+- Selected operating date.
+- Draft and verification status.
+- Create PDF functionality.
+- Approved document and workspace actions.
+- Date navigation.
+- Editing controls.
+
+Changing workspace tabs must preserve the current draft and must not trigger unintended online retrieval.
+
+### 10.3 Overview information
+
+Support the approved operational fields, including:
+
+- Selected operating date.
+- Official operating hours and operating status.
+- Manual hours override.
+- Private buyout information.
+- Applicable custom hours.
+- Projected attendance.
+- Pre-solds.
+- Early Ride Time.
+- Participating ERT attractions.
+- Daily Feature.
+- Applicable document inclusion preferences.
+
+Preserve existing approved validation and presentation behavior.
+
+### 10.4 Gate opening calculations
+
+Use the effective park opening time.
+
+The effective opening time is determined from verified official hours or an applicable enabled manual override.
+
+The following calculations are mandatory:
+
+- North Gate opening: exactly 30 minutes before effective park opening.
+- Avenue opening: exactly 45 minutes before effective park opening.
+
+Recalculate immediately when effective opening time changes.
+
+Handle date-boundary and midnight-crossing calculations correctly.
+
+Do not fabricate gate times when the necessary opening time is unavailable.
+
+### 10.5 Closures and buyouts
+
+Distinguish between:
+
+- Verified official operation.
+- Verified official closure.
+- Unpublished operating information.
+- Unavailable operating information.
+- Approved manual overrides.
+- Private buyout operation.
+
+A verified closure must remain distinguishable from an unknown operating schedule.
+
+An applicable private-buyout override may establish custom operational hours without altering official cached data.
+
+### 10.6 Early Ride Time
+
+Preserve approved ERT functionality, including:
+
+- Applicable ERT schedules.
+- Monthly configuration.
+- Date-specific overrides.
+- Participating attractions.
+- Relevant conflict handling.
+- Document inclusion behavior.
+
+Manual ERT configuration must not overwrite unrelated official information.
+
+### 10.7 Daily Feature
+
+Provide the approved Daily Feature editing functionality.
+
+Preserve supported content types, formatting, mathematical presentation, and document behavior.
+
+Daily Feature content is manually authored.
+
+Do not introduce a dependency on an AI service.
+
+### 10.8 Draft lifecycle
+
+Each operating date has its own Associate Passdown draft.
+
+Preserve:
+
+- Automatic local saving.
+- Visible save status.
+- Save failure handling.
+- Date-specific ownership.
+- Manual fields.
+- Product selections.
+- Numeric price overrides.
+- Show selections.
+- Daily notes.
+- Included persistent-note copies.
+- Applicable document preferences.
+- Conflict protection.
+
+Refreshes must not erase manually entered information.
+
+Changing dates must not mix information between separate drafts.
+
+Pending changes must be handled safely before operations that depend on the latest saved or captured draft.
+
+---
+
+## 11. Products and Pricing
+
+### 11.1 Product categories
+
+Support the established official product categories, including applicable:
+
+- Daily admission.
+- Fast Lane.
+- Season Passes.
+- Memberships.
+- Renewal offers.
+- Promotions and bundles.
+- Current Deals.
+- General add-ons.
+- Season Pass add-ons.
+- Seasonal products.
+- Haunted-attraction products.
+- Other officially published supported products.
+
+Use approved product grouping and display order.
+
+### 11.2 Official product identity
+
+Maintain stable product identities independently of display price.
+
+Use reliable official identifiers where available.
+
+Preserve appropriate product lifecycle information, including:
+
+- Product identity.
+- Display name.
+- Category.
+- Price and pricing qualifiers.
+- Applicable date or season.
+- Source evidence.
+- Verification status.
+- Visibility.
+- Product history.
+- Confirmed absence or retirement state.
+
+A product name or price change must not unnecessarily destroy its established identity or history.
+
+### 11.3 Product lifecycle
+
+Official product reconciliation must:
+
+- Add newly verified supported products.
+- Update verified existing products.
+- Preserve historical evidence.
+- Distinguish confirmed absence from retrieval failure.
+- Hide or archive products according to approved confirmation rules.
+- Reactivate returning products appropriately.
+
+An Error must never count as confirmed product absence.
+
+### 11.4 Dynamic seasonal visibility
+
+Seasonal product visibility must follow verified official information and approved seasonal applicability rules.
+
+Do not permanently display irrelevant seasonal sections.
+
+Do not infer seasonal product removal from failed retrieval.
+
+Avoid empty product categories in operational documents.
+
+### 11.5 Official and manual prices
+
+Official prices are read-only from the Passdown editing perspective.
+
+Users may apply approved numeric display-price overrides for their draft.
 
 Requirements:
 
-- No administrator rights.
-- No separately installed .NET runtime if practical; publish self-contained.
-- Bundle or reliably bootstrap the browser runtime without elevation. If bundling Chromium makes the ZIP too large, document the exact fallback behavior and support installed Edge.
-- Keep the release folder clean. Do not include source code, build intermediates, caches, test output, `.git`, or unrelated workspace files.
-- Use the professional application name `Carowinds Passdown` in the title, executable, task-scheduler entry, and PDF metadata.
-- Include a concise `README-FIRST.txt` for nontechnical testers.
-- Explain that Windows SmartScreen may show a warning for an unsigned internal executable. Do not claim the warning can be eliminated without code signing.
+- Manual overrides must not change official cached values.
+- Manual overrides must remain distinguishable from official prices.
+- Users must be able to restore the official value.
+- Overrides must be associated with the correct draft and product.
+- Numeric validation must follow approved pricing rules.
+- Do not introduce arbitrary text-price overrides without authorization.
 
-Do not require a custom server. Do not require the user's home computer to remain online.
+Preserve applicable pricing qualifiers, reference prices, renewal prices, units, and unavailable states.
 
-## 16. Recommended architecture
+### 11.6 Price editor
 
-Keep boundaries clear:
+Preserve the approved anchored price-editing interaction.
 
-```text
-Avalonia UI
-  ├── Associate passdown view model
-  ├── Manager passdown view model
-  ├── Date/cache status view model
-  └── Refresh progress and diagnostics
+The editor must support:
 
-Application services
-  ├── Passdown draft service
-  ├── Refresh orchestration service
-  ├── Product catalog reconciliation service
-  ├── Scheduling service
-  ├── Associate PDF service
-  └── Manager PDF service
+- Viewing the applicable official price.
+- Entering a valid manual display-price override.
+- Saving.
+- Cancelling.
+- Restoring the official value.
+- Appropriate keyboard and focus behavior.
+- Safe dismissal when the editing context becomes invalid.
 
-Domain
-  ├── Hours and effective-hours rules
-  ├── Products and product lifecycle
-  ├── Retrieval result/status/evidence
-  ├── Cache policy and freshness
-  ├── Associate draft
-  └── Manager draft
+Opening or dismissing an editor must not unintentionally modify a price.
 
-Infrastructure
-  ├── Official source adapters
-  ├── Direct HTTP/API transport
-  ├── Playwright browser fallback
-  ├── Local versioned storage
-  ├── Windows scheduling
-  └── Diagnostics/logging
-```
+### 11.7 Product controls
 
-Do not place retrieval, storage, and PDF logic directly in Avalonia code-behind. MVVM is preferred, but a pragmatic incremental refactor is acceptable if behavior is covered by tests.
+Preserve approved controls for:
 
-Suggested source interface:
+- Searching products.
+- Expanding and collapsing product groups.
+- Including and excluding eligible products.
+- Editing supported prices.
+- Restoring official prices.
+- Adding supported custom internal products.
+- Viewing product details and applicable official source information.
 
-```csharp
-public interface IOfficialDataSource
-{
-    string SourceId { get; }
-    DataScope Scope { get; }
-    TimeSpan Freshness { get; }
-    Task<SourceResult> RetrieveAsync(RetrievalRequest request, CancellationToken cancellationToken);
-}
-```
+Not every displayed official product is necessarily eligible for inclusion in the Associate PDF.
 
-Suggested refresh planner responsibilities:
+Preserve existing approved export eligibility, including the distinction between Memberships and printable Season Pass products.
 
-- Determine which sources are due.
-- Determine requested dates.
-- Prioritize today and tomorrow.
-- Reuse one browser session.
-- Limit concurrency.
-- Save each completed source result.
-- Leave last-known-good values intact after failure.
-- Report granular progress and cancellation.
+### 11.8 Price history
 
-## 17. Implementation phases
+Provide access to historical official price observations.
 
-Work in the following order. Keep the app runnable after each phase.
+Preserve:
 
-### Phase 1 — Discovery, evidence, and clean solution setup
+- Product identity.
+- Historical price values.
+- Applicable price units.
+- Observation dates.
+- Relevant source information.
+- Local and synchronized provenance.
+- Supported filtering.
+- Official price history compatibility.
 
-- Treat all previous source code as read-only reference material.
-- Document current live official-source behavior independently.
-- Record baseline timings from isolated retrieval experiments where useful.
-- Create the new solution and project boundaries under `carowinds-passdown-greenfield`.
-- Establish dependency direction, configuration, logging, testing, and storage migrations before building the production UI.
-- Do not begin with a copy of the previous application.
+Manual draft overrides must not become official price-history observations.
 
-### Phase 2 — Domain and cache redesign
+### 11.9 Memberships and offers
 
-- Add configurable source freshness policies.
-- Separate dated and catalog data.
-- Preserve last success and last attempt.
-- Add versioned storage/migrations.
-- Add product lifecycle reconciliation.
-- Add tests before connecting UI.
+Preserve the approved distinction between:
 
-### Phase 3 — Retrieval performance and consistency
+- Season Passes.
+- Memberships.
+- New-purchase offers.
+- Renewal offers.
+- Recurring monthly prices.
+- Initiation fees.
+- Other supported price units.
 
-- Investigate official public API/network responses.
-- Add direct retrieval where stable.
-- Optimize Playwright fallback.
-- Save source-by-source.
-- Add exact-date assertions and retries.
-- Measure improvement.
+Do not combine different offer types as if they were equivalent prices.
 
-### Phase 4 — Associate workflow and visual system
+---
 
-- Build the professional, responsive Avalonia workflow using MVVM.
-- Build a new date experience from the specified behavior.
-- Preserve manual fields on refresh.
-- Add dynamic product categories and seasonal visibility.
-- Improve stale/verified explanations.
-- Update associate PDF and overflow behavior.
+## 12. Shows and Entertainment
 
-### Phase 5 — Manager workflow
+Display supported official entertainment schedules for the applicable operating date.
 
-- Add manager draft model and local storage.
-- Build dynamic manager form.
-- Add validation/calculations.
-- Generate one-page manager PDF.
-- Verify with typical and heavy fixtures.
+Requirements:
 
-### Phase 6 — Scheduling and resilience
+- Preserve exact-date verification.
+- Distinguish unavailable or unpublished schedules.
+- Present available show times clearly.
+- Support approved show inclusion controls.
+- Preserve existing show-selection behavior.
+- Use approved disclosure controls for detailed show times.
+- Preserve draft selections during refresh.
 
-- Implement due-only 6:00 AM refresh.
-- Add missed-run-on-launch behavior.
-- Improve diagnostics and recovery.
-- Test offline and failure scenarios.
+Do not fabricate show names, times, locations, or schedules.
 
-### Phase 7 — Windows packaging and handoff
+Only include approved and selected show information in the Associate Passdown.
 
-- Publish self-contained Windows x64.
-- Create clean portable ZIP.
-- Verify on a clean Windows 11 VM without admin rights.
-- Include testing instructions and sanitized diagnostic export.
+---
 
-## 18. Acceptance criteria
+## 13. Operational Notes
 
-The work is not complete until all of the following are demonstrated:
+### 13.1 Persistent notes
 
-### Data and caching
+Provide an independent Operational Notes workspace.
 
-- Cached date changes do not start web retrieval and feel immediate.
-- Today plus six future dates can be refreshed and cached.
-- Exact-date products are never attributed to the wrong date.
-- Stable add-ons are not downloaded for every selected date.
-- Add-ons follow the 14-day policy unless manually refreshed or change detection requires a check.
-- Season passes follow the 7-day policy.
-- Daily tickets, hours, Fast Lane, and short promotions follow daily policy.
-- A source error does not delete good cached data or products.
-- New official products appear automatically.
-- Removed products disappear only after confirmed absence.
-- SCarowinds content is hidden off season and appears automatically when published.
+Users must be able to perform approved note-management operations, including:
 
-### Associate passdown
+- Creating notes.
+- Viewing note details.
+- Editing applicable notes.
+- Searching.
+- Filtering.
+- Managing note lifecycle states.
 
-- Hours, overrides, buyouts, gate calculations, attendance, pre-solds, ERT, notes, Daily Fun, and products work.
-- Manual data persists per date.
-- Typical and heavy-product associate PDFs are readable in black and white.
-- Typical associate PDF is exactly one Letter portrait page.
+Preserve existing note validation, persistence, and synchronization behavior.
 
-### Manager passdown
+### 13.2 Passdown notes
 
-- Separate Manager Passdown entry point exists.
-- Staffing calculations work and invalid totals are explained.
-- Location detail appears only for Watch/Action Needed.
-- Blank department sections do not print.
-- Top issues, actions, checklist, and recognition are easy to scan.
-- Typical manager PDF is exactly one Letter page and is readable in black and white.
-- Manager-only content never leaks into associate drafts or diagnostic exports.
+Support date-specific Passdown notes and the inclusion of appropriate persistent Operational Notes.
 
-### Windows delivery
+Persistent notes and their included Passdown copies are separate concepts.
 
-- App launches from an extracted ZIP on Windows 11.
-- No admin rights, custom server, login, GPT, or separate .NET installation are required.
-- Generated PDFs open or can be found easily.
-- Offline startup loads drafts and cache.
-- Release ZIP contains no `.git`, source, or unrelated output.
+Editing a persistent note must not silently modify an already included frozen copy where the established behavior preserves that copy.
 
-## 19. Required deliverables from the implementing agent
+### 13.3 Note presentation
 
-Provide:
+Use the approved searchable list-and-detail presentation.
 
-1. Updated source code.
-2. Automated tests and test fixtures.
-3. A short architecture/data-flow document.
-4. A source/cadence table showing what refreshes daily, weekly, and biweekly.
-5. A diagnostic report from live official-source testing, with no private data.
-6. Rendered sample associate and manager PDFs.
-7. Page-count and page-size verification results.
-8. Performance results before and after optimization.
-9. A clean Windows 11 x64 release ZIP.
-10. Simple tester instructions for a nontechnical coworker.
-11. A concise list of remaining limitations caused by official-site behavior.
+Preserve:
 
-## 20. Working rules for the implementing agent
+- Clear note status.
+- Accessible dialogs.
+- Predictable keyboard navigation.
+- Safe editing and dismissal.
+- Appropriate empty states.
 
-- Do not claim retrieval works without testing exact dates.
-- Do not use made-up sample values as production fallbacks.
-- Do not remove cached products after a network or parser error.
-- Do not trigger a full online refresh when a date changes.
-- Do not scrape every catalog source daily when its policy is weekly/biweekly.
-- Do not add a cloud service merely for convenience.
-- Do not put private employee examples into source control or screenshots.
-- Do not sacrifice readability to force extreme content onto one page.
-- This is an authorized greenfield rebuild. Do not patch or reskin the previous production app as a shortcut.
-- Keep the application usable and testable throughout the work.
-- When official pages are ambiguous, surface uncertainty and retain evidence instead of guessing.
+### 13.4 Privacy
 
-## 21. Product-owner decisions to confirm before finalizing manager workflow
+Operational Notes may contain internal operational information.
 
-Proceed with reasonable defaults, but flag these two decisions for confirmation before final release:
+Do not expose note contents unnecessarily in:
 
-1. Is the Manager Passdown strictly an end-of-day Admissions closeout, or should it support a park-wide manager audience?
-2. Should the manager PDF default to Letter landscape, as recommended for the location/action matrix, or remain portrait for consistency with the associate passdown?
+- Diagnostic logs.
+- Public reports.
+- Release packages.
+- Test fixtures.
+- Unrelated workspaces.
 
-The architecture should make either answer a presentation/configuration change rather than a retrieval rewrite.
+---
+
+## 14. Finalized Passdown History
+
+### 14.1 Purpose
+
+Finalized History preserves completed operational documents as historical records.
+
+It is distinct from editable Passdown drafts.
+
+### 14.2 Finalization
+
+When a Passdown is finalized, preserve the approved immutable historical information and final PDF.
+
+Finalization must follow the established product workflow and validation requirements.
+
+Do not reconstruct finalized records from current official information.
+
+### 14.3 Immutability
+
+Finalized records must not be modified by:
+
+- Subsequent draft edits.
+- Official price changes.
+- Updated operating hours.
+- Updated show schedules.
+- Persistent-note changes.
+- Template changes.
+- Personal Sync reconciliation.
+
+Do not introduce reopening or editing of finalized history without explicit authorization.
+
+### 14.4 History workspace
+
+Preserve the approved read-only History experience, including:
+
+- Searching supported metadata.
+- Filtering.
+- Viewing historical record details.
+- Opening the stored final PDF.
+- Saving a copy of the stored final PDF.
+
+History search must not introduce unintended searches through PDF content or unrelated private note content.
+
+Saving a PDF copy must not modify the original finalized record.
+
+---
+
+## 15. PDF generation and document output
+
+### 15.1 Document purpose
+
+Associate PDFs provide concise operational information for daily use.
+
+Documents must be:
+
+- Professional.
+- Readable.
+- Operationally accurate.
+- Suitable for ordinary office printers.
+- Readable in black and white.
+- Visually consistent with approved templates.
+
+### 15.2 Page requirements
+
+- US Letter page size.
+- Preserve approved Associate document orientation.
+- Typical Passdowns should fit within one readable page where practical.
+- Support the established multi-page behavior when additional content requires it.
+- Do not silently truncate critical operational content.
+- Do not sacrifice readability merely to force a document onto one page.
+
+### 15.3 Templates
+
+Preserve the approved document templates.
+
+Template selection must not alter the underlying official information or draft ownership.
+
+Do not modify approved document content, template styling, pagination behavior, or output contracts without authorization.
+
+### 15.4 Document content
+
+Include applicable approved operational information, such as:
+
+- Operating date.
+- Park hours.
+- Gate opening times.
+- Operating status.
+- Attendance.
+- Pre-solds.
+- ERT.
+- Included products and prices.
+- Selected entertainment information.
+- Included operational notes.
+- Daily Feature.
+- Approved verification and supporting information.
+
+Empty or excluded categories must not introduce unnecessary document clutter.
+
+### 15.5 Live PDF preview
+
+The Passdown workspace provides a live preview of the actual generated PDF.
+
+Preserve:
+
+- Actual document rendering.
+- Automatic updates following applicable edits.
+- Approved preview scheduling.
+- Page navigation.
+- Zoom and fit behavior.
+- Preview visibility and layout preferences.
+- Correct operating-date association.
+- Protection against stale preview results.
+
+The live preview must not mutate persisted draft information.
+
+A previously selected date's PDF must not appear as if it belongs to the current date.
+
+### 15.6 Printing and saving
+
+Preserve the approved document actions, including:
+
+- Create PDF.
+- Print.
+- Save PDF.
+- Finalize.
+- Copy for Teams, where applicable.
+
+Document output must reflect the latest applicable draft information.
+
+Printing and saving must not silently use an obsolete preview.
+
+Native printing must remain compatible with the target Windows environment.
+
+Failures must preserve the underlying draft and provide understandable recovery guidance.
+
+### 15.7 Finalized documents
+
+Opening or saving a finalized PDF must use the stored final document rather than regenerating it from current information.
+
+---
+
+## 16. Personal Sync
+
+### 16.1 Purpose
+
+Personal Sync provides optional exchange of supported operational information between devices.
+
+It must remain optional.
+
+The application must remain fully usable without enabling Personal Sync.
+
+### 16.2 User control
+
+Users must explicitly configure and enable Personal Sync.
+
+Preserve approved controls for:
+
+- Sync-folder configuration.
+- Enablement.
+- Synchronization status.
+- Supported manual synchronization actions.
+- Conflict review.
+- Conflict resolution.
+- Applicable failure and recovery information.
+
+### 16.3 Supported information
+
+Preserve the established supported synchronization entities, including applicable:
+
+- Associate Passdown drafts.
+- Operational Notes.
+- Monthly ERT configuration.
+- ERT date overrides.
+- Finalized Passdown history.
+- Official price-history observations.
+
+Additional synchronized entities require explicit approval and compatibility analysis.
+
+### 16.4 Conflict handling
+
+Conflicting edits must not be silently overwritten.
+
+Preserve:
+
+- Explicit conflict detection.
+- Supported conflict-resolution choices.
+- Revision and identity tracking.
+- Deletion and retirement semantics.
+- Finalized-record immutability.
+- Existing compatibility guarantees.
+
+### 16.5 Local database protection
+
+The live SQLite database and its associated WAL or SHM files must never reside in a cloud-sync folder.
+
+Personal Sync exchanges supported data through the established synchronization format, not by copying or sharing the live database.
+
+### 16.6 Device-local settings
+
+Device-local presentation and configuration preferences must remain local unless synchronization of a particular preference is explicitly approved.
+
+### 16.7 Privacy and compatibility
+
+Do not introduce mandatory cloud services, external accounts, or telemetry.
+
+Do not change established Personal Sync formats without appropriate compatibility review and explicit authorization.
+
+Do not reactivate the retired Morning Message synchronization channel.
+
+---
+
+## 17. Settings and preferences
+
+Settings provides organized access to approved application preferences and configuration.
+
+Preserve the approved Settings organization, including applicable:
+
+- Appearance.
+- Interface animations.
+- Passdown Defaults.
+- Data Refresh information.
+- Windows Scheduling.
+- Personal Sync.
+- Application Updates.
+- About.
+
+### 17.1 Appearance
+
+Support:
+
+- System appearance.
+- Light appearance.
+- Dark appearance.
+
+Appearance changes must preserve readable contrast and consistent visual presentation.
+
+### 17.2 Interface animations
+
+Provide the approved interface animation preference.
+
+Respect operating-system reduced-motion preferences.
+
+Animations must not delay operational commands or interfere with editing, saving, navigation, and document output.
+
+### 17.3 Passdown Defaults
+
+Preserve approved configurable defaults for future Passdown creation and applicable document behavior.
+
+Changing a default must not silently overwrite existing date-specific draft decisions.
+
+### 17.4 Data Refresh
+
+Present approved data freshness and refresh information.
+
+Do not reintroduce removed diagnostics or online-check controls into Settings without authorization.
+
+### 17.5 Preference persistence
+
+Preferences must survive application restarts according to their approved storage behavior.
+
+Device-local preferences must not be automatically synchronized.
+
+---
+
+## 18. User experience and visual design
+
+### 18.1 General direction
+
+The application should feel like a polished, professional internal operations product.
+
+Prioritize:
+
+- Clear hierarchy.
+- Efficient use of space.
+- Consistent typography.
+- Predictable alignment.
+- Readable controls.
+- Plain-language labels.
+- Low visual clutter.
+- Fast access to frequently used workflows.
+- Clear operational status.
+
+Avoid unnecessary decoration, excessive animation, inconsistent layouts, and technical implementation terminology.
+
+### 18.2 Application shell
+
+Preserve the approved application shell, including:
+
+- Native Windows window behavior.
+- Original application icon.
+- Approved title-bar appearance.
+- Collapsible sidebar navigation.
+- Clear active navigation state.
+- Consistent page headers.
+- Existing workspace organization.
+
+Do not introduce placeholder navigation for deferred features.
+
+### 18.3 Date controls
+
+Preserve approved compact date-navigation behavior.
+
+Date controls must provide:
+
+- Clear selected operating date.
+- Previous and next date navigation.
+- Calendar selection.
+- Today functionality where approved.
+- Keyboard accessibility.
+- Accurate Eastern operating-date behavior.
+
+Do not trigger network retrieval merely because the date changes.
+
+### 18.4 Shared design system
+
+Use the established shared design system.
+
+Preserve consistent:
+
+- Colors.
+- Typography.
+- Spacing.
+- Control sizes.
+- Focus behavior.
+- Buttons.
+- Status indicators.
+- Dialogs.
+- Filters.
+- Dropdowns.
+- Tooltips.
+- Motion behavior.
+
+Do not invent a separate visual language for each workspace.
+
+### 18.5 Approved design references
+
+Approved prototypes and visual references establish the desired presentation direction.
+
+They are not authoritative sources of business logic, operational information, or production sample data.
+
+Do not copy placeholder content into production.
+
+Do not substitute an unapproved visual design when a required reference is unavailable.
+
+### 18.6 Accessibility
+
+Support:
+
+- Keyboard navigation.
+- Visible focus indicators.
+- Predictable tab order.
+- Accessible control names.
+- Appropriate status announcements.
+- Sufficient color contrast.
+- Status distinctions beyond color.
+- Readable text.
+- Light and Dark appearance.
+- Reduced-motion preferences.
+- Common Windows display-scaling configurations.
+
+Avoid unnecessary focus traps.
+
+Dialogs and popovers must restore focus appropriately.
+
+### 18.7 Responsive behavior
+
+Preserve usable layouts across supported window sizes and Windows display scaling.
+
+Validate applicable behavior at:
+
+- 100% scaling.
+- 125% scaling.
+- 150% scaling.
+
+Do not claim Windows-specific visual or accessibility validation based only on non-Windows screenshots or headless tests.
+
+---
+
+## 19. Local storage, privacy, and reliability
+
+### 19.1 Local-first storage
+
+Store operational information locally by default.
+
+Use the established versioned SQLite persistence architecture and approved supporting local files.
+
+Do not introduce a server database.
+
+### 19.2 Data ownership
+
+Maintain separation between:
+
+- Official cached information.
+- Editable Passdown drafts.
+- Manual display-price overrides.
+- Persistent Operational Notes.
+- Finalized historical records.
+- Official price history.
+- Device-local preferences.
+- Personal Sync exchange files.
+- Application update files.
+
+Do not allow one information category to unintentionally overwrite another.
+
+### 19.3 Compatibility and migrations
+
+Preserve:
+
+- Existing user data.
+- Historical database migrations.
+- Supported upgrade paths.
+- Backup requirements.
+- Integrity verification.
+- Safe handling of unsupported newer schemas.
+
+Do not require users to delete existing data to install an ordinary application update.
+
+### 19.4 Privacy
+
+Do not collect unnecessary personal information.
+
+Do not collect employee credentials, payment information, or company authentication secrets.
+
+Do not expose private operational information through diagnostic exports or release packages.
+
+Use appropriately sanitized or synthetic test data.
+
+### 19.5 Failure recovery
+
+The application must remain usable when:
+
+- Internet access is unavailable.
+- An official source changes.
+- A source temporarily fails.
+- Future information has not been published.
+- A product is unavailable.
+- PDF output fails.
+- A file cannot be accessed.
+- Personal Sync temporarily fails.
+- Windows scheduling cannot be configured.
+- Application update discovery fails.
+
+Communicate what remains usable and what recovery action is available.
+
+---
+
+## 20. Application updates and distribution
+
+### 20.1 Distribution
+
+Provide the established portable Windows 11 x64 distribution.
+
+The ordinary installation experience is:
+
+1. Obtain an authorized application package.
+2. Extract the complete package.
+3. Launch the application.
+4. Use the application without administrator permissions.
+
+Preserve the approved application branding and executable identity.
+
+### 20.2 Package requirements
+
+Release packages must not include:
+
+- Source code.
+- Git metadata.
+- Build intermediates.
+- User databases.
+- Personal Sync files.
+- Private configuration.
+- Signing keys.
+- Credentials.
+- Unrelated development artifacts.
+
+Include appropriate user instructions and required dependency notices.
+
+Browser runtime distribution is not required by the current product.
+
+### 20.3 Application update experience
+
+Preserve the established update system, including:
+
+- Update discovery.
+- Supported update channels.
+- Update availability information.
+- Release notes.
+- Approved reminder behavior.
+- Verified package download.
+- Installation readiness checks.
+- Safe application restart.
+- Installation recovery.
+- Rollback where supported.
+
+### 20.4 Update integrity
+
+Only trusted, verified application updates may be installed through the automatic update mechanism.
+
+Preserve:
+
+- Signed release manifests.
+- Package verification.
+- File-integrity verification.
+- Version and channel compatibility.
+- Protection against unintended downgrades.
+- Safe extraction.
+- Installation recovery.
+- User-data protection.
+
+Do not bypass verification for convenience.
+
+### 20.5 Published release integrity
+
+Published releases are immutable.
+
+Never replace or modify a previously published release under the same version identity.
+
+Clearly distinguish:
+
+- Development builds.
+- Local-test packages.
+- Release candidates.
+- Published releases.
+
+Release publication requires explicit authorization.
+
+---
+
+## 21. Performance requirements
+
+The application should remain responsive during ordinary operational use.
+
+Prioritize:
+
+- Fast application startup.
+- Fast local date changes.
+- Responsive navigation.
+- Immediate ordinary editing feedback.
+- Efficient product filtering.
+- Responsive Calendar interaction.
+- Efficient PDF preview updates.
+- Reliable autosave.
+- Bounded background activity.
+- Efficient official retrieval.
+- Stable resource consumption.
+
+The original cached-date navigation target remains under 250 milliseconds on an appropriate Windows office computer.
+
+Later approved performance targets and established benchmark baselines must be maintained in the relevant performance documentation.
+
+Do not introduce artificial delays into ordinary operational interactions.
+
+Background refresh, synchronization, preview generation, and update discovery must not unnecessarily interrupt active editing.
+
+Preserve existing measured performance improvements unless an approved change requires a different approach.
+
+Distinguish development-host measurements from actual Windows performance results.
+
+---
+
+## 22. Product acceptance criteria
+
+### 22.1 Core application
+
+- Application launches on supported Windows 11 x64 systems.
+- Ordinary operation requires no administrator privileges.
+- No mandatory external custom server, AI service, or account is required.
+- Previously saved local information remains available offline.
+- Existing user data survives supported upgrades.
+
+### 22.2 Official information
+
+- Official sources are used.
+- Exact-date results are associated with the correct operating date.
+- Unavailable or unpublished information is not fabricated.
+- Failed retrieval preserves last-known-good information.
+- Product absence is distinguished from retrieval failure.
+- Date selection does not trigger online retrieval.
+- Manual refresh preserves draft edits.
+- Separate freshness policies remain effective.
+
+### 22.3 Associate Passdown
+
+- Date-specific drafts remain independent.
+- Autosave preserves manual information.
+- Official and manual hours remain distinguishable.
+- Buyout behavior follows approved rules.
+- North Gate and Avenue calculations are correct.
+- Attendance and pre-solds are retained.
+- ERT functionality remains correct.
+- Daily Feature functionality remains available.
+- Product inclusion and numeric overrides work.
+- Show inclusion works.
+- Notes and included persistent-note copies behave correctly.
+- Changing dates does not mix draft information.
+
+### 22.4 Products and pricing
+
+- Supported official products are grouped correctly.
+- Dynamic seasonal visibility works.
+- Official prices remain unchanged by manual overrides.
+- Price restoration works.
+- Price-history observations remain accurate.
+- Membership and Season Pass offer distinctions are preserved.
+- Unsupported products do not appear in operational documents.
+
+### 22.5 Operations Calendar
+
+- Calendar navigation works locally.
+- Operating dates follow Eastern time.
+- Operating status is represented accurately.
+- Applicable events and Pass Perks appear correctly.
+- Selected-date details remain consistent.
+- Date navigation does not trigger unintended retrieval.
+
+### 22.6 Operational Notes
+
+- Notes can be managed through approved workflows.
+- Search and filtering work.
+- Persistent notes remain independent of frozen included copies.
+- Note data survives ordinary application restarts.
+- Private note contents are protected.
+
+### 22.7 History
+
+- Finalized records remain immutable.
+- Historical metadata can be searched and filtered.
+- Stored final PDFs can be opened.
+- PDF copies can be saved without modifying the original.
+- Current official data does not change historical records.
+- No unauthorized reopen or edit functionality is introduced.
+
+### 22.8 PDF output
+
+- Preview represents the actual generated PDF.
+- Latest applicable edits appear in document output.
+- Stale results do not replace current-date output.
+- Typical documents remain readable on US Letter paper.
+- Black-and-white readability is maintained.
+- Printing and saving work through approved workflows.
+- Finalized PDFs remain unchanged.
+- Existing approved templates are preserved.
+
+### 22.9 Personal Sync
+
+- Synchronization remains optional.
+- Supported records synchronize according to approved behavior.
+- Conflicts are not silently overwritten.
+- The live database never resides in the sync folder.
+- Existing format compatibility is preserved.
+- Device-local preferences remain local.
+- Finalized history remains immutable.
+
+### 22.10 Interface and accessibility
+
+- Approved navigation remains consistent.
+- Light and Dark themes remain usable.
+- Keyboard navigation works.
+- Focus is visible and predictable.
+- Reduced-motion preferences are respected.
+- Status is not communicated by color alone.
+- Supported display scaling remains usable.
+- Approved interface behavior is preserved.
+
+### 22.11 Updates and release safety
+
+- Update discovery does not prevent normal application use.
+- Unverified update packages are rejected.
+- Existing user data is protected during updates.
+- Installation recovery remains available.
+- Published release artifacts are not modified.
+- Release packages contain no private user information.
+
+### 22.12 Validation
+
+Relevant automated tests, build checks, and required Windows validation must support claims of product acceptance.
+
+Implementation completion, automated test success, Windows validation, product-owner approval, and release publication are separate statuses.
+
+Do not represent one status as proof of another.
+
+Deferred features are not active acceptance requirements.
+
+---
+
+## 23. Deferred Manager Passdown requirements
+
+### 23.1 Status
+
+**Deferred — not authorized for implementation.**
+
+The Manager Passdown remains a potential future product capability.
+
+The original detailed Manager requirements must be preserved in the archived greenfield specification.
+
+### 23.2 Intended purpose
+
+The original concept is an end-of-day Admissions communications and operational handoff document.
+
+Potential future requirements include:
+
+- Operating date and management information.
+- Opening and closing managers.
+- Staffing summaries.
+- Operational success scores.
+- Location status.
+- Department notes.
+- Priority issues.
+- Operational actions.
+- Carryover tasks.
+- Training and recognition.
+- Closing checklists.
+- Management-only information.
+- Separate Manager document generation.
+
+These are historical deferred requirements, not authorization to implement them.
+
+### 23.3 Unresolved decisions
+
+Before the Manager workflow is authorized, confirm:
+
+- Whether its audience is Admissions-only or broader park management.
+- Required operational fields and privacy boundaries.
+- Manager document orientation.
+- Appropriate storage and synchronization behavior.
+- Approved navigation and presentation.
+- Current operational relevance of the historical requirements.
+
+Do not automatically restore the original Phase 5 implementation plan.
+
+---
+
+## 24. Retired Morning Message functionality
+
+Morning Message has been retired from the active product.
+
+The following must not be reintroduced without explicit authorization:
+
+- Morning Message composer.
+- Morning Message production navigation.
+- Morning Message content-generation workflows.
+- Morning Message production dependencies.
+- Morning Message synchronization.
+
+Preserve required compatibility safeguards for historical local and synchronized files.
+
+Retirement is not an instruction to delete historical user information.
+
+---
+
+## 25. Product specification maintenance
+
+This specification must remain aligned with explicitly approved product decisions.
+
+Whenever an approved change affects:
+
+- Product functionality.
+- Business rules.
+- Operational workflows.
+- User-facing behavior.
+- Product defaults.
+- Product scope.
+- Data ownership.
+- Compatibility requirements.
+- Privacy requirements.
+- Acceptance criteria.
+
+Update the affected specification in the same change set.
+
+Identify the decision or approved phase record authorizing the change.
+
+### 25.1 Requirements integrity
+
+- Do not document accidental implementation behavior as intended functionality.
+- Do not change approved requirements merely to make failing tests pass.
+- Do not silently remove historical requirements.
+- Explicitly supersede obsolete requirements.
+- Preserve relevant historical decisions.
+- Distinguish active, proposed, deferred, and retired functionality.
+- Do not introduce new product functionality solely through a documentation update.
+
+### 25.2 Architecture separation
+
+Technical implementation details belong in the architecture documentation.
+
+Development instructions belong in `CLAUDE.md` and `.claude/rules/`.
+
+Historical implementation evidence belongs in phase and release records.
+
+This specification should remain focused on product behavior and acceptance requirements.
+
+### 25.3 Phase completion
+
+Every completed phase or subphase must report:
+
+- Product specification updated.
+- Product specification reviewed, with no changes required.
+- Or product specification discrepancy requiring approval.
+
+Architecture documentation must be reviewed separately.
+
+Do not declare a phase complete while relevant known specification conflicts remain unresolved.
+
+### 25.4 Version-independent requirements
+
+Do not hard-code temporary development information into this specification, including:
+
+- Current Git branch.
+- Current commit.
+- Current development phase number.
+- Current release version.
+- Current database schema number.
+- Current synchronization format number.
+- Current test count.
+- Current dependency versions.
+
+Maintain these values in the appropriate current-state architecture, configuration, source, or release documentation.
+
+---
+
+## 26. Historical specification and supersession
+
+This document supersedes the original greenfield Agent Build Specification as the active product specification.
+
+Preserve the original document at:
+
+`docs/archive/original-greenfield-build-spec.md`
+
+The archived specification provides historical context, original operational requirements, and deferred Manager Passdown details.
+
+It must not be treated as an active implementation plan.
+
+In particular, the following historical requirements are superseded:
+
+- Building the current application from scratch.
+- Mandatory Manager Passdown implementation.
+- Mandatory Manager navigation.
+- Playwright browser fallback as a baseline dependency.
+- Browser runtime distribution.
+- Optional-only historical snapshots.
+- Local-only operation without optional Personal Sync.
+- The original sequential Phases 1 through 7 implementation plan.
+- Original interface recommendations superseded by approved later designs.
+
+Preserve enduring operational requirements unless explicitly superseded by approved later decisions.
+
+When a historical requirement conflicts with this specification or a later approved product decision, investigate and document the applicable authority.
+
+---
+
+## 27. Final product principles
+
+Carowinds Operations must remain:
+
+- Accurate.
+- Reliable.
+- Responsive.
+- Professional.
+- Accessible.
+- Local-first.
+- Privacy-conscious.
+- Maintainable.
+- Compatible with existing user data.
+- Suitable for everyday Carowinds operational use.
+
+Operational correctness and user-data integrity take precedence over convenience, speculative improvements, and unnecessary architectural change.
+
+Preserve what works. Improve deliberately. Implement only approved changes. Document accurately. Validate honestly.
