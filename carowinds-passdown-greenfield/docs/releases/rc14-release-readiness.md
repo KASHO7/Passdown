@@ -2,9 +2,10 @@
 
 Date: 2026-11-26 · Branch `feature/passdown-redesign` · **Release source commit `3d603f0`**
 (`3d603f05a1f617723ea0af4ffb790592a021ce9b`). Built and signed locally on the macOS build host.
-**Not pushed, not tagged, not published.**
+**Published 2026-11-27T00:56:02Z as a GitHub prerelease (§14).** Not merged to `main`.
 
-**Publication authorization: NOT AUTHORIZED — awaiting separate user approval.**
+Publication authorization: at preparation (§1–§13, written before publication) **NOT AUTHORIZED**; the product owner
+then explicitly authorized publication in a separate request on 2026-11-26 (§14). §1–§13 are kept as prepared.
 
 Result values: **PASS** · **USER-VERIFIED ON WINDOWS** · **NOT EXECUTED** · **BLOCKED**. "PASS" is an automated or
 build-host check; **USER-VERIFIED ON WINDOWS** means the product owner ran it by hand on Windows. Claude ran no Windows
@@ -222,3 +223,28 @@ RC.14 (a LOCALTEST identity sorts above its release by design); replace it by ex
    check, then the RC.13 → RC.14 Windows update procedure (§9).
 
 Published assets and tag must never be replaced; any later change ships as `0.1.0-rc.15`.
+
+## 14. Publication and post-publication (2026-11-26, Eastern; 2026-11-27 UTC)
+
+Authorized by the product owner: push, annotated tag at `3d603f0`, public prerelease with the three prepared assets.
+Not authorized and not done: merge to `main`, force-push, history rewrite, changes to earlier tags or releases,
+rebuild or re-signing.
+
+| Check | Result |
+|---|---|
+| Preflight: HEAD `4aa3419`; `3d603f0` is its ancestor; fresh `git fetch`: `origin/feature/passdown-redesign` = `256a1c9`, 0 remote-only commits (fast-forward); remote `https://github.com/KASHO7/Passdown.git`; no `v0.1.0-rc.14` tag or release existed. Unrelated working-tree changes unchanged and not staged by this work | PASS |
+| Assets re-verified before upload: sizes and SHA-256 equal §Release files; 307 files; version `0.1.0-rc.14+3d603f0…`; no LOCALTEST text, key, database, PDB, log or manifest in the ZIP; manifest per-file hashes 0 mismatches; signature VERIFIED with RC.13's `appsettings.json` | PASS |
+| Branch pushed `256a1c9..4aa3419` (fast-forward, no force); remote branch = `4aa3419`, contains `3d603f0`; `main` unchanged (`06f48c4`) | PASS |
+| Annotated tag `v0.1.0-rc.14` (object `6672214`) → **`3d603f05a1f617723ea0af4ffb790592a021ce9b`**, verified locally and with `git ls-remote` (`^{}`); only this tag pushed; RC.10–RC.13 tags unchanged | PASS |
+| Release https://github.com/KASHO7/Passdown/releases/tag/v0.1.0-rc.14 — "Carowinds Operations v0.1.0-rc.14", **prerelease**, not a draft, not marked latest, published 2026-11-27T00:56:02Z; page HTTP 200 without authentication; body = `rc14-release-notes.md` below its draft header | PASS |
+| Assets: exactly `Carowinds-Operations-0.1.0-rc.14-win-x64.zip` (76,138,292 B), `.update.json` (53,211 B), `.update.json.sig` (216 B); GitHub digests equal the recorded SHA-256 values | PASS |
+| Anonymous downloads from `https://github.com/KASHO7/Passdown/releases/download/v0.1.0-rc.14/…` (HTTP 200) into a separate folder: all three byte-identical to `artifacts/releases`; public ZIP SHA-256 **`15f07778e3c6d74e25da6534feb8f859a523fb99a344ee2b7189b8f29fdaa278`** | PASS |
+| Downloaded manifest + signature: **VERIFIED** (`carowinds-release-1`) against RC.13's trusted keys; package name, size and SHA-256 = the public ZIP; 307 entries recomputed from a fresh extraction of the public ZIP, 0 mismatches | PASS |
+| `RealReleaseZip_WhenSupplied_PassesEveryRule` against the downloaded ZIP; Domain/Application/Infrastructure updates and packaging tests (55 / 84 / 193), 0 failed, 0 skipped | PASS |
+| Read-only live discovery (scratch console wiring the app's `GitHubReleaseSource`, `EcdsaUpdateManifestVerifier` and `UpdateDiscoveryService` with RC.13's `appsettings.json`; the update code is unchanged since `d784c60`): installed `0.1.0-rc.13` → **UpdateAvailable `0.1.0-rc.14`**, tag `v0.1.0-rc.14`, verified manifest, package `15f07778…a278`, 0 rejected; `0.1.0-rc.12` → same offer; `0.1.0-rc.14` → UpToDate; `0.1.0-rc.14-LOCALTEST.phase35g` → UpToDate (as designed). Nothing was downloaded beyond manifest and signature; nothing installed | PASS |
+| Releases listing (`GET /repos/KASHO7/Passdown/releases`): `v0.1.0-rc.14` first, then RC.13, RC.12, RC.11, RC.10 — all prereleases with three assets; RC.10–RC.13 sizes and digests unchanged (RC.13: ZIP `c4e1fd29…11d5d`, manifest `be3ddaec…724c`, sig `566de4d6…8ce0`, tag → `d784c60`) | PASS |
+| Local frozen artifacts (RC.13 and earlier, all local-test ZIPs) unchanged; RC.14 files read-only | PASS |
+| **RC.13 → RC.14 in-app update on Windows (§9 procedure)** | **NOT EXECUTED** — no longer blocked (assets are public); awaiting the owner's run in `CarowindsTest`, starting from the public RC.13 build, not a LOCALTEST build |
+
+Remaining: the owner's Windows update test (§9). Published assets and tag are frozen; any change ships as
+`0.1.0-rc.15`.
