@@ -99,8 +99,9 @@ Installing this version by hand from the ZIP (as described above) does NOT open
 from inside the app. Only use rc.13's in-app "Install Update" for rc.14 if whoever
 asked you to test gave you a special test update and a backed-up test profile.
 
-If you used a LOCAL-ONLY test build before (its About shows "LOCALTEST"), it will
-not offer rc.14 as an update. Extract this ZIP into a new folder instead.
+If you used a special pre-release test build before (its About shows a longer
+version that starts with 0.1.0-rc.14), it will not offer rc.14 as an update.
+Extract this ZIP into a new folder instead.
 
 
 6. Look around the main screens
