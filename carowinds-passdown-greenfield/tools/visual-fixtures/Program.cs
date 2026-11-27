@@ -362,6 +362,21 @@ static void CheckAppearance(Window window, string option)
     }
 }
 
+// Phase 36B: refuse a run that would keep too many windows' worth of memory in one process (CaptureBudget.cs).
+if (!CaptureBudget.TryLoad(out var budget, out var budgetError))
+{
+    Console.Error.WriteLine(budgetError);
+    return 2;
+}
+
+var plannedCaptures = sizes.Length * appearanceModes.Length
+    * scenarios.Count(s => filter is null || s.Name.Contains(filter, StringComparison.OrdinalIgnoreCase));
+if (plannedCaptures > budget.MaxCaptures)
+{
+    Console.Error.WriteLine(budget.TooManyCapturesMessage(plannedCaptures));
+    return 2;
+}
+
 foreach (var (w, h) in sizes)
 {
     foreach (var (theme, preference, os) in appearanceModes)
@@ -371,6 +386,14 @@ foreach (var (w, h) in sizes)
             if (filter is not null && !name.Contains(filter, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
+            }
+
+            // Phase 36B: stop before the next window if the process is already past the working-set ceiling.
+            if (budget.IsWorkingSetExceeded(out var workingSetMegabytes))
+            {
+                WriteReport();
+                Console.Error.WriteLine(budget.WorkingSetExceededMessage(workingSetMegabytes, report.Count, plannedCaptures));
+                return 3;
             }
 
             // Reset before every scenario: LiveSwitch-* scenarios change the appearance mid-arrange.
@@ -403,13 +426,17 @@ foreach (var (w, h) in sizes)
     }
 }
 
-File.WriteAllLines(Path.Combine(outDir, $"{label}-geometry.txt"), report);
+WriteReport();
 Console.WriteLine(string.Join(Environment.NewLine, report));
+return 0;
+
+void WriteReport() => File.WriteAllLines(Path.Combine(outDir, $"{label}-geometry.txt"), report);
 
 void Shot(Window window, string name)
 {
     using var frame = window.CaptureRenderedFrame();
-    frame?.Save(Path.Combine(outDir, $"{label}-{name}.png"));
+    // Phase 36B: the non-obsolete overload (CS0618); PNG with the default options, the same encoder as before.
+    frame?.Save(Path.Combine(outDir, $"{label}-{name}.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
 }
 
 static void Collapse(Fixture f)

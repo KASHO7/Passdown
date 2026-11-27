@@ -23,6 +23,12 @@ dotnet run -c Release --project tools/visual-fixtures -- <outDir> [label] [scena
 - `all` (default) renders 960×640, 1280×690, 1280×860 and 1920×1000. `main` renders only 1280×860.
   `shell` (Phase 35A) renders 1920×1080, 1536×960, 1280×720 and 960×640.
   An explicit comma-separated list such as `1280x720,960x640` (Phase 35G) renders only those sizes.
+  Every size is rendered in both Light and Dark.
+- Appearance (Phase 23C): `forced` (default) renders the Light and Dark preferences, each against the
+  opposite simulated OS appearance, and keeps the `Light`/`Dark` file names. `system` renders the System
+  preference under a simulated OS Light and OS Dark (`SystemOsLight`/`SystemOsDark`). `all` does both.
+  Themes go through the real `AppearanceThemeController` with an in-memory preference store; the test
+  machine's own appearance and the real `appearance.json` are never used.
 
 **Memory (Phase 35G).** Every scenario creates a full app window. A single process that renders many scenarios keeps
 growing: the first full four-size run reached about 18 GB. A fresh appearance controller per scenario removed the
@@ -35,12 +41,17 @@ for name in Dashboard35E-Typical P35F-Settings; do dotnet run -c Release --no-bu
 ```
 
 Each such process peaks at a few hundred MB.
-  Every size is rendered in both Light and Dark.
-- Appearance (Phase 23C): `forced` (default) renders the Light and Dark preferences, each against the
-  opposite simulated OS appearance, and keeps the `Light`/`Dark` file names. `system` renders the System
-  preference under a simulated OS Light and OS Dark (`SystemOsLight`/`SystemOsDark`). `all` does both.
-  Themes go through the real `AppearanceThemeController` with an in-memory preference store; the test
-  machine's own appearance and the real `appearance.json` are never used.
+
+**Process limits (Phase 36B).** The harness enforces the memory guidance instead of relying on it:
+
+- It refuses to start (exit code 2) when the filter, sizes and appearance modes would take more than **48
+  captures** in one process — `*` with every size is about 1,200. The message names the planned count.
+- It stops before the next window (exit code 3) once the process working set passes **3,072 MB**, after writing
+  `<label>-geometry.txt` for the captures already taken.
+- For one deliberate run, raise a limit with `CAROWINDS_VISUAL_FIXTURES_MAX_CAPTURES` or
+  `CAROWINDS_VISUAL_FIXTURES_MAX_WORKING_SET_MB` (positive whole numbers; anything else is exit code 2).
+
+The limits never change the images: before/after renders in the same minute are byte-identical (Phase 36B).
 
 `<label>-geometry.txt` records, for each capture, the page's vertical scroll, any horizontal overflow,
 and any button pushed past the window's right edge. When Today's Shows is present it also records the panel's

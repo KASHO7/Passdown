@@ -75,17 +75,24 @@ done
 
 Filter by `FullyQualifiedName~.ClassName.` (some classes live in sub-namespaces such as
 `Carowinds.Passdown.Ui.Tests.Startup`). Report the per-partition counts and compare them with the
-latest phase or release record (the current baseline is recorded there, not here). A new
-real-window class joins the run-alone list and must be recorded in the phase record.
+latest phase or release record (the current baseline is recorded there, not here). Add new
+real-window tests as a `partial` of one of the six classes. A new run-alone class must be added to
+`RealWindowPartitionGuardTests` (repository guards), the two commands above and
+`docs/architecture/testing-and-performance.md` together, and recorded in the phase record; the guard fails
+when a `Window` is created anywhere else or the lists disagree.
 
 ## 4. Known hazards
 
-- Guard memory for UI partitions (kill the test host above ~3 GB). In realized headless windows a
+- Guard memory for UI partitions (kill the test host above ~3 GB). Match the host by its command line
+  (`testhost`): on macOS it runs as `dotnet … testhost.dll`, so a match on the process name alone never fires. In realized headless windows a
   `TextBox` containing a blank line, or a `<LineBreak />` inline, has caused unbounded memory growth.
 - Never use `[MemberData]` in `Carowinds.Passdown.Ui.Tests`; use `[InlineData]`.
 - A hung mixed run (idle test host) can be killed and rerun; attribute recurrences with
   `--blame-hang --blame-hang-timeout 90s`. Record intermittent failures as pre-existing or new.
-- `tools/visual-fixtures` renders one scenario per process; do not batch scenarios in one process.
+- `tools/visual-fixtures` renders one scenario per process; do not batch scenarios in one process. The
+  tool refuses more than 48 captures per process and stops above a 3,072 MB working set (exit codes 2 and 3);
+  raise the limits only deliberately (`CAROWINDS_VISUAL_FIXTURES_MAX_CAPTURES`,
+  `CAROWINDS_VISUAL_FIXTURES_MAX_WORKING_SET_MB`).
   Headless Skia renders are development evidence, not Windows DPI/accessibility validation.
 - Use synthetic data and fake preference stores; never launch against the personal profile.
 
