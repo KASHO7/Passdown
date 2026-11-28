@@ -11,6 +11,8 @@ namespace Carowinds.Passdown.Infrastructure.Tests.Weather;
 /// Phase 37F (owner-approved compact PDF Weather Outlook, no alerts) deliberately extends this to the Passdown PDF:
 /// the Documents files and the three Desktop capture files listed below may carry the outlook, which is read from the
 /// monitor's cached snapshot only; finalized snapshots, drafts, sync and History still carry no weather.
+/// Phase 37D (owner-authorized Calendar Weather and Settings integration) extends the Desktop list once more: the
+/// one shared Include Weather Outlook preference shown in Settings → Passdown Defaults.
 /// </summary>
 public class WeatherActivationGuardTests
 {
@@ -37,8 +39,11 @@ public class WeatherActivationGuardTests
         "src/Carowinds.Passdown.Desktop/ViewModels/DashboardWeatherViewModel.cs",
         "src/Carowinds.Passdown.Desktop/ViewModels/OperationsDashboardViewModel.cs",
         "src/Carowinds.Passdown.Desktop/ViewModels/PassdownPdfPreviewViewModel.cs",
+        "src/Carowinds.Passdown.Desktop/ViewModels/PassdownWeatherOutlookSettingsViewModel.cs",
+        "src/Carowinds.Passdown.Desktop/ViewModels/PersonalSyncSettingsViewModel.cs",
         "src/Carowinds.Passdown.Desktop/Views/AssociateView.axaml",
         "src/Carowinds.Passdown.Desktop/Views/DashboardView.axaml",
+        "src/Carowinds.Passdown.Desktop/Views/PersonalSyncSettingsView.axaml",
     ];
 
     /// <summary>Phase 37F: the only Documents files that may carry the PDF Weather Outlook.</summary>
@@ -108,6 +113,20 @@ public class WeatherActivationGuardTests
 
         Assert.Equal(["_weatherMonitor", "_weatherMonitor?.Current"], uses);
         Assert.DoesNotContain("IWeatherMonitor", RepositoryFiles.ReadText("src/Carowinds.Passdown.Desktop/ViewModels/PassdownPdfPreviewViewModel.cs"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WeatherOutlookPreference_HoldsNoWeatherDataOrRetrieval()
+    {
+        // The Settings preference holds no weather data or retrieval at all.
+        foreach (var file in new[] { "src/Carowinds.Passdown.Desktop/ViewModels/PassdownWeatherOutlookSettingsViewModel.cs", "src/Carowinds.Passdown.Desktop/ViewModels/PersonalSyncSettingsViewModel.cs" })
+        {
+            var text = RepositoryFiles.ReadText(file);
+            foreach (var forbidden in new[] { "IWeatherMonitor", "WeatherSnapshot", "IWeatherProvider", "HttpClient" })
+            {
+                Assert.DoesNotContain(forbidden, text, StringComparison.Ordinal);
+            }
+        }
     }
 
     [Theory]

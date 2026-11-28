@@ -276,6 +276,23 @@
                          Text="{Binding PassdownPreferences.SaveMessage}"
                          IsVisible="{Binding PassdownPreferences.SaveMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                          AutomationProperties.LiveSetting="Polite" />
+              <!-- Phase 37D: the PDF Weather Outlook device preference — the same shared value as Overview → Include in
+                   Passdown → Weather Outlook (PassdownWeatherOutlookSettingsViewModel, passdown-weather-outlook.json),
+                   never synced and never part of a draft. -->
+              <Border Classes="divider" />
+              <StackPanel x:Name="WeatherOutlookPreference" Classes="settingText" Margin="0,15,0,12">
+                <TextBlock Text="PDF Weather Outlook" Classes="fieldLabel" />
+                <CheckBox x:Name="IncludeWeatherOutlookByDefault" Content="Include Weather Outlook by default" Margin="0,6,0,0"
+                          IsChecked="{Binding WeatherOutlook.IncludeWeatherOutlook}"
+                          AutomationProperties.Name="Include Weather Outlook by default"
+                          AutomationProperties.HelpText="Include the Weather Outlook in Passdown PDFs when a valid forecast is available. Saved on this computer only; the same setting as Weather Outlook under Include in Passdown." />
+                <TextBlock Classes="muted" Text="Include the Weather Outlook in Passdown PDFs when a valid forecast is available." />
+                <TextBlock Classes="muted" Text="Saved on this computer only. It is the same setting as Weather Outlook under Include in Passdown." />
+                <TextBlock Classes="statusError" TextWrapping="Wrap"
+                           Text="{Binding WeatherOutlook.SaveMessage}"
+                           IsVisible="{Binding WeatherOutlook.SaveMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           AutomationProperties.LiveSetting="Polite" />
+              </StackPanel>
             </StackPanel>
           </Border>
 

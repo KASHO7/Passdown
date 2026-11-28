@@ -663,6 +663,9 @@ public partial class App : global::Avalonia.Application
         // Phase 37F follow-up: "Include Weather Outlook" for Passdown PDFs — one local file, never synced.
         services.AddSingleton<IPassdownWeatherOutlookPreferenceStore>(provider => new FilePassdownWeatherOutlookPreferenceStore(
             FilePassdownWeatherOutlookPreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FilePassdownWeatherOutlookPreferenceStore>>()));
+        // Phase 37D: one shared owner of that value, so Settings → Passdown Defaults and the Passdown's Weather Outlook
+        // checkbox read and write the same preference (one load, one save per change).
+        services.AddSingleton<PassdownWeatherOutlookSettingsViewModel>();
 
         // Phase 9A: the immutable finalized-passdown foundation.
         services.AddSingleton<IFinalizedPassdownRepository, SqliteFinalizedPassdownRepository>();

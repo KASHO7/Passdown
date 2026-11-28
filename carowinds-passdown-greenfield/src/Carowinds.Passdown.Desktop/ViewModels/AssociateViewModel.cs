@@ -102,7 +102,7 @@ public partial class AssociateViewModel : ViewModelBase
     private Task _pendingTemplatePreferenceLoad = Task.CompletedTask;
     private Task _pendingTemplatePreferenceSave = Task.CompletedTask;
     private bool _isLoadingTemplatePreference;
-    private readonly IPassdownWeatherOutlookPreferenceStore _weatherOutlookPreferenceStore;
+    private readonly PassdownWeatherOutlookSettingsViewModel _weatherOutlookPreference;
     private bool _isLoadingWeatherOutlookPreference;
     private bool _isRegroupingCountText;
     private CancellationTokenSource? _debounceCts;
@@ -867,7 +867,8 @@ public partial class AssociateViewModel : ViewModelBase
         TimeSpan? previewDebounce = null,
         Func<TimeSpan, CancellationToken, Task>? previewDelay = null,
         IWeatherMonitor? weatherMonitor = null,
-        IPassdownWeatherOutlookPreferenceStore? weatherOutlookPreferenceStore = null)
+        IPassdownWeatherOutlookPreferenceStore? weatherOutlookPreferenceStore = null,
+        PassdownWeatherOutlookSettingsViewModel? weatherOutlookPreference = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -880,7 +881,10 @@ public partial class AssociateViewModel : ViewModelBase
         _pdfExportService = pdfExportService ?? new AssociatePassdownPdfExportService(new AssociatePassdownPdfGenerator());
         _pdfSavePicker = pdfSavePicker ?? new UnavailablePdfSaveFilePicker();
         _weatherMonitor = weatherMonitor;
-        _weatherOutlookPreferenceStore = weatherOutlookPreferenceStore ?? new InMemoryPassdownWeatherOutlookPreferenceStore();
+        // Phase 37D: the one shared Include Weather Outlook value (Settings binds the same instance). Without one (tests,
+        // fixtures) a private instance over the given store keeps the Phase 37F behaviour.
+        _weatherOutlookPreference = weatherOutlookPreference ?? new PassdownWeatherOutlookSettingsViewModel(weatherOutlookPreferenceStore);
+        _weatherOutlookPreference.PropertyChanged += OnSharedWeatherOutlookPreferenceChanged;
 
         // Phase 33: the live PDF preview / Print / Save PDF. Built from the same export service as Create
         // PDF. Without a rasterizer (tests, or a renderer that failed to compose) the pane never shows and
@@ -1336,7 +1340,9 @@ public partial class AssociateViewModel : ViewModelBase
             return;
         }
 
-        PendingWeatherOutlookPreferenceSave = SaveWeatherOutlookPreferenceAsync(value);
+        // Phase 37D: the shared preference saves it (once) and Settings follows the same value.
+        _weatherOutlookPreference.IncludeWeatherOutlook = value;
+        PendingWeatherOutlookPreferenceSave = _weatherOutlookPreference.PendingSave;
     }
 
     private bool _previewWaitedForWeatherOutlookPreference;
@@ -1344,49 +1350,51 @@ public partial class AssociateViewModel : ViewModelBase
 
     private async Task LoadWeatherOutlookPreferenceAsync()
     {
-        PassdownWeatherOutlookPreferences preference;
         try
         {
-            preference = await _weatherOutlookPreferenceStore.LoadAsync().ConfigureAwait(true);
+            await _weatherOutlookPreference.PendingLoad.ConfigureAwait(true);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger?.LogWarning(ex, "Loading the Include Weather Outlook preference failed; using the default.");
-            preference = PassdownWeatherOutlookPreferences.BuiltIn;
         }
 
-        var changed = preference.IncludeWeatherOutlook != IncludeWeatherOutlook;
+        ApplyWeatherOutlookPreference(_weatherOutlookPreference.IncludeWeatherOutlook, initialLoad: true);
+    }
+
+    /// <summary>Phase 37D: a change made elsewhere (Settings) shows here at once and refreshes the preview; it is not saved again.</summary>
+    private void OnSharedWeatherOutlookPreferenceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(PassdownWeatherOutlookSettingsViewModel.IncludeWeatherOutlook) && _weatherOutlookPreferenceLoaded)
+        {
+            ApplyWeatherOutlookPreference(_weatherOutlookPreference.IncludeWeatherOutlook, initialLoad: false);
+        }
+    }
+
+    private void ApplyWeatherOutlookPreference(bool include, bool initialLoad)
+    {
+        var changed = include != IncludeWeatherOutlook;
         _weatherOutlookPreferenceLoaded = true; // captures may proceed from here on (set before the change notifies)
         _isLoadingWeatherOutlookPreference = true;
         try
         {
-            IncludeWeatherOutlook = preference.IncludeWeatherOutlook; // a change refreshes the preview itself
+            IncludeWeatherOutlook = include; // a change refreshes the preview itself
         }
         finally
         {
             _isLoadingWeatherOutlookPreference = false;
         }
 
-        if (!changed && _previewWaitedForWeatherOutlookPreference)
+        if (initialLoad && !changed && _previewWaitedForWeatherOutlookPreference)
         {
             // A preview capture was held back while the choice loaded: build it now (the same immediate refresh as a
             // loaded workspace).
             Preview.NotifyWorkspaceReplaced();
         }
 
-        _previewWaitedForWeatherOutlookPreference = false;
-    }
-
-    private async Task SaveWeatherOutlookPreferenceAsync(bool include)
-    {
-        try
+        if (initialLoad)
         {
-            await _weatherOutlookPreferenceStore.SaveAsync(new PassdownWeatherOutlookPreferences(include)).ConfigureAwait(true);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // A device preference is never worth an error dialog; the choice still applies for this session.
-            _logger?.LogWarning(ex, "Saving the Include Weather Outlook preference failed.");
+            _previewWaitedForWeatherOutlookPreference = false;
         }
     }
 

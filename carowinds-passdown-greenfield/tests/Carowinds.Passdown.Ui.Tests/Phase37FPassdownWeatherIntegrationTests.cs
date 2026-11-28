@@ -20,7 +20,7 @@ namespace Carowinds.Passdown.Ui.Tests;
 /// One immutable outlook is captured per generation from the monitor's cached snapshot, for the selected date's own
 /// hours; nothing here requests weather, subscribes to the monitor, or changes drafts. Synthetic data only.
 /// </summary>
-public class Phase37FPassdownWeatherIntegrationTests
+public partial class Phase37FPassdownWeatherIntegrationTests
 {
     /// <summary>Saturday, October 17, 2026, 9:02 AM EDT.</summary>
     private static readonly DateTimeOffset Now = WeatherUiFixtures.Morning;
@@ -92,6 +92,9 @@ public class Phase37FPassdownWeatherIntegrationTests
 
         public InMemoryPassdownWeatherOutlookPreferenceStore Preferences { get; set; } = new();
 
+        /// <summary>Phase 37D: the shared preference (the composition root's singleton); null keeps a private one over <see cref="Preferences"/>.</summary>
+        public PassdownWeatherOutlookSettingsViewModel? Shared { get; set; }
+
         public AssociateViewModel Create(bool withMonitor = true)
         {
             var viewModel = new AssociateViewModel(
@@ -108,7 +111,8 @@ public class Phase37FPassdownWeatherIntegrationTests
                 previewWorkScheduler: Scheduler,
                 previewDelay: PreviewDebounce.Delay,
                 weatherMonitor: withMonitor ? Monitor : null,
-                weatherOutlookPreferenceStore: Preferences);
+                weatherOutlookPreferenceStore: Preferences,
+                weatherOutlookPreference: Shared);
             viewModel.Preview.UpdateAvailableWidth(1500);
             viewModel.Preview.UpdateViewport(460, 700, 1.0);
             return viewModel;

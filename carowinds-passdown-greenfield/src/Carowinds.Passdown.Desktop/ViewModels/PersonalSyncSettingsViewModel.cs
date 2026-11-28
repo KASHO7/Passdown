@@ -44,6 +44,12 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
     /// <summary>Phase 32: Settings → Calendar ("Show Pass Perks on Calendar"); the same instance the Calendar listens to.</summary>
     public CalendarDisplaySettingsViewModel CalendarDisplay { get; }
 
+    /// <summary>
+    /// Phase 37D: Passdown Defaults → "Include Weather Outlook by default" — the same shared instance the Passdown's
+    /// Weather Outlook checkbox uses, so both always show one saved value.
+    /// </summary>
+    public PassdownWeatherOutlookSettingsViewModel WeatherOutlook { get; }
+
     /// <summary>Phase 23D: Settings → Application Updates, and About this build → What's New.</summary>
     public ApplicationUpdatesViewModel Updates { get; }
 
@@ -138,7 +144,8 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         ApplicationUpdatesViewModel? updates = null,
         PassdownPreferencesSettingsViewModel? passdownPreferences = null,
         CalendarDisplaySettingsViewModel? calendarDisplay = null,
-        IUiDispatcher? uiDispatcher = null)
+        IUiDispatcher? uiDispatcher = null,
+        PassdownWeatherOutlookSettingsViewModel? weatherOutlook = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(folderPicker);
@@ -155,6 +162,7 @@ public partial class PersonalSyncSettingsViewModel : ViewModelBase
         Appearance = appearance ?? new AppearanceSettingsViewModel();
         PassdownPreferences = passdownPreferences ?? new PassdownPreferencesSettingsViewModel();
         CalendarDisplay = calendarDisplay ?? new CalendarDisplaySettingsViewModel();
+        WeatherOutlook = weatherOutlook ?? new PassdownWeatherOutlookSettingsViewModel();
         Updates = updates ?? new ApplicationUpdatesViewModel(installedVersion: Build.Version);
 
         AutomationStatus = coordinator.CurrentStatus;
