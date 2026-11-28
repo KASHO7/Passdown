@@ -131,7 +131,7 @@ Preserve compatibility safeguards required for existing installations and histor
 
 ### 4.4 Approved, not yet implemented
 
-Weather information (§6.6) is approved by the product owner (2026-11-27, recorded in `docs/phase37a-weather-source-architecture-plan.md`). It is not active functionality until an implementation milestone delivers it and that milestone is validated and approved for release. Do not describe it as available before then.
+Weather information (§6.6) is approved by the product owner (2026-11-27, recorded in `docs/phase37a-weather-source-architecture-plan.md`). It is not active functionality until an implementation milestone delivers it and that milestone is validated and approved for release. Do not describe it as available before then. Status (2026-11-28): implemented, Windows-accepted as part of the integrated Phase 37E2 test build and included in the locally prepared, unpublished RC.15 candidate (§6.6).
 
 ---
 
@@ -243,7 +243,7 @@ Do not treat a successfully retrieved response as valid for the requested date w
 
 ### 6.6 Weather information
 
-Status: approved, not yet released (§4.4). The Dashboard summary is implemented locally (Phase 37C, `docs/phase37c-dashboard-weather-integration.md`) and awaits Windows validation and release approval; the Passdown PDF Weather Outlook is implemented locally (Phase 37F, `docs/phase37f-compact-pdf-weather-outlook.md`) and awaits Windows validation and release approval; the Calendar selected-date forecast and the Settings control for the Weather Outlook preference are implemented locally (Phase 37D, `docs/phase37d-calendar-weather-settings-integration.md`) and await Windows validation and release approval. Authority: the product owner's approved specification amendment of 2026-11-27, recorded in `docs/phase37a-weather-source-architecture-plan.md`, which also holds the source research and architecture plan.
+Status: approved, not yet released (§4.4). Implemented locally: the Dashboard summary (Phase 37C, `docs/phase37c-dashboard-weather-integration.md`), the Passdown PDF Weather Outlook (Phase 37F, `docs/phase37f-compact-pdf-weather-outlook.md`), and the Calendar selected-date forecast and the Settings control for the Weather Outlook preference (Phase 37D, `docs/phase37d-calendar-weather-settings-integration.md`). The product owner accepted the integrated Phase 37E2 Windows test build (2026-11-28) and authorized RC.15 release preparation (`docs/releases/rc15-release-preparation.md`); weather becomes released functionality only when RC.15 is published, which needs separate authorization. Authority: the product owner's approved specification amendment of 2026-11-27, recorded in `docs/phase37a-weather-source-architecture-plan.md`, which also holds the source research and architecture plan.
 
 **Source.** Carowinds Operations may retrieve and display publicly available weather forecasts, observations, and official weather alerts from the U.S. National Weather Service (NWS/NOAA). NWS is an explicitly approved source for weather information and the primary provider for the initial implementation.
 

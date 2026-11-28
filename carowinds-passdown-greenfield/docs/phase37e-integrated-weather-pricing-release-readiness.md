@@ -420,3 +420,15 @@ updater plan (§21) are separately authorized.
 | Unchanged | Verified, Stale, NotCheckedYet, NotPublished, Unavailable texts; Products & Pricing, Dashboard, PDF; schema, sync, drafts, snapshots; no request, subscription or timer |
 | Tests (12) | Ui `OperationsCalendarPresentationTests` +10: previously verified text and accessible name; late-evening instant uses the Eastern date (Nov 28 03:45 UTC → "Nov 27"); Starting-from keeps its qualifier; no time → "previously verified"; Verified/Stale/NotCheckedYet unchanged (theory); no verification unchanged; Not Published / Not checked yet accessible names unchanged; markup binds the new accessible name. Application `PostClosingPricingRetentionTests` +2: through the real registration and Calendar service, after closing the snapshot carries `PreviouslyVerified` with the 3:10 PM verification time; during sales it carries `Verified` |
 | Validation | Full suite 6,560 / 0 / 0, clean Release build 0 / 0, guards 31/31 (§14); `RC15-Phase37E2-LOCALTEST` built from `69d70a7` (§15) |
+
+## 26. Later sign-off: integrated Windows acceptance and D-3/D-4 (2026-11-28)
+
+Added after §1–§25 as a separate sign-off; the sections above are unchanged and keep their original status wording.
+
+| Item | Result |
+|---|---|
+| D-4 integrated Windows acceptance of `RC15-Phase37E2-LOCALTEST` (SHA-256 `15608e4736a233454bbd6a13eb123529ac066d4b5f617a98552af1955a6532a1`, About `0.1.0-rc.15-LOCALTEST.phase37e2`) | **Owner-accepted on Windows** — the product owner reported "everything works" in the RC.15 preparation brief and authorized RC.15 release preparation. Overall only: no per-item checklist results, screenshots, timings or measurements were reported, and none are claimed. Claude ran no Windows test |
+| D-3 high-DPI printing (checklist E.11) | No E.11 memory figures were reported. No high-DPI printing defect was reported; no memory measurement or high-DPI certification is claimed. No printing-engine change (none authorized). Closed for RC.15 as "no action" |
+| D-1, D-2 | Unchanged: D-1 implemented and covered by the acceptance above; D-2 disclosed in the RC.15 release notes |
+
+RC.15 preparation continues in [releases/rc15-release-preparation.md](releases/rc15-release-preparation.md).
