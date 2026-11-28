@@ -25,12 +25,12 @@ format and finalized History are unchanged.
 
 ## Data isolation — use the separate Windows account
 
-Test only in the disposable local account **`CarowindsTest`** with made-up Passdown data. Setup is in
+Test only in a disposable local account — **`CarowindsTest`** or **`CarowindsTestB`** — with made-up Passdown data. Setup is in
 `rc12-phase32-localtest-windows-checklist.md` → "Data isolation". Extract the ZIP to a **new** folder in that account
 (right-click → Extract All), then double-click `Carowinds.Passdown.Desktop.exe`.
 
 - **Never** point Personal Sync at the real shared sync folder. Use a disposable folder such as
-  `C:\Users\CarowindsTest\Documents\SyncTest`.
+  `C:\Users\CarowindsTestB\Documents\SyncTest` (use the test account's own folder).
 - Do not run `Enable Automatic Refresh.cmd`, and do not install any update from this build.
 - Settings → About shows `0.1.0-rc.15-LOCALTEST.pricing-retention`.
 - Prices come from the real official Six Flags site. Use them for this test only.
@@ -118,8 +118,9 @@ candidate.
 
 Sections 1–3 need a real closing. This section reproduces the same transition deterministically with synthetic data
 for the past date **Thursday, August 20, 2026**, which the app never retrieves online. It uses the separate harness
-package `LOCAL-ONLY-RC15-PricingRetentionHarness-LOCALTEST-win-x64.zip` (41,731,586 bytes; SHA-256
-`04547d8d82e7e6008fb3c778aecc64f51c5026c3521547f52c1a7b7a6c71d924`; source `780da37`; fix record §11). Use it with the app
+package `LOCAL-ONLY-RC15-PricingRetentionHarness2-LOCALTEST-win-x64.zip` (__H2__; fix record §11). It replaces the
+first harness package (`…Harness-LOCALTEST…`, SHA-256 `04547d8d…d924`), which accepted only `CarowindsTest` and refused
+`CarowindsTestB`; do not use the first one. Use it with the app
 package above (SHA-256 `080ffc57…d191`). The harness
 runs the app's own Daily Admission and Fast Lane code and its own database code; only the official answers are
 recorded synthetic ones and the clock is the harness's own (3:10 PM, then 10:15 PM on Aug 20). It makes no network
@@ -128,7 +129,7 @@ ULTIMATE **$85.00** (synthetic).
 
 Status of every item: **NOT EXECUTED.**
 
-S.1 Sign in as **`CarowindsTest`**. Extract the app ZIP (this candidate) and the harness ZIP into two new folders.
+S.1 Sign in as the test account (**`CarowindsTestB`**, or `CarowindsTest`). Extract the app ZIP (this candidate) and the harness ZIP into two new folders.
 Open the app once, wait until the window is ready, then close it completely.
 
 S.2 Turn **Wi-Fi/network off** for the rest of this section (proves nothing comes from the internet; the app works
@@ -138,7 +139,7 @@ S.3 In the harness folder: Shift+right-click → **Open in Terminal**, run
 `.\carowinds-pricing-retention-harness.exe seed`. Expected: Step 1 shows `Verified` for DatedAdmissionTickets and
 DatedFastLane; Step 2 shows `Unavailable`; "Network requests: 0"; eight `[PASS]` lines including
 "verified at Aug 20, 2026 3:10 PM ET" and "latest check 'Unavailable' at Aug 20, 2026 10:15 PM ET"; final line
-**RESULT: PASS**. Screenshot the window. (It refuses, changing nothing, for another Windows user, while the app is
+**RESULT: PASS**. Screenshot the window. (It refuses, changing nothing, for any Windows user other than `CarowindsTest`/`CarowindsTestB`, while the app is
 open, or if run a second time.)
 
 S.4 Open the app → **Passdown** → select **August 20, 2026** → **Products & Pricing**: **Daily Admission** shows Park
@@ -159,7 +160,7 @@ S.7 Optional (still offline): **Check Online** on August 20 — the prices and t
 S.8 **Close and reopen** the app (still offline). August 20 → Products & Pricing: the same three prices, the same
 "Last verified Aug 20 at 3:10 PM ET" lines, Park Ticket still $45.00 effective. Note: because August 20 is past and now
 has a saved draft, the app finalizes it at startup — **History** lists August 20, 2026, and its PDF shows the same
-prices, $45.00 and the footer note. This synthetic History entry stays in the CarowindsTest account only.
+prices, $45.00 and the footer note. This synthetic History entry stays in the test account only.
 
 S.9 Close the app; in the harness folder run `.\carowinds-pricing-retention-harness.exe verify` → eight `[PASS]` lines
 and **RESULT: PASS**. Screenshot.

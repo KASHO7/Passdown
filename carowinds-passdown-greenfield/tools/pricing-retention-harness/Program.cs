@@ -12,7 +12,7 @@
 // Safety: every official answer comes from embedded synthetic fixtures through a stub HTTP client — no network
 // request is possible. The harness has its own clock; the system clock is never read for the scenario or changed.
 // Without --database it writes only to the signed-in user's Carowinds Passdown database, and only when that user is
-// the disposable "CarowindsTest" account, the app is closed, the database already exists at the current schema and
+// an approved disposable test account (TestAccountPolicy: CarowindsTest, CarowindsTestB), the app is closed, the database already exists at the current schema and
 // the date has no stored dated-admission or Fast Lane result yet.
 using System.Diagnostics;
 using System.Globalization;
@@ -31,10 +31,10 @@ using Carowinds.Passdown.Infrastructure.Retrieval.Sources;
 using Carowinds.Passdown.Infrastructure.Storage;
 using Carowinds.Passdown.Infrastructure.Storage.Repositories;
 using Carowinds.Passdown.Infrastructure.Updates.Installation;
+using Carowinds.PricingRetentionHarness;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 
-const string TestAccount = "CarowindsTest";
 var syntheticDate = new DateOnly(2026, 8, 20);                                  // matches the committed fixtures
 var verifiedAtUtc = new DateTimeOffset(2026, 8, 20, 19, 10, 0, TimeSpan.Zero);  // 3:10 PM EDT
 var afterClosingUtc = new DateTimeOffset(2026, 8, 21, 2, 15, 0, TimeSpan.Zero); // 10:15 PM EDT, same Eastern date
@@ -58,9 +58,9 @@ Console.WriteLine($"Synthetic operating date: {syntheticDate:dddd, MMMM d, yyyy}
 Console.WriteLine();
 
 if (string.Equals(databasePath, defaultPath, StringComparison.OrdinalIgnoreCase)
-    && !string.Equals(Environment.UserName, TestAccount, StringComparison.OrdinalIgnoreCase))
+    && !TestAccountPolicy.IsApproved(Environment.UserName))
 {
-    return Refuse($"This writes to the signed-in user's Carowinds Passdown data. Sign in to Windows as '{TestAccount}' (current user: '{Environment.UserName}').");
+    return Refuse(TestAccountPolicy.RefusalMessage(Environment.UserName));
 }
 
 var migrations = typeof(IMigration).Assembly.GetTypes()

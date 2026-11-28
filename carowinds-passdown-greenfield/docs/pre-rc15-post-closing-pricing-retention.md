@@ -176,11 +176,13 @@ not shipped with the app; same pattern as `tools/updater-offline-stager`), rathe
 - **Date:** Thursday 2026-08-20, a past date the app never retrieves online (automatic checks skip past dates; the
   rolling window starts today; Check Online short-circuits past dated-pricing dates without a request), so nothing
   live can overwrite the synthetic data during the check.
-- **Isolation guards:** writes only to the signed-in user's database when that user is `CarowindsTest`; refuses while
+- **Isolation guards:** writes only to the signed-in user's database when that user is an approved disposable test
+  account — exactly `CarowindsTest` or `CarowindsTestB`, case-insensitive (`tools/pricing-retention-harness/TestAccountPolicy.cs`;
+  `CarowindsTestB` added 2026-11-28 at the owner's request, after the first package refused that account); refuses while
   the app runs, when the database is missing or not at the current schema, or when the date already has stored
   dated-admission/Fast Lane results. `verify` is read-only. No database is packaged (the build script refuses one).
 - **Build-host evidence (Mac):** `seed` on a fresh schema-18 database → 8/8 PASS, 5 fixture answers, 0 network
-  requests; a second `seed` refused; `verify` → 8/8 PASS; the default-path run as a non-`CarowindsTest` user refused
+  requests; a second `seed` refused; `verify` → 8/8 PASS; the default-path run as a non-approved user refused
   without creating a file. **Negative control:** the same harness built against the unfixed source `700d881` reports
   `RESULT: FAIL` (6 checks: success `Unavailable` at 10:15 PM, "prices none"). A throwaway scratch program (outside
   the repository) composed the production `AssociatePassdownService` workspace from the seeded database: three rows,
@@ -191,7 +193,8 @@ not shipped with the app; same pattern as `tools/updater-offline-stager`), rathe
 
 | | |
 |---|---|
-| Harness package | `artifacts/local-test/RC15-PricingRetentionHarness-LOCALTEST/LOCAL-ONLY-RC15-PricingRetentionHarness-LOCALTEST-win-x64.zip` — built by `tools/pricing-retention-harness/build-harness.sh` from clean commit `780da37`; 41,731,586 bytes; 203 files (self-contained win-x64, no PDB, no database); SHA-256 `04547d8d82e7e6008fb3c778aecc64f51c5026c3521547f52c1a7b7a6c71d924`; six fixtures embedded; version stamp `0.1.0-rc.15-LOCALTEST.pricing-retention-harness+780da37…`. All 15,895 earlier artifact files re-hashed byte-identical (including the app ZIP `080ffc57…d191`). The app package is unchanged: production source has not changed since `1be060d`. |
+| Harness package (superseded) | `artifacts/local-test/RC15-PricingRetentionHarness-LOCALTEST/LOCAL-ONLY-RC15-PricingRetentionHarness-LOCALTEST-win-x64.zip` — built by `tools/pricing-retention-harness/build-harness.sh` from clean commit `780da37`; 41,731,586 bytes; 203 files (self-contained win-x64, no PDB, no database); refuses `CarowindsTestB`; SHA-256 `04547d8d82e7e6008fb3c778aecc64f51c5026c3521547f52c1a7b7a6c71d924`; six fixtures embedded; version stamp `0.1.0-rc.15-LOCALTEST.pricing-retention-harness+780da37…`. All 15,895 earlier artifact files re-hashed byte-identical (including the app ZIP `080ffc57…d191`). The app package is unchanged: production source has not changed since `1be060d`. |
+| Harness package 2 (use this) | __H2ROW__ |
 
 ## Validation
 

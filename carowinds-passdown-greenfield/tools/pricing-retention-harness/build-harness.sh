@@ -5,12 +5,12 @@
 #   tools/pricing-retention-harness/build-harness.sh
 #
 # Publishes the harness self-contained for win-x64 from the committed HEAD (refuses a dirty tree) into
-#   artifacts/local-test/RC15-PricingRetentionHarness-LOCALTEST/LOCAL-ONLY-RC15-PricingRetentionHarness-LOCALTEST-win-x64.zip
+#   artifacts/local-test/$LABEL/LOCAL-ONLY-$LABEL-win-x64.zip  (LABEL below; the first package, RC15-PricingRetentionHarness-LOCALTEST, stays unchanged)
 # The output folder is immutable: the script refuses if it already exists. No database, PDB or user data is packaged;
 # the synthetic fixtures are embedded in the harness assembly.
 set -euo pipefail
 
-LABEL=RC15-PricingRetentionHarness-LOCALTEST
+LABEL=RC15-PricingRetentionHarness2-LOCALTEST
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 OUT="$REPO/artifacts/local-test/$LABEL"
 NAME="LOCAL-ONLY-$LABEL-win-x64"
@@ -23,7 +23,7 @@ WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 PUB="$WORK/$NAME"
 dotnet publish "$REPO/tools/pricing-retention-harness/Carowinds.PricingRetentionHarness.csproj" -c Release -r win-x64 --self-contained true \
-  -p:Version=0.1.0-rc.15-LOCALTEST.pricing-retention-harness -p:SourceRevisionId="$COMMIT" -o "$PUB" > "$WORK/publish.log"
+  -p:Version=0.1.0-rc.15-LOCALTEST.pricing-retention-harness2 -p:SourceRevisionId="$COMMIT" -o "$PUB" > "$WORK/publish.log"
 find "$PUB" -name '*.pdb' -delete
 if find "$PUB" -iname '*.db' -o -iname '*.db-wal' -o -iname '*.db-shm' -o -iname '*.sqlite' | grep -q .; then
   echo "A database file was found in the publish output; refusing to package it." >&2; exit 1
@@ -35,7 +35,8 @@ LOCAL-ONLY TEST TOOL - NOT A RELEASE - SYNTHETIC DATA ONLY
 Carowinds pricing-retention verification harness ($LABEL)
 Source commit: $COMMIT
 
-Use only in the disposable Windows account "CarowindsTest", with the RC15-PricingRetention-LOCALTEST app.
+Use only in a disposable Windows test account ("CarowindsTest" or "CarowindsTestB"), with the
+RC15-PricingRetention-LOCALTEST app.
 It writes made-up Daily Admission and Fast Lane prices for Thursday, August 20, 2026 into that account's
 Carowinds Passdown data, using the app's own pricing code with recorded synthetic answers. It makes no network
 request and never changes the Windows clock. It refuses to run for any other Windows user, while the app is open,
