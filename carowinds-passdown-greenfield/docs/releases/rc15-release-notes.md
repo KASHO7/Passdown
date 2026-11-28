@@ -1,9 +1,9 @@
-# RC.15 GitHub release notes — DRAFT (not published)
+# RC.15 GitHub release notes
 
-Draft body for the GitHub prerelease **"Carowinds Operations v0.1.0-rc.15"** (tag `v0.1.0-rc.15`, prerelease, not
-latest). Same format as the published RC.14 body. **Not published; publication is not authorized.** Before posting,
-re-check the hash line against `docs/releases/rc15-release-preparation.md` and remove this header block. Paste
-everything below the line.
+Body of the GitHub prerelease **"Carowinds Operations v0.1.0-rc.15"** (tag `v0.1.0-rc.15`, prerelease, not latest).
+Same format as the published RC.14 body. Publication authorized by the product owner on 2026-11-28 (owner brief
+"Carowinds Operations — Publish RC.15"); the hash and test-count lines were re-checked against the final release gates
+(`docs/releases/rc15-release-preparation.md` §21). The posted body is everything below the line.
 
 ---
 

@@ -366,3 +366,57 @@ Published assets and the tag must never be replaced; any change after publicatio
   the integrated build; RC.15 prepared, not published) and `docs/architecture/updates-and-release.md` (this record). No
   dependency, DI, state, data contract, retrieval, persistence, sync, PDF, lifecycle, threading, configuration, security,
   updater or packaging-script change: **reviewed — no change required** for those areas.
+
+## 21. Publication (authorized 2026-11-28)
+
+Added as a later record; §1–§20 are kept as prepared. Authority: owner brief "Carowinds Operations — Publish RC.15"
+(2026-11-28), authorizing for this release only: final preflight, copying the tested staging ZIP to
+`artifacts/releases`, manifest creation, production signing with `carowinds-release-1`, verification, release-metadata
+commits, push, the tag `v0.1.0-rc.15` → `19cbf8b`, the GitHub prerelease with its three assets, and download
+verification. Not authorized and not done: merge to `main`, force-push, history rewrite, key rotation, rebuild, changes
+to RC.14 or earlier tags, releases or assets.
+
+### 21.1 Preflight
+
+| Check | Result |
+|---|---|
+| Starting HEAD `b20f629`, branch `feature/passdown-redesign`, clean tree; `19cbf8b` is an ancestor; `19cbf8b..b20f629` changes only the seven documentation files of §7 | PASS |
+| `git fetch`: `origin/feature/passdown-redesign` = `9351c64` (RC.14 publication record), 0 remote-only commits, 49 local commits (fast-forward); `origin/main` = `06f48c4` | PASS |
+| No `v0.1.0-rc.15` tag locally or on the remote; no RC.15 release (tag lookup 404) and no draft releases | PASS |
+| RC.14: annotated tag `v0.1.0-rc.14` (object `6672214`) → `3d603f0` locally and remotely; release prerelease, published 2026-11-27T00:56:02Z; three assets with the sizes and digests of the RC.14 record | PASS |
+| Staged ZIP: SHA-256 `64b5d17b…81dc`, 76,538,369 bytes, read-only, 307 files, one top-level folder, `unzip -t` clean; EXEs/DLL carry `0.1.0-rc.15+19cbf8b1fae8201cd270006d077bb497c5aef308`, FileVersion `0.1.0.15`; embedded What's New = `19cbf8b`'s `release-notes.md` (version line, title, D-2 sentence); no `LOCALTEST`/`LOCAL-ONLY`/`phase37e` text | PASS |
+| Trust chain: `appsettings.json` byte-identical to RC.14's (`3d603f0`), single trusted key `carowinds-release-1`; no diff in updater, signing tool or update code since RC.14; private key file present outside the repository (mode `0600`, contents never read or printed) | PASS |
+
+### 21.2 Final release gates (on HEAD `b20f629`; differs from `19cbf8b` by documentation only)
+
+| Check | Result |
+|---|---|
+| Clean Release build (`bin`/`obj` deleted, `--no-incremental`) | **0 warnings, 0 errors** |
+| Deterministic partitions (`--no-build`, `Category!=LiveSmoke`, 3 GB watchdog never fired) | Domain 504, Application 1,531, Infrastructure 1,469, Documents 640, Ui mixed 2,152, run alone 35 + 162 + 2 + 7 + 4 + 63 = **6,569 / 6,569 passed, 0 failed, 0 skipped** (equal to §9) |
+| Repository guards | **31 / 31** |
+| `RealReleaseZip_WhenSupplied_PassesEveryRule` on the staged ZIP | PASS |
+| Live tests | NOT EXECUTED (opt-in) |
+
+### 21.3 Release files, manifest and signature
+
+| File (`artifacts/releases/`, read-only) | Bytes | SHA-256 |
+|---|---|---|
+| `Carowinds-Operations-0.1.0-rc.15-win-x64.zip` | 76,538,369 | **`64b5d17b7921a48dbdf8c3eec9ebbbcb61a3cb509bfe9720079cbed4973981dc`** |
+| `Carowinds-Operations-0.1.0-rc.15-win-x64.update.json` | 52,630 | `d6f85f7f0477f7191a9d32d61d8f1fb1d1fe6f1db6d8f48b3766dc3f9db96868` |
+| `Carowinds-Operations-0.1.0-rc.15-win-x64.update.json.sig` | 211 | `861aee99c01e092302fb4f5cc55c4b43ca9b1e286afbcd2a0b913244093b22fb` |
+
+| Check | Result |
+|---|---|
+| ZIP copied with `cp -n` from `artifacts/release-candidates/0.1.0-rc.15/`; SHA-256 before and after equal, `cmp` identical; no existing file overwritten | PASS |
+| `create-manifest` (§19 step 4): format 1, `carowinds-operations`, `0.1.0-rc.15`, `release-candidate`, `win-x64`, title "Weather and pricing accuracy", `publishedAtUtc` 2026-11-28T14:57:53Z (signing time, not publication time); package name/size/SHA-256 equal the ZIP; 307 entries recomputed from a fresh extraction, 0 mismatches; no LOCALTEST text | PASS |
+| Manifest notes = §6 text, with one punctuation correction: "Weather in printed Passdowns." (period, the owner-approved D-2 wording and the bundled What's New) instead of the dry run's colon | PASS (deviation recorded) |
+| `sign` with key ID `carowinds-release-1` (established key outside the repository; never printed or copied); manifest SHA-256 unchanged by signing | PASS |
+| `verify` against the current `appsettings.json` and against RC.14's (`git show 3d603f0:…`) | **VERIFIED** (both) |
+| Tamper on copies: version → `0.1.0-rc.16`, package SHA-256 one digit changed, package `fileName` changed (the download URL is derived from tag + `fileName`, not stored) | **InvalidSignature** (all three) |
+| 16-byte-window private-key scan of the manifest, signature and all 307 extracted files | 0 hits |
+| All 12,495 earlier files under `artifacts/releases`, `artifacts/local-test` and `artifacts/release-candidates` hashed before and after: byte-identical | PASS |
+
+Asset set follows `UpdateAssetNames` and the RC.8–RC.14 procedure: ZIP, `.update.json`, `.update.json.sig`. The
+update-screen release notes are the `releaseNotes` field inside the signed manifest; there is no separate notes asset
+(the brief's "update-screen release notes file" is this manifest content, as the brief asked the established filenames
+to be confirmed).
