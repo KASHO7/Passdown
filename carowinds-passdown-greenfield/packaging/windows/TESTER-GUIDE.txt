@@ -1,4 +1,4 @@
-Carowinds Operations 0.1.0-rc.14 — Tester Guide
+Carowinds Operations 0.1.0-rc.15 — Tester Guide
 =================================================
 
 Thanks for testing this app. You do not need any technical background. Follow the
@@ -30,7 +30,7 @@ Going back to an older version: copying an older app over this one is NOT a safe
 way to undo the upgrade. If you ever need to go back, close the app, put your
 dated backup folder back in place, and then run the older version.
 
-Coming from rc.11, rc.12 or rc.13 there is no database change. Coming from rc.10 or
+Coming from rc.11, rc.12, rc.13 or rc.14 there is no database change. Coming from rc.10 or
 older, this version changes the format of the app's database the first time it starts (it
 adds one table for official reference pages; nothing you saved is changed).
 Before it does, it saves its own checked copy in the "backups" folder inside
@@ -58,7 +58,7 @@ If more than one computer uses Personal Sync with the same shared folder:
 
 3. Extract the ZIP
 -------------------
-Right-click Carowinds-Operations-0.1.0-rc.14-win-x64.zip and choose
+Right-click Carowinds-Operations-0.1.0-rc.15-win-x64.zip and choose
 "Extract All...". Pick a NEW, empty folder you can write to (Desktop, Documents).
 Do NOT run the app from inside the ZIP without extracting it first.
 
@@ -80,7 +80,7 @@ then "Run anyway" only if you got the ZIP from the person who asked you to test.
 Click "Settings" at the bottom of the navigation on the left, then "About" in the
 list of Settings sections. "About this build" should say:
 
-    Version 0.1.0-rc.14 (followed by a short code in brackets)
+    Version 0.1.0-rc.15 (followed by a short code in brackets)
     Running from  <the folder you just extracted>
 
 If it shows an older number, or a different folder, you opened an older copy (for
@@ -88,7 +88,7 @@ example through Windows Search or the Start menu). Close it and start
 Carowinds.Passdown.Desktop.exe from the folder you just extracted.
 
 About the single .exe file: you may also see
-Carowinds-Operations-0.1.0-rc.14-win-x64-singlefile.exe. It is EXPERIMENTAL.
+Carowinds-Operations-0.1.0-rc.15-win-x64-singlefile.exe. It is EXPERIMENTAL.
 Please test with the ZIP. The single .exe does not carry the license notices or
 the automatic-refresh helpers, so it must not be handed out on its own. It also
 cannot update itself: its Settings › Application Updates says "Manual update
@@ -96,11 +96,11 @@ required".
 
 Installing this version by hand from the ZIP (as described above) does NOT open
 "What's New" when it first starts — that only happens after an update installed
-from inside the app. Only use rc.13's in-app "Install Update" for rc.14 if whoever
+from inside the app. Only use rc.14's in-app "Install Update" for rc.15 if whoever
 asked you to test gave you a special test update and a backed-up test profile.
 
 If you used a special pre-release test build before (its About shows a longer
-version that starts with 0.1.0-rc.14), it will not offer rc.14 as an update.
+version that starts with 0.1.0-rc.15), it will not offer rc.15 as an update.
 Extract this ZIP into a new folder instead.
 
 
@@ -128,6 +128,12 @@ Dashboard (opens first, titled "Admissions Overview")
   - Official Data: the overall data status; "View Source Details" expands the
     per-source list. Nothing on the Dashboard is invented: blank values say
     "Not entered" or "Not available".
+  - Weather: conditions from a nearby National Weather Service station (named,
+    with its time), today's forecast high and low, the rain chance during park
+    hours and any official NWS alerts. It appears a few seconds after the app
+    opens; Refresh Weather is in the expanded weather details. Without internet
+    it shows the last weather received and says when it may be out of date.
+    The app never asks for or uses your computer's location.
 
 Calendar
   - Click "Next ›" a few times. Months up to about a year ahead should show
@@ -146,6 +152,13 @@ Calendar
     The list is the public program, not anyone's personal rewards.
   - "Show Perks" above the grid (and Settings › Calendar) hides and restores the
     markers at once, and the choice survives a restart.
+  - Weather: the selected date's panel shows a short forecast for the park
+    hours, with an hourly list you can expand. Past dates and dates beyond the
+    forecast show no weather values. The day cells never show weather, and
+    clicking dates never goes online.
+  - Daily ticket: after the park closes, a price checked earlier that day shows
+    "last verified" with its date. It is the last official price, not a sign
+    that tickets are still on sale.
 
 Passdown (Associate Passdown)
   - Date bar: "‹" and "›" move one day, clicking the date (for example
@@ -171,7 +184,10 @@ Passdown (Associate Passdown)
     Operational Note only includes it in this passdown; it never edits or
     resolves the note.
   - Overview › Include in Passdown lists the sections that print, including
-    Operational Notes and Shows. The Shows section picks WHICH shows print;
+    Operational Notes, Shows and Weather Outlook (a small park-hours forecast,
+    printed only when a current forecast covers those hours; it never shows
+    alerts). Settings › Passdown Defaults › "Include Weather Outlook by default"
+    is the same setting. The Shows section picks WHICH shows print;
     unchecking Shows under Include in Passdown keeps your picks but stops them
     printing.
   - Type an attendance number such as 38500 and click elsewhere: it should change

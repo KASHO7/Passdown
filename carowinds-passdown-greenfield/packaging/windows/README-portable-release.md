@@ -135,6 +135,12 @@ Version 0.1.0-rc.14 also uses the rc.11 database format: upgrading from rc.11,
 rc.12 or rc.13 changes nothing in the database. Upgrading from rc.10 or older
 performs the rc.11 upgrade described above.
 
+Version 0.1.0-rc.15 also uses the rc.11 database format: upgrading from rc.11,
+rc.12, rc.13 or rc.14 changes nothing in the database. Upgrading from rc.10 or
+older performs the rc.11 upgrade described above. Weather (new in rc.15) is kept
+in this computer's local data folder only: it is not synchronized and is not
+added to drafts or History.
+
 Passdown History
 -----------------
 "History" in the navigation on the left opens Passdown History. Each
