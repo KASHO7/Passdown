@@ -1,51 +1,34 @@
-Version: 0.1.0-rc.14
-Title: A redesigned Carowinds Operations
-Date: 2026-11-26
+Version: 0.1.0-rc.15
+Title: Weather and pricing accuracy
+Date: 2026-11-28
 ---
-## A Redesigned Experience
+## Weather Information
 
-- A refreshed interface with a navy title bar, the original app icon and a left navigation sidebar (Dashboard, Calendar, Passdown, Operational Notes, History and Settings) that can collapse to icons.
-- Cleaner, more consistent layouts and improved readability throughout the app.
+- Weather comes from the U.S. National Weather Service for Carowinds' fixed location, covering both the North Carolina and South Carolina sides of the park. The app never uses your computer's location.
+- The Dashboard has a Weather card: nearby station conditions (named by station and time), today's forecast high and low, the rain chance during park hours, and any official NWS alerts in effect. Refresh Weather is in the expanded weather details.
+- The Calendar shows a compact forecast for the selected date, with an hourly breakdown you can expand. Weather is never added to the month grid.
+- Weather is checked only while the app is open, and selecting dates or moving around the app never goes online. The last weather received is shown when you are offline and is marked when it may be out of date.
+- Weather is for information only. It does not replace official warnings or park procedures.
 
-## Updated Dashboard
+## Passdown and PDF
 
-- The Admissions Overview organizes park hours, gate information, today's Passdown, pricing, Shows, Operational Notes and the publicly advertised Pass Perks in one place.
+- Passdown PDFs (Classic, Compact and Modern) can include a small Weather Outlook for the date's park hours. It is left out when no current forecast covers those hours, and it never shows alerts.
+- Choose it with "Weather Outlook" under Overview > Include in Passdown, or with "Include Weather Outlook by default" in Settings > Passdown Defaults. Both are the same setting, saved on this computer only.
+- Weather in printed Passdowns. Print, Save PDF and Create PDF always use the latest weather the app has. If new weather arrives while the preview is open, the printed or saved PDF can show newer weather than the preview did; the preview updates to match right after.
 
-## Improved Passdown Workspace
+## Pricing Accuracy
 
-- A compact date selector, Create PDF and one Actions menu, easy-to-find section tabs (Overview, Products, Shows, Notes) and the live PDF preview beside your work.
-- Print, Save PDF and the Copy for Teams options are still in the Actions menu.
+- After the park closes, the official sales calendar stops listing that day. Daily Admission, Fast Lane and other dated ticket prices that were already verified for the day are now kept instead of disappearing, with their original verification time.
+- These prices are labelled as previously verified on Products & Pricing, the Dashboard and the PDF, and in the Calendar as "last verified" with the date. This is the last price Carowinds published for that day, not a sign that tickets are still on sale.
+- Display-price overrides keep working as before.
 
-## Easier Products & Pricing
+## Reliability
 
-- Official and display prices are shown side by side, so they are easier to compare.
-- Display prices are edited in a small editor next to each price instead of always-visible text boxes: Enter saves, Esc cancels, and "Use official price" goes back to the official price.
-
-## Clearer Shows and Notes
-
-- Show schedules are easier to read, with long lists of times that expand.
-- Daily notes and persistent Operational Notes are easier to manage and include in a Passdown.
-
-## Redesigned Operations Calendar
-
-- The month is easier to scan, with clearer selected-date details and distinct markers for Pass Perks qualifying visits, redemption periods and booking deadlines.
-
-## Better Operational Notes and History
-
-- Operational Notes can be searched and filtered, with clearer New and Edit windows.
-- Passdown History can be searched and filtered and still opens the original finalized PDF (Open Final PDF, Save PDF Copy).
-
-## Organized Settings
-
-- Appearance, Passdown Defaults, Calendar, Data Refresh, Personal Sync, Diagnostics, Application Updates and About are listed as sections down the left side.
-
-## Appearance and Accessibility
-
-- Consistent Light and Dark styling, and an optional Interface animations setting. When Windows "Animation effects" is off, the app stays still.
+- Internal maintenance and testing improvements, including a simpler Early Ride Time editor behind the same screen.
 
 ## Compatibility
 
-- Your Passdown drafts, Notes, Price History, Personal Sync, finalized History PDFs and PDF styles work as before. This version does not change the database: coming from rc.11, rc.12 or rc.13, nothing is upgraded.
-- Pricing rules and official sources are unchanged. Pass Perks still show the program Carowinds publicly advertises; they do not mean a particular guest has earned a reward.
+- This version does not change the database: coming from rc.11, rc.12, rc.13 or rc.14, nothing is upgraded. The Personal Sync format is unchanged.
+- Weather and the Weather Outlook setting stay on this computer: they are not shared through Personal Sync and are not added to drafts or finalized History. History still opens the original stored PDF.
 
-Your drafts, notes, History PDFs, Personal Sync settings and appearance choice are kept.
+Your drafts, notes, History PDFs, prices, display-price overrides, Personal Sync settings and appearance choice are kept.

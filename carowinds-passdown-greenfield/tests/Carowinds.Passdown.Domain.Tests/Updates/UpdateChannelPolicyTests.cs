@@ -11,6 +11,8 @@ public class UpdateChannelPolicyTests
     [InlineData(UpdateChannel.ReleaseCandidate, "0.1.0-rc.8", true)]
     [InlineData(UpdateChannel.ReleaseCandidate, "0.1.0-rc.10", true)]
     [InlineData(UpdateChannel.ReleaseCandidate, "0.1.0-rc.14", true)]
+    [InlineData(UpdateChannel.ReleaseCandidate, "0.1.0-rc.15", true)]
+    [InlineData(UpdateChannel.ReleaseCandidate, "0.1.0-rc.15-LOCALTEST.phase37e2", false)]
     [InlineData(UpdateChannel.ReleaseCandidate, "0.1.0", false)]
     [InlineData(UpdateChannel.ReleaseCandidate, "0.1.0-beta.1", false)]
     [InlineData(UpdateChannel.ReleaseCandidate, "0.1.0-rc", false)]
@@ -36,6 +38,11 @@ public class UpdateChannelPolicyTests
     [InlineData("0.1.0-rc.9", "0.1.0-rc.10", true)]
     [InlineData("0.1.0-rc.13", "0.1.0-rc.14", true)]
     [InlineData("0.1.0-rc.14", "0.1.0-rc.13", false)]
+    [InlineData("0.1.0-rc.14", "0.1.0-rc.15", true)]
+    [InlineData("0.1.0-rc.13", "0.1.0-rc.15", true)]
+    [InlineData("0.1.0-rc.15", "0.1.0-rc.14", false)]
+    [InlineData("0.1.0-rc.15", "0.1.0-rc.15", false)]
+    [InlineData("0.1.0-rc.15-LOCALTEST.phase37e2", "0.1.0-rc.15", false)]
     public void IsInstallable_NeverDowngradesOrReinstalls(string installed, string candidate, bool expected) =>
         Assert.Equal(expected, UpdateChannelPolicy.IsInstallable(UpdateChannel.ReleaseCandidate, V(installed), UpdateChannel.ReleaseCandidate, V(candidate)));
 
