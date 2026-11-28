@@ -1,16 +1,17 @@
 # Phase 37E — Integrated Validation, Reliability Audit and RC.15 Release Readiness
 
-Status: validation complete locally / integrated Windows candidate built (`RC15-Phase37E-LOCALTEST`) / awaiting owner
-Windows acceptance / not owner-accepted as an integrated build / RC.15 not prepared / not published.
+Status: validation complete locally / owner-approved D-1 Calendar wording implemented locally / integrated Windows
+candidate built (`RC15-Phase37E2-LOCALTEST`, superseding `RC15-Phase37E-LOCALTEST`) / awaiting owner Windows acceptance /
+not owner-accepted as an integrated build / RC.15 not prepared / not published.
 
 | | |
 |---|---|
 | Branch | `feature/passdown-redesign` (local; 41 commits ahead of the local `origin/feature/passdown-redesign` ref at the start; remote not re-fetched; nothing pushed) |
 | Starting commit | `2427b9d` (pricing harness 2 package record, documentation only) |
-| Ending commits | `8921324` (37E-1: NWS request-volume simulation tests, test only), then the 37E-2 documentation commit (this record, the checklist, index and testing guide) |
-| Reviewed source baseline | `8921324` — production source identical to `1be060d` (the last production change); tests, build, benchmarks and the package ran on it |
+| Ending commits | `8921324` (37E-1: NWS request-volume simulation tests, test only), `4f17bed` (37E-2: this record, the checklist, index and testing guide; documentation only), `69d70a7` (37E-3: owner-approved D-1 Calendar wording, tests, specification and architecture), then the 37E-4 documentation commit (D-1 results and the second package) |
+| Reviewed source baseline | `69d70a7` for the D-1 change, the final suite and `RC15-Phase37E2-LOCALTEST`; `8921324` (production identical to `1be060d`) for the audit, benchmarks and the first package |
 | Dirty-tree caveats | Clean at start and before packaging; no unrelated changes present |
-| Authorization | Owner brief "Carowinds Operations — Phase 37E: Integrated Validation, Reliability Audit & RC.15 Release Readiness" (2026-11-28): validation, tests, bounded measurements, documentation and a LOCALTEST package; production changes only after owner approval |
+| Authorization | Owner brief "Carowinds Operations — Phase 37E: Integrated Validation, Reliability Audit & RC.15 Release Readiness" (2026-11-28): validation, tests, bounded measurements, documentation and a LOCALTEST package; production changes only after owner approval. Owner reply "Yes, implement D-1" (2026-11-28) approved the §19 D-1 change, implemented in §25 |
 | Release status | `v0.1.0-rc.14` (tag → `3d603f0`) published and frozen; source `<Version>` `0.1.0-rc.14` (not bumped); no RC.15 tag, manifest or signature exists |
 | Database schema / sync formats | Schema 18 (`Migration0018CreateOfficialReferenceDocumentsTable`); sync envelope 1 (`SyncEnvelopeSerializer.CurrentSyncSchemaVersion`); draft payload 4 (`AssociateDraftPayload.CurrentSchemaVersion`); finalized snapshot 2 (`FinalizedPassdownSnapshot.CurrentSchemaVersion`); official price history file 1; weather cache format 1; update manifest format 1 — all unchanged since RC.14 |
 
@@ -24,10 +25,10 @@ pricing fix is narrowly scoped. Deterministic simulation confirms about **31 NWS
 (at most 33 with very short provider cache lifetimes, 37 when the nearest station is not reporting, about 12 while NWS
 is failing or rate-limiting), so a few devices on one public IP make a negligible load.
 
-Three items need an owner decision (D-1 Calendar retained-price wording, D-2 preview freshness after weather arrives,
-D-3 high-DPI printing observation) and one evidence gap must be closed before RC.15 (integrated Windows acceptance of
-this package, D-4). Recommendation: **conditional GO** to RC.15 preparation once D-1 is decided and the integrated
-checklist is run on Windows; **NO-GO** for publication until then.
+The audit raised D-1 (Calendar retained-price wording), which the owner approved and which is now implemented
+locally (§25). Still open: D-2 (preview freshness after weather arrives), D-3 (high-DPI printing observation) and D-4
+(integrated Windows acceptance of `RC15-Phase37E2-LOCALTEST`). Recommendation: **conditional GO** to RC.15 preparation
+once the integrated checklist is run on Windows; **NO-GO** for publication until then.
 
 ## 2. Verified source baseline
 
@@ -143,7 +144,7 @@ verified" or "availability not confirmed" qualifier, while Products & Pricing, t
 same value. The same plain amount is shown for a `Stale` price (pre-existing since Phase 13D). Impact: a user could
 read the Calendar as "tickets for today are on sale at $49"; no stored data is wrong. Severity: needs decision (not a
 blocker: the price is the real verified price for that date, and every operational output qualifies it). Smallest
-change proposed in §19; **not implemented** (needs approval).
+change proposed in §19; **approved by the owner and implemented in §25** (the `Stale` wording was left unchanged).
 
 ## 10. NWS rate-limit assessment
 
@@ -226,7 +227,8 @@ observation item E.11 is in the checklist (D-3). Phase 36E remains deferred: not
 | Check | Result |
 |---|---|
 | Deterministic partitions at `2427b9d` (start; clean `bin`/`obj`, `--no-incremental`, memory watchdog, UI with `--blame-hang`) | **6,540 / 6,540**, 0 skipped: Domain 495, Application 1,521, Infrastructure 1,469, Documents 640, Ui mixed 2,142; run alone `OperationsCalendarViewTests` 35, `Phase15ERealWindowLayoutTests` 162, `RealWindowStartupTimingTests` 2, `SpellCheckNavigationLifecycleTests` 7, `Phase21DMathEditorWindowTests` 4, `Phase33PreviewWindowTests` 63 |
-| Deterministic partitions at the final tree (after 37E-1 and this documentation) | **6,548 / 6,548**, 0 skipped (Application 1,529: +8 simulation tests); other partitions as above (§14a) |
+| Deterministic partitions after 37E-1 and the 37E-2 documentation | **6,548 / 6,548**, 0 skipped (Application 1,529: +8 simulation tests); other partitions as above (§14a) |
+| Deterministic partitions at `69d70a7` (D-1; clean build) | **6,560 / 6,560**, 0 skipped: Domain 495, Application 1,531 (+2), Infrastructure 1,469, Documents 640, Ui mixed 2,152 (+10); run alone 35 + 162 + 2 + 7 + 4 + 63; guards 31/31 inside Infrastructure; build 0 warnings / 0 errors; peak sampled test-host RSS 430 MB (§25) |
 | Repository guards | 31 / 31 |
 | Clean Release build | 0 warnings, 0 errors (`bin`/`obj` deleted, `--no-incremental`); `tools/perf-benchmarks` 0 / 0 |
 | Requested areas | Weather retrieval/cache, Dashboard, Calendar and PDF Weather, pricing retention, Personal Sync, PDF/History immutability, packaging (`ReleaseContent*`, `RealReleaseZip`) — all inside the partitions above, all pass |
@@ -255,7 +257,21 @@ checks), Documents 640, Ui mixed 2,142, run alone 35 + 162 + 2 + 7 + 4 + 63 — 
 | Real-ZIP test | `CAROWINDS_RELEASE_ZIP=… --filter RealReleaseZip` passed |
 | Earlier artifacts | All 15,899 files under `artifacts/` hashed before the build and re-hashed after: byte-identical (RC.14 and every earlier package, including both harness ZIPs) |
 
-Not signed, no update manifest, not published.
+**Superseded** by the D-1 package below (it lacks the Calendar wording). Kept unchanged.
+
+| | RC15-Phase37E2-LOCALTEST (use this) |
+|---|---|
+| Source commit | `69d70a7` (marker names `69d70a7b44cc5e03befe3d4b2f9a9bf027dc436f`) |
+| Version shown in About | `0.1.0-rc.15-LOCALTEST.phase37e2` (source `<Version>` `0.1.0-rc.14`) |
+| ZIP | `artifacts/local-test/RC15-Phase37E2-LOCALTEST/LOCAL-ONLY-RC15-Phase37E2-LOCALTEST-win-x64.zip` (git-ignored) |
+| Files / bytes | 308 files; 76,540,554 bytes (170,505,324 uncompressed) |
+| SHA-256 | `15608e4736a233454bbd6a13eb123529ac066d4b5f617a98552af1955a6532a1` |
+| Command | `Build-PortableRelease.ps1 -LocalTestLabel RC15-Phase37E2-LOCALTEST -LocalTestVersion 0.1.0-rc.15-LOCALTEST.phase37e2` |
+| Package validation | Script content validation passed for the staging folder and the ZIP (308 files); listing scan: no database, WAL/SHM, draft, weather cache, preference file, key, signature, update manifest, PDB, PDF, fixture or pricing-harness file |
+| Real-ZIP test | `RealReleaseZip` passed |
+| Earlier artifacts | All 16,465 files under `artifacts/` (including the first 37E package) re-hashed after the build: byte-identical |
+
+Neither package is signed, has an update manifest or is published.
 
 ## 16. Windows acceptance checklist
 
@@ -268,7 +284,7 @@ high-DPI printing), F Pricing retention (review only, no reseed), G Personal Syn
 | Area | Classification |
 |---|---|
 | Data corruption/loss, draft persistence, pricing verification, Weather date/alert safety, PDF creation/printing, sync/History, updater verification, packaging security | **No blocker found** |
-| Calendar retained-price wording (D-1) | Needs decision |
+| Calendar retained-price wording (D-1) | Owner-approved; implemented locally (§25); awaiting Windows (checklist C.11) |
 | Preview freshness after weather arrives (D-2) | Needs decision |
 | High-DPI Windows printing observation (D-3) | Needs decision (observation only) |
 | Integrated Windows acceptance of this package (D-4) | Needs decision / evidence gap |
@@ -281,7 +297,7 @@ run of this package, and — at release preparation — the RC.14 → RC.15 upda
 
 ## 19. Items requiring owner decisions
 
-- **D-1 Calendar retained price.** Proposed smallest change (Calendar presentation only, no layout, no new control):
+- **D-1 Calendar retained price — approved 2026-11-28, implemented in §25.** Proposed smallest change (Calendar presentation only, no layout, no new control):
   carry the candidate product's verification state into `OperationsCalendarDailyAdmissionPrice` and, when it is
   `PreviouslyVerified`, show "`$49.00` · last verified Nov 27" with the accessible name "Daily ticket price: $49.00, last
   verified November 27, availability not confirmed" (optionally the same for `Stale`: "· could not be rechecked"), plus
@@ -293,7 +309,7 @@ run of this package, and — at release preparation — the RC.14 → RC.15 upda
   tests for "weather arrives → preview regenerates once" and "unchanged weather → no regeneration". Recommended: (a) for
   RC.15 — output is never older than the preview, and (b) adds a subscription the 37F design deliberately avoided.
 - **D-3 High-DPI printing.** Run checklist E.11; no change unless memory fails to return after printing.
-- **D-4 Windows acceptance.** Run the integrated checklist on `CarowindsTestB`, including F.2–F.7 (the pricing screen and
+- **D-4 Windows acceptance.** Run the integrated checklist with `RC15-Phase37E2-LOCALTEST` on `CarowindsTestB`, including F.2–F.7 (the pricing screen and
   PDF checks the harness PASS does not cover).
 
 ## 20. Deferred work
@@ -333,35 +349,37 @@ The updater, manifest format, signing tool and trusted key are unchanged since R
 
 ## 22. Product specification review status
 
-Reviewed — no changes required. No product behavior changed in this phase. `AGENT_BUILD_SPEC.md` §6.6, §7.5, §9.2, §17.3 and §22 match the source
-reviewed. D-1 and D-2 would need specification lines only if the owner approves a change.
+Updated (by D-1 only). `AGENT_BUILD_SPEC.md` §7.5 ("Previously verified date-specific prices") now names the Calendar's
+Daily ticket line, and §9.2 states its wording, citing owner decision D-1 (2026-11-28) and this record. §6.6, §17.3 and
+§22 match the source reviewed; D-2 would need a specification line only if the owner approves a change.
 
 ## 23. Architecture documentation review status
 
-Updated. `architecture/testing-and-performance.md`: one sentence on the Phase 37E request-volume simulation tests and the measured
+Updated. `architecture/desktop-ui.md`: the D-1 Calendar wording and its accessible name (37E-3). `architecture/testing-and-performance.md`: one sentence on the Phase 37E request-volume simulation tests and the measured
 request rate. `docs/README.md`: index entries for this record, its checklist and the (previously unindexed) pre-RC.15
 pricing-retention record. Dependencies, DI, state ownership, data contracts, retrieval, persistence, sync, PDF,
-lifecycle, threading, configuration, UI architecture, security, packaging and retired components: reviewed — no change
-(no production change).
+lifecycle, threading, configuration, security, packaging and retired components: reviewed — no change (D-1 adds one
+optional record member and one presentation property; no new dependency, registration, state owner, subscription or
+persisted field).
 
 ## 24. Final go/no-go recommendation
 
-**No-go for RC.15 publication today; conditional go for RC.15 release preparation** when: (1) the owner decides D-1
-(and, if approved, the small Calendar wording change is implemented and tested in its own step); (2) the integrated
-checklist is run on Windows with no blocking failure, including F.2–F.7, E.9 and E.11; (3) RC.15 preparation and the
+**No-go for RC.15 publication today; conditional go for RC.15 release preparation** when: (1) the integrated checklist
+is run on Windows with `RC15-Phase37E2-LOCALTEST` with no blocking failure, including C.11 (D-1 wording), F.2–F.7, E.9
+and E.11; (2) the owner settles D-2 (recommended: accept with a release-notes line); (3) RC.15 preparation and the
 updater plan (§21) are separately authorized.
 
 ## Validation
 
 | Check | Result |
 |---|---|
-| Deterministic partitions (`build-and-test` skill) | 6,548 / 6,548 passed, 0 skipped (§14) |
+| Deterministic partitions (`build-and-test` skill) | 6,560 / 6,560 passed, 0 skipped at `69d70a7` (§14) |
 | Clean Release build | 0 warnings, 0 errors |
 | Windows validation | NOT EXECUTED — integrated checklist awaiting the owner |
 
 ## Documentation maintenance
 
-**Product specification:** Reviewed — no changes required
+**Product specification:** Updated
 
 **Architecture documentation:** Updated
 
@@ -372,4 +390,22 @@ updater plan (§21) are separately authorized.
 - All measurements are from the macOS development host; Windows timing, DPI, Narrator and printing are unverified.
 - The NWS simulation models provider behaviour; it is not a live measurement. No live NWS or official request was made.
 - Personal Sync was validated by the automated suites with temporary folders; a Windows disposable-folder run is in §G.
-- D-1 to D-4 open.
+- D-2 to D-4 open; D-1 implemented, awaiting Windows.
+- D-1 leaves the Calendar's `Stale` price wording unchanged (plain amount, as since Phase 13D); the D-1 wording was not
+  rendered in a visual fixture (it relies on the panel's existing `TextWrapping="Wrap"`), so its on-screen fit is first
+  checked on Windows (C.11).
+- The pre-RC.15 pricing record's limitation 3 (Calendar without a qualifier) is superseded by §25 for the previously
+  verified state; that historical record is not edited.
+
+## 25. D-1 implementation (owner-approved 2026-11-28)
+
+| | |
+|---|---|
+| Authority | Owner reply "Yes, implement D-1" to the §19 proposal |
+| Commit | `69d70a7` |
+| Application | `OperationsCalendarDailyAdmissionPrice` gains an optional last member `AssociateVerificationInfo? Verification` (default null; existing constructions unchanged); `OperationsCalendarService.BuildDailyAdmissionPrice` passes the shown (cheapest) product's own `Verification` |
+| Desktop | `OperationsCalendarPresentation`: for `Available` + `PreviouslyVerified`, the text becomes "`$49.00` · last verified Nov 27" ("Starting from `$49.00` · last verified Nov 27" for a floor price; "· previously verified" without a time), using the original verification instant's **Eastern** date. New `DailyAdmissionPriceAccessibleText`: "Daily ticket price: $49.00, last verified November 27, availability not confirmed"; for every other state it equals the previous automation name ("Daily ticket price: …") |
+| View | `OperationsCalendarView.axaml`: the Daily ticket value's `AutomationProperties.Name` binds `Presentation.DailyAdmissionPriceAccessibleText` instead of a `StringFormat` over the visible text. No layout, style or control change |
+| Unchanged | Verified, Stale, NotCheckedYet, NotPublished, Unavailable texts; Products & Pricing, Dashboard, PDF; schema, sync, drafts, snapshots; no request, subscription or timer |
+| Tests (12) | Ui `OperationsCalendarPresentationTests` +10: previously verified text and accessible name; late-evening instant uses the Eastern date (Nov 28 03:45 UTC → "Nov 27"); Starting-from keeps its qualifier; no time → "previously verified"; Verified/Stale/NotCheckedYet unchanged (theory); no verification unchanged; Not Published / Not checked yet accessible names unchanged; markup binds the new accessible name. Application `PostClosingPricingRetentionTests` +2: through the real registration and Calendar service, after closing the snapshot carries `PreviouslyVerified` with the 3:10 PM verification time; during sales it carries `Verified` |
+| Validation | Full suite 6,560 / 0 / 0, clean Release build 0 / 0, guards 31/31 (§14); `RC15-Phase37E2-LOCALTEST` built from `69d70a7` (§15) |

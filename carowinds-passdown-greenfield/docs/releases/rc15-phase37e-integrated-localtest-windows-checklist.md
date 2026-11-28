@@ -2,25 +2,29 @@
 
 **LOCAL-ONLY. Not a release.** Not pushed, tagged, signed or published; no update manifest. RC.14 (published
 prerelease `v0.1.0-rc.14`) and every earlier file under `artifacts/` are unchanged: all 15,899 were hashed before this
-build and re-hashed after it, byte-identical.
+build and re-hashed after it, byte-identical (16,465 before the second, D-1 package, also unchanged).
 
 This one package contains everything since RC.14 together: Phase 36 maintenance (including the 36C Early Ride Time
 editor extraction), Phase 37B weather retrieval and cache, Phase 37C Dashboard Weather, Phase 37D Calendar Weather and
 the Settings preference, Phase 37F3 optional Passdown PDF Weather Outlook, and the pre-RC.15 post-closing pricing
 retention correction. It adds **no new feature**. Its purpose is a final combined check before RC.15 preparation is
-separately authorized.
+separately authorized. It also contains one owner-approved wording change from this phase (decision D-1): the
+Calendar's Daily ticket line now marks a price that is only previously verified ("$49.00 · last verified Nov 27").
+
+Use **`RC15-Phase37E2-LOCALTEST`** below. The first 37E package (`RC15-Phase37E-LOCALTEST`, SHA-256
+`00e623b5…594f`) is superseded: it lacks the D-1 wording. Do not use it.
 
 Record: [phase37e-integrated-weather-pricing-release-readiness.md](../phase37e-integrated-weather-pricing-release-readiness.md).
 
-| | RC15-Phase37E-LOCALTEST |
+| | RC15-Phase37E2-LOCALTEST |
 |---|---|
-| Source commit | `8921324` (production source identical to `1be060d`; later commits are test-only or documentation) |
-| Version shown in the app | `0.1.0-rc.15-LOCALTEST.phase37e` (Settings → About this build) |
-| Package | `artifacts/local-test/RC15-Phase37E-LOCALTEST/LOCAL-ONLY-RC15-Phase37E-LOCALTEST-win-x64.zip` |
-| ZIP size / files | 76,538,458 bytes (73.0 MB); 308 files (162.6 MB uncompressed) |
-| ZIP SHA-256 | `00e623b5534009bddb42565172df03f208f8a827e83f1416f805ef275ec3594f` |
-| EXE inside the ZIP | `LOCAL-ONLY-RC15-Phase37E-LOCALTEST-win-x64\Carowinds.Passdown.Desktop.exe` |
-| Mac verification | Deterministic suite 6,548 passed / 0 failed / 0 skipped; repository guards 31/31; clean Release build 0 warnings / 0 errors; script content validation (folder and ZIP, 308 files); `RealReleaseZip` passed (a bogus path fails); marker names `8921324`; no database, WAL/SHM, draft, weather cache, preference file, key, signature, update manifest, PDB, PDF or pricing-harness file in the ZIP |
+| Source commit | `69d70a7` (D-1; the later commit is documentation only) |
+| Version shown in the app | `0.1.0-rc.15-LOCALTEST.phase37e2` (Settings → About this build) |
+| Package | `artifacts/local-test/RC15-Phase37E2-LOCALTEST/LOCAL-ONLY-RC15-Phase37E2-LOCALTEST-win-x64.zip` |
+| ZIP size / files | 76,540,554 bytes (73.0 MB); 308 files (162.6 MB uncompressed) |
+| ZIP SHA-256 | `15608e4736a233454bbd6a13eb123529ac066d4b5f617a98552af1955a6532a1` |
+| EXE inside the ZIP | `LOCAL-ONLY-RC15-Phase37E2-LOCALTEST-win-x64\Carowinds.Passdown.Desktop.exe` |
+| Mac verification | Deterministic suite 6,560 passed / 0 failed / 0 skipped; repository guards 31/31; clean Release build 0 warnings / 0 errors; script content validation (folder and ZIP, 308 files); `RealReleaseZip` passed; marker names `69d70a7`; no database, WAL/SHM, draft, weather cache, preference file, key, signature, update manifest, PDB, PDF or pricing-harness file in the ZIP; all 16,465 earlier artifact files re-hashed byte-identical |
 
 Source `<Version>` stays `0.1.0-rc.14`. Database schema 18, Personal Sync envelope 1, draft payload 4, finalized
 snapshot 2, weather cache format 1 — no migration, no format change.
@@ -60,7 +64,7 @@ confirmations, not item-by-item runs of their checklists, so the items below sti
 | # | Step | Expected | Observed |
 |---|---|---|---|
 | A.1 | First launch from the new folder (if this account already ran an earlier test build, note that and continue) | Window opens promptly; no freeze or blank window; Dashboard appears | |
-| A.2 | Settings → About this build | `0.1.0-rc.15-LOCALTEST.phase37e` | |
+| A.2 | Settings → About this build | `0.1.0-rc.15-LOCALTEST.phase37e2` | |
 | A.3 | Existing preferences from earlier builds (theme, PDF style, Include Weather Outlook) | Kept as you left them | |
 | A.4 | Switch Light → Dark → System | Every screen readable in each; Weather card and Calendar Weather follow the theme | |
 | A.5 | Turn the app's reduced-motion/animation setting on (and, if convenient, Windows *Settings → Accessibility → Visual effects → Animation effects* off) | No sliding/fading; nothing waits for an animation | |
@@ -95,7 +99,7 @@ confirmations, not item-by-item runs of their checklists, so the items below sti
 | C.8 | Look at the month grid | **No weather icons or temperatures in day cells** | |
 | C.9 | Pass Perks markers, legend and month summary | Unchanged | |
 | C.10 | Click through 15+ dates quickly and change months back and forth | Stays responsive; the Weather group always matches the date in the heading; never another date's forecast | |
-| C.11 | Selected-date **Daily ticket** line on today after the park has closed (if you can test then) | Shows the price. **Note exactly what it says** — this line currently has no "last verified" wording (see decision D-1 in the record) | |
+| C.11 | Calendar → select **Thursday, August 20, 2026** (the harness date; past, so nothing is retrieved) and read the **Daily ticket** line; optionally also today after the park has closed | Reads "$49.00 · last verified Aug 20" (decision D-1), fits the panel (wraps cleanly if needed, nothing cut off) in Light and Dark; Narrator reads "Daily ticket price: $49.00, last verified August 20, availability not confirmed". A date still on sale shows just the price | |
 
 ### D. Passdown
 
@@ -165,4 +169,5 @@ confirmations, not item-by-item runs of their checklists, so the items below sti
 ## Report back
 
 Send: the A–H results, the header details (PC, Windows build, scaling), and screenshots of anything that failed or
-looked wrong. Say explicitly whether items E.9, E.11 and C.11 were done, because they inform decisions D-1 to D-3.
+looked wrong. Say explicitly whether items C.11, E.9 and E.11 were done: C.11 checks the D-1 change, and E.9 and E.11
+inform decisions D-2 and D-3.
