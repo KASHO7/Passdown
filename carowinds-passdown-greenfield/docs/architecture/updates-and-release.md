@@ -10,4 +10,4 @@ Separate Updater entry point delegates installation to Infrastructure; discovery
 - [release-strategy.md](../release-strategy.md)
 - [release-manifest.md](../release-manifest.md)
 - [releases/rc14-release-readiness.md](../releases/rc14-release-readiness.md) (latest published release record at the review baseline)
-- [releases/rc15-release-preparation.md](../releases/rc15-release-preparation.md) (RC.15 prepared and staged unsigned; not published; updater, signing tool, trusted key and manifest format unchanged since RC.14)
+- [releases/rc15-release-preparation.md](../releases/rc15-release-preparation.md) (RC.15 published 2026-11-28 as a prerelease, §21; updater, signing tool, trusted key and manifest format unchanged since RC.14)

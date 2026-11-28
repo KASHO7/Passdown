@@ -36,7 +36,7 @@ verification against source and tests.
 | [release-strategy.md](release-strategy.md) | Release shape, RC numbering, packaging rules; read the latest sections |
 | [release-manifest.md](release-manifest.md) | Per-build manifest and deterministic test partition history. Its title and opening table describe the historical Phase 15F `0.1.0-dev` build and are kept as evidence; current release identity is in the latest [release record](releases/rc14-release-readiness.md) |
 | [personal-sync-architecture.md](personal-sync-architecture.md) | Phase 16A design with later implementation sections appended; the current summary is [architecture/personal-sync.md](architecture/personal-sync.md) |
-| [releases/](releases/) | Release readiness, notes, installation guides and Windows checklists per RC; latest published: [rc14-release-readiness.md](releases/rc14-release-readiness.md); in preparation (not published): [rc15-release-preparation.md](releases/rc15-release-preparation.md) |
+| [releases/](releases/) | Release readiness, notes, installation guides and Windows checklists per RC; latest published: [rc15-release-preparation.md](releases/rc15-release-preparation.md) (RC.15, §21); previous: [rc14-release-readiness.md](releases/rc14-release-readiness.md) |
 
 ## Source investigation records (historical evidence of official-source behavior)
 
@@ -92,7 +92,7 @@ Notable groups:
   (integrated validation and RC.15 release-readiness assessment, plus the owner-approved D-1 Calendar retained-price
   wording — the integrated `RC15-Phase37E2-LOCALTEST` build was owner-accepted on Windows (overall, §26); [Windows checklist](releases/rc15-phase37e-integrated-localtest-windows-checklist.md)).
 - RC.15 release preparation: [rc15-release-preparation.md](releases/rc15-release-preparation.md) (version `0.1.0-rc.15`,
-  staged unsigned package, signing dry run, updater plan — prepared, not published) and the GitHub notes draft
+  staged unsigned package, signing dry run, updater plan — prepared; published 2026-11-28 as a prerelease, §21) and the GitHub notes draft
   [rc15-release-notes.md](releases/rc15-release-notes.md).
 - Defect record: [rc9-price-history-legacy-identity-defect.md](rc9-price-history-legacy-identity-defect.md).
 

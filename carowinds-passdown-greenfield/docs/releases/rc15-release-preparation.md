@@ -1,7 +1,7 @@
 # RC.15 release preparation — 0.1.0-rc.15
 
 Date: 2026-11-28 · Branch `feature/passdown-redesign` · **Release source commit `19cbf8b`**
-(`19cbf8b1fae8201cd270006d077bb497c5aef308`). Built locally on the macOS build host. **Prepared, unsigned, not published.**
+(`19cbf8b1fae8201cd270006d077bb497c5aef308`). Built locally on the macOS build host. Prepared unsigned (§1–§20); **signed and published 2026-11-28T15:01:47Z as a GitHub prerelease (§21).**
 
 Publication authorization: **NOT AUTHORIZED.** The owner brief "Carowinds Operations — RC.15 Release Preparation"
 (2026-11-28) authorized versioning, release notes, packaging, signing readiness and the updater plan, and explicitly
@@ -420,3 +420,26 @@ Asset set follows `UpdateAssetNames` and the RC.8–RC.14 procedure: ZIP, `.upda
 update-screen release notes are the `releaseNotes` field inside the signed manifest; there is no separate notes asset
 (the brief's "update-screen release notes file" is this manifest content, as the brief asked the established filenames
 to be confirmed).
+
+### 21.4 Publication and post-publication (2026-11-28)
+
+| Check | Result |
+|---|---|
+| Metadata commit `33f61c0` (this record §21.1–§21.3 and the notes header; documentation only, not in the ZIP); fresh `git fetch` before pushing: remote unchanged at `9351c64` | PASS |
+| Branch pushed `9351c64..33f61c0` (fast-forward, 50 commits, no force); `main` unchanged (`06f48c4`) | PASS |
+| Annotated tag `v0.1.0-rc.15` (object `e9c1f3c`) → **`19cbf8b1fae8201cd270006d077bb497c5aef308`**, verified locally and with `git ls-remote` (`^{}`); `Directory.Build.props` at the target = `0.1.0-rc.15` / `0.1.0.15`; only this tag pushed; RC.10–RC.14 tags unchanged | PASS |
+| Release created as a draft with the three assets (draft digests checked), then published: https://github.com/KASHO7/Passdown/releases/tag/v0.1.0-rc.15 — "Carowinds Operations v0.1.0-rc.15", **prerelease**, not a draft, not marked latest (`/releases/latest` 404, as before), published 2026-11-28T15:01:47Z; page HTTP 200 without authentication; body = `rc15-release-notes.md` below its header | PASS |
+| Assets: exactly the three files of §21.3; GitHub digests equal the recorded SHA-256 values | PASS |
+| Anonymous downloads from `https://github.com/KASHO7/Passdown/releases/download/v0.1.0-rc.15/…` (HTTP 200) into a separate folder: all three byte-identical to `artifacts/releases`; public ZIP SHA-256 **`64b5d17b7921a48dbdf8c3eec9ebbbcb61a3cb509bfe9720079cbed4973981dc`** = the Windows-tested staging ZIP | PASS |
+| Downloaded manifest + signature: **VERIFIED** (`carowinds-release-1`) against the current and RC.14's trusted keys; 307 entries recomputed from a fresh extraction of the public ZIP, 0 mismatches; `RealReleaseZip_WhenSupplied_PassesEveryRule` on the downloaded ZIP PASS | PASS |
+| Read-only live discovery (the RC.14 scratch console wiring `GitHubReleaseSource`, `EcdsaUpdateManifestVerifier` and `UpdateDiscoveryService` with RC.14's `appsettings.json`; update code unchanged since `3d603f0`): installed `0.1.0-rc.14` → **UpdateAvailable `0.1.0-rc.15`**, tag `v0.1.0-rc.15`, title "Weather and pricing accuracy", package `64b5d17b…81dc`, 0 rejected; `0.1.0-rc.13` → same offer; `0.1.0-rc.15` → UpToDate; `0.1.0-rc.15-LOCALTEST.phase37e2` → UpToDate (as designed). Only manifests and signatures fetched; nothing installed | PASS |
+| RC.14 public release: prerelease, published 2026-11-27T00:56:02Z, body hash unchanged, three assets with unchanged sizes, digests and upload times; ZIP still downloadable; releases listing RC.15, RC.14 … RC.10, each three assets | PASS |
+| Local artifacts: all 12,495 earlier files unchanged; RC.15 files read-only. No key, test database, sync folder, weather cache, harness or LOCALTEST file uploaded or committed | PASS |
+| **RC.14 → RC.15 in-app update on Windows (§13 procedure)** | **NOT EXECUTED** — awaiting the owner's run from a genuine published RC.14 installation in a disposable account (never a LOCALTEST install) |
+
+Deviations from §19: release created as a draft, then published (no public partial state); one punctuation correction
+in the manifest notes (§21.3). Published assets and the tag are frozen; any change ships as `0.1.0-rc.16`.
+
+Architecture and specification review for §21: status lines only (`AGENT_BUILD_SPEC.md` §4.4/§6.6,
+`docs/architecture.md`, `docs/architecture/updates-and-release.md`, `docs/README.md`). No requirement, dependency, data
+contract, updater, signing, trust or packaging change — **reviewed — no change required** for those areas.

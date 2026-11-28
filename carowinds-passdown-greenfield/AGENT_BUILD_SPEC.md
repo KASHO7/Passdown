@@ -131,7 +131,7 @@ Preserve compatibility safeguards required for existing installations and histor
 
 ### 4.4 Approved, not yet implemented
 
-Weather information (§6.6) is approved by the product owner (2026-11-27, recorded in `docs/phase37a-weather-source-architecture-plan.md`). It is not active functionality until an implementation milestone delivers it and that milestone is validated and approved for release. Do not describe it as available before then. Status (2026-11-28): implemented, Windows-accepted as part of the integrated Phase 37E2 test build and included in the locally prepared, unpublished RC.15 candidate (§6.6).
+Weather information (§6.6) is approved by the product owner (2026-11-27, recorded in `docs/phase37a-weather-source-architecture-plan.md`). It is not active functionality until an implementation milestone delivers it and that milestone is validated and approved for release. Do not describe it as available before then. Status (2026-11-28): implemented, Windows-accepted as part of the integrated Phase 37E2 test build and released in RC.15 (`0.1.0-rc.15`, GitHub prerelease published 2026-11-28; `docs/releases/rc15-release-preparation.md` §21) (§6.6).
 
 ---
 
@@ -243,7 +243,7 @@ Do not treat a successfully retrieved response as valid for the requested date w
 
 ### 6.6 Weather information
 
-Status: approved, not yet released (§4.4). Implemented locally: the Dashboard summary (Phase 37C, `docs/phase37c-dashboard-weather-integration.md`), the Passdown PDF Weather Outlook (Phase 37F, `docs/phase37f-compact-pdf-weather-outlook.md`), and the Calendar selected-date forecast and the Settings control for the Weather Outlook preference (Phase 37D, `docs/phase37d-calendar-weather-settings-integration.md`). The product owner accepted the integrated Phase 37E2 Windows test build (2026-11-28) and authorized RC.15 release preparation (`docs/releases/rc15-release-preparation.md`); weather becomes released functionality only when RC.15 is published, which needs separate authorization. Authority: the product owner's approved specification amendment of 2026-11-27, recorded in `docs/phase37a-weather-source-architecture-plan.md`, which also holds the source research and architecture plan.
+Status: approved; released in RC.15 (2026-11-28, prerelease) (§4.4). Implemented locally: the Dashboard summary (Phase 37C, `docs/phase37c-dashboard-weather-integration.md`), the Passdown PDF Weather Outlook (Phase 37F, `docs/phase37f-compact-pdf-weather-outlook.md`), and the Calendar selected-date forecast and the Settings control for the Weather Outlook preference (Phase 37D, `docs/phase37d-calendar-weather-settings-integration.md`). The product owner accepted the integrated Phase 37E2 Windows test build (2026-11-28) and authorized RC.15 release preparation (`docs/releases/rc15-release-preparation.md`); the owner then authorized publication, and RC.15 was published as a GitHub prerelease on 2026-11-28 (record §21); the genuine RC.14 → RC.15 Windows update is pending owner confirmation. Authority: the product owner's approved specification amendment of 2026-11-27, recorded in `docs/phase37a-weather-source-architecture-plan.md`, which also holds the source research and architecture plan.
 
 **Source.** Carowinds Operations may retrieve and display publicly available weather forecasts, observations, and official weather alerts from the U.S. National Weather Service (NWS/NOAA). NWS is an explicitly approved source for weather information and the primary provider for the initial implementation.
 
@@ -438,7 +438,7 @@ Any further Dashboard redesign must follow an explicitly approved visual referen
 
 Preserve the existing Dashboard functionality until a replacement is authorized.
 
-An approved compact weather summary (§6.6; implemented locally in Phase 37C, not yet released) may be added. It must keep the existing Dashboard content intact, must not push essential operations content out of view unnecessarily, and follows an approved visual reference as above.
+An approved compact weather summary (§6.6; Phase 37C, released in RC.15) may be added. It must keep the existing Dashboard content intact, must not push essential operations content out of view unnecessarily, and follows an approved visual reference as above.
 
 ---
 
@@ -478,9 +478,9 @@ Preserve the approved Calendar design, including:
 
 Do not communicate event or operational status by color alone.
 
-The selected-date Daily ticket line shows a previously verified price (§7.5) with its original verification date, "$49.00 · last verified Nov 27", and an accessible name that adds "availability not confirmed"; other price states keep their existing wording (owner decision D-1, Phase 37E, 2026-11-28, `docs/phase37e-integrated-weather-pricing-release-readiness.md`; implemented locally, not yet released).
+The selected-date Daily ticket line shows a previously verified price (§7.5) with its original verification date, "$49.00 · last verified Nov 27", and an accessible name that adds "availability not confirmed"; other price states keep their existing wording (owner decision D-1, Phase 37E, 2026-11-28, `docs/phase37e-integrated-weather-pricing-release-readiness.md`; released in RC.15).
 
-Approved weather forecast details for the selected date (§6.6; implemented locally in Phase 37D, not yet released) appear only in the selected-date panel; they must not crowd the day cells or change the existing open/closed, draft/finalized, or Pass Perks presentation.
+Approved weather forecast details for the selected date (§6.6; Phase 37D, released in RC.15) appear only in the selected-date panel; they must not crowd the day cells or change the existing open/closed, draft/finalized, or Pass Perks presentation.
 
 ### 9.3 Pass Perks
 
@@ -937,7 +937,7 @@ Include applicable approved operational information, such as:
 - Included operational notes.
 - Daily Feature.
 - Approved verification and supporting information.
-- The compact Weather Outlook for the operating date's park hours, when a valid forecast exists (§6.6; Phase 37F, not yet released).
+- The compact Weather Outlook for the operating date's park hours, when a valid forecast exists (§6.6; Phase 37F, released in RC.15).
 
 Empty or excluded categories must not introduce unnecessary document clutter.
 
@@ -1532,7 +1532,7 @@ Do not represent one status as proof of another.
 
 Deferred features are not active acceptance requirements.
 
-### 22.13 Weather information (approved, not yet released)
+### 22.13 Weather information (approved; released in RC.15)
 
 These criteria apply once weather information (§6.6) is implemented:
 
