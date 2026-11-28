@@ -382,6 +382,14 @@ When older verified information is used:
 - Do not represent it as newly verified.
 - Allow applicable user controls over its inclusion in operational documents.
 
+**Previously verified date-specific prices** (owner brief "Pre-RC.15 Pricing Reliability Fix — Preserve Verified Daily Pricing After Park Closing", 2026-11-27). The official dated-ticket calendar stops listing a date once its sales window ends (after closing). A later successful check that only says the date is no longer offered (or not published), with no products, must not erase that date's officially verified dated prices (Daily Admission, Fast Lane, SCarowinds/haunted, Bring-A-Friend, Bring-A-Friend Duo, Military/First Responder):
+
+- Keep the prices verified for that exact date and product, with their original verification time and source.
+- Present them as previously verified, never as currently available ("Last verified … — sales availability not confirmed"); the PDF keeps its existing "not recently verified" note.
+- A new verified official answer for the date still replaces them, including price increases, decreases and products withdrawn while the date is still on sale.
+- Retention applies only to the same date, category and product evidence; a date never verified shows no price. Park hours, show schedules and catalog products are unaffected.
+- Manual overrides remain draft-only and keep their effective-price role.
+
 ### 7.6 Retrieval efficiency
 
 Official retrieval should be efficient and respectful of official services.
@@ -1439,6 +1447,7 @@ Distinguish development-host measurements from actual Windows performance result
 - Dynamic seasonal visibility works.
 - Official prices remain unchanged by manual overrides.
 - Price restoration works.
+- Dated prices verified earlier for a date remain, marked previously verified, after the official calendar stops listing that date (§7.5).
 - Price-history observations remain accurate.
 - Membership and Season Pass offer distinctions are preserved.
 - Unsupported products do not appear in operational documents.

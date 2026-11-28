@@ -283,3 +283,8 @@ semantics, precedence and display are unchanged.
   merged rows drop the catalog comparison. Empty → "Historical pricing not available for this date."
 - `PriceKind` vocabulary and every other precedence rule are unchanged. See
   `docs/phase21a-pricing-historical-integrity.md`.
+- Pre-RC.15: a stored exact-date result stays that date's evidence after the official calendar stops
+  listing the date. A payload-less `Unavailable`/`NotPublished` answer no longer replaces a `Verified`
+  payload for the same dated pricing category and date; the rows compose as `PreviouslyVerified`
+  ("Last verified … — sales availability not confirmed") and are never presented as currently offered.
+  See `docs/pre-rc15-post-closing-pricing-retention.md`.
