@@ -26,12 +26,18 @@ public enum OperationsCalendarDailyAdmissionStatus
 /// <see cref="AssociateProduct"/> list <see cref="Associate.IAssociatePassdownService.LoadAssociateDateAsync"/>
 /// already produced for the selected date's workspace — never a second query/composition.
 /// </summary>
+/// <para>
+/// Phase 37E D-1 (owner-approved 2026-11-28): <paramref name="Verification"/> is the shown product's own verification,
+/// so the Calendar can qualify a price that is only previously verified (the official calendar no longer lists the
+/// date) instead of showing it like a price currently on sale. Null when there is no price.
+/// </para>
 public sealed record OperationsCalendarDailyAdmissionPrice(
     OperationsCalendarDailyAdmissionStatus Status,
     string? DisplayName,
     decimal? PriceAmount,
     PriceKind PriceKind,
-    string? PriceQualifier)
+    string? PriceQualifier,
+    AssociateVerificationInfo? Verification = null)
 {
     public static readonly OperationsCalendarDailyAdmissionPrice NotCheckedYet =
         new(OperationsCalendarDailyAdmissionStatus.NotCheckedYet, null, null, PriceKind.Unknown, null);

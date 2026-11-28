@@ -385,7 +385,7 @@ When older verified information is used:
 **Previously verified date-specific prices** (owner brief "Pre-RC.15 Pricing Reliability Fix — Preserve Verified Daily Pricing After Park Closing", 2026-11-27). The official dated-ticket calendar stops listing a date once its sales window ends (after closing). A later successful check that only says the date is no longer offered (or not published), with no products, must not erase that date's officially verified dated prices (Daily Admission, Fast Lane, SCarowinds/haunted, Bring-A-Friend, Bring-A-Friend Duo, Military/First Responder):
 
 - Keep the prices verified for that exact date and product, with their original verification time and source.
-- Present them as previously verified, never as currently available ("Last verified … — sales availability not confirmed"); the PDF keeps its existing "not recently verified" note.
+- Present them as previously verified, never as currently available ("Last verified … — sales availability not confirmed"); the PDF keeps its existing "not recently verified" note. This includes the Calendar's selected-date Daily ticket line (§9.2).
 - A new verified official answer for the date still replaces them, including price increases, decreases and products withdrawn while the date is still on sale.
 - Retention applies only to the same date, category and product evidence; a date never verified shows no price. Park hours, show schedules and catalog products are unaffected.
 - Manual overrides remain draft-only and keep their effective-price role.
@@ -477,6 +477,8 @@ Preserve the approved Calendar design, including:
 - Appropriate empty and unavailable states.
 
 Do not communicate event or operational status by color alone.
+
+The selected-date Daily ticket line shows a previously verified price (§7.5) with its original verification date, "$49.00 · last verified Nov 27", and an accessible name that adds "availability not confirmed"; other price states keep their existing wording (owner decision D-1, Phase 37E, 2026-11-28, `docs/phase37e-integrated-weather-pricing-release-readiness.md`; implemented locally, not yet released).
 
 Approved weather forecast details for the selected date (§6.6; implemented locally in Phase 37D, not yet released) appear only in the selected-date panel; they must not crowd the day cells or change the existing open/closed, draft/finalized, or Pass Perks presentation.
 

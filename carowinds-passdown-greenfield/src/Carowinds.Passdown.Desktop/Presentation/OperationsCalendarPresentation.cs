@@ -1,4 +1,6 @@
+using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Calendar;
+using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Domain.Catalog;
 using Carowinds.Passdown.Domain;
 
@@ -27,7 +29,8 @@ public sealed record OperationsCalendarPresentation(
     string? ParkHoursVerificationText,
     string? ParkHoursStaleNoteText,
     string? WaterparkHoursText = null,
-    string? DailyAdmissionPriceText = null)
+    string? DailyAdmissionPriceText = null,
+    string? DailyAdmissionPriceAccessibleText = null)
 {
     /// <summary>Phase 13D Part G: omitted cleanly (no blank placeholder) whenever the waterpark's hours were not published for the selected date.</summary>
     public bool HasWaterparkHours => WaterparkHoursText is not null;
@@ -78,7 +81,41 @@ public sealed record OperationsCalendarPresentation(
             parkHoursPresentation.VerificationText,
             parkHoursPresentation.StaleNoteText,
             parkHoursPresentation.WaterparkHeadlineText,
-            BuildDailyAdmissionPriceText(selected.DailyAdmission));
+            BuildDailyAdmissionPriceText(selected.DailyAdmission),
+            BuildDailyAdmissionPriceAccessibleText(selected.DailyAdmission));
+    }
+
+    /// <summary>
+    /// Phase 37E D-1 (owner-approved 2026-11-28): a price the official calendar no longer lists for the date (its sales
+    /// window ended or it was withdrawn) is the date's last verified price, not one currently on sale. The compact line
+    /// says so in the 290 px panel ("$49.00 · last verified Nov 27"), using the product's original verification date on
+    /// the Eastern calendar, the same evidence Products &amp; Pricing words as "Last verified … — sales availability not
+    /// confirmed." Every other state keeps its existing text.
+    /// </summary>
+    private static string? PreviouslyVerifiedSuffix(OperationsCalendarDailyAdmissionPrice? dailyAdmission) =>
+        dailyAdmission is { Status: OperationsCalendarDailyAdmissionStatus.Available, Verification.State: AssociateVerificationState.PreviouslyVerified } admission
+            ? admission.Verification!.LastVerifiedAt is { } at
+                ? $"last verified {EasternTimeZone.ConvertFromUtc(at).ToString("MMM d", PresentationCulture.UnitedStates)}"
+                : "previously verified"
+            : null;
+
+    /// <summary>
+    /// Phase 37E D-1: the screen-reader name for the Daily ticket line. For a previously verified price it adds what the
+    /// compact text leaves out ("availability not confirmed"); otherwise it is the existing "Daily ticket price: …".
+    /// </summary>
+    private static string BuildDailyAdmissionPriceAccessibleText(OperationsCalendarDailyAdmissionPrice? dailyAdmission)
+    {
+        var text = BuildDailyAdmissionPriceText(dailyAdmission);
+        if (dailyAdmission is { Status: OperationsCalendarDailyAdmissionStatus.Available, Verification.State: AssociateVerificationState.PreviouslyVerified } admission)
+        {
+            var amount = text.Split(" · ", 2)[0];
+            var when = admission.Verification!.LastVerifiedAt is { } at
+                ? $"last verified {EasternTimeZone.ConvertFromUtc(at).ToString("MMMM d", PresentationCulture.UnitedStates)}"
+                : "previously verified";
+            return $"Daily ticket price: {amount}, {when}, availability not confirmed";
+        }
+
+        return $"Daily ticket price: {text}";
     }
 
     /// <summary>
@@ -93,11 +130,15 @@ public sealed record OperationsCalendarPresentation(
         OperationsCalendarDailyAdmissionStatus.Available when dailyAdmission.PriceAmount is { } amount =>
             // Phase 18A BUG-001: PriceFormatting (invariant "$0.00"), never the machine culture's "C" —
             // a PC with e.g. an English (UK) region format otherwise showed "£54.99" for a USD price.
-            dailyAdmission.PriceKind == PriceKind.StartingFrom
-                ? $"Starting from {PriceFormatting.Format(amount)}"
-                : PriceFormatting.Format(amount),
+            WithSuffix(
+                dailyAdmission.PriceKind == PriceKind.StartingFrom
+                    ? $"Starting from {PriceFormatting.Format(amount)}"
+                    : PriceFormatting.Format(amount),
+                PreviouslyVerifiedSuffix(dailyAdmission)),
         OperationsCalendarDailyAdmissionStatus.NotPublished => "Not Published",
         OperationsCalendarDailyAdmissionStatus.Unavailable => "Unavailable",
         _ => "Not checked yet",
     };
+
+    private static string WithSuffix(string price, string? suffix) => suffix is null ? price : $"{price} · {suffix}";
 }

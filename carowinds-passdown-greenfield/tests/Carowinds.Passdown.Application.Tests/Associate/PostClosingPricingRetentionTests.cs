@@ -1,4 +1,5 @@
 using Carowinds.Passdown.Application.Associate;
+using Carowinds.Passdown.Application.Calendar;
 using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Refresh;
@@ -100,6 +101,39 @@ public class PostClosingPricingRetentionTests
         env.FastLaneScript.Next = NoOffer<DatedFastLanePayload>(env, "dated-fast-lane.official", closingAnswer);
         await env.Admission.ExecuteAsync(Today, CancellationToken.None);
         await env.FastLane.ExecuteAsync(Today, CancellationToken.None);
+    }
+
+    // ------------------------------------------------------------------ Phase 37E D-1: Calendar
+
+    private static OperationsCalendarService CalendarFor(Env env, OperationalNotesService? notes = null) =>
+        new(env.Service, new InMemoryAssociateDraftRepository(), env.Dated, new InMemoryFinalizedPassdownRepository(),
+            notes ?? new OperationalNotesService(new InMemoryOperationalNoteRepository(), env.Clock), env.Clock);
+
+    [Fact]
+    public async Task Calendar_AfterClosing_DailyTicketCarriesThePreviouslyVerifiedStateAndOriginalTime()
+    {
+        var env = Create();
+        await VerifyThenCloseAsync(env);
+
+        var snapshot = await CalendarFor(env).LoadAsync(Today, Today);
+
+        var admission = snapshot.Selected.DailyAdmission!;
+        Assert.Equal(OperationsCalendarDailyAdmissionStatus.Available, admission.Status);
+        Assert.Equal(64.99m, admission.PriceAmount);
+        Assert.Equal(AssociateVerificationState.PreviouslyVerified, admission.Verification!.State);
+        Assert.Equal(VerifiedAt, admission.Verification.LastVerifiedAt);
+    }
+
+    [Fact]
+    public async Task Calendar_DuringSales_DailyTicketCarriesTheVerifiedState()
+    {
+        var env = Create();
+        env.AdmissionScript.Next = AdmissionVerified(env, 64.99m);
+        await env.Admission.ExecuteAsync(Today, CancellationToken.None);
+
+        var snapshot = await CalendarFor(env).LoadAsync(Today, Today);
+
+        Assert.Equal(AssociateVerificationState.Verified, snapshot.Selected.DailyAdmission!.Verification!.State);
     }
 
     // ------------------------------------------------------------------ retention

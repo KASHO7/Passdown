@@ -643,7 +643,7 @@
                     <Grid Classes="detailRow" ColumnDefinitions="Auto,*">
                       <TextBlock Grid.Column="0" Text="Daily ticket" Classes="detailLabel" />
                       <TextBlock Grid.Column="1" Text="{Binding Presentation.DailyAdmissionPriceText}" Classes="detailValue"
-                                 AutomationProperties.Name="{Binding Presentation.DailyAdmissionPriceText, StringFormat='Daily ticket price: {0}'}" />
+                                 AutomationProperties.Name="{Binding Presentation.DailyAdmissionPriceAccessibleText}" />
                     </Grid>
 
                     <!-- Phase 22E: compact Shows — one summary line and a collapsed "View schedule" disclosure (shared

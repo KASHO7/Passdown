@@ -157,6 +157,121 @@ public class OperationsCalendarPresentationTests
         }
     }
 
+    // ---- Phase 37E D-1 (owner-approved 2026-11-28): a previously verified price is qualified, not shown as on sale ----
+
+    /// <summary>3:10 PM EST on Friday 2026-11-27.</summary>
+    private static readonly DateTimeOffset VerifiedAfternoon = new(2026, 11, 27, 20, 10, 0, TimeSpan.Zero);
+
+    private static OperationsCalendarPresentation BuildWithAdmission(
+        AssociateVerificationState? state,
+        DateTimeOffset? lastVerifiedAt = null,
+        Domain.Catalog.PriceKind kind = Domain.Catalog.PriceKind.ExactDated)
+    {
+        var open = ParkHours(false, new TimeOnly(10, 0), new TimeOnly(22, 0), false, buyoutEnabled: false);
+        var snapshot = BuildSnapshot(OperationsCalendarOperatingState.Open, open);
+        var verification = state is { } s ? new AssociateVerificationInfo(s, lastVerifiedAt, null, null) : null;
+        return OperationsCalendarPresentation.Build(snapshot with
+        {
+            Selected = snapshot.Selected with
+            {
+                DailyAdmission = new OperationsCalendarDailyAdmissionPrice(
+                    OperationsCalendarDailyAdmissionStatus.Available, "Park Ticket", 49.00m, kind, null, verification),
+            },
+        });
+    }
+
+    [Fact]
+    public void DailyTicket_PreviouslyVerified_SaysLastVerifiedWithTheOriginalEasternDate()
+    {
+        var presentation = BuildWithAdmission(AssociateVerificationState.PreviouslyVerified, VerifiedAfternoon);
+
+        Assert.Equal("$49.00 · last verified Nov 27", presentation.DailyAdmissionPriceText);
+        Assert.Equal("Daily ticket price: $49.00, last verified November 27, availability not confirmed", presentation.DailyAdmissionPriceAccessibleText);
+    }
+
+    [Fact]
+    public void DailyTicket_PreviouslyVerifiedLateEvening_UsesTheEasternDate_NotUtc()
+    {
+        // 10:45 PM EST on Nov 27 is already Nov 28 in UTC.
+        var presentation = BuildWithAdmission(AssociateVerificationState.PreviouslyVerified, new DateTimeOffset(2026, 11, 28, 3, 45, 0, TimeSpan.Zero));
+
+        Assert.Equal("$49.00 · last verified Nov 27", presentation.DailyAdmissionPriceText);
+    }
+
+    [Fact]
+    public void DailyTicket_PreviouslyVerifiedStartingFrom_KeepsTheFloorQualifier()
+    {
+        var presentation = BuildWithAdmission(AssociateVerificationState.PreviouslyVerified, VerifiedAfternoon, Domain.Catalog.PriceKind.StartingFrom);
+
+        Assert.Equal("Starting from $49.00 · last verified Nov 27", presentation.DailyAdmissionPriceText);
+        Assert.Equal("Daily ticket price: Starting from $49.00, last verified November 27, availability not confirmed", presentation.DailyAdmissionPriceAccessibleText);
+    }
+
+    [Fact]
+    public void DailyTicket_PreviouslyVerifiedWithoutATime_SaysPreviouslyVerified()
+    {
+        var presentation = BuildWithAdmission(AssociateVerificationState.PreviouslyVerified);
+
+        Assert.Equal("$49.00 · previously verified", presentation.DailyAdmissionPriceText);
+        Assert.Equal("Daily ticket price: $49.00, previously verified, availability not confirmed", presentation.DailyAdmissionPriceAccessibleText);
+    }
+
+    [Theory]
+    [InlineData(AssociateVerificationState.Verified)]
+    [InlineData(AssociateVerificationState.Stale)]
+    [InlineData(AssociateVerificationState.NotCheckedYet)]
+    public void DailyTicket_OtherVerificationStates_AreUnchanged(AssociateVerificationState state)
+    {
+        var presentation = BuildWithAdmission(state, VerifiedAfternoon);
+
+        Assert.Equal("$49.00", presentation.DailyAdmissionPriceText);
+        Assert.Equal("Daily ticket price: $49.00", presentation.DailyAdmissionPriceAccessibleText);
+    }
+
+    [Fact]
+    public void DailyTicket_WithoutVerification_IsUnchanged()
+    {
+        var presentation = BuildWithAdmission(state: null);
+
+        Assert.Equal("$49.00", presentation.DailyAdmissionPriceText);
+        Assert.Equal("Daily ticket price: $49.00", presentation.DailyAdmissionPriceAccessibleText);
+    }
+
+    [Fact]
+    public void DailyTicket_NoPrice_AccessibleTextMatchesTheExistingFormat()
+    {
+        var open = ParkHours(false, new TimeOnly(10, 0), new TimeOnly(22, 0), false, buyoutEnabled: false);
+        var snapshot = BuildSnapshot(OperationsCalendarOperatingState.Open, open);
+        var notPublished = OperationsCalendarPresentation.Build(snapshot with
+        {
+            Selected = snapshot.Selected with
+            {
+                DailyAdmission = new OperationsCalendarDailyAdmissionPrice(OperationsCalendarDailyAdmissionStatus.NotPublished, null, null, Domain.Catalog.PriceKind.Unknown, null),
+            },
+        });
+
+        Assert.Equal("Not Published", notPublished.DailyAdmissionPriceText);
+        Assert.Equal("Daily ticket price: Not Published", notPublished.DailyAdmissionPriceAccessibleText);
+        Assert.Equal("Daily ticket price: Not checked yet", OperationsCalendarPresentation.Build(snapshot).DailyAdmissionPriceAccessibleText);
+    }
+
+    [Fact]
+    public void DailyTicketLine_BindsItsAccessibleNameToTheQualifiedText()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "CarowindsPassdown.slnx")))
+        {
+            directory = directory.Parent;
+        }
+
+        var markup = File.ReadAllText(Path.Combine(directory!.FullName, "src", "Carowinds.Passdown.Desktop", "Views", "OperationsCalendarView.axaml"));
+        Assert.Contains(
+            "Text=\"{Binding Presentation.DailyAdmissionPriceText}\" Classes=\"detailValue\"\n                                 AutomationProperties.Name=\"{Binding Presentation.DailyAdmissionPriceAccessibleText}\"",
+            markup.ReplaceLineEndings("\n"),
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("StringFormat='Daily ticket price: {0}'", markup, StringComparison.Ordinal);
+    }
+
     private static OperationsCalendarSnapshot WithAdmission(OperationsCalendarSnapshot snapshot, Domain.Catalog.PriceKind kind) =>
         snapshot with
         {
