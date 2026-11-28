@@ -118,7 +118,8 @@ candidate.
 
 Sections 1–3 need a real closing. This section reproduces the same transition deterministically with synthetic data
 for the past date **Thursday, August 20, 2026**, which the app never retrieves online. It uses the separate harness
-package `LOCAL-ONLY-RC15-PricingRetentionHarness2-LOCALTEST-win-x64.zip` (__H2__; fix record §11). It replaces the
+package `LOCAL-ONLY-RC15-PricingRetentionHarness2-LOCALTEST-win-x64.zip` (41,733,820 bytes; SHA-256
+`cb9036791013e7be316763e143a66f42ff2a51ff0ec5ad7567a9f0e271f7d2ab`; source `efd6f63`; accepts `CarowindsTest` or `CarowindsTestB`; fix record §11). It replaces the
 first harness package (`…Harness-LOCALTEST…`, SHA-256 `04547d8d…d924`), which accepted only `CarowindsTest` and refused
 `CarowindsTestB`; do not use the first one. Use it with the app
 package above (SHA-256 `080ffc57…d191`). The harness

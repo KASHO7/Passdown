@@ -194,7 +194,7 @@ not shipped with the app; same pattern as `tools/updater-offline-stager`), rathe
 | | |
 |---|---|
 | Harness package (superseded) | `artifacts/local-test/RC15-PricingRetentionHarness-LOCALTEST/LOCAL-ONLY-RC15-PricingRetentionHarness-LOCALTEST-win-x64.zip` — built by `tools/pricing-retention-harness/build-harness.sh` from clean commit `780da37`; 41,731,586 bytes; 203 files (self-contained win-x64, no PDB, no database); refuses `CarowindsTestB`; SHA-256 `04547d8d82e7e6008fb3c778aecc64f51c5026c3521547f52c1a7b7a6c71d924`; six fixtures embedded; version stamp `0.1.0-rc.15-LOCALTEST.pricing-retention-harness+780da37…`. All 15,895 earlier artifact files re-hashed byte-identical (including the app ZIP `080ffc57…d191`). The app package is unchanged: production source has not changed since `1be060d`. |
-| Harness package 2 (use this) | __H2ROW__ |
+| Harness package 2 (use this) | `artifacts/local-test/RC15-PricingRetentionHarness2-LOCALTEST/LOCAL-ONLY-RC15-PricingRetentionHarness2-LOCALTEST-win-x64.zip` — built by `tools/pricing-retention-harness/build-harness.sh` from clean commit `efd6f63`; 41,733,820 bytes; 203 files (self-contained win-x64, no PDB, no database); SHA-256 `cb9036791013e7be316763e143a66f42ff2a51ff0ec5ad7567a9f0e271f7d2ab`; accepts exactly `CarowindsTest` or `CarowindsTestB`; version stamp `0.1.0-rc.15-LOCALTEST.pricing-retention-harness2+efd6f63…`. All 15,897 earlier artifact files re-hashed byte-identical (first harness ZIP `04547d8d…d924` and app ZIP `080ffc57…d191` unchanged). Deterministic suite at `efd6f63`: 6,540 passed / 0 failed / 0 skipped (Infrastructure 1,469 incl. 22 `PricingRetentionHarnessTestAccountPolicyTests`); guards 31/31; clean Release build 0/0. |
 
 ## Validation
 
