@@ -202,6 +202,16 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
         f.Vm.Associate.PassPerks!.PendingLoad.Wait(2000); Pump(4); f.Vm.Associate.PassPerks.Items.First(i => i.Title.StartsWith("Earn", StringComparison.Ordinal)).ViewDetailsCommand.Execute(null); Pump(10); }),
     ("Associate-Details-PerkTerms", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8);
         f.Vm.Associate.PassPerks!.PendingLoad.Wait(2000); Pump(4); f.Vm.Associate.PassPerks.ViewProgramTermsCommand.Execute(null); Pump(10); }),
+    // Phase 37D: the Calendar's selected-date Weather group (synthetic weather, no NWS request) and the Settings control.
+    ("Calendar37D-Today", () => new Fixture(calendarWeatherState: "Normal"), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Today); }),
+    ("Calendar37D-TodayHourly", () => new Fixture(calendarWeatherState: "Normal"), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Today); f.Vm.Calendar.IsWeatherHourlyExpanded = true; Pump(6); ScrollToName(f.Window, "Hourly forecast"); }),
+    ("Calendar37D-Tomorrow", () => new Fixture(calendarWeatherState: "Normal"), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Today.AddDays(1)); }),
+    ("Calendar37D-Beyond", () => new Fixture(calendarWeatherState: "Normal"), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Busy); }),
+    ("Calendar37D-Past", () => new Fixture(calendarWeatherState: "Normal"), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Past); }),
+    ("Calendar37D-Alerts", () => new Fixture(calendarWeatherState: "Alerts"), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Today); }),
+    ("Calendar37D-Stale", () => new Fixture(calendarWeatherState: "Stale"), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Today); }),
+    ("Calendar37D-Unavailable", () => new Fixture(calendarWeatherState: "Unavailable"), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Today); }),
+    ("Settings37D-WeatherOutlook", () => new Fixture(), f => { Go(f, AppSection.Settings); Pump(6); ScrollToName(f.Window, "Passdown Defaults"); }),
     ("Calendar-PassPerks", () => new Fixture(), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Other); }),
     ("Calendar-PassPerksMonthLong", () => new Fixture(), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Today);
         foreach (var e in f.Window.GetVisualDescendants().OfType<Expander>().Where(e => (e.Header as string)?.StartsWith("Valid all", StringComparison.Ordinal) == true)) e.IsExpanded = true; Pump(6); }),
@@ -712,7 +722,7 @@ internal sealed class Fixture
 
     public Fixture(bool includedNote = false, bool emptyNotes = false, bool emptyHistory = false, SyncFixture sync = SyncFixture.Off, Carowinds.Passdown.Application.Shows.ShowScheduleView? dashboardShows = null, bool showPassPerks = true,
         PdfPreviewLayoutPreferences? preview = null, InterfaceMotionController? motion = null, DashboardVariant dashboardVariant = DashboardVariant.Typical,
-        string? weatherState = null, bool weatherExpanded = false)
+        string? weatherState = null, bool weatherExpanded = false, string? calendarWeatherState = null)
     {
         var clock = new FakeClock(Fixtures.Now);
         var passPerks = Phase32Fixtures.Service();
@@ -758,7 +768,21 @@ internal sealed class Fixture
 
         Vm = new MainViewModel(
             new OperationsDashboardViewModel(dashboard, uiDispatcher: weather is null ? null : new ImmediateUiDispatcher(), weather: weather),
-            new OperationsCalendarViewModel(CalendarService, clock, passPerksService: passPerks, calendarDisplay: calendarDisplay),
+            new OperationsCalendarViewModel(CalendarService, clock, passPerksService: passPerks, calendarDisplay: calendarDisplay,
+                // Phase 37D: the selected-date Weather group over a scripted monitor (synthetic, no NWS request). Null keeps
+                // the RC.14 Calendar without the group, so the earlier Calendar scenarios stay comparable.
+                uiDispatcher: calendarWeatherState is null ? null : new ImmediateUiDispatcher(),
+                weatherMonitor: calendarWeatherState is null ? null : new FakeWeatherMonitor
+                {
+                    Current = calendarWeatherState switch
+                    {
+                        "Normal" => WeatherUiFixtures.Normal(),
+                        "Alerts" => WeatherUiFixtures.TwoAlerts(),
+                        "Stale" => WeatherUiFixtures.Stale(),
+                        "Unavailable" => WeatherUiFixtures.Unavailable(),
+                        _ => null, // Loading
+                    },
+                }),
             new AssociateViewModel(AssociateService, clock, autosaveDelay: (_, _) => Task.CompletedTask,
                 externalLinkLauncher: new Phase31CFixtures.NoOpLinkLauncher(), dealsService: Phase31CFixtures.Deals(), importantDetailsService: Phase31CFixtures.Details(), passPerksService: passPerks,
                 // Phase 33: the real QuestPDF export (the default) rendered by the real PDFium rasterizer, inline and
