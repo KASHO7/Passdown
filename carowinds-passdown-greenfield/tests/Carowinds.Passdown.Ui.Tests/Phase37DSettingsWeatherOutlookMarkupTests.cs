@@ -57,4 +57,18 @@ public class Phase37DSettingsWeatherOutlookMarkupTests
         Assert.Contains(typeof(AssociateViewModel).GetConstructors(), ctor => ctor.GetParameters().Any(p => p.ParameterType == typeof(PassdownWeatherOutlookSettingsViewModel)));
         Assert.Contains(typeof(PersonalSyncSettingsViewModel).GetConstructors(), ctor => ctor.GetParameters().Any(p => p.ParameterType == typeof(PassdownWeatherOutlookSettingsViewModel)));
     }
+
+    [Fact]
+    public void CalendarWeather_IsInTheSelectedDatePanel_AndNeverInTheDayCells()
+    {
+        var markup = Source("src", "Carowinds.Passdown.Desktop", "Views", "OperationsCalendarView.axaml");
+        var panel = markup.IndexOf("x:Name=\"SelectedDateDetails\"", StringComparison.Ordinal);
+        var weather = markup.IndexOf("x:Name=\"SelectedDateWeather\"", StringComparison.Ordinal);
+        var perks = markup.IndexOf("x:Name=\"SelectedDatePassPerks\"", StringComparison.Ordinal);
+        Assert.True(panel > 0 && weather > panel && perks > weather, "Weather follows Park information, before Pass Perks");
+
+        var dayCellStart = markup.IndexOf("<Button Classes=\"calendarDay\"", StringComparison.Ordinal);
+        var dayCellEnd = markup.IndexOf("</Button>", dayCellStart, StringComparison.Ordinal);
+        Assert.DoesNotContain("Weather", markup[dayCellStart..dayCellEnd], StringComparison.OrdinalIgnoreCase);
+    }
 }

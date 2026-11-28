@@ -12,7 +12,8 @@ namespace Carowinds.Passdown.Infrastructure.Tests.Weather;
 /// the Documents files and the three Desktop capture files listed below may carry the outlook, which is read from the
 /// monitor's cached snapshot only; finalized snapshots, drafts, sync and History still carry no weather.
 /// Phase 37D (owner-authorized Calendar Weather and Settings integration) extends the Desktop list once more: the
-/// one shared Include Weather Outlook preference shown in Settings → Passdown Defaults.
+/// Calendar's selected-date Weather group (it only reads the monitor's cached snapshot and listens for changes) and
+/// the one shared Include Weather Outlook preference shown in Settings → Passdown Defaults.
 /// </summary>
 public class WeatherActivationGuardTests
 {
@@ -32,17 +33,21 @@ public class WeatherActivationGuardTests
     private static readonly string[] DesktopWeatherFiles =
     [
         "src/Carowinds.Passdown.Desktop/App.axaml.cs",
+        "src/Carowinds.Passdown.Desktop/Converters/WeatherIconGeometryConverter.cs",
+        "src/Carowinds.Passdown.Desktop/Presentation/CalendarWeatherPresentation.cs",
         "src/Carowinds.Passdown.Desktop/Presentation/DashboardWeatherPresentation.cs",
         "src/Carowinds.Passdown.Desktop/Presentation/PassdownWeatherOutlookSource.cs",
         "src/Carowinds.Passdown.Desktop/Services/IWeatherLinkLauncher.cs",
         "src/Carowinds.Passdown.Desktop/ViewModels/AssociateViewModel.cs",
         "src/Carowinds.Passdown.Desktop/ViewModels/DashboardWeatherViewModel.cs",
+        "src/Carowinds.Passdown.Desktop/ViewModels/OperationsCalendarViewModel.cs",
         "src/Carowinds.Passdown.Desktop/ViewModels/OperationsDashboardViewModel.cs",
         "src/Carowinds.Passdown.Desktop/ViewModels/PassdownPdfPreviewViewModel.cs",
         "src/Carowinds.Passdown.Desktop/ViewModels/PassdownWeatherOutlookSettingsViewModel.cs",
         "src/Carowinds.Passdown.Desktop/ViewModels/PersonalSyncSettingsViewModel.cs",
         "src/Carowinds.Passdown.Desktop/Views/AssociateView.axaml",
         "src/Carowinds.Passdown.Desktop/Views/DashboardView.axaml",
+        "src/Carowinds.Passdown.Desktop/Views/OperationsCalendarView.axaml",
         "src/Carowinds.Passdown.Desktop/Views/PersonalSyncSettingsView.axaml",
     ];
 
@@ -116,10 +121,23 @@ public class WeatherActivationGuardTests
     }
 
     [Fact]
-    public void WeatherOutlookPreference_HoldsNoWeatherDataOrRetrieval()
+    public void CalendarWeather_OnlyReadsAndObservesTheMonitor_AndNeverRequestsWeather()
     {
-        // The Settings preference holds no weather data or retrieval at all.
-        foreach (var file in new[] { "src/Carowinds.Passdown.Desktop/ViewModels/PassdownWeatherOutlookSettingsViewModel.cs", "src/Carowinds.Passdown.Desktop/ViewModels/PersonalSyncSettingsViewModel.cs" })
+        // Phase 37D: selecting dates or months reads the cached snapshot; the monitor alone owns refreshes (§22.13).
+        var calendar = RepositoryFiles.ReadText("src/Carowinds.Passdown.Desktop/ViewModels/OperationsCalendarViewModel.cs");
+        var uses = System.Text.RegularExpressions.Regex.Matches(calendar, @"(_weatherMonitor|weatherMonitor)\.[A-Za-z]+").Select(match => match.Value).Distinct().Order(StringComparer.Ordinal).ToArray();
+        Assert.Equal(["_weatherMonitor.Current", "weatherMonitor.Changed"], uses);
+        foreach (var file in new[] { "src/Carowinds.Passdown.Desktop/ViewModels/OperationsCalendarViewModel.cs", "src/Carowinds.Passdown.Desktop/Presentation/CalendarWeatherPresentation.cs" })
+        {
+            var text = RepositoryFiles.ReadText(file);
+            foreach (var forbidden in new[] { "RefreshNowAsync", ".Start()", "IWeatherProvider", "WeatherRefreshCoordinator", "HttpClient", "IExternalLinkLauncher", "IOfficialDataRefreshCoordinator" })
+            {
+                Assert.DoesNotContain(forbidden, text, StringComparison.Ordinal);
+            }
+        }
+
+        // The Settings preference and the icon converter hold no weather data or retrieval at all.
+        foreach (var file in new[] { "src/Carowinds.Passdown.Desktop/ViewModels/PassdownWeatherOutlookSettingsViewModel.cs", "src/Carowinds.Passdown.Desktop/ViewModels/PersonalSyncSettingsViewModel.cs", "src/Carowinds.Passdown.Desktop/Converters/WeatherIconGeometryConverter.cs" })
         {
             var text = RepositoryFiles.ReadText(file);
             foreach (var forbidden in new[] { "IWeatherMonitor", "WeatherSnapshot", "IWeatherProvider", "HttpClient" })
