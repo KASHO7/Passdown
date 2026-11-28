@@ -84,7 +84,13 @@ Notable groups:
   [phase37d-calendar-weather-settings-integration.md](phase37d-calendar-weather-settings-integration.md) (Calendar
   selected-date Weather group with hourly detail, and Settings → Passdown Defaults "Include Weather Outlook by default"
   sharing the one Weather Outlook preference — implemented locally, awaiting Windows validation;
-  [Windows checklist](releases/rc15-phase37d-localtest-windows-checklist.md)).
+  [Windows checklist](releases/rc15-phase37d-localtest-windows-checklist.md));
+  [pre-rc15-post-closing-pricing-retention.md](pre-rc15-post-closing-pricing-retention.md) (verified dated prices kept
+  after the official calendar stops listing the date — implemented locally; Windows harness PASS, screen and PDF checks
+  not yet reported; [Windows checklist](releases/rc15-pricing-retention-localtest-windows-checklist.md));
+  [phase37e-integrated-weather-pricing-release-readiness.md](phase37e-integrated-weather-pricing-release-readiness.md)
+  (integrated validation and RC.15 release-readiness assessment; no production change — awaiting integrated Windows
+  acceptance; [Windows checklist](releases/rc15-phase37e-integrated-localtest-windows-checklist.md)).
 - Defect record: [rc9-price-history-legacy-identity-defect.md](rc9-price-history-legacy-identity-defect.md).
 
 ## Research (not product features)
