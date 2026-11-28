@@ -118,7 +118,9 @@ candidate.
 
 Sections 1–3 need a real closing. This section reproduces the same transition deterministically with synthetic data
 for the past date **Thursday, August 20, 2026**, which the app never retrieves online. It uses the separate harness
-package `LOCAL-ONLY-RC15-PricingRetentionHarness-LOCALTEST-win-x64.zip` (details in the fix record §11). The harness
+package `LOCAL-ONLY-RC15-PricingRetentionHarness-LOCALTEST-win-x64.zip` (41,731,586 bytes; SHA-256
+`04547d8d82e7e6008fb3c778aecc64f51c5026c3521547f52c1a7b7a6c71d924`; source `780da37`; fix record §11). Use it with the app
+package above (SHA-256 `080ffc57…d191`). The harness
 runs the app's own Daily Admission and Fast Lane code and its own database code; only the official answers are
 recorded synthetic ones and the clock is the harness's own (3:10 PM, then 10:15 PM on Aug 20). It makes no network
 request and does not touch the Windows clock. Prices: Park Ticket **$49.00**, FAST LANE RESERVE **$49.00**, FAST LANE

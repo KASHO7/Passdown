@@ -189,6 +189,10 @@ not shipped with the app; same pattern as `tools/updater-offline-stager`), rathe
   ULTIMATE $85.00 and the footer "Some product pricing has not been recently verified.".
 - **Windows steps:** checklist section "Simulated closing" (S.1–S.10); not executed.
 
+| | |
+|---|---|
+| Harness package | `artifacts/local-test/RC15-PricingRetentionHarness-LOCALTEST/LOCAL-ONLY-RC15-PricingRetentionHarness-LOCALTEST-win-x64.zip` — built by `tools/pricing-retention-harness/build-harness.sh` from clean commit `780da37`; 41,731,586 bytes; 203 files (self-contained win-x64, no PDB, no database); SHA-256 `04547d8d82e7e6008fb3c778aecc64f51c5026c3521547f52c1a7b7a6c71d924`; six fixtures embedded; version stamp `0.1.0-rc.15-LOCALTEST.pricing-retention-harness+780da37…`. All 15,895 earlier artifact files re-hashed byte-identical (including the app ZIP `080ffc57…d191`). The app package is unchanged: production source has not changed since `1be060d`. |
+
 ## Validation
 
 | Check | Result |
