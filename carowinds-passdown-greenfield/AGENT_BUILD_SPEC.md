@@ -243,7 +243,7 @@ Do not treat a successfully retrieved response as valid for the requested date w
 
 ### 6.6 Weather information
 
-Status: approved, not yet released (§4.4). The Dashboard summary is implemented locally (Phase 37C, `docs/phase37c-dashboard-weather-integration.md`) and awaits Windows validation and release approval; the Passdown PDF Weather Outlook is implemented locally (Phase 37F, `docs/phase37f-compact-pdf-weather-outlook.md`) and awaits Windows validation and release approval; the Calendar forecast details are not implemented. Authority: the product owner's approved specification amendment of 2026-11-27, recorded in `docs/phase37a-weather-source-architecture-plan.md`, which also holds the source research and architecture plan.
+Status: approved, not yet released (§4.4). The Dashboard summary is implemented locally (Phase 37C, `docs/phase37c-dashboard-weather-integration.md`) and awaits Windows validation and release approval; the Passdown PDF Weather Outlook is implemented locally (Phase 37F, `docs/phase37f-compact-pdf-weather-outlook.md`) and awaits Windows validation and release approval; the Calendar selected-date forecast and the Settings control for the Weather Outlook preference are implemented locally (Phase 37D, `docs/phase37d-calendar-weather-settings-integration.md`) and await Windows validation and release approval. Authority: the product owner's approved specification amendment of 2026-11-27, recorded in `docs/phase37a-weather-source-architecture-plan.md`, which also holds the source research and architecture plan.
 
 **Source.** Carowinds Operations may retrieve and display publicly available weather forecasts, observations, and official weather alerts from the U.S. National Weather Service (NWS/NOAA). NWS is an explicitly approved source for weather information and the primary provider for the initial implementation.
 
@@ -272,6 +272,7 @@ A station observation is not a measurement taken at the park and must be identif
 - Each generation uses one immutable weather summary captured with the rest of the document for that document's own date; creating, previewing, printing or saving a PDF never requests weather, and a weather refresh can never change a document already being generated.
 - Weather is not added to drafts, Personal Sync, finalized snapshots or the database. Finalized PDFs keep their stored bytes; scheduled finalization, which runs after the operating day, produces no forecast for past hours.
 - **Include Weather Outlook** (owner requirement restated in the Phase 37F follow-up brief, 2026-11-27): a checkbox labelled "Weather Outlook" in the Overview's Include in Passdown choices, directly below Shows, decides whether the outlook is included (moved there from the Actions menu by the owner, 2026-11-27; there is no second control). It is on when nothing has been saved, is remembered on this computer only (a device preference, §16.6: never in drafts, Personal Sync, the database or finalized snapshots), and applies the same way to the live preview, Print, Save PDF and Create PDF; each document captures the setting together with its weather. Changing it refreshes the preview promptly. When it is off, no template prints any weather and each keeps its original layout with no reserved space. It never changes finalized History documents.
+- **Settings control** (owner brief "Phase 37D — Calendar Weather Integration + PDF Weather Default Setting", 2026-11-27): Settings → Passdown Defaults shows the same preference as a checkbox labelled "Include Weather Outlook by default", described as "Include the Weather Outlook in Passdown PDFs when a valid forecast is available." It supersedes the earlier statement that the Passdown checkbox is the only control: the two checkboxes are one preference (one stored value, `passdown-weather-outlook.json`; no second preference, no separate default-versus-override). Changing either changes the other at once and refreshes the Passdown preview; the last saved choice applies after a restart; a first-time user starts with it on. A change that cannot be saved still applies until the app closes, and Settings says it was not saved.
 
 Approved presentation decisions (owner decisions D4, D6 and D7, 2026-11-27):
 
@@ -279,6 +280,7 @@ Approved presentation decisions (owner decisions D4, D6 and D7, 2026-11-27):
 - Weather-specific manual refresh is offered only in the expanded weather details. No additional global Check Online command is added, and Check Online keeps its official-data meaning. A manual refresh still respects each request's minimum interval and failure backoff, never runs alongside another weather refresh, and reports a failure as a failure.
 - The Dashboard's rain chance is the highest hourly NWS precipitation probability for today's park operating hours (from now on, once they have started), or for the rest of the day when the park is closed, has no hours or has closed; the card states that period (approved mock-up, D4).
 - Calendar month-grid day cells show no weather; weather appears only in the selected-date panel.
+- **Calendar selected-date forecast** (Phase 37D, owner brief of 2026-11-27): a compact "Weather" group in the selected-date panel, after Park information, built only from the cached forecast (selecting dates or months never requests weather). For a date with confirmed park hours it describes those hours (the rest of them once they have started; hours past midnight belong to the operating date), using the Passdown PDF's selection and wording: the condition, the temperature range over the covered hours, the rain chance ("up to", or "possible after" a clear rise), the day's NWS high and low, and a collapsed hourly disclosure for those hours with Eastern times, a vector icon, temperature, condition, rain chance and wind when given. A closed date or a date without confirmed hours is labelled a general forecast for the day and never presented as park hours; when today's hours have ended the rest of the day is shown and labelled. Partial coverage (the forecast ends or has a gap inside the period, or only the 12-hour day forecast reaches the date) is stated; a missing value is left out or said in words, never a zero. Past dates show no weather; dates beyond the forecast say so; an outage or never-retrieved state shows words, not values; a forecast older than the freshness policy is marked "may be out of date". Official alerts appear only from a current alert check and only on dates their own effective and end times cover, as one line each with a pointer to the Dashboard for details; an unchecked or stale alert feed is never read as "no alerts".
 
 **Refresh.** Weather is refreshed only while the application is open, following provider caching guidance, minimum request intervals, error handling, and backoff. Official alerts are checked with a target of every five minutes (owner decision D5).
 
@@ -468,7 +470,7 @@ Preserve the approved Calendar design, including:
 
 Do not communicate event or operational status by color alone.
 
-Approved weather forecast details for the selected date (§6.6, not yet implemented) must not crowd the day cells or change the existing open/closed, draft/finalized, or Pass Perks presentation.
+Approved weather forecast details for the selected date (§6.6; implemented locally in Phase 37D, not yet released) appear only in the selected-date panel; they must not crowd the day cells or change the existing open/closed, draft/finalized, or Pass Perks presentation.
 
 ### 9.3 Pass Perks
 
@@ -1080,6 +1082,8 @@ Animations must not delay operational commands or interfere with editing, saving
 ### 17.3 Passdown Defaults
 
 Preserve approved configurable defaults for future Passdown creation and applicable document behavior.
+
+Passdown Defaults includes "Include Weather Outlook by default" (§6.6), the same device preference as the Passdown's Weather Outlook checkbox.
 
 Changing a default must not silently overwrite existing date-specific draft decisions.
 

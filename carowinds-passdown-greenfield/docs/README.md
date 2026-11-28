@@ -80,7 +80,11 @@ Notable groups:
   [design/phase37c-weather-mockup/](design/phase37c-weather-mockup/README.md));
   [phase37f-compact-pdf-weather-outlook.md](phase37f-compact-pdf-weather-outlook.md) (compact, park-hours-aware Weather
   Outlook in the Classic, Modern and Compact Passdown PDFs, no alerts — implemented locally, awaiting Windows validation;
-  [Windows checklist](releases/rc15-phase37f-localtest-windows-checklist.md)).
+  [Windows checklist](releases/rc15-phase37f-localtest-windows-checklist.md));
+  [phase37d-calendar-weather-settings-integration.md](phase37d-calendar-weather-settings-integration.md) (Calendar
+  selected-date Weather group with hourly detail, and Settings → Passdown Defaults "Include Weather Outlook by default"
+  sharing the one Weather Outlook preference — implemented locally, awaiting Windows validation;
+  [Windows checklist](releases/rc15-phase37d-localtest-windows-checklist.md)).
 - Defect record: [rc9-price-history-legacy-identity-defect.md](rc9-price-history-legacy-identity-defect.md).
 
 ## Research (not product features)
