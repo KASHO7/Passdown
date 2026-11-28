@@ -443,3 +443,13 @@ in the manifest notes (§21.3). Published assets and the tag are frozen; any cha
 Architecture and specification review for §21: status lines only (`AGENT_BUILD_SPEC.md` §4.4/§6.6,
 `docs/architecture.md`, `docs/architecture/updates-and-release.md`, `docs/README.md`). No requirement, dependency, data
 contract, updater, signing, trust or packaging change — **reviewed — no change required** for those areas.
+
+## 22. Later sign-off: RC.14 → RC.15 Windows update (owner-reported, 2026-11-28)
+
+Added after publication as a separate sign-off; §1–§21 are unchanged. Published assets and the tag were not touched.
+
+| Check | Result |
+|---|---|
+| **RC.14 → RC.15 in-app update on Windows (§13 procedure)** | **USER-VERIFIED ON WINDOWS** — the product owner reported: "i updated from rc14 to rc15 just fine" (2026-11-28). No per-step results from the §13 list (About versions, data checks, Weather, PDF, Personal Sync, backup folder) were reported. Claude did not run, observe or independently reproduce the update |
+
+Still not executed: RC.13/RC.12/RC.11 → RC.15 in-app updates and the §13 Windows negative tests.
