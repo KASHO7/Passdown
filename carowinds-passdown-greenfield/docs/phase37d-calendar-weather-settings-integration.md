@@ -1,12 +1,12 @@
 # Phase 37D — Calendar Weather and Settings Integration
 
-Status: implemented locally / awaiting Windows validation / not owner-accepted / not published.
+Status: implemented locally / awaiting Windows validation (local test candidate `RC15-Phase37D-LOCALTEST`) / not owner-accepted / not published.
 
 | | |
 |---|---|
 | Branch | `feature/passdown-redesign` (local; nothing pushed) |
 | Starting commit | `a1c090d` (Phase 37F-12, documentation only) |
-| Ending commits | `bdda770` (37D-1 Application/Documents reuse seams), `d988e04` (37D-2 shared preference and Settings), `1ccebbc` (37D-3 Calendar Weather), `83c9a85` (37D-4 visual fixtures and benchmark), then the documentation commit that adds this record; the Windows candidate is recorded in a later documentation-only commit |
+| Ending commits | `bdda770` (37D-1 Application/Documents reuse seams), `d988e04` (37D-2 shared preference and Settings), `1ccebbc` (37D-3 Calendar Weather), `83c9a85` (37D-4 visual fixtures and benchmark), `84cf43d` (37D-5 documentation), then 37D-6 (documentation: the Windows candidate) |
 | Reviewed source baseline | `83c9a85` (tests, builds, renders and measurements ran on this production source) |
 | Dirty-tree caveats | Clean at start; no unrelated changes present |
 | Authorization | Owner brief "Carowinds Operations — Phase 37D: Calendar Weather Integration + PDF Weather Default Setting" (2026-11-27): the Calendar selected-date forecast with expandable hourly detail (planned in Phase 37A §12, D7) and a Settings control for the existing Phase 37F Weather Outlook preference |
@@ -223,8 +223,18 @@ accessibility evidence.
 
 ## 18. Windows LOCALTEST details
 
-Recorded after the package is built (see the follow-up section and
-[the Windows checklist](releases/rc15-phase37d-localtest-windows-checklist.md)).
+| | |
+|---|---|
+| Package | `artifacts/local-test/RC15-Phase37D-LOCALTEST/LOCAL-ONLY-RC15-Phase37D-LOCALTEST-win-x64.zip` (git-ignored, local only) |
+| Source commit | `84cf43d` (production source identical to the reviewed baseline `83c9a85`; `84cf43d` is documentation only) |
+| Version shown in the app | `0.1.0-rc.15-LOCALTEST.phase37d` (source `<Version>` stays `0.1.0-rc.14`) |
+| Size / files | 76,533,267 bytes; 308 files (162.6 MB uncompressed) |
+| SHA-256 | `374c35d0d21b68f2d8402e5ebddaad27c2ce6b1d6d78d2db7f85beb040be9e7e` |
+| Command | `Build-PortableRelease.ps1 -LocalTestLabel RC15-Phase37D-LOCALTEST -LocalTestVersion 0.1.0-rc.15-LOCALTEST.phase37d` (PowerShell 7.6.10, the .NET tool already installed in an earlier session's scratch folder; nothing downloaded) |
+| Content validation | Script validation passed for the staging folder and the ZIP (308 files); `CAROWINDS_RELEASE_ZIP=… --filter RealReleaseZip` passed, and fails for a bogus path; no database, WAL/SHM, draft, weather cache, preference file, key, signature, update manifest, PDB or PDF in the ZIP; marker `LOCAL-ONLY-TEST-BUILD.txt` names `84cf43d` |
+| Earlier artifacts | All 14,763 earlier files under `artifacts/` hashed before the build and re-hashed after: byte-identical (RC.14 and every earlier local test package untouched) |
+
+Not signed, no update manifest, not published.
 
 ## 19. Windows acceptance checklist
 

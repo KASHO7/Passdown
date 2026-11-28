@@ -1,7 +1,8 @@
 # RC15 local Windows test candidate — Phase 37D Calendar Weather and Settings
 
 **LOCAL-ONLY. Not a release.** It is not pushed, tagged, signed or published, and it has no update manifest.
-RC.14 (published prerelease `v0.1.0-rc.14`) and every earlier file under `artifacts/` are unchanged.
+RC.14 (published prerelease `v0.1.0-rc.14`) and every earlier file under `artifacts/` are unchanged: all 14,763
+were re-hashed after this build.
 
 Phase 37D adds a compact **Weather** group to the Calendar's selected-date panel (with an expandable hourly forecast)
 and the **Include Weather Outlook by default** checkbox to Settings → Passdown Defaults — the same setting as the
@@ -11,13 +12,13 @@ Record: [phase37d-calendar-weather-settings-integration.md](../phase37d-calendar
 
 | | RC15-Phase37D-LOCALTEST |
 |---|---|
-| Source commit | PENDING (recorded when the package is built) |
+| Source commit | `84cf43d` (production source identical to `83c9a85`; the later commit is documentation only) |
 | Version shown in the app | `0.1.0-rc.15-LOCALTEST.phase37d` |
 | Package | `artifacts/local-test/RC15-Phase37D-LOCALTEST/LOCAL-ONLY-RC15-Phase37D-LOCALTEST-win-x64.zip` |
-| ZIP size / files | PENDING |
-| ZIP SHA-256 | PENDING |
+| ZIP size / files | 76,533,267 bytes (73.0 MB); 308 files |
+| ZIP SHA-256 | `374c35d0d21b68f2d8402e5ebddaad27c2ce6b1d6d78d2db7f85beb040be9e7e` |
 | EXE inside the ZIP | `LOCAL-ONLY-RC15-Phase37D-LOCALTEST-win-x64\Carowinds.Passdown.Desktop.exe` |
-| Mac verification | PENDING |
+| Mac verification | Deterministic suite 6,463 passed / 0 skipped; repository guards 31/31; clean Release build 0 warnings / 0 errors; script content validation (folder and ZIP, 308 files); `RealReleaseZip` passed (a bogus path fails); marker names `84cf43d`; no database, WAL/SHM, draft, weather cache, preference file, key, signature, update-manifest, PDB or PDF file in the ZIP; all 14,763 earlier artifact files (including RC.14 and every Phase 37F ZIP) re-hashed byte-identical |
 
 The source `<Version>` is still `0.1.0-rc.14` (not bumped). Database schema 18, no migration. Personal Sync, the draft
 format and finalized History are unchanged.
