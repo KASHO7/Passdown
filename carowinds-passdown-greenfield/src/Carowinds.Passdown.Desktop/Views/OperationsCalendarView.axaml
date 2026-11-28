@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Carowinds.Passdown.Desktop.ViewModels"
              xmlns:presentation="using:Carowinds.Passdown.Desktop.Presentation"
+             xmlns:converters="using:Carowinds.Passdown.Desktop.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="860"
@@ -323,6 +324,32 @@
       <Setter Property="BorderBrush" Value="{DynamicResource PassdownPerkDeadlineBrush}" />
     </Style>
 
+    <!-- Phase 37D: the selected-date Weather group's line icons (the PDF Weather Outlook's set) in the text colour; the
+         cloud layer is filled with the panel surface so it masks what it covers, in Light and Dark alike. -->
+    <Style Selector="Path.weatherIconBack">
+      <Setter Property="Stroke" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+      <Setter Property="StrokeThickness" Value="1.8" />
+      <Setter Property="StrokeLineCap" Value="Round" />
+      <Setter Property="StrokeJoin" Value="Round" />
+    </Style>
+    <Style Selector="Path.weatherIconFront">
+      <Setter Property="Stroke" Value="{DynamicResource PassdownTextSecondaryBrush}" />
+      <Setter Property="Fill" Value="{DynamicResource PassdownSurfaceBrush}" />
+      <Setter Property="StrokeThickness" Value="1.8" />
+      <Setter Property="StrokeLineCap" Value="Round" />
+      <Setter Property="StrokeJoin" Value="Round" />
+    </Style>
+    <!-- Phase 37D: one hour of the expanded hourly forecast — a hairline above each row, no card (as the Shows rows). -->
+    <Style Selector="Border.weatherHourRow">
+      <Setter Property="BorderThickness" Value="0,1,0,0" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PassdownDividerBrush}" />
+      <Setter Property="Padding" Value="0,5" />
+    </Style>
+    <Style Selector="Border.weatherHourRow TextBlock">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+    </Style>
+
     <!-- Narrow content (collapsed sidebar at 960–1100 px): a slimmer panel and tighter cells, never a clipped one. -->
   </UserControl.Styles>
 
@@ -616,7 +643,7 @@
                     <Grid Classes="detailRow" ColumnDefinitions="Auto,*">
                       <TextBlock Grid.Column="0" Text="Daily ticket" Classes="detailLabel" />
                       <TextBlock Grid.Column="1" Text="{Binding Presentation.DailyAdmissionPriceText}" Classes="detailValue"
-                                 AutomationProperties.Name="{Binding Presentation.DailyAdmissionPriceText, StringFormat='Daily ticket price: {0}'}" />
+                                 AutomationProperties.Name="{Binding Presentation.DailyAdmissionPriceAccessibleText}" />
                     </Grid>
 
                     <!-- Phase 22E: compact Shows — one summary line and a collapsed "View schedule" disclosure (shared
@@ -654,6 +681,92 @@
                       </Expander>
                       <TextBlock Text="{Binding CalendarShows.FreshnessText}" Classes="muted detailNote"
                                  IsVisible="{Binding CalendarShows.HasFreshnessText, FallbackValue=False}" />
+                    </StackPanel>
+                  </StackPanel>
+
+                  <!-- Phase 37D: Weather for the selected date — a compact summary of the cached NWS forecast (the app's one
+                       weather monitor; selecting a date never requests anything), not a second Dashboard card. Park hours
+                       first when the date has confirmed hours; a closed or unconfirmed date is labelled a general forecast.
+                       Past dates, dates beyond the forecast and an outage are words, never values. The hourly disclosure
+                       is collapsed by default (shared Expander.disclosure). Nothing is added to the day cells (D7). -->
+                  <StackPanel x:Name="SelectedDateWeather" IsVisible="{Binding Weather, Converter={x:Static ObjectConverters.IsNotNull}}"
+                              AutomationProperties.Name="Weather">
+                    <Border Classes="detailRule" />
+                    <TextBlock Text="Weather" Classes="detailHeading" />
+                    <TextBlock x:Name="WeatherMessage" Text="{Binding Weather.MessageText}" Classes="muted detailNote"
+                               IsVisible="{Binding Weather.HasMessage, FallbackValue=False}"
+                               AutomationProperties.Name="{Binding Weather.AutomationText}" />
+                    <StackPanel x:Name="WeatherForecast" IsVisible="{Binding Weather.HasForecast, FallbackValue=False}"
+                                AutomationProperties.Name="{Binding Weather.AutomationText}">
+                      <Grid ColumnDefinitions="Auto,*" Margin="0,1,0,1" IsVisible="{Binding Weather.HasSummary, FallbackValue=False}">
+                        <Viewbox Grid.Column="0" Width="18" Height="18" Margin="0,0,7,0" VerticalAlignment="Top"
+                                 IsVisible="{Binding Weather.HasSummaryIcon, FallbackValue=False}" AutomationProperties.AccessibilityView="Raw">
+                          <Canvas Width="24" Height="24">
+                            <Path Classes="weatherIconBack" Data="{Binding Weather.SummaryIcon, Converter={x:Static converters:WeatherIconGeometryConverter.Instance}, ConverterParameter=Back}" />
+                            <Path Classes="weatherIconFront" Data="{Binding Weather.SummaryIcon, Converter={x:Static converters:WeatherIconGeometryConverter.Instance}, ConverterParameter=Front}" />
+                          </Canvas>
+                        </Viewbox>
+                        <TextBlock Grid.Column="1" Text="{Binding Weather.SummaryText}" FontSize="12.5" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center" />
+                      </Grid>
+                      <TextBlock Text="{Binding Weather.ScopeText}" Classes="muted detailNote"
+                                 IsVisible="{Binding Weather.HasScope, FallbackValue=False}" />
+                      <ItemsControl x:Name="WeatherRows" ItemsSource="{Binding Weather.Rows}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="presentation:CalendarWeatherRow">
+                            <Grid Classes="detailRow" ColumnDefinitions="Auto,*" AutomationProperties.Name="{Binding AccessibleText}">
+                              <TextBlock Grid.Column="0" Text="{Binding Label}" Classes="detailLabel" />
+                              <TextBlock Grid.Column="1" Text="{Binding Value}" Classes="detailValue" />
+                            </Grid>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <TextBlock Text="{Binding Weather.CoverageNoteText}" Classes="muted detailNote"
+                                 IsVisible="{Binding Weather.HasCoverageNote, FallbackValue=False}" />
+                      <StackPanel x:Name="WeatherAlerts" IsVisible="{Binding Weather.HasAlerts, FallbackValue=False}" Margin="0,2,0,0"
+                                  AutomationProperties.Name="NWS alerts for the selected date">
+                        <ItemsControl ItemsSource="{Binding Weather.AlertLines}">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                              <TextBlock Text="{Binding}" Classes="fieldWarning detailNote" FontWeight="SemiBold" />
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="{Binding Weather.AlertsNoteText}" Classes="muted detailNote" />
+                      </StackPanel>
+                      <Expander x:Name="WeatherHourlyExpander" Classes="disclosure" Margin="0,2,0,0"
+                                Header="{Binding WeatherHourlyToggleText}"
+                                IsExpanded="{Binding IsWeatherHourlyExpanded}"
+                                IsVisible="{Binding Weather.HasHours, FallbackValue=False}"
+                                AutomationProperties.Name="Hourly forecast">
+                        <ItemsControl ItemsSource="{Binding Weather.Hours}" AutomationProperties.Name="Hourly NWS forecast for the selected date">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="presentation:CalendarWeatherHourRow">
+                              <Border Classes="weatherHourRow" AutomationProperties.Name="{Binding AccessibleText}">
+                                <Grid ColumnDefinitions="40,22,32,*,34">
+                                  <TextBlock Grid.Column="0" Text="{Binding TimeText}" Foreground="{DynamicResource PassdownTextSecondaryBrush}" />
+                                  <Viewbox Grid.Column="1" Width="15" Height="15" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,1,0,0"
+                                           IsVisible="{Binding HasIcon}" AutomationProperties.AccessibilityView="Raw">
+                                    <Canvas Width="24" Height="24">
+                                      <Path Classes="weatherIconBack" Data="{Binding Icon, Converter={x:Static converters:WeatherIconGeometryConverter.Instance}, ConverterParameter=Back}" />
+                                      <Path Classes="weatherIconFront" Data="{Binding Icon, Converter={x:Static converters:WeatherIconGeometryConverter.Instance}, ConverterParameter=Front}" />
+                                    </Canvas>
+                                  </Viewbox>
+                                  <TextBlock Grid.Column="2" Text="{Binding TemperatureText}" FontWeight="SemiBold" />
+                                  <StackPanel Grid.Column="3" Spacing="0" Margin="0,0,6,0">
+                                    <TextBlock Text="{Binding ConditionText}" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding WindText}" IsVisible="{Binding HasWind}" Foreground="{DynamicResource PassdownTextSecondaryBrush}" TextWrapping="Wrap" />
+                                  </StackPanel>
+                                  <TextBlock Grid.Column="4" Text="{Binding RainText}" TextAlignment="Right" ToolTip.Tip="Chance of precipitation" />
+                                </Grid>
+                              </Border>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </Expander>
+                      <TextBlock x:Name="WeatherSource" Text="{Binding Weather.SourceText}" Classes="muted detailNote"
+                                 IsVisible="{Binding !Weather.IsStale, FallbackValue=False}" />
+                      <TextBlock x:Name="WeatherSourceStale" Text="{Binding Weather.SourceText}" Classes="fieldWarning detailNote"
+                                 IsVisible="{Binding Weather.IsStale, FallbackValue=False}" />
                     </StackPanel>
                   </StackPanel>
 

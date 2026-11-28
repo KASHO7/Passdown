@@ -13,6 +13,14 @@ public interface IAssociatePassdownPdfExportService
 {
     /// <summary>Builds the print-ready <see cref="AssociatePassdownDocumentModel"/> from <paramref name="workspace"/> and generates the PDF in one call, using <paramref name="template"/> (Phase 17C; defaults to Classic).</summary>
     AssociatePassdownPdfResult GeneratePdf(AssociateWorkspace workspace, DateTimeOffset generatedAt, AssociatePassdownTemplate template = AssociatePassdownTemplate.Classic, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Phase 37F: the same generation with the Weather Outlook captured for it (null prints no weather). The outlook is
+    /// an immutable value, so a weather refresh during generation cannot change this document. The default
+    /// implementation (test doubles) prints no weather.
+    /// </summary>
+    AssociatePassdownPdfResult GeneratePdf(AssociateWorkspace workspace, DateTimeOffset generatedAt, AssociatePassdownTemplate template, PdfWeatherOutlook? weather, CancellationToken cancellationToken = default) =>
+        GeneratePdf(workspace, generatedAt, template, cancellationToken);
 }
 
 /// <inheritdoc cref="IAssociatePassdownPdfExportService"/>
@@ -23,6 +31,14 @@ public sealed class AssociatePassdownPdfExportService(IAssociatePassdownPdfGener
         ArgumentNullException.ThrowIfNull(workspace);
 
         var model = AssociatePassdownDocumentModelBuilder.Build(workspace, generatedAt);
+        return generator.Generate(model, template, cancellationToken);
+    }
+
+    public AssociatePassdownPdfResult GeneratePdf(AssociateWorkspace workspace, DateTimeOffset generatedAt, AssociatePassdownTemplate template, PdfWeatherOutlook? weather, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+
+        var model = AssociatePassdownDocumentModelBuilder.Build(workspace, generatedAt, weather);
         return generator.Generate(model, template, cancellationToken);
     }
 }

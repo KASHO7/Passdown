@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Pre-RC.15 Windows pricing-retention verification (docs/pre-rc15-post-closing-pricing-retention.md §11).
+    NOT part of the product and not in CarowindsPassdown.slnx. A disposable console harness for the CarowindsTest
+    Windows account: it drives the production dated-admission and Fast Lane sources, DatedSourceRegistration and
+    SqliteDatedResultRepository through a stub HTTP client that answers only from the committed synthetic fixtures
+    below (no network), with its own clock (the system clock is never changed), for one fixed past date.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>carowinds-pricing-retention-harness</AssemblyName>
+    <RootNamespace>Carowinds.PricingRetentionHarness</RootNamespace>
+    <Product>Carowinds pricing-retention verification harness (test only)</Product>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\fixtures\dated-admission\published-window.json" LogicalName="fixtures/dated-admission/published-window.json" />
+    <EmbeddedResource Include="..\..\fixtures\dated-admission\after-closing-window.json" LogicalName="fixtures/dated-admission/after-closing-window.json" />
+    <EmbeddedResource Include="..\..\fixtures\dated-fast-lane\published-today.json" LogicalName="fixtures/dated-fast-lane/published-today.json" />
+    <EmbeddedResource Include="..\..\fixtures\dated-fast-lane\horizon-window.json" LogicalName="fixtures/dated-fast-lane/horizon-window.json" />
+    <EmbeddedResource Include="..\..\fixtures\dated-fast-lane\no-dates-found.json" LogicalName="fixtures/dated-fast-lane/no-dates-found.json" />
+    <EmbeddedResource Include="..\..\fixtures\dated-fast-lane\after-closing-horizon-window.json" LogicalName="fixtures/dated-fast-lane/after-closing-horizon-window.json" />
+    <ProjectReference Include="..\..\src\Carowinds.Passdown.Infrastructure\Carowinds.Passdown.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

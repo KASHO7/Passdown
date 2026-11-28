@@ -102,7 +102,7 @@ public partial class ProductRowViewModel : ObservableObject, IPriceEditTarget
 
     public bool HasBundleNote => !string.IsNullOrWhiteSpace(BundleNoteText);
 
-    /// <summary>Only set for the two states worth flagging on a per-row basis; every other state is already covered by the category-level status banner or is unremarkable (spec Part C).</summary>
+    /// <summary>Only set for the states worth flagging on a per-row basis (stale, error and, pre-RC.15, previously verified); every other state is already covered by the category-level status banner or is unremarkable (spec Part C).</summary>
     public string? VerificationNoteText { get; }
 
     public string OverridePlaceholderText { get; }
@@ -389,6 +389,10 @@ public partial class ProductRowViewModel : ObservableObject, IPriceEditTarget
     private static string? BuildVerificationNote(AssociateVerificationInfo verification) => verification.State switch
     {
         AssociateVerificationState.Stale => "Stale — showing the last verified price.",
+        // Pre-RC.15: the official source no longer lists this date (its sales window ended or it was withdrawn).
+        AssociateVerificationState.PreviouslyVerified => verification.LastVerifiedAt is { } at
+            ? $"Last verified {EasternTimestampFormat.DateAndTime(at)} — sales availability not confirmed."
+            : "Previously verified — sales availability not confirmed.",
         AssociateVerificationState.Error => "Could not verify current pricing.",
         _ => null,
     };

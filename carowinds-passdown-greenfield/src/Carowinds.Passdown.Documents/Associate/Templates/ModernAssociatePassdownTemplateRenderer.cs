@@ -130,28 +130,25 @@ public sealed class ModernAssociatePassdownTemplateRenderer : IAssociatePassdown
         {
             grid.Spacing(m.GridSpacing);
 
-            grid.Item().Text(text =>
+            if (model.Weather is { } weather)
             {
-                text.Span(model.ParkHours.HeadlineText).FontSize(17).Bold();
-
-                if (model.ParkHours.BadgeText is { } badge)
+                // Phase 37F: the Weather Outlook sits opposite the hours headline, beside the headline and the metadata
+                // row (same spacing), within their height; Early Ride keeps the full width below.
+                grid.Item().Row(row =>
                 {
-                    text.Span($"   {badge}").FontSize(8.5f).Italic().FontColor(MutedTextColor);
-                }
-            });
-
-            if (model.ParkHours.PrivateBuyoutDetails is { } details)
-            {
-                grid.Item().Text($"Buyout details: {details}").FontSize(8.5f).FontColor(MutedTextColor);
+                    row.RelativeItem().Column(top =>
+                    {
+                        top.Spacing(m.GridSpacing);
+                        ComposeHoursAndMetadata(top, model);
+                    });
+                    row.ConstantItem(WeatherGap);
+                    row.ConstantItem(WeatherWidth).Dynamic(new PdfWeatherOutlookComponent(weather, WeatherStyle, WeatherHeightBudget(m), WeatherLevels));
+                });
             }
-
-            grid.Item().Row(row =>
+            else
             {
-                MetadataColumn(row, "NORTH GATE", model.ParkHours.NorthGateText ?? "-");
-                MetadataColumn(row, "AVENUE", model.ParkHours.AvenueText ?? "-");
-                MetadataColumn(row, "ATTENDANCE", PdfFormatting.FormatCount(model.Attendance.ProjectedAttendance));
-                MetadataColumn(row, "PRE-SOLDS", PdfFormatting.FormatCount(model.Attendance.PreSolds));
-            });
+                ComposeHoursAndMetadata(grid, model);
+            }
 
             grid.Item().Column(early =>
             {
@@ -160,6 +157,55 @@ public sealed class ModernAssociatePassdownTemplateRenderer : IAssociatePassdown
                 early.Item().Text(PdfFormatting.ErtLineText(model.EarlyRideTime.Kind, model.EarlyRideTime.Rides, model.OperatingDate)).FontSize(11).Bold();
             });
         });
+
+    private static void ComposeHoursAndMetadata(ColumnDescriptor grid, AssociatePassdownDocumentModel model)
+    {
+        grid.Item().Text(text =>
+        {
+            text.Span(model.ParkHours.HeadlineText).FontSize(17).Bold();
+
+            if (model.ParkHours.BadgeText is { } badge)
+            {
+                text.Span($"   {badge}").FontSize(8.5f).Italic().FontColor(MutedTextColor);
+            }
+        });
+
+        if (model.ParkHours.PrivateBuyoutDetails is { } details)
+        {
+            grid.Item().Text($"Buyout details: {details}").FontSize(8.5f).FontColor(MutedTextColor);
+        }
+
+        grid.Item().Row(row =>
+        {
+            MetadataColumn(row, "NORTH GATE", model.ParkHours.NorthGateText ?? "-");
+            MetadataColumn(row, "AVENUE", model.ParkHours.AvenueText ?? "-");
+            MetadataColumn(row, "ATTENDANCE", PdfFormatting.FormatCount(model.Attendance.ProjectedAttendance));
+            MetadataColumn(row, "PRE-SOLDS", PdfFormatting.FormatCount(model.Attendance.PreSolds));
+        });
+    }
+
+    // ---------------------------------------------------------------- Phase 37F Weather Outlook
+
+    /// <summary>Width of the Weather Outlook column opposite the hours; the hours and the four metadata columns keep the rest.</summary>
+    private const float WeatherWidth = 196f;
+
+    private const float WeatherGap = 16f;
+
+    /// <summary>The height of the hours headline and the metadata row beside the outlook, slightly rounded down: the outlook never makes the band taller.</summary>
+    private static float WeatherHeightBudget(Metrics m) => 20.4f + 8.7f + 2f + 13.2f + m.GridSpacing - 1.5f;
+
+    private static readonly WeatherOutlookStyle WeatherStyle =
+        new(LabelSize: 7.25f, LabelLetterSpacing: 0.12f, LabelColor: MutedTextColor, HeadlineSize: 14f, SecondarySize: 9f, SecondaryColor: InkColor,
+            AttributionSize: 7.25f, AttributionColor: MutedTextColor, IconSize: 13f, InkColor: InkColor, LineSpacing: 2f);
+
+    /// <summary>Full (label, icon and temperature, condition · rain · source) → split → condensed → minimal.</summary>
+    private static readonly IReadOnlyList<IReadOnlyList<WeatherLine>> WeatherLevels =
+    [
+        [new(Label: true), new(Icon: true, Temperature: true), new(Condition: WeatherPartForm.Full, Rain: WeatherPartForm.Full, Attribution: WeatherPartForm.Full)],
+        [new(Label: true), new(Icon: true, Temperature: true), new(Condition: WeatherPartForm.Full, Rain: WeatherPartForm.Full), new(Attribution: WeatherPartForm.Full)],
+        [new(Label: true), new(Icon: true, Temperature: true), new(Condition: WeatherPartForm.Short, Rain: WeatherPartForm.Short, Attribution: WeatherPartForm.Short)],
+        [new(Icon: true, Temperature: true, Condition: WeatherPartForm.Short), new(Attribution: WeatherPartForm.Short)],
+    ];
 
     private static void MetadataLabel(IContainer container, string label) =>
         container.Text(label).FontSize(7.25f).Bold().LetterSpacing(0.12f).FontColor(MutedTextColor);

@@ -3,6 +3,7 @@ using Carowinds.Passdown.Application.Changes;
 using Carowinds.Passdown.Application.HistoricalBackfill;
 using Carowinds.Passdown.Application.PassPerks;
 using Carowinds.Passdown.Application.Time;
+using Carowinds.Passdown.Application.Weather;
 using Carowinds.Passdown.Desktop.Presentation;
 using Carowinds.Passdown.Desktop.Services;
 using Carowinds.Passdown.Domain;
@@ -33,6 +34,9 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     private readonly IPassPerksService? _passPerksService;
     private readonly CalendarDisplaySettingsViewModel? _calendarDisplay;
     private PassPerksOverview? _passPerksOverview;
+    private readonly IWeatherMonitor? _weatherMonitor;
+    private readonly IUiDispatcher _dispatcher;
+    private int _weatherRebuildPosted;
 
     private int _loadVersion;
     private bool _quietReloadInFlight;
@@ -130,7 +134,8 @@ public partial class OperationsCalendarViewModel : ViewModelBase
         IHistoricalBackfillService? historicalBackfill = null,
         IUiDispatcher? uiDispatcher = null,
         IPassPerksService? passPerksService = null,
-        CalendarDisplaySettingsViewModel? calendarDisplay = null)
+        CalendarDisplaySettingsViewModel? calendarDisplay = null,
+        IWeatherMonitor? weatherMonitor = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -141,6 +146,8 @@ public partial class OperationsCalendarViewModel : ViewModelBase
         _historicalBackfill = historicalBackfill;
         _passPerksService = passPerksService;
         _calendarDisplay = calendarDisplay;
+        _weatherMonitor = weatherMonitor;
+        _dispatcher = uiDispatcher ?? new AvaloniaUiDispatcher();
 
         var today = TodayEastern();
         DisplayedMonth = new DateOnly(today.Year, today.Month, 1);
@@ -149,7 +156,15 @@ public partial class OperationsCalendarViewModel : ViewModelBase
 
         _pendingLoad = LoadAsync();
 
-        var dispatcher = uiDispatcher ?? new AvaloniaUiDispatcher();
+        var dispatcher = _dispatcher;
+
+        // Phase 37D: the Calendar only observes the app's one weather monitor (cached snapshot, no request). One
+        // subscription for this view model's lifetime (it is resolved once per app session); reports are coalesced so
+        // at most one rebuild of the Weather group waits on the UI thread, and the month grid is never rebuilt for it.
+        if (weatherMonitor is not null)
+        {
+            weatherMonitor.Changed += OnWeatherMonitorChanged;
+        }
 
         // Phase 32: the Settings checkbox and this Calendar share one live value; toggling only re-formats.
         if (calendarDisplay is not null)
@@ -318,6 +333,7 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     partial void OnSelectedDateChanged(DateOnly value)
     {
         RebuildCalendarShows();
+        RebuildWeather();
         RebuildSelectedPassPerks();
         OnPropertyChanged(nameof(MonthLongPassPerksHeaderText));
         foreach (var day in Days)
@@ -346,6 +362,7 @@ public partial class OperationsCalendarViewModel : ViewModelBase
     {
         Presentation = value is null ? null : OperationsCalendarPresentation.Build(value);
         RebuildCalendarShows();
+        RebuildWeather();
         RebuildDays(value);
     }
 
@@ -360,6 +377,58 @@ public partial class OperationsCalendarViewModel : ViewModelBase
         Weeks = Days.Chunk(7).Select(week => new OperationsCalendarWeekViewModel(week)).ToList();
         OnPropertyChanged(nameof(HasPassPerkLegend));
         RebuildSelectedPassPerks();
+    }
+
+    // ---- Phase 37D: selected-date Weather (the shared monitor's cached snapshot only; never a request) ----
+
+    /// <summary>Phase 37D: whether the Calendar shows a Weather group at all (only when the app has a weather monitor).</summary>
+    public bool HasWeather => _weatherMonitor is not null;
+
+    /// <summary>
+    /// Phase 37D: the selected date's compact Weather group, built from the monitor's current snapshot and this same
+    /// loaded summary (its operating state and effective hours). Null while the selected date's details are not loaded,
+    /// so the previous date's forecast never appears under a new heading and no hours are guessed.
+    /// </summary>
+    [ObservableProperty]
+    public partial CalendarWeatherPresentation? Weather { get; private set; }
+
+    /// <summary>
+    /// Phase 37D: whether the hourly forecast is expanded. Collapsed when the Calendar is created; kept across date changes
+    /// for the rest of the app session; never saved. Toggling only shows rows already built — it never loads anything.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WeatherHourlyToggleText))]
+    public partial bool IsWeatherHourlyExpanded { get; set; }
+
+    public string WeatherHourlyToggleText => IsWeatherHourlyExpanded
+        ? "Hide hourly forecast"
+        : Weather?.HoursHeaderText ?? "Hourly forecast";
+
+    /// <summary>Rebuilds only the Weather group (UI thread). Internal so tests can drive it without a dispatcher.</summary>
+    internal void RebuildWeather()
+    {
+        Interlocked.Exchange(ref _weatherRebuildPosted, 0);
+        if (_weatherMonitor is null)
+        {
+            return;
+        }
+
+        var next = Snapshot is { } snapshot && snapshot.Selected.Date == SelectedDate
+            ? CalendarWeatherPresentation.Build(_weatherMonitor.Current, snapshot.Selected, _clock.UtcNow)
+            : null;
+        if (!Equals(next, Weather))
+        {
+            Weather = next;
+            OnPropertyChanged(nameof(WeatherHourlyToggleText));
+        }
+    }
+
+    private void OnWeatherMonitorChanged(object? sender, EventArgs e)
+    {
+        if (Interlocked.Exchange(ref _weatherRebuildPosted, 1) == 0)
+        {
+            _dispatcher.Post(RebuildWeather);
+        }
     }
 
     // ---- Phase 32: Pass Perks on the Calendar (cached official data only; never a retrieval) ----

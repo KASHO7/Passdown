@@ -58,7 +58,7 @@ Evidence labels used throughout:
 
 | Item | Value |
 |---|---|
-| Git root | `/Users/kashyap/Documents/Passdown` (the app lives in `carowinds-passdown-greenfield/`) |
+| Git root | `~/Documents/Passdown` (the app lives in `carowinds-passdown-greenfield/`) |
 | Branch / HEAD | `feature/passdown-redesign` @ **`b3773e1`** "RC.12 release record: publication verified" |
 | Working tree at start | Only pre-existing unrelated changes: `.DS_Store` files (several staged/modified) and staged `.claude/skills/pdf-design/SKILL.md`. Left untouched. |
 | RC.12 | Annotated tag `v0.1.0-rc.12` → **`7763c7e`**. ZIP `artifacts/releases/…-rc.12-win-x64.zip` is read-only, 80,955,888 B, SHA-256 `9a36f20b…87372c`, which matches `docs/releases/rc12-release-readiness.md`. Re-hashed after the audit: unchanged (§25). |

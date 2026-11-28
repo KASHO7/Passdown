@@ -401,6 +401,7 @@
                   <TextBlock Text="Effective from" Classes="fieldLabel" />
                   <CalendarDatePicker SelectedDate="{Binding EditorEffectiveFromForPicker}"
                                       SelectedDateFormat="Custom" CustomDateFormatString="MMM d, yyyy"
+                                      PlaceholderText="Choose a date"
                                       HorizontalAlignment="Stretch"
                                       AutomationProperties.Name="Effective From" />
                 </StackPanel>
@@ -408,6 +409,7 @@
                   <TextBlock Text="Effective through" Classes="fieldLabel" />
                   <CalendarDatePicker SelectedDate="{Binding EditorEffectiveThroughForPicker}"
                                       SelectedDateFormat="Custom" CustomDateFormatString="MMM d, yyyy"
+                                      PlaceholderText="{Binding EditorEffectiveThroughPlaceholder}"
                                       HorizontalAlignment="Stretch"
                                       IsEnabled="{Binding !EditorUntilResolved}"
                                       AutomationProperties.Name="Effective Through" />

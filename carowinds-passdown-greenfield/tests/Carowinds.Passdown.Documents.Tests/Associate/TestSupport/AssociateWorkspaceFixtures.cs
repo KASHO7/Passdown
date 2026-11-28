@@ -172,6 +172,32 @@ internal static class AssociateWorkspaceFixtures
             products, [], AssociateSaveStatus.NeverSaved);
     }
 
+    /// <summary>
+    /// Pre-RC.15 post-closing retention: Daily Admission and Fast Lane verified at 3:10 PM, then the
+    /// official calendar stopped listing the date (previously verified); one Fast Lane row carries a manual
+    /// override; a Season Pass stays currently verified.
+    /// </summary>
+    public static AssociateWorkspace PreviouslyVerifiedDay()
+    {
+        var verifiedAt = new DateTimeOffset(2026, 8, 21, 19, 10, 0, TimeSpan.Zero);
+        var previouslyVerified = new AssociateVerificationInfo(AssociateVerificationState.PreviouslyVerified, verifiedAt, TimeSpan.FromHours(7), "Not available for this date.");
+        var effective = ParkHoursCalculator.Calculate(false, new TimeOnly(10, 0), new TimeOnly(20, 0), false, null, null, false, null, null);
+
+        var products = new List<AssociateProduct>
+        {
+            Product("dated|DatedAdmissionTickets|park-1", "Park Ticket", SourceCategory.DatedAdmissionTickets, 64.99m, verification: previouslyVerified),
+            Product("dated|DatedFastLane|fl-reserve", "Fast Lane Reserve", SourceCategory.DatedFastLane, 49m, verification: previouslyVerified),
+            Product("dated|DatedFastLane|fl-ultimate", "Fast Lane Ultimate", SourceCategory.DatedFastLane, 85m, verification: previouslyVerified, displayPriceOverride: 80m),
+            Product("catalog|SeasonPasses|id:gold", "Gold Pass", SourceCategory.SeasonPasses, 99m) with { DateSpecific = false, ApplicableDate = null },
+        };
+
+        return new AssociateWorkspace(
+            Date,
+            AssociateDraftPayload.CreateDefault() with { SectionSelection = PassdownSectionSelection.AllIncluded },
+            new AssociateParkHoursView(effective, Verified(), false, new TimeOnly(10, 0), new TimeOnly(20, 0)),
+            products, [], AssociateSaveStatus.NeverSaved);
+    }
+
     /// <summary>Deliberately exceeds one page's estimated capacity (spec §11.4's "unusually busy days") so overflow behavior can be exercised end to end.</summary>
     public static AssociateWorkspace ExcessiveDay()
     {

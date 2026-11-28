@@ -158,7 +158,7 @@ public sealed partial class SpellCheckBehaviorTests : IDisposable
         var notes = File.ReadAllText(MarkupFiles.Find("src/Carowinds.Passdown.Desktop/Views/OperationalNotesView.axaml"));
         var priceHistory = File.ReadAllText(MarkupFiles.Find("src/Carowinds.Passdown.Desktop/Views/PriceHistoryView.axaml"));
 
-        string[] covered = ["DailyFeatureText", "MonthlyErtNoteText", "OverrideReasonText", "PrivateBuyoutDetails", "NotesText", "OperationalNotesText"];
+        string[] covered = ["DailyFeatureText", "EarlyRideTimeEditor.MonthlyErtNoteText", "EarlyRideTimeEditor.OverrideReasonText", "PrivateBuyoutDetails", "NotesText", "OperationalNotesText"];
         foreach (var binding in covered)
         {
             Assert.Matches(new Regex($"spell:SpellCheck.IsEnabled=\"True\"\\s+Text=\"{{Binding {binding}"), associate);

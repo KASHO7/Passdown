@@ -2,7 +2,7 @@ using Carowinds.Passdown.Application.OperationalNotes;
 using Carowinds.Passdown.Application.PersonalSync;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Desktop.Presentation;
-using Avalonia.Threading;
+using Carowinds.Passdown.Desktop.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -169,7 +169,17 @@ public partial class OperationalNotesViewModel : ViewModelBase
 
     /// <summary>The "Until resolved" affordance (spec Part J) — checked clears/disables <see cref="EditorEffectiveThrough"/> rather than requiring the supervisor to pick a far-future date.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(EditorEffectiveThroughPlaceholder))]
     public partial bool EditorUntilResolved { get; set; } = true;
+
+    /// <summary>
+    /// Phase 35G: words for the empty Effective through picker. Without it Avalonia's date picker shows its raw
+    /// format string ("&lt;MMM d, yyyy&gt;") — most visibly while the picker is disabled by "Until resolved".
+    /// </summary>
+    public string EditorEffectiveThroughPlaceholder => EditorUntilResolved ? "Until resolved" : DatePickerPlaceholder;
+
+    /// <summary>Phase 35G: words for an empty editor date picker (never the raw format string).</summary>
+    public const string DatePickerPlaceholder = "Choose a date";
 
     [ObservableProperty]
     public partial string? EditorValidationMessage { get; set; }
@@ -189,7 +199,8 @@ public partial class OperationalNotesViewModel : ViewModelBase
     [NotifyCanExecuteChangedFor(nameof(ConfirmResolveCommand))]
     public partial bool IsResolving { get; set; }
 
-    public OperationalNotesViewModel(IOperationalNotesService service, IClock clock, ILogger<OperationalNotesViewModel>? logger = null, ISyncLocalChangeNotifier? syncLocalChangeNotifier = null)
+    /// <param name="uiDispatcher">Phase 36C: marshals Personal Sync notifications onto the UI thread; defaults to <see cref="AvaloniaUiDispatcher"/> (the app's registration), so tests can run them inline.</param>
+    public OperationalNotesViewModel(IOperationalNotesService service, IClock clock, ILogger<OperationalNotesViewModel>? logger = null, ISyncLocalChangeNotifier? syncLocalChangeNotifier = null, IUiDispatcher? uiDispatcher = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(clock);
@@ -202,8 +213,9 @@ public partial class OperationalNotesViewModel : ViewModelBase
 
         if (syncLocalChangeNotifier is not null)
         {
+            var dispatcher = uiDispatcher ?? new AvaloniaUiDispatcher();
             syncLocalChangeNotifier.LocalDataChanged += (_, changed) =>
-                Dispatcher.UIThread.Post(() => _pendingSyncReload = HandleSyncLocalChangesAsync(changed));
+                dispatcher.Post(() => _pendingSyncReload = HandleSyncLocalChangesAsync(changed));
         }
     }
 

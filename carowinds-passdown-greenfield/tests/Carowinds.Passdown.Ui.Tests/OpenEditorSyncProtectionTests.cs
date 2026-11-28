@@ -387,8 +387,8 @@ public sealed class OpenEditorSyncProtectionTests : IDisposable
         await b.Sync.RunAsync();
 
         var editor = await OpenAssociateEditorAsync(a);
-        await editor.OpenErtEditorCommand.ExecuteAsync(null);
-        editor.MonthlyErtRidesText = "Fury 325\nCopperhead Strike"; // unsaved panel edit
+        await editor.EarlyRideTimeEditor.OpenErtEditorCommand.ExecuteAsync(null);
+        editor.EarlyRideTimeEditor.MonthlyErtRidesText = "Fury 325\nCopperhead Strike"; // unsaved panel edit
 
         var bBase = IErtConfigurationService.ContentHashOf(await b.Ert.GetMonthlyAsync(2026, 9));
         await b.Ert.SaveMonthlyFromEditorAsync(new MonthlyErtDraft(2026, 9, ErtConfigurationState.NoErt, null, [], "Closed for event"), bBase);
@@ -396,16 +396,16 @@ public sealed class OpenEditorSyncProtectionTests : IDisposable
         await a.Sync.RunAsync();
 
         await editor.HandleSyncLocalChangesAsync(a.Published.ToList());
-        Assert.Equal("Fury 325\nCopperhead Strike", editor.MonthlyErtRidesText); // dirty panel untouched
-        Assert.True(editor.IsErtEditorOpen);
+        Assert.Equal("Fury 325\nCopperhead Strike", editor.EarlyRideTimeEditor.MonthlyErtRidesText); // dirty panel untouched
+        Assert.True(editor.EarlyRideTimeEditor.IsErtEditorOpen);
 
-        await editor.SaveMonthlyErtCommand.ExecuteAsync(null);
+        await editor.EarlyRideTimeEditor.SaveMonthlyErtCommand.ExecuteAsync(null);
 
         Assert.Equal(["Fury 325", "Copperhead Strike"], (await a.Ert.GetMonthlyAsync(2026, 9))!.Rides);
         var conflict = await a.Conflicts.GetAsync(SyncEntityType.MonthlyErt, SyncEntityIdentity.ForMonthlyErt(2026, 9));
         Assert.NotNull(conflict);
         Assert.Equal(ErtConfigurationState.NoErt, MonthlyErtSyncPayloadSerializer.Deserialize(conflict.RemotePayloadJson!).State);
-        Assert.Equal(AssociateViewModel.ErtSyncConflictMessage, editor.SyncConflictMessage);
+        Assert.Equal(EarlyRideTimeEditorViewModel.ErtSyncConflictMessage, editor.SyncConflictMessage);
     }
 
     [Fact]
@@ -418,7 +418,7 @@ public sealed class OpenEditorSyncProtectionTests : IDisposable
         await b.Sync.RunAsync();
 
         var editor = await OpenAssociateEditorAsync(a);
-        await editor.OpenErtEditorCommand.ExecuteAsync(null);
+        await editor.EarlyRideTimeEditor.OpenErtEditorCommand.ExecuteAsync(null);
 
         var bBase = IErtConfigurationService.ContentHashOf(await b.Ert.GetMonthlyAsync(2026, 9));
         await b.Ert.SaveMonthlyFromEditorAsync(new MonthlyErtDraft(2026, 9, ErtConfigurationState.Configured, null, ["Intimidator"], null), bBase);
@@ -426,10 +426,10 @@ public sealed class OpenEditorSyncProtectionTests : IDisposable
         await a.Sync.RunAsync();
         await editor.HandleSyncLocalChangesAsync(a.Published.ToList());
 
-        Assert.True(editor.IsErtEditorOpen);
-        Assert.Equal("Intimidator", editor.MonthlyErtRidesText);
+        Assert.True(editor.EarlyRideTimeEditor.IsErtEditorOpen);
+        Assert.Equal("Intimidator", editor.EarlyRideTimeEditor.MonthlyErtRidesText);
 
-        await editor.SaveMonthlyErtCommand.ExecuteAsync(null);
+        await editor.EarlyRideTimeEditor.SaveMonthlyErtCommand.ExecuteAsync(null);
         Assert.Null(await a.Conflicts.GetAsync(SyncEntityType.MonthlyErt, SyncEntityIdentity.ForMonthlyErt(2026, 9)));
     }
 

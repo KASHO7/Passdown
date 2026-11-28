@@ -40,6 +40,26 @@ public sealed record LastKnownGood<TValue>
             : new LastKnownGood<TValue>(SuccessValue, SuccessEvidence, evidence);
     }
 
+    /// <summary>
+    /// Pre-RC.15 post-closing pricing retention: records a successful payload-less
+    /// <see cref="RetrievalStatus.Unavailable"/> or <see cref="RetrievalStatus.NotPublished"/> answer as the
+    /// latest attempt while keeping a previously <see cref="RetrievalStatus.Verified"/> value — the answer
+    /// says the date is no longer offered, not that the value verified for it was wrong. Without a
+    /// verified value this is the same as <see cref="RecordAttempt"/>.
+    /// </summary>
+    public LastKnownGood<TValue> RecordNoOfferAttemptRetainingVerified(SourceEvidence evidence)
+    {
+        ArgumentNullException.ThrowIfNull(evidence);
+        if (evidence.Status is not (RetrievalStatus.Unavailable or RetrievalStatus.NotPublished))
+        {
+            throw new ArgumentException($"Expected an Unavailable or NotPublished answer; got '{evidence.Status}'.", nameof(evidence));
+        }
+
+        return SuccessEvidence is { Status: RetrievalStatus.Verified } && SuccessValue is not null
+            ? new LastKnownGood<TValue>(SuccessValue, SuccessEvidence, evidence)
+            : RecordAttempt(evidence, default);
+    }
+
     public bool HasSuccess => SuccessEvidence is not null;
 
     /// <summary>

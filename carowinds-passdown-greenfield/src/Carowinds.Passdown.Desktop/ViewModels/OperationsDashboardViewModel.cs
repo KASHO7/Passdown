@@ -42,6 +42,9 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     [NotifyCanExecuteChangedFor(nameof(OpenNotesCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenOperationalNotesCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenPricingCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenShowsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenCalendarCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenPassPerksCommand))]
     public partial OperationsDashboardSnapshot? Snapshot { get; set; }
 
     [ObservableProperty]
@@ -158,18 +161,29 @@ public partial class OperationsDashboardViewModel : ViewModelBase
     /// </summary>
     public event EventHandler? OpenPricingRequested;
 
+    /// <summary>Phase 35E Dashboard: "View Shows" — today's Eastern date, Associate Passdown → Shows (where which shows print is chosen).</summary>
+    public event EventHandler? OpenShowsRequested;
+
+    /// <summary>Phase 35E Dashboard: "View Pass Perks" — today's Eastern date, Associate Passdown → Products, which holds the Pass Perks panel and its View details.</summary>
+    public event EventHandler? OpenPassPerksRequested;
+
+    /// <summary>Phase 35E Dashboard: "View in Calendar" — the Operations Calendar with the Dashboard's own operating date selected (the snapshot's Eastern date, never the computer's).</summary>
+    public event EventHandler<DateOnly>? OpenCalendarRequested;
+
     public OperationsDashboardViewModel(
         IOperationsDashboardService service,
         ILogger<OperationsDashboardViewModel>? logger = null,
         IDataChangeNotifier? dataChangeNotifier = null,
         OfficialDataStatusViewModel? officialDataStatus = null,
-        IUiDispatcher? uiDispatcher = null)
+        IUiDispatcher? uiDispatcher = null,
+        DashboardWeatherViewModel? weather = null)
     {
         ArgumentNullException.ThrowIfNull(service);
 
         _service = service;
         _logger = logger;
         OfficialDataStatus = officialDataStatus;
+        Weather = weather;
 
         _pendingLoad = LoadAsync();
 
@@ -179,6 +193,14 @@ public partial class OperationsDashboardViewModel : ViewModelBase
             dataChangeNotifier.Changed += (_, change) => dispatcher.Post(() => HandleDataChange(change));
         }
     }
+
+    /// <summary>
+    /// Phase 37C: the Weather card (top of the right-hand column). Null only where no weather monitor is composed
+    /// (tests that do not supply one); the card is then not shown. Observes the shared weather monitor only.
+    /// </summary>
+    public DashboardWeatherViewModel? Weather { get; }
+
+    public bool HasWeather => Weather is not null;
 
     /// <summary>Phase 19A: the shared official-data freshness line shown in the Dashboard header (null only in tests that do not supply one).</summary>
     public OfficialDataStatusViewModel? OfficialDataStatus { get; }
@@ -290,8 +312,13 @@ public partial class OperationsDashboardViewModel : ViewModelBase
         }
     }
 
-    partial void OnSnapshotChanged(OperationsDashboardSnapshot? value) =>
+    partial void OnSnapshotChanged(OperationsDashboardSnapshot? value)
+    {
         ShowsPresentation = value is null ? null : ShowSchedulePresentation.Build(value.TodayShows, value.GeneratedAt, isDashboard: true);
+
+        // Phase 37C: today's park hours set the Weather card's rain-chance window (local text only).
+        Weather?.UpdateParkHours(value);
+    }
 
     /// <summary>
     /// Phase 21C: re-evaluates which of today's performances are still upcoming at <paramref name="nowUtc"/>
@@ -475,6 +502,21 @@ public partial class OperationsDashboardViewModel : ViewModelBase
 
     [RelayCommand(CanExecute = nameof(CanOpenPassdown))]
     private void OpenPricing() => OpenPricingRequested?.Invoke(this, EventArgs.Empty);
+
+    [RelayCommand(CanExecute = nameof(CanOpenPassdown))]
+    private void OpenShows() => OpenShowsRequested?.Invoke(this, EventArgs.Empty);
+
+    [RelayCommand(CanExecute = nameof(CanOpenPassdown))]
+    private void OpenPassPerks() => OpenPassPerksRequested?.Invoke(this, EventArgs.Empty);
+
+    [RelayCommand(CanExecute = nameof(CanOpenPassdown))]
+    private void OpenCalendar()
+    {
+        if (Snapshot is { } snapshot)
+        {
+            OpenCalendarRequested?.Invoke(this, snapshot.OperatingDate);
+        }
+    }
 
     [RelayCommand]
     private void OpenHistory() => OpenHistoryRequested?.Invoke(this, EventArgs.Empty);

@@ -104,6 +104,22 @@ public class CompositionRootTests
 
     /// <summary>Phase 13B Part K: the overlap-lock factory <c>AssociatePassdownService</c> uses to guard <c>RefreshMode.UserForced</c> resolves from the same composition root.</summary>
     [Fact]
+    public void BuildServiceProvider_GivesTheDashboardServiceTheCacheOnlyPassPerksReader()
+    {
+        // Phase 35E Dashboard: the optional IPassPerksService dependency must be wired, or the Pass Perks card
+        // would always read "not checked". The service only reads the stored official document.
+        var provider = App.BuildServiceProvider();
+
+        var dashboard = provider.GetRequiredService<Carowinds.Passdown.Application.Dashboard.IOperationsDashboardService>();
+        var captured = dashboard.GetType()
+            .GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .Single(f => f.FieldType == typeof(Carowinds.Passdown.Application.PassPerks.IPassPerksService))
+            .GetValue(dashboard);
+
+        Assert.Same(provider.GetRequiredService<Carowinds.Passdown.Application.PassPerks.IPassPerksService>(), captured);
+    }
+
+    [Fact]
     public void BuildServiceProvider_ResolvesScheduledRefreshLockFactory()
     {
         var provider = App.BuildServiceProvider();

@@ -17,7 +17,7 @@ public class DiagnosticPathRedactorTests
 
     [Theory]
     [InlineData(@"at 'C:\Users\Mary Ann O.Brien\Desktop\f.pdf'", @"at '%USERPROFILE%\Desktop\f.pdf'")]
-    [InlineData("open /Users/kashyap/Library/x.db failed", "open ~/Library/x.db failed")]
+    [InlineData("open /Users/sam/Library/x.db failed", "open ~/Library/x.db failed")]
     [InlineData("open /home/alex/.local/x.db failed", "open ~/.local/x.db failed")]
     public void Redact_UnknownProfilePaths_AreStillRedacted(string input, string expected)
     {

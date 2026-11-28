@@ -2,6 +2,7 @@ using Carowinds.Passdown.Application.Associate;
 using Carowinds.Passdown.Application.Concurrency;
 using Carowinds.Passdown.Application.Freshness;
 using Carowinds.Passdown.Application.OperationalNotes;
+using Carowinds.Passdown.Application.PassPerks;
 using Carowinds.Passdown.Application.Persistence;
 using Carowinds.Passdown.Application.Refresh;
 using Carowinds.Passdown.Application.Time;
@@ -31,7 +32,8 @@ public sealed class OperationsDashboardService(
     IRefreshOrchestrator? refreshOrchestrator = null,
     IDeepRefreshStatusRepository? deepRefreshStatusRepository = null,
     Func<IScheduledRefreshLock>? refreshLockFactory = null,
-    IOfficialRefreshGate? refreshGate = null) : IOperationsDashboardService
+    IOfficialRefreshGate? refreshGate = null,
+    IPassPerksService? passPerksService = null) : IOperationsDashboardService
 {
     public Task<OperationsDashboardSnapshot> GetTodayAsync(CancellationToken cancellationToken = default) =>
         LoadAsync(TodayEastern(), cancellationToken);
@@ -131,6 +133,7 @@ public sealed class OperationsDashboardService(
         var notes = BuildNotesSummary(workspace.Draft.OperationalNotes);
         var activeOperationalNotes = await BuildActiveOperationalNotesAsync(operatingDate, cancellationToken).ConfigureAwait(false);
         var dataHealth = BuildDataHealth(workspace);
+        var (passPerks, passPerksFailed) = await LoadPassPerksAsync(operatingDate, cancellationToken).ConfigureAwait(false);
 
         return new OperationsDashboardSnapshot(
             operatingDate,
@@ -149,7 +152,34 @@ public sealed class OperationsDashboardService(
         {
             TodayShows = workspace.ShowSchedule,
             Admission = DashboardAdmissionSelector.Select(workspace),
+            Pricing = DashboardPricingSelector.Select(workspace),
+            PassPerks = passPerks,
+            PassPerksLoadFailed = passPerksFailed,
         };
+    }
+
+    /// <summary>
+    /// Phase 35E Dashboard: the cached official Pass Perks — one local read of the stored document
+    /// (<see cref="IPassPerksService.GetOverviewAsync"/> never retrieves online). Its status is computed for
+    /// the service's own Eastern operating date, so it is only used when that is the snapshot's date. A
+    /// failed read degrades only this section, like <see cref="BuildActiveOperationalNotesAsync"/>.
+    /// </summary>
+    private async Task<(PassPerksOverview? Overview, bool Failed)> LoadPassPerksAsync(DateOnly operatingDate, CancellationToken cancellationToken)
+    {
+        if (passPerksService is null)
+        {
+            return (null, false);
+        }
+
+        try
+        {
+            var overview = await passPerksService.GetOverviewAsync(cancellationToken).ConfigureAwait(false);
+            return (overview.OperatingDate == operatingDate ? overview : null, false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return (null, true);
+        }
     }
 
     /// <summary>
@@ -349,7 +379,7 @@ public sealed class OperationsDashboardService(
     ];
 
     private static DashboardSourceStatus ClassifyDatedCategory(SourceCategory category, AssociateVerificationState state) =>
-        state == AssociateVerificationState.Unavailable && OptionalPromotionalDatedCategories.Contains(category)
+        state is AssociateVerificationState.Unavailable or AssociateVerificationState.PreviouslyVerified && OptionalPromotionalDatedCategories.Contains(category)
             ? DashboardSourceStatus.NotApplicable
             : Classify(state);
 
@@ -362,6 +392,8 @@ public sealed class OperationsDashboardService(
         AssociateVerificationState.Unavailable => DashboardSourceStatus.Unavailable,
         AssociateVerificationState.Error => DashboardSourceStatus.VerificationIssue,
         AssociateVerificationState.Stale => DashboardSourceStatus.Stale,
+        // Pre-RC.15: the latest successful check found the date no longer offered — the same source answer as Unavailable.
+        AssociateVerificationState.PreviouslyVerified => DashboardSourceStatus.Unavailable,
         _ => DashboardSourceStatus.NotChecked,
     };
 }

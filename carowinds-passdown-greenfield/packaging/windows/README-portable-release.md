@@ -23,37 +23,38 @@ The Dashboard
 --------------
 The app opens on the Dashboard — a one-screen summary of today's park status,
 passdown status, and data freshness, built from what's already saved on your
-computer (it loads instantly and never needs the internet on its own). Use
-"Open Passdown", "Open Notes", and "Open History" on the Dashboard to jump to the
-matching screen. "Check Online" on the Dashboard explicitly contacts the official
-Carowinds sources, the same as "Check Online" on the Associate Passdown screen.
-The Dashboard also shows an "Active Operational Notes" summary — see "Operational
-Notes" below.
+computer (it loads instantly and never needs the internet on its own). The
+navigation on the left of the window opens Dashboard, Calendar, Passdown,
+Operational Notes, History and Settings. Buttons on the Dashboard such as "Open
+Passdown", "Review Notes" and "Open History" jump to the matching screen. "Check
+Online" on the Dashboard explicitly contacts the official Carowinds sources, the
+same as Actions → "Check Online" on the Passdown screen. The Dashboard also
+summarizes active Operational Notes — see "Operational Notes" below.
 
 Operations Calendar
 ---------------------
-Next to "Dashboard" at the top of the window is an "Operations Calendar" section —
-a month-grid view for planning and jumping to a specific date, built entirely from
+"Calendar" in the navigation on the left opens the Operations Calendar — a
+month-grid view for planning and jumping to a specific date, built entirely from
 what's already saved on your computer (it never needs the internet on its own, and
 selecting a date or changing months never changes any saved data). Each day cell
 shows a compact summary: park hours (or Closed/Custom Hours/Private Buyout/Not
 Published/Unavailable), whether that date's passdown is a draft or finalized, and a
-count of relevant Operational Notes. Use Previous/Next Month, "Today", and
-Previous/Next Day to move around, then "Open Passdown", "Open History" (once that
-date is finalized), or "Open Operational Notes" to jump to the matching screen for
-the selected date.
+count of relevant Operational Notes. Use the previous/next month arrows, "Today"
+and the previous/next day arrows to move around, then "Open Passdown", "View
+Finalized History" (once that date is finalized), or "Open Operational Notes" to
+jump to the matching screen for the selected date.
 
 Operational Notes
 -------------------
-Next to "Associate Passdown" at the top of the window is an "Operational Notes"
-section. This is where a supervisor manages notes that can span multiple days —
+"Operational Notes" in the navigation on the left opens the Operational Notes
+screen. This is where a supervisor manages notes that can span multiple days —
 for example, "South Gate scanner #3 out of service" for the length of a repair
 window — separately from any single day's Associate passdown. Create, edit, and
 resolve notes here; filter by lifecycle (Active/Upcoming/Expired/Resolved),
 category, and priority.
 
 Persistent Operational Notes are never automatically added to a daily passdown.
-On the Associate Passdown screen's Notes area, relevant persistent notes appear as
+On the Passdown screen's Notes tab, relevant persistent notes appear as
 available suggestions for the selected date; a supervisor explicitly adds the ones
 that belong in that day's passdown. Once added, the included copy is frozen — if
 the original note is edited afterward, the passdown keeps showing what was
@@ -130,9 +131,19 @@ Version 0.1.0-rc.13 also uses the rc.11 database format: upgrading from rc.11 or
 rc.12 changes nothing in the database. Upgrading from rc.10 or older performs the
 rc.11 upgrade described above.
 
+Version 0.1.0-rc.14 also uses the rc.11 database format: upgrading from rc.11,
+rc.12 or rc.13 changes nothing in the database. Upgrading from rc.10 or older
+performs the rc.11 upgrade described above.
+
+Version 0.1.0-rc.15 also uses the rc.11 database format: upgrading from rc.11,
+rc.12, rc.13 or rc.14 changes nothing in the database. Upgrading from rc.10 or
+older performs the rc.11 upgrade described above. Weather (new in rc.15) is kept
+in this computer's local data folder only: it is not synchronized and is not
+added to drafts or History.
+
 Passdown History
 -----------------
-Next to "Associate Passdown" at the top of the window is a "History" section. Each
+"History" in the navigation on the left opens Passdown History. Each
 day's passdown finalizes automatically the morning after it happens (after 6:00 AM
 the following day) and is stored exactly as associates saw it, including the exact
 PDF — nothing in History can be edited or deleted, and nothing is ever regenerated.
@@ -140,7 +151,7 @@ Use it to look up or re-print an exact past passdown at any time.
 
 Something not working?
 ------------------------
-Open Settings inside the app, click "Export Diagnostics" (under Diagnostics) and save
+Open Settings inside the app, click "Export Diagnostics…" (under Diagnostics) and save
 the resulting ZIP file. It contains version/health information and recent activity logs
 only — never your drafts, notes, or saved database — and is the fastest way to get
 help from whoever supports this app.

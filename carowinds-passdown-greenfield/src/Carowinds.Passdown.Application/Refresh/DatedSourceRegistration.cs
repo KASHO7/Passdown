@@ -12,7 +12,10 @@ namespace Carowinds.Passdown.Application.Refresh;
 /// <see cref="RetrievalStatus.Closed"/>, <see cref="RetrievalStatus.NotPublished"/>, or
 /// <see cref="RetrievalStatus.Unavailable"/>, per <see cref="RetrievalStatusExtensions.IsSuccessfulCompletion"/> —
 /// becomes the new last-known-good value; an <see cref="RetrievalStatus.Error"/> only updates the
-/// latest-attempt record, leaving any prior successful value untouched. The payload is
+/// latest-attempt record, leaving any prior successful value untouched. Exception (pre-RC.15,
+/// <see cref="VerifiedDatedPriceRetention"/>): for a dated pricing source, a payload-less
+/// Unavailable/NotPublished answer after a verified payload for the same date updates only the
+/// latest-attempt record, so post-closing refreshes keep that date's verified prices. The payload is
 /// serialized to JSON for storage — <see cref="IDatedResultRepository"/>'s payload column is
 /// deliberately opaque to persistence, sufficient only to round-trip whatever shape a later phase
 /// reads back.
@@ -47,6 +50,20 @@ public sealed class DatedSourceRegistration<TPayload> : SourceRegistration
 
         if (result.Evidence.Status.IsSuccessfulCompletion())
         {
+            // Pre-RC.15: a payload-less "no longer offered" answer (the calendar drops today once its sales
+            // window ends) must not erase prices already verified for this exact date. The stored row is
+            // read only for that kind of answer from a dated pricing source, so other results cost nothing.
+            if (VerifiedDatedPriceRetention.AppliesTo(_source.Category)
+                && VerifiedDatedPriceRetention.IsPayloadlessNoOfferAnswer(result.Evidence.Status, result.Payload is not null))
+            {
+                var existing = await _datedResultRepository.GetAsync(key, cancellationToken).ConfigureAwait(false);
+                if (VerifiedDatedPriceRetention.ShouldRetain(_source.Category, existing, result.Evidence.Status, result.Payload is not null))
+                {
+                    await _datedResultRepository.RecordNoOfferAttemptRetainingVerifiedAsync(key, result.Evidence, cancellationToken).ConfigureAwait(false);
+                    return SourceOperationResult.Success(_source.SourceId, _source.Category, date, result.Evidence.Status, result.Evidence.Detail);
+                }
+            }
+
             var payloadJson = result.Payload is null ? null : JsonSerializer.Serialize(result.Payload);
             await _datedResultRepository.RecordSuccessAsync(key, result.Evidence, payloadJson, cancellationToken).ConfigureAwait(false);
             return SourceOperationResult.Success(_source.SourceId, _source.Category, date, result.Evidence.Status, result.Evidence.Detail);

@@ -50,4 +50,14 @@ public interface IDatedResultRepository
     /// <paramref name="key"/>'s date.
     /// </summary>
     Task RecordFailedAttemptAsync(DatedResultKey key, SourceEvidence evidence, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Pre-RC.15 (<see cref="Refresh.VerifiedDatedPriceRetention"/>): records a successful payload-less
+    /// <see cref="RetrievalStatus.Unavailable"/> or <see cref="RetrievalStatus.NotPublished"/> answer as the
+    /// latest attempt only, leaving the previously verified success evidence and payload untouched — the
+    /// same columns <see cref="RecordFailedAttemptAsync"/> writes, for an answer that is not a failure.
+    /// <paramref name="evidence"/> must have one of those two statuses; the requested date must equal
+    /// <paramref name="key"/>'s date.
+    /// </summary>
+    Task RecordNoOfferAttemptRetainingVerifiedAsync(DatedResultKey key, SourceEvidence evidence, CancellationToken cancellationToken = default);
 }

@@ -38,6 +38,8 @@ var sizes = (args.Length > 3 ? args[3] : "all") switch
 {
     "main" => new (int W, int H)[] { (1280, 860) },
     "shell" => new (int W, int H)[] { (1920, 1080), (1536, 960), (1280, 720), (960, 640) },
+    // Phase 35G: an explicit list such as "1280x720,960x640".
+    var list when list.Contains('x') => list.Split(',').Select(s => s.Split('x')).Select(p => (int.Parse(p[0]), int.Parse(p[1]))).ToArray(),
     _ => new (int W, int H)[] { (960, 640), (1280, 690), (1280, 860), (1920, 1000) },
 };
 // Forced modes run against the opposite simulated OS, proving the preference (not the OS) decides.
@@ -82,7 +84,7 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
         a.PrivateBuyoutDetails = "Synthetic group buyout"; a.NorthGateOverrideText = "9:00 AM";
         Pump(10);
     }),
-    ("Workspace-ErtEditor", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.OpenErtEditorCommand.Execute(null); Pump(8); ScrollToName(f.Window, "Early Ride Time editor"); }),
+    ("Workspace-ErtEditor", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.EarlyRideTimeEditor.OpenErtEditorCommand.Execute(null); Pump(8); ScrollToName(f.Window, "Early Ride Time editor"); }),
     ("Workspace-LongContentScrolled", () => new Fixture(), f =>
     {
         Go(f, AppSection.AssociatePassdown);
@@ -96,6 +98,25 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
     ("Settings-AnimationsOff", () => new Fixture(motion: ShellMotion.Create(InterfaceAnimationPreference.Off, SystemReducedMotion.NotRequested)), f => { Go(f, AppSection.Settings); ScrollToName(f.Window, "Interface animations"); }),
     ("Settings-AnimationsWindowsReduced", () => new Fixture(motion: ShellMotion.Create(InterfaceAnimationPreference.On, SystemReducedMotion.Requested)), f => { Go(f, AppSection.Settings); ScrollToName(f.Window, "Interface animations"); }),
     ("Dashboard", () => new Fixture(), f => Go(f, AppSection.Dashboard)),
+    // Phase 35E Dashboard follow-up: the approved Admissions Overview in its real states (synthetic data).
+    ("Dashboard35E-Typical", () => new Fixture(), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard35E-TypicalEnd", () => new Fixture(), f => { Go(f, AppSection.Dashboard); ScrollToEnd(f.Window); }),
+    ("Dashboard35E-Collapsed", () => new Fixture(), f => { Go(f, AppSection.Dashboard); Collapse(f); }),
+    ("Dashboard35E-NothingYet", () => new Fixture(dashboardVariant: DashboardVariant.NothingYet), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard35E-Stale", () => new Fixture(dashboardVariant: DashboardVariant.Stale), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard35E-LongText", () => new Fixture(dashboardVariant: DashboardVariant.LongText), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard35E-Focus", () => new Fixture(), f => { Go(f, AppSection.Dashboard); FocusNamed(f.Window, "Open Passdown"); }),
+    // Phase 37C: the Weather card (approved D4 mock-up) in each state, synthetic weather (no NWS request).
+    ("Dashboard37C-Normal", () => new Fixture(weatherState: "Normal"), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard37C-Expanded-Normal", () => new Fixture(weatherState: "Normal", weatherExpanded: true), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard37C-Alerts", () => new Fixture(weatherState: "Alerts"), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard37C-Expanded-Alerts", () => new Fixture(weatherState: "Alerts", weatherExpanded: true), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard37C-Stale", () => new Fixture(weatherState: "Stale"), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard37C-Expanded-Stale", () => new Fixture(weatherState: "Stale", weatherExpanded: true), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard37C-Unavailable", () => new Fixture(weatherState: "Unavailable"), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard37C-Loading", () => new Fixture(weatherState: "Loading"), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard37C-Evening", () => new Fixture(weatherState: "Evening"), f => Go(f, AppSection.Dashboard)),
+    ("Dashboard35E-SourceDetails", () => new Fixture(), f => { Go(f, AppSection.Dashboard); f.Vm.Dashboard.IsSourceDetailsExpanded = true; Pump(8); ScrollToEnd(f.Window); }),
     // Phase 23B: Today's Shows density/overlap. "-Top" keeps the page at the top (above-the-fold view);
     // the others scroll the Shows panel into view.
     ("DashboardShows-TypicalTop", () => new Fixture(dashboardShows: Phase23BDashboardShowsFixtures.Scheduled(Phase23BDashboardShowsFixtures.Typical)), f => Go(f, AppSection.Dashboard)),
@@ -181,6 +202,16 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
         f.Vm.Associate.PassPerks!.PendingLoad.Wait(2000); Pump(4); f.Vm.Associate.PassPerks.Items.First(i => i.Title.StartsWith("Earn", StringComparison.Ordinal)).ViewDetailsCommand.Execute(null); Pump(10); }),
     ("Associate-Details-PerkTerms", () => new Fixture(), f => { Go(f, AppSection.AssociatePassdown); f.Vm.Associate.ShowProductsSectionCommand.Execute(null); Pump(8);
         f.Vm.Associate.PassPerks!.PendingLoad.Wait(2000); Pump(4); f.Vm.Associate.PassPerks.ViewProgramTermsCommand.Execute(null); Pump(10); }),
+    // Phase 37D: the Calendar's selected-date Weather group (synthetic weather, no NWS request) and the Settings control.
+    ("Calendar37D-Today", () => new Fixture(calendarWeatherState: "Normal"), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Today); }),
+    ("Calendar37D-TodayHourly", () => new Fixture(calendarWeatherState: "Normal"), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Today); f.Vm.Calendar.IsWeatherHourlyExpanded = true; Pump(6); ScrollToName(f.Window, "Hourly forecast"); }),
+    ("Calendar37D-Tomorrow", () => new Fixture(calendarWeatherState: "Normal"), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Today.AddDays(1)); }),
+    ("Calendar37D-Beyond", () => new Fixture(calendarWeatherState: "Normal"), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Busy); }),
+    ("Calendar37D-Past", () => new Fixture(calendarWeatherState: "Normal"), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Past); }),
+    ("Calendar37D-Alerts", () => new Fixture(calendarWeatherState: "Alerts"), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Today); }),
+    ("Calendar37D-Stale", () => new Fixture(calendarWeatherState: "Stale"), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Today); }),
+    ("Calendar37D-Unavailable", () => new Fixture(calendarWeatherState: "Unavailable"), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Today); }),
+    ("Settings37D-WeatherOutlook", () => new Fixture(), f => { Go(f, AppSection.Settings); Pump(6); ScrollToName(f.Window, "Passdown Defaults"); }),
     ("Calendar-PassPerks", () => new Fixture(), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Other); }),
     ("Calendar-PassPerksMonthLong", () => new Fixture(), f => { Go(f, AppSection.OperationsCalendar); Select(f, Fixtures.Today);
         foreach (var e in f.Window.GetVisualDescendants().OfType<Expander>().Where(e => (e.Header as string)?.StartsWith("Valid all", StringComparison.Ordinal) == true)) e.IsExpanded = true; Pump(6); }),
@@ -286,6 +317,8 @@ var scenarios = new List<(string Name, Func<Fixture> Create, Action<Fixture> Arr
     ("P35F-Settings-Sync", () => new Fixture(sync: SyncFixture.UpToDate), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to Personal Sync settings"); }),
     ("P35F-Settings-SyncError", () => new Fixture(sync: SyncFixture.Error), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to Personal Sync settings"); }),
     ("P35F-Settings-Diagnostics", () => new Fixture(sync: SyncFixture.UpToDate), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to Diagnostics"); }),
+    // Phase 35G: Settings → Personal Sync with a very long folder path.
+    ("G35-Settings-LongPath", () => new Fixture(sync: SyncFixture.LongPath), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to Personal Sync settings"); }),
     ("P35F-Settings-About", () => new Fixture(sync: SyncFixture.UpToDate), f => { Go(f, AppSection.Settings); ClickNamed(f.Window, "Go to About this build"); }),
     ("P35F-Notes-SearchEmpty", () => new Fixture(), f => { Go(f, AppSection.OperationalNotes); f.Vm.Notes.SearchText = "no such note"; Pump(6); }),
     ("Settings-Off", () => new Fixture(), f => Go(f, AppSection.Settings)),
@@ -349,6 +382,21 @@ static void CheckAppearance(Window window, string option)
     }
 }
 
+// Phase 36B: refuse a run that would keep too many windows' worth of memory in one process (CaptureBudget.cs).
+if (!CaptureBudget.TryLoad(out var budget, out var budgetError))
+{
+    Console.Error.WriteLine(budgetError);
+    return 2;
+}
+
+var plannedCaptures = sizes.Length * appearanceModes.Length
+    * scenarios.Count(s => filter is null || s.Name.Contains(filter, StringComparison.OrdinalIgnoreCase));
+if (plannedCaptures > budget.MaxCaptures)
+{
+    Console.Error.WriteLine(budget.TooManyCapturesMessage(plannedCaptures));
+    return 2;
+}
+
 foreach (var (w, h) in sizes)
 {
     foreach (var (theme, preference, os) in appearanceModes)
@@ -360,9 +408,23 @@ foreach (var (w, h) in sizes)
                 continue;
             }
 
+            // Phase 36B: stop before the next window if the process is already past the working-set ceiling.
+            if (budget.IsWorkingSetExceeded(out var workingSetMegabytes))
+            {
+                WriteReport();
+                Console.Error.WriteLine(budget.WorkingSetExceededMessage(workingSetMegabytes, report.Count, plannedCaptures));
+                return 3;
+            }
+
             // Reset before every scenario: LiveSwitch-* scenarios change the appearance mid-arrange.
             appearanceStore.SaveException = null;
             simulatedOs.Switch(os);
+            // Phase 35G: a fresh controller per scenario. Each Settings view model subscribes to the controller for
+            // the app's lifetime (one window in the real app), so one shared controller kept every closed scenario
+            // window reachable — ~12 MB each, ~18 GB over a full four-size run.
+            appearance = new AppearanceThemeController(appearanceStore, simulatedOs, new ApplicationThemeVariantTarget());
+            appearance.Initialize();
+            Fixture.Appearance = appearance;
             _ = appearance.SetPreferenceAsync(preference);
             Pump(2);
 
@@ -384,13 +446,17 @@ foreach (var (w, h) in sizes)
     }
 }
 
-File.WriteAllLines(Path.Combine(outDir, $"{label}-geometry.txt"), report);
+WriteReport();
 Console.WriteLine(string.Join(Environment.NewLine, report));
+return 0;
+
+void WriteReport() => File.WriteAllLines(Path.Combine(outDir, $"{label}-geometry.txt"), report);
 
 void Shot(Window window, string name)
 {
     using var frame = window.CaptureRenderedFrame();
-    frame?.Save(Path.Combine(outDir, $"{label}-{name}.png"));
+    // Phase 36B: the non-obsolete overload (CS0618); PNG with the default options, the same encoder as before.
+    frame?.Save(Path.Combine(outDir, $"{label}-{name}.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
 }
 
 static void Collapse(Fixture f)
@@ -612,7 +678,7 @@ static void Pump(int n)
     }
 }
 
-internal enum SyncFixture { Off, UpToDate, Conflict, Error }
+internal enum SyncFixture { Off, UpToDate, Conflict, Error, LongPath }
 
 /// <summary>One isolated app shell over fakes — no database, no network, no real profile.</summary>
 /// <summary>Phase 35A: an Interface animations controller with an in-memory choice and a simulated OS setting.</summary>
@@ -655,7 +721,8 @@ internal sealed class Fixture
     public MainWindow Window { get; }
 
     public Fixture(bool includedNote = false, bool emptyNotes = false, bool emptyHistory = false, SyncFixture sync = SyncFixture.Off, Carowinds.Passdown.Application.Shows.ShowScheduleView? dashboardShows = null, bool showPassPerks = true,
-        PdfPreviewLayoutPreferences? preview = null, InterfaceMotionController? motion = null)
+        PdfPreviewLayoutPreferences? preview = null, InterfaceMotionController? motion = null, DashboardVariant dashboardVariant = DashboardVariant.Typical,
+        string? weatherState = null, bool weatherExpanded = false, string? calendarWeatherState = null)
     {
         var clock = new FakeClock(Fixtures.Now);
         var passPerks = Phase32Fixtures.Service();
@@ -664,6 +731,7 @@ internal sealed class Fixture
         var dashboard = new FakeOperationsDashboardService();
         BusyDayFixtures.ApplyBusyDay(dashboard);
         if (dashboardShows is not null) Phase23BDashboardShowsFixtures.Apply(dashboard, dashboardShows);
+        Phase35EDashboardFixtures.Apply(dashboard, dashboardVariant);
         BusyDayFixtures.ApplyBusyAssociate(AssociateService, partialFailure: true);
         Phase35DFixtures.SeedPersistentNotes(AssociateService);
         if (includedNote) Phase35DFixtures.IncludeFirstPersistentNote(AssociateService);
@@ -680,9 +748,41 @@ internal sealed class Fixture
             new FakeDiagnosticExportFilePicker { ResultFactory = () => DiagnosticExportSaveResult.Failed("The folder could not be written to. Choose another location.") });
         var build = BuildIdentity.FromAssembly(typeof(App).Assembly, @"C:\Users\associate\Downloads\Carowinds-Operations-0.1.0-rc.6-win-x64\Carowinds.Passdown.Desktop.exe");
 
+        // Phase 37C: the Weather card over a scripted monitor (synthetic snapshots, no NWS request). Null keeps the
+        // RC.14 Dashboard without the card, so the Dashboard35E scenarios stay comparable with earlier captures.
+        DashboardWeatherViewModel? weather = null;
+        if (weatherState is not null)
+        {
+            var snapshot = weatherState switch
+            {
+                "Normal" => WeatherUiFixtures.Normal(),
+                "Alerts" => WeatherUiFixtures.TwoAlerts(),
+                "Stale" => WeatherUiFixtures.Stale(),
+                "Unavailable" => WeatherUiFixtures.Unavailable(),
+                "Evening" => WeatherUiFixtures.EveningForecast(),
+                _ => null, // Loading
+            };
+            var weatherClock = new FakeClock(weatherState == "Evening" ? WeatherUiFixtures.Evening : WeatherUiFixtures.Morning);
+            weather = new DashboardWeatherViewModel(new FakeWeatherMonitor { Current = snapshot }, weatherClock, new ImmediateUiDispatcher()) { IsExpanded = weatherExpanded };
+        }
+
         Vm = new MainViewModel(
-            new OperationsDashboardViewModel(dashboard),
-            new OperationsCalendarViewModel(CalendarService, clock, passPerksService: passPerks, calendarDisplay: calendarDisplay),
+            new OperationsDashboardViewModel(dashboard, uiDispatcher: weather is null ? null : new ImmediateUiDispatcher(), weather: weather),
+            new OperationsCalendarViewModel(CalendarService, clock, passPerksService: passPerks, calendarDisplay: calendarDisplay,
+                // Phase 37D: the selected-date Weather group over a scripted monitor (synthetic, no NWS request). Null keeps
+                // the RC.14 Calendar without the group, so the earlier Calendar scenarios stay comparable.
+                uiDispatcher: calendarWeatherState is null ? null : new ImmediateUiDispatcher(),
+                weatherMonitor: calendarWeatherState is null ? null : new FakeWeatherMonitor
+                {
+                    Current = calendarWeatherState switch
+                    {
+                        "Normal" => WeatherUiFixtures.Normal(),
+                        "Alerts" => WeatherUiFixtures.TwoAlerts(),
+                        "Stale" => WeatherUiFixtures.Stale(),
+                        "Unavailable" => WeatherUiFixtures.Unavailable(),
+                        _ => null, // Loading
+                    },
+                }),
             new AssociateViewModel(AssociateService, clock, autosaveDelay: (_, _) => Task.CompletedTask,
                 externalLinkLauncher: new Phase31CFixtures.NoOpLinkLauncher(), dealsService: Phase31CFixtures.Deals(), importantDetailsService: Phase31CFixtures.Details(), passPerksService: passPerks,
                 // Phase 33: the real QuestPDF export (the default) rendered by the real PDFium rasterizer, inline and

@@ -16,6 +16,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Pre-RC.15: the pricing-retention harness's account allowlist (a tool, not a project reference). -->
+    <Compile Include="..\..\tools\pricing-retention-harness\TestAccountPolicy.cs" Link="Tools\PricingRetentionHarness\TestAccountPolicy.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!--
       Several repository test classes open concurrent SQLite connections against
       their own temp database files and call SqliteConnection.ClearAllPools() in

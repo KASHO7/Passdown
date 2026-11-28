@@ -1053,6 +1053,9 @@ public class OperationsCalendarServiceTests
 
         public Task RecordFailedAttemptAsync(DatedResultKey key, SourceEvidence evidence, CancellationToken cancellationToken = default) =>
             inner.RecordFailedAttemptAsync(key, evidence, cancellationToken);
+
+        public Task RecordNoOfferAttemptRetainingVerifiedAsync(DatedResultKey key, SourceEvidence evidence, CancellationToken cancellationToken = default) =>
+            inner.RecordNoOfferAttemptRetainingVerifiedAsync(key, evidence, cancellationToken);
     }
 
     /// <summary>Counts <c>GetByDateRangeAsync</c> calls specifically (spec Phase 12B Part N/Z#20), wrapping a real in-memory repository so every other behavior stays authentic.</summary>

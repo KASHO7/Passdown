@@ -145,7 +145,8 @@ public sealed class OperationsCalendarService(
                 candidate.DisplayName,
                 candidate.OfficialPriceAmount,
                 candidate.PriceKind,
-                candidate.PriceQualifier);
+                candidate.PriceQualifier,
+                candidate.Verification);
         }
 
         var categoryStatus = workspace.CategoryStatuses.FirstOrDefault(s => s.Category == SourceCategory.DatedAdmissionTickets);

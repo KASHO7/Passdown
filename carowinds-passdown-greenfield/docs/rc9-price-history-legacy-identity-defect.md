@@ -8,7 +8,7 @@ candidate (RC.10) after separate release preparation.
 
 | | Gold Season Pass — 2027 |
 |---|---|
-| Computer A (Kishan) | Aug 22 $89 sale · Sep 14 $99 · Oct 22 $99 sale |
+| Computer A (primary account) | Aug 22 $89 sale · Sep 14 $99 · Oct 22 $99 sale |
 | Computer B (CarowindsTestB) | Oct 22 $99 sale only |
 
 Both `official-price-history/<device-id>.json` files hold 42 observations, including A's Aug 22 / Sep 14 /
@@ -68,7 +68,7 @@ Quit the app in **both** Windows accounts. In an elevated PowerShell:
 ```powershell
 $e = "C:\CarowindsEvidence\$(Get-Date -Format yyyyMMdd-HHmmss)"; New-Item -ItemType Directory $e | Out-Null
 Copy-Item "C:\Users\Public\CarowindsSyncTest\Carowinds Operations Sync\official-price-history" "$e\official-price-history" -Recurse
-Copy-Item "C:\Users\Kishan\AppData\Local\Carowinds Passdown" "$e\ComputerA-profile" -Recurse
+Copy-Item "C:\Users\<user>\AppData\Local\Carowinds Passdown" "$e\ComputerA-profile" -Recurse
 Copy-Item "C:\Users\CarowindsTestB\AppData\Local\Carowinds Passdown" "$e\ComputerB-profile" -Recurse
 Get-ChildItem $e -Recurse -File | Get-FileHash -Algorithm SHA256 | Export-Csv "$e\SHA256SUMS.csv" -NoTypeInformation
 ```

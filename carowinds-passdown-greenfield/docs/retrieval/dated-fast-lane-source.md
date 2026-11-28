@@ -268,3 +268,13 @@ contains.
 - This phase implements only the `FastLaneOnly` keyword (both Fast Lane Reserve and Fast Lane
   Ultimate come from it). The `HAPWizard` (haunted attractions) keyword referenced in spec §5.1 is
   out of scope here and was not investigated.
+
+## After the sales window ends (pre-RC.15 live observation)
+
+On 2026-11-27 at 11:12 PM ET (after closing) one read-only request for a window starting that day returned
+`status: "OK"` with entries only for later dates (`2026-11-28`, `11-29`, `12-05`, `12-06`); the current date was no
+longer listed. The adapter correctly classifies this as `Unavailable` (inside the published range). It is a sales-window
+answer, not evidence against prices verified earlier that day, so the registration keeps that date's verified payload
+(`VerifiedDatedPriceRetention`; `docs/pre-rc15-post-closing-pricing-retention.md`). The exact time the
+date drops out (closing time or an earlier sales cut-off) was not established. Synthetic fixture:
+`fixtures/dated-fast-lane/after-closing-horizon-window.json`.

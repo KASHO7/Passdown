@@ -4,8 +4,8 @@ namespace Carowinds.Passdown.Ui.Tests;
 
 /// <summary>
 /// Phase 34C: <c>Assets/logo.png</c> (the 1254×1254 source art for <c>logo.ico</c>) is no longer embedded in
-/// Carowinds.Passdown.Desktop.dll, because nothing loads it at runtime. These checks pin that the icon and the
-/// banner the app does load are still embedded, and that the source art itself stays in the repository.
+/// Carowinds.Passdown.Desktop.dll, because nothing loads it at runtime. These checks pin that the icon is
+/// still embedded (the retired Phase 22B banner no longer is — Phase 35G), and that the source art stays in the repository.
 /// Asset and markup assertions only (no real Window), so this class runs in the mixed Ui partition.
 /// </summary>
 public sealed class Phase34CEmbeddedAssetTests
@@ -24,9 +24,11 @@ public sealed class Phase34CEmbeddedAssetTests
     }
 
     [Fact]
-    public void BrandingBanner_IsStillAnEmbeddedResource()
+    public void RetiredBrandingBanner_IsNoLongerEmbedded()
     {
-        Assert.True(AssetLoader.Exists(new Uri(DesktopAssets + "Branding/fury325-banner.jpg")));
+        // Phase 35G: the 35A sidebar shell replaced the photo banner and was accepted on Windows; the unused
+        // banner was then removed, so only the icon remains embedded from Assets.
+        Assert.False(AssetLoader.Exists(new Uri(DesktopAssets + "Branding/fury325-banner.jpg")));
     }
 
     [Fact]

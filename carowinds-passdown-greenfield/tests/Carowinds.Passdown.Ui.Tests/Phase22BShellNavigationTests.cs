@@ -190,34 +190,34 @@ public sealed partial class Phase22BShellNavigationTests
         }
     }
 
-    // The Fury 325 photograph is kept in the repository, unreferenced, until the 35A Windows review accepts the new
-    // shell (rollback is a revert); its removal is planned for 35G. Until then it stays a single valid asset.
+    // Phase 35G: the Fury 325 photograph was kept, unreferenced, until the 35A shell was accepted on Windows (it was);
+    // the 35A plan listed its removal for 35G. These replace the earlier "single valid banner asset" checks: the
+    // retired banner is neither embedded nor present, and no photo asset has come back under another name.
     [Fact]
-    public void BannerImage_IsEmbeddedInTheDesktopAssembly()
+    public void RetiredBannerImage_IsNoLongerEmbedded()
     {
-        Assert.True(AssetLoader.Exists(new Uri(BannerAvaresUri)), $"{BannerAvaresUri} is not an embedded Avalonia resource");
-        using var stream = AssetLoader.Open(new Uri(BannerAvaresUri));
-        Assert.Equal(0xFF, stream.ReadByte()); // JPEG SOI marker
-        Assert.Equal(0xD8, stream.ReadByte());
+        Assert.False(AssetLoader.Exists(new Uri(BannerAvaresUri)), $"{BannerAvaresUri} was retired in Phase 35G");
     }
 
     [Fact]
-    public void BannerAsset_IsASingleReasonablySizedPanoramicJpeg()
+    public void DesktopSources_ContainNoPhotoAsset_AndNoMarkupOrCodeReferencesTheRetiredBanner()
     {
-        var path = MarkupFiles.Find("src/Carowinds.Passdown.Desktop/Assets/Branding/fury325-banner.jpg");
-        var bytes = File.ReadAllBytes(path);
-        Assert.InRange(bytes.Length, 20_000, 300_000);
-
-        var (width, height) = JpegSize(bytes);
-        Assert.Equal(1920, width);
-        Assert.True(width / (double)height >= 4, $"banner asset {width}x{height} is not a panoramic crop");
-
-        var src = Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(path))))!;
-        var copies = Directory.EnumerateFiles(src, "*.*", SearchOption.AllDirectories)
+        var icon = MarkupFiles.Find("src/Carowinds.Passdown.Desktop/Assets/logo.ico");
+        var desktopRoot = Path.GetDirectoryName(Path.GetDirectoryName(icon))!;
+        var files = Directory.EnumerateFiles(desktopRoot, "*.*", SearchOption.AllDirectories)
             .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}") && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
-            .Where(f => Path.GetFileName(f).Contains("fury", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".webp", StringComparison.OrdinalIgnoreCase))
             .ToList();
-        Assert.Single(copies);
+
+        Assert.DoesNotContain(files, f => f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
+            || f.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase)
+            || f.EndsWith(".webp", StringComparison.OrdinalIgnoreCase)
+            || Path.GetFileName(f).Contains("fury", StringComparison.OrdinalIgnoreCase));
+        foreach (var source in files.Where(f => f.EndsWith(".axaml", StringComparison.Ordinal) || f.EndsWith(".cs", StringComparison.Ordinal)))
+        {
+            var text = File.ReadAllText(source);
+            Assert.DoesNotContain("fury325-banner", text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Assets/Branding", text, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     // ------------------------------------------------------------------ tokens
@@ -485,24 +485,6 @@ public sealed partial class Phase22BShellNavigationTests
         var start = section.IndexOf($"<Style Selector=\"{selector}\">", StringComparison.Ordinal);
         Assert.True(start >= 0, $"style {selector} missing");
         return section[start..(section.IndexOf("</Style>", start, StringComparison.Ordinal))];
-    }
-
-    private static (int Width, int Height) JpegSize(byte[] bytes)
-    {
-        for (var i = 2; i + 9 < bytes.Length;)
-        {
-            if (bytes[i] != 0xFF) { i++; continue; }
-            var marker = bytes[i + 1];
-            var length = (bytes[i + 2] << 8) | bytes[i + 3];
-            if (marker is >= 0xC0 and <= 0xC3)
-            {
-                return ((bytes[i + 7] << 8) | bytes[i + 8], (bytes[i + 5] << 8) | bytes[i + 6]);
-            }
-
-            i += 2 + length;
-        }
-
-        throw new Xunit.Sdk.XunitException("no JPEG frame header");
     }
 
     [GeneratedRegex("<Button [^>]*Classes=\"navItem[^\"]*\"[^>]*>", RegexOptions.Singleline)]

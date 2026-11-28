@@ -96,6 +96,13 @@ public class RefreshOrchestratorLiveSmokeTests(ITestOutputHelper output)
             _records[key] = new DatedResultRecord(key, existing?.SuccessEvidence, existing?.SuccessPayloadJson, evidence);
             return Task.CompletedTask;
         }
+
+        public Task RecordNoOfferAttemptRetainingVerifiedAsync(DatedResultKey key, SourceEvidence evidence, CancellationToken cancellationToken = default)
+        {
+            var existing = _records.GetValueOrDefault(key);
+            _records[key] = new DatedResultRecord(key, existing?.SuccessEvidence, existing?.SuccessPayloadJson, evidence);
+            return Task.CompletedTask;
+        }
     }
 
     /// <summary>Freshness/source-state is irrelevant to a manual single-date refresh (Part C never touches it) — this only satisfies the constructor.</summary>

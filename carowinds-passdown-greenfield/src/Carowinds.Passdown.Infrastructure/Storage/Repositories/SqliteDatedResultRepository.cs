@@ -143,6 +143,26 @@ public sealed class SqliteDatedResultRepository(SqliteConnectionFactory connecti
                 nameof(evidence));
         }
 
+        await WriteLastAttemptOnlyAsync(key, evidence, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task RecordNoOfferAttemptRetainingVerifiedAsync(DatedResultKey key, SourceEvidence evidence, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(evidence);
+        RequireMatchingKey(key, evidence);
+        if (evidence.Status is not (RetrievalStatus.Unavailable or RetrievalStatus.NotPublished))
+        {
+            throw new ArgumentException(
+                $"RecordNoOfferAttemptRetainingVerifiedAsync requires an Unavailable or NotPublished answer; got '{evidence.Status}'.",
+                nameof(evidence));
+        }
+
+        await WriteLastAttemptOnlyAsync(key, evidence, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Writes only the latest-attempt columns; the success columns (last-known-good) are never touched.</summary>
+    private async Task WriteLastAttemptOnlyAsync(DatedResultKey key, SourceEvidence evidence, CancellationToken cancellationToken)
+    {
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         using var command = connection.CreateCommand();
         command.CommandText =

@@ -3,10 +3,57 @@ obj/
 *.user
 .vs/
 
-# Phase 7A: generated Windows release publish output (packaging/windows/Publish-Windows.ps1)
-artifacts/
+# Phase 7A: generated Windows release publish output (packaging/windows/Publish-Windows.ps1).
+# Phase 38A: anchored to the project root so nested or differently-cased source folders named
+# "Artifacts" are never silently ignored (core.ignorecase is true on macOS).
+/artifacts/
 
 # Phase 23D: release signing keys must never be committed (keep them offline, outside the repository).
 *.pem
 *.key
 *signing-key*
+# Phase 38A: other signing/certificate key containers.
+*.pfx
+*.p12
+*.snk
+
+# Phase 38A: disposable test packages are named LOCAL-ONLY-* (Build-PortableRelease.ps1 -LocalTestLabel
+# and the tools/ harnesses); ignore them even if copied outside artifacts/.
+LOCAL-ONLY-*
+
+# Phase 38A: live databases, logs, local secrets and user-specific settings must never be committed.
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3
+*.log
+.env
+.env.*
+.claude/settings.local.json
+
+# Repository maintenance (2026-11-26): operating-system metadata. Ignoring does not untrack
+# .DS_Store files that are already tracked or staged; removing those from the index is a separate,
+# owner-approved step (see README.md "Repository hygiene").
+.DS_Store
+._*
+.AppleDouble/
+.Spotlight-V100/
+.Trashes/
+Thumbs.db
+desktop.ini
+
+# Generated development artifacts (tests, coverage, IDE state, Python bytecode).
+TestResults/
+*.trx
+# Phase 38A: anchored to the project root (see /artifacts/ above).
+/coverage/
+coverage*.xml
+coverage*.json
+.idea/
+*.swp
+__pycache__/
+*.pyc

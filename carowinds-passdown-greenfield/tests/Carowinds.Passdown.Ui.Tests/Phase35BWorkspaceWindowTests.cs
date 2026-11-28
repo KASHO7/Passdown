@@ -27,9 +27,15 @@ public partial class Phase33PreviewWindowTests
     private sealed record Workspace(Window Window, AssociateViewModel ViewModel, FakeAssociatePassdownService Service, ContentEchoPdfExportService Export,
         FakePdfPrintService Printer, FakePdfSaveFilePicker SavePicker, ManualDebounceScheduler PreviewDebounce, ManualDebounceScheduler Autosave);
 
-    private static async Task<Workspace> RealizeWorkspaceAsync(double width, double height, ThemeVariant? theme = null, PdfPreviewLayoutPreferences? preferences = null)
+    private static async Task<Workspace> RealizeWorkspaceAsync(double width, double height, ThemeVariant? theme = null, PdfPreviewLayoutPreferences? preferences = null, FakeErtConfigurationService? ert = null)
     {
         var service = new FakeAssociatePassdownService();
+        if (ert is not null)
+        {
+            // Phase 36C: resolve the workspace's Early Ride Time from the fake ERT store, as production's resolver does.
+            service.WorkspaceFactory = date => FakeAssociatePassdownService.DefaultWorkspace(date) with { EarlyRideTime = ert.Resolve(date) };
+        }
+
         var export = new ContentEchoPdfExportService();
         var printer = new FakePdfPrintService();
         var savePicker = new FakePdfSaveFilePicker();
@@ -47,7 +53,8 @@ public partial class Phase33PreviewWindowTests
             pdfPreviewLayoutStore: new InMemoryPdfPreviewLayoutPreferenceStore(preferences),
             pdfPageImageFactory: new FakePdfPageImageFactory(),
             previewWorkScheduler: new InlinePreviewWorkScheduler(),
-            previewDelay: debounce.Delay);
+            previewDelay: debounce.Delay,
+            ertConfigurationService: ert);
         await viewModel.PendingLoad;
         await viewModel.Preview.PendingPreferenceLoad;
 
@@ -160,7 +167,7 @@ public partial class Phase33PreviewWindowTests
         var w = await RealizeWorkspaceAsync(1280, 640);
         w.ViewModel.ManualHoursOverrideEnabled = true;
         w.ViewModel.PrivateBuyoutEnabled = true;
-        w.ViewModel.OpenErtEditorCommand.Execute(null);
+        w.ViewModel.EarlyRideTimeEditor.OpenErtEditorCommand.Execute(null);
         Pump();
         var overview = VisibleSection(w.Window);
         Assert.True(overview.Extent.Height > overview.Viewport.Height, "the Overview should scroll at this size");
@@ -253,9 +260,9 @@ public partial class Phase33PreviewWindowTests
         var edit = ByName<Button>(w.Window, "Edit Attractions for Early Ride Time");
         Assert.True(edit.IsEffectivelyVisible);
 
-        Execute(edit.Command, () => w.ViewModel.IsErtEditorOpen);
+        Execute(edit.Command, () => w.ViewModel.EarlyRideTimeEditor.IsErtEditorOpen);
 
-        Assert.True(w.ViewModel.IsErtEditorOpen);
+        Assert.True(w.ViewModel.EarlyRideTimeEditor.IsErtEditorOpen);
         Assert.True(ByName<Border>(w.Window, "Early Ride Time editor").IsEffectivelyVisible);
         Assert.True(ByName<TextBox>(w.Window, "Monthly Early Ride Time rides").IsEffectivelyVisible);
         w.Window.Close();

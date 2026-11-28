@@ -47,32 +47,39 @@ public class DashboardViewTests
 
         Assert.Contains("Open Passdown", names);
         Assert.Contains("Open History", names);
-        Assert.Contains("Open Notes", names);
+        // Phase 35E Dashboard: the approved "Review Notes" label is also its accessible name.
+        Assert.Contains("Review Notes", names);
         // Phase 19A: the header "Refresh" button is gone (the Dashboard reloads itself on local changes).
         Assert.DoesNotContain("Refresh today's operations summary", names);
         Assert.Contains("Latest finalized passdown", names);
         Assert.Contains("Data status", names);
         Assert.Contains("Check Online", names);
 
-        // Phase 10E Part W: the remaining panels gained accessible names to match the precedent set
-        // by "Data status"/"Latest finalized passdown" (Phase 10C/10D), so a screen reader can
-        // navigate the page's landmark structure, not just its individual actions.
-        // Phase 22C: "Today's Operation" became the Operations Overview's "Park hours" area; the
-        // overview itself, Daily admission, View pricing and the Source details disclosure are named too.
-        Assert.Contains("Operations overview", names);
+        // Phase 10E Part W / 22C: every panel is a named landmark. Phase 35E Dashboard: the approved Admissions
+        // Overview — the gate-operations card and its four areas, Daily Ticket Pricing (still "Daily admission",
+        // the Phase 22C reference it falls back to), Shows, Pass Perks; visible link labels are the names.
+        Assert.Contains("Gate operations", names);
         Assert.Contains("Park hours", names);
+        Assert.Contains("Avenue Entrance", names);
+        Assert.Contains("North Gate", names);
+        Assert.Contains("Early Ride Time", names);
+        Assert.Contains("View in Calendar", names);
         Assert.Contains("Daily admission", names);
-        Assert.Contains("View pricing", names);
+        Assert.Contains("View Pricing", names);
         Assert.Contains("Source details", names);
         Assert.Contains("Passdown Status", names);
-        Assert.Contains("Today at a Glance", names);
+        Assert.Contains("Today's shows", names);
+        Assert.Contains("View Shows", names);
+        Assert.Contains("Pass Perks", names);
+        Assert.Contains("Pass Perks Details", names);
+        Assert.DoesNotContain("Operations overview", names);
+        Assert.DoesNotContain("Today at a Glance", names);
 
-        // Phase 11C Part AF/AH: renamed from "Operational Notes" to "Passdown Notes" specifically
-        // because this phase introduces a second, distinct "Active operational notes" panel next to
-        // it (persistent, supervisor-managed notes) — the two must never share a name or heading.
+        // Phase 11C Part AF/AH: "Passdown Notes" (today's draft lines) and "Active operational notes" (the
+        // persistent, supervisor-managed notes) must never share a name or heading.
         Assert.Contains("Passdown Notes", names);
         Assert.Contains("Active operational notes", names);
-        Assert.Contains("Open operational notes", names);
+        Assert.Contains("View Notes", names);
     }
 
     // Phase 19A: no header Refresh button remains; the header holds the shared official-data
@@ -133,7 +140,8 @@ public class DashboardViewTests
 
         var view = new DashboardView { DataContext = viewModel };
         var checkOnlineBusyBar = view.GetLogicalDescendants().OfType<ProgressBar>().Single(p => p.Name == "CheckOnlineBusyBar");
-        Assert.NotSame(checkOnlineBusyBar, view.GetLogicalDescendants().OfType<ProgressBar>().Single(p => double.IsNaN(p.Width)));
+        // The page's own local-reload bar (Phase 37C added the Weather card's bars, so it is found by its accessible name).
+        Assert.NotSame(checkOnlineBusyBar, view.GetLogicalDescendants().OfType<ProgressBar>().Single(p => Avalonia.Automation.AutomationProperties.GetName(p) == "Loading dashboard"));
 
         var runTask = viewModel.CheckOnlineCommand.ExecuteAsync(null);
         Assert.True(viewModel.IsCheckingOnline);

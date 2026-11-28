@@ -28,7 +28,7 @@ that, and its results are recorded separately.
 
 | Item | Value |
 |---|---|
-| Repository / branch | git root `/Users/kashyap/Documents/Passdown`, app in `carowinds-passdown-greenfield/`, branch `feature/passdown-redesign` |
+| Repository / branch | git root `~/Documents/Passdown`, app in `carowinds-passdown-greenfield/`, branch `feature/passdown-redesign` |
 | Starting HEAD | **`af9e53a`** (RC13-Phase34B1-LOCALTEST record), on top of Phase 34B-1 `87b265e` |
 | Working tree at start | only pre-existing unrelated changes (`.DS_Store` files, staged `.claude/skills/pdf-design/SKILL.md`); left untouched and not committed |
 | Version | `0.1.0-rc.12` / FileVersion `0.1.0.12` (not bumped) |

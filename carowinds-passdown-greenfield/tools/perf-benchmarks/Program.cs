@@ -20,6 +20,9 @@ if (args.Length == 0)
           preview [edits]               isolated edit → preview page image through the real preview view model (default 25)
           print-bands [pages]           600 DPI print band loop off Windows: time and allocations per page (default 10)
           refresh-requests              official POSTs for a 7-day rolling window, without and with coalescing
+          weather [iterations]          Phase 37C: weather cache load, snapshot and card build, Dashboard realize with/without the card
+          pdf-weather [iterations] [outDir]  Phase 37F: PDF generation with/without the Weather Outlook; renders to outDir
+          calendar-weather [iterations] Phase 37D: Calendar Weather group build; Calendar date/month navigation with/without it
           all <scratchDir>              everything above with defaults
         """);
     return 1;
@@ -46,6 +49,14 @@ switch (args[0])
         return PrintBandBenchmark.Run(args.Length > 1 ? int.Parse(args[1], CultureInfo.InvariantCulture) : 10);
     case "refresh-requests":
         return await RefreshRequestBenchmark.RunAsync();
+    case "weather":
+        InitializeHeadlessSkia();
+        return await WeatherBenchmark.RunAsync(args.Length > 1 ? int.Parse(args[1], CultureInfo.InvariantCulture) : 2000);
+    case "pdf-weather":
+        return PdfWeatherBenchmark.Run(args.Length > 1 ? int.Parse(args[1], CultureInfo.InvariantCulture) : 40, args.Length > 2 ? args[2] : null);
+    case "calendar-weather":
+        InitializeHeadlessSkia();
+        return CalendarWeatherBenchmark.Run(args.Length > 1 ? int.Parse(args[1], CultureInfo.InvariantCulture) : 2000);
     case "all":
         var scratch = RequireScratch(args);
         var status = PdfStartupBenchmark.RunSuite(7);
@@ -55,6 +66,9 @@ switch (args[0])
         status |= PrintBandBenchmark.Run(10);
         status |= await DatabaseBenchmark.RunAsync(scratch, [0, 2_000, 20_000]);
         status |= await RefreshRequestBenchmark.RunAsync();
+        status |= await WeatherBenchmark.RunAsync(2000);
+        status |= PdfWeatherBenchmark.Run(40, null);
+        status |= CalendarWeatherBenchmark.Run(2000);
         return status;
     default:
         Console.Error.WriteLine($"Unknown benchmark '{args[0]}'.");

@@ -30,7 +30,11 @@ public static class DatedResultProjectionExtensions
         // overwrite SuccessValue with null.
         if (record.LastAttemptEvidence != record.SuccessEvidence)
         {
-            projection = projection.RecordAttempt(record.LastAttemptEvidence, null);
+            // Pre-RC.15: a successful no-offer attempt stored beside an older verified success is only ever
+            // written by VerifiedDatedPriceRetention, so it is replayed the same way — keeping the verified value.
+            projection = record.LastAttemptEvidence.Status is RetrievalStatus.Unavailable or RetrievalStatus.NotPublished
+                ? projection.RecordNoOfferAttemptRetainingVerified(record.LastAttemptEvidence)
+                : projection.RecordAttempt(record.LastAttemptEvidence, null);
         }
 
         return projection;

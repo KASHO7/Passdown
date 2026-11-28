@@ -284,12 +284,12 @@ public class Phase35BPassdownWorkspaceTests
         Assert.Contains("x:Name=\"PreSoldsTextBox\" Classes=\"countInput\"", group);
         Assert.Equal(2, Regex.Matches(group, "LostFocus=\"CountTextBox_OnLostFocus\"").Count);
         var edit = Regex.Match(group, "<Button Grid.Column=\"1\" Content=\"Edit Attractions\"[^>]*>", RegexOptions.Singleline).Value;
-        Assert.Contains("Command=\"{Binding OpenErtEditorCommand}\"", edit);
+        Assert.Contains("Command=\"{Binding EarlyRideTimeEditor.OpenErtEditorCommand}\"", edit);
         Assert.Contains("AutomationProperties.Name=\"Edit Attractions for Early Ride Time\"", edit); // visible label is in the name
         Assert.Contains("{Binding EarlyRideTimeStatusText}", group);
         Assert.Contains("<TextBlock Text=\"Your setting\" />", group);
-        Assert.Contains("IsVisible=\"{Binding IsErtEditorOpen}\"", group);
-        foreach (var command in new[] { "SaveMonthlyErtCommand", "SaveOverrideCommand", "RemoveOverrideCommand", "CancelErtEditorCommand" })
+        Assert.Contains("IsVisible=\"{Binding EarlyRideTimeEditor.IsErtEditorOpen}\"", group);
+        foreach (var command in new[] { "EarlyRideTimeEditor.SaveMonthlyErtCommand", "EarlyRideTimeEditor.SaveOverrideCommand", "EarlyRideTimeEditor.RemoveOverrideCommand", "EarlyRideTimeEditor.CancelErtEditorCommand" })
         {
             Assert.Contains($"Command=\"{{Binding {command}}}\"", group);
         }
@@ -317,7 +317,8 @@ public class Phase35BPassdownWorkspaceTests
     {
         var include = Element(Markup, "IncludeInPassdownPanel");
 
-        string[] order = ["IncludeDailyAdmission", "IncludeFastLane", "IncludePromotions", "IncludeSeasonPasses", "IncludeAddOns", "IncludeHauntedAttractions", "IncludeOperationalNotes", "IncludeShows"];
+        string[] order = ["IncludeDailyAdmission", "IncludeFastLane", "IncludePromotions", "IncludeSeasonPasses", "IncludeAddOns", "IncludeHauntedAttractions", "IncludeOperationalNotes", "IncludeShows",
+            "IncludeWeatherOutlook"]; // Phase 37F: the Weather Outlook device preference, directly below Shows
         Assert.Equal(order, Regex.Matches(include, "<CheckBox [^>]*IsChecked=\"\\{Binding (Include\\w+)\\}\"", RegexOptions.Singleline).Select(m => m.Groups[1].Value));
         Assert.Contains("IsVisible=\"{Binding ShowHauntedOption}\"", include);
         Assert.Contains("{Binding HauntedSeasonNote}", include);
@@ -325,7 +326,7 @@ public class Phase35BPassdownWorkspaceTests
         Assert.DoesNotContain("ShowRows", include); // which shows print is chosen on the Shows section
         Assert.DoesNotContain("SelectedOperationalNotes", include); // persistent-note selection stays on Notes
         Assert.DoesNotContain("IncludeOnPdf", include); // product selection stays on Products
-        Assert.Equal(8, Regex.Matches(include, "AutomationProperties.Name=\"Include [^\"]+ in the Passdown\"").Count);
+        Assert.Equal(9, Regex.Matches(include, "AutomationProperties.Name=\"Include [^\"]+ in the Passdown\"").Count); // Phase 37F: + Weather Outlook
     }
 
     [Fact]

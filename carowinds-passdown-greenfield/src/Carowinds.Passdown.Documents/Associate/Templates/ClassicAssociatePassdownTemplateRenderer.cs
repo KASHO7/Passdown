@@ -102,30 +102,103 @@ public sealed class ClassicAssociatePassdownTemplateRenderer : IAssociatePassdow
         {
             list.Spacing(m.SummarySpacing);
 
-            list.Item().Text("PARK HOURS").FontSize(9).Bold().LetterSpacing(0.06f);
-            list.Item().PaddingTop(1).PaddingBottom(3).Text(text =>
+            if (model.Weather is { } weather)
             {
-                text.Span(model.ParkHours.HeadlineText).FontSize(14).Bold();
-
-                if (model.ParkHours.BadgeText is { } badge)
+                // Phase 37F: the Weather Outlook sits to the right of the summary rows (their own spacing is unchanged)
+                // within their height; Early Ride keeps the full width below. With Private Buyout details, whose text can
+                // wrap, the outlook sits beside the hours and gates only and the details keep their full width.
+                var besideCounts = model.ParkHours.PrivateBuyoutDetails is null;
+                list.Item().Row(row =>
                 {
-                    text.Span($"   ({badge})").FontSize(8.5f).Italic().FontColor(MutedTextColor);
+                    row.RelativeItem().Column(top =>
+                    {
+                        top.Spacing(m.SummarySpacing);
+                        ComposeHoursAndGates(top, model, labelWidth);
+                        if (besideCounts)
+                        {
+                            ComposeCounts(top, model, labelWidth);
+                        }
+                    });
+                    row.ConstantItem(WeatherGap);
+                    row.ConstantItem(WeatherWidth).Dynamic(new PdfWeatherOutlookComponent(weather, WeatherStyle(m), WeatherHeightBudget(m, besideCounts), WeatherLevels));
+                });
+
+                if (!besideCounts)
+                {
+                    ComposeBuyoutDetails(list, model, labelWidth);
+                    ComposeCounts(list, model, labelWidth);
                 }
-            });
-
-            SummaryRow(list, labelWidth, "North Gate", model.ParkHours.NorthGateText ?? "-");
-            SummaryRow(list, labelWidth, "Avenue", model.ParkHours.AvenueText ?? "-");
-
-            if (model.ParkHours.PrivateBuyoutDetails is { } details)
+            }
+            else
             {
-                list.Item().PaddingLeft(labelWidth).Text($"Buyout details: {details}").FontSize(8.5f).FontColor(MutedTextColor);
+                ComposeHoursAndGates(list, model, labelWidth);
+                ComposeBuyoutDetails(list, model, labelWidth);
+                ComposeCounts(list, model, labelWidth);
             }
 
-            SummaryRow(list, labelWidth, "Attendance", PdfFormatting.FormatCount(model.Attendance.ProjectedAttendance));
-            SummaryRow(list, labelWidth, "Pre-solds", PdfFormatting.FormatCount(model.Attendance.PreSolds));
             SummaryRow(list, labelWidth, "Early Ride", PdfFormatting.ErtLineText(model.EarlyRideTime.Kind, model.EarlyRideTime.Rides, model.OperatingDate));
         });
     }
+
+    private static void ComposeHoursAndGates(ColumnDescriptor list, AssociatePassdownDocumentModel model, float labelWidth)
+    {
+        list.Item().Text("PARK HOURS").FontSize(9).Bold().LetterSpacing(0.06f);
+        list.Item().PaddingTop(1).PaddingBottom(3).Text(text =>
+        {
+            text.Span(model.ParkHours.HeadlineText).FontSize(14).Bold();
+
+            if (model.ParkHours.BadgeText is { } badge)
+            {
+                text.Span($"   ({badge})").FontSize(8.5f).Italic().FontColor(MutedTextColor);
+            }
+        });
+
+        SummaryRow(list, labelWidth, "North Gate", model.ParkHours.NorthGateText ?? "-");
+        SummaryRow(list, labelWidth, "Avenue", model.ParkHours.AvenueText ?? "-");
+    }
+
+    private static void ComposeBuyoutDetails(ColumnDescriptor list, AssociatePassdownDocumentModel model, float labelWidth)
+    {
+        if (model.ParkHours.PrivateBuyoutDetails is { } details)
+        {
+            list.Item().PaddingLeft(labelWidth).Text($"Buyout details: {details}").FontSize(8.5f).FontColor(MutedTextColor);
+        }
+    }
+
+    private static void ComposeCounts(ColumnDescriptor list, AssociatePassdownDocumentModel model, float labelWidth)
+    {
+        SummaryRow(list, labelWidth, "Attendance", PdfFormatting.FormatCount(model.Attendance.ProjectedAttendance));
+        SummaryRow(list, labelWidth, "Pre-solds", PdfFormatting.FormatCount(model.Attendance.PreSolds));
+    }
+
+    // ---------------------------------------------------------------- Phase 37F Weather Outlook
+
+    /// <summary>Width of the Weather Outlook column at the right of the summary rows; the rows keep the rest (wide enough for the longest hours headline with its badge).</summary>
+    internal const float WeatherWidth = 220f;
+
+    private const float WeatherGap = 16f;
+
+    /// <summary>
+    /// The height of the rows beside the outlook (caption, headline, North Gate, Avenue and, unless buyout details
+    /// follow, Attendance and Pre-solds) at their fixed type sizes, slightly rounded down: an outlook level taller than
+    /// this is never drawn, so the outlook never makes the header taller.
+    /// </summary>
+    private static float WeatherHeightBudget(Metrics m, bool besideCounts) => besideCounts
+        ? 10.8f + 20.8f + (4 * 11.4f) + (5 * m.SummarySpacing) - 1.5f
+        : 10.8f + 20.8f + (2 * 11.4f) + (3 * m.SummarySpacing) - 1.5f;
+
+    private static WeatherOutlookStyle WeatherStyle(Metrics m) =>
+        new(LabelSize: 9f, LabelLetterSpacing: 0.06f, LabelColor: InkColor, HeadlineSize: 14f, SecondarySize: 9f, SecondaryColor: InkColor,
+            AttributionSize: 7.5f, AttributionColor: MutedTextColor, IconSize: 13f, InkColor: InkColor, LineSpacing: m.SummarySpacing);
+
+    /// <summary>Full (label, icon and temperature, condition and rain, source) → split full → condensed → minimal.</summary>
+    private static readonly IReadOnlyList<IReadOnlyList<WeatherLine>> WeatherLevels =
+    [
+        [new(Label: true), new(Icon: true, Temperature: true), new(Condition: WeatherPartForm.Full, Rain: WeatherPartForm.Full), new(Attribution: WeatherPartForm.Full)],
+        [new(Label: true), new(Icon: true, Temperature: true), new(Condition: WeatherPartForm.Full), new(Rain: WeatherPartForm.Full), new(Attribution: WeatherPartForm.Full)],
+        [new(Label: true), new(Icon: true, Temperature: true), new(Condition: WeatherPartForm.Short, Rain: WeatherPartForm.Short), new(Attribution: WeatherPartForm.Short)],
+        [new(Icon: true, Temperature: true, Condition: WeatherPartForm.Short), new(Attribution: WeatherPartForm.Short)],
+    ];
 
     private static void SummaryRow(ColumnDescriptor column, float labelWidth, string label, string value) =>
         column.Item().Row(row =>

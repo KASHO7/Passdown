@@ -33,18 +33,22 @@ public sealed record DashboardAdmissionPresentation(
         if (summary is { Kind: not DashboardAdmissionKind.NotAvailable, PriceAmount: { } amount })
         {
             var isStale = summary.PriceState == AssociateVerificationState.Stale;
+            // Pre-RC.15: verified earlier today, but the official calendar no longer lists the date.
+            var isPreviouslyVerified = summary.PriceState == AssociateVerificationState.PreviouslyVerified;
             var exact = summary.Kind == DashboardAdmissionKind.ExactDated;
             var priceText = exact ? PriceFormatting.Format(amount) : $"From {PriceFormatting.Format(amount)}";
             var qualifier = exact ? "Official price for today" : "Advertised starting price";
 
             string? freshness = summary.LastVerifiedAt is { } verifiedAt
-                ? isStale
-                    ? $"Last verified {FormatEastern(verifiedAt, nowUtc)} — may be out of date"
-                    : $"Verified {FormatEastern(verifiedAt, nowUtc)}"
+                ? isPreviouslyVerified
+                    ? $"Last verified {FormatEastern(verifiedAt, nowUtc)} — availability not confirmed"
+                    : isStale
+                        ? $"Last verified {FormatEastern(verifiedAt, nowUtc)} — may be out of date"
+                        : $"Verified {FormatEastern(verifiedAt, nowUtc)}"
                 : isStale ? "Older information — may be out of date" : null;
 
             var automation = $"Daily admission: {summary.ProductName}, {priceText}, {qualifier}." + (freshness is null ? string.Empty : $" {freshness}.");
-            return new DashboardAdmissionPresentation(summary.ProductName, priceText, qualifier, freshness, HasPrice: true, isStale, automation);
+            return new DashboardAdmissionPresentation(summary.ProductName, priceText, qualifier, freshness, HasPrice: true, isStale || isPreviouslyVerified, automation);
         }
 
         var reason = summary.UnavailableReason switch
@@ -58,6 +62,7 @@ public sealed record DashboardAdmissionPresentation(
                 AssociateVerificationState.Closed => "No dated admission offered today",
                 AssociateVerificationState.Error => "Dated prices could not be checked",
                 AssociateVerificationState.Stale => "Dated prices could not be rechecked",
+                AssociateVerificationState.PreviouslyVerified => "Today's dated prices are no longer listed",
                 AssociateVerificationState.NotCheckedYet => "Dated prices have not been checked yet",
                 _ => "No general admission price identified for today",
             },

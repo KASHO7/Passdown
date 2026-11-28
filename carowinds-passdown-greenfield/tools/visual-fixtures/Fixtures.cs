@@ -334,6 +334,12 @@ internal static partial class Fixtures
                     new SyncConflictSummary(SyncEntityType.OperationalNote, Guid.NewGuid().ToString(), "Operational note — Synthetic: South Gate scanner #3 out of service", false, false, Guid.NewGuid(), 2, Now.AddHours(-2), Now.AddMinutes(-12), false),
                 ];
                 break;
+            case SyncFixture.LongPath:
+                // Phase 35G: a deep synthetic folder path, to check that Settings wraps or trims it without overflow.
+                settings.PersonalSyncEnabled = true; settings.Status = PersonalSyncStatus.Ready;
+                settings.SyncRootPath = @"C:\Users\associate.with.a.long.synthetic.account.name\OneDrive - Synthetic Organisation Name For Layout Testing\Shared Operations Folders\Admissions\Guest Services Team Records\Carowinds Operations Sync";
+                coordinator.CurrentStatus = PersonalSyncAutomationSnapshot.Initial with { State = PersonalSyncAutomationState.UpToDate, LastSuccessfulSyncUtc = lastSync, LastAttemptUtc = lastSync };
+                break;
             case SyncFixture.Error:
                 settings.PersonalSyncEnabled = true; settings.SyncRootPath = root; settings.Status = PersonalSyncStatus.FolderUnavailable;
                 settings.StatusDetail = "The sync folder can't be reached. Work is saved on this computer and will sync once the folder is back.";

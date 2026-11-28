@@ -28,6 +28,7 @@ using Carowinds.Passdown.Application.Shows;
 using Carowinds.Passdown.Application.SpellCheck;
 using Carowinds.Passdown.Application.Time;
 using Carowinds.Passdown.Application.Updates;
+using Carowinds.Passdown.Application.Weather;
 using Carowinds.Passdown.Desktop.Services;
 using Carowinds.Passdown.Desktop.ViewModels;
 using Carowinds.Passdown.Desktop.Views;
@@ -35,6 +36,7 @@ using Carowinds.Passdown.Documents.Associate;
 using Carowinds.Passdown.Domain;
 using Carowinds.Passdown.Domain.Promotions;
 using Carowinds.Passdown.Domain.Retrieval;
+using Carowinds.Passdown.Domain.Weather;
 using Carowinds.Passdown.Domain.Updates;
 using Carowinds.Passdown.Infrastructure;
 using Carowinds.Passdown.Infrastructure.Concurrency;
@@ -55,6 +57,8 @@ using Carowinds.Passdown.Infrastructure.Storage;
 using Carowinds.Passdown.Infrastructure.Storage.Migrations;
 using Carowinds.Passdown.Infrastructure.Storage.Repositories;
 using Carowinds.Passdown.Infrastructure.Time;
+using Carowinds.Passdown.Infrastructure.Weather;
+using Carowinds.Passdown.Infrastructure.Weather.Nws;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -173,7 +177,8 @@ public partial class App : global::Avalonia.Application
             var refreshCoordinator = services.GetRequiredService<IOfficialDataRefreshCoordinator>();
             var historicalBackfill = services.GetRequiredService<IHistoricalBackfillService>();
             var updateCoordinator = services.GetRequiredService<IApplicationUpdateCoordinator>();
-            AttachShutdownFlush(desktop, mainViewModel, syncCoordinator, refreshCoordinator, historicalBackfill, logger, updateCoordinator);
+            var weatherMonitor = services.GetRequiredService<IWeatherMonitor>();
+            AttachShutdownFlush(desktop, mainViewModel, syncCoordinator, refreshCoordinator, historicalBackfill, logger, updateCoordinator, weatherMonitor);
 
             // Phase 23D: Install Update saves through the same Phase 23A flush as closing the window, then closes
             // through the normal shutdown path once the external updater is running.
@@ -234,6 +239,14 @@ public partial class App : global::Avalonia.Application
             // never sharing anything with official-data retrieval); nothing happens when updates are not set up.
             updateCoordinator.Start();
             StartUpdateCleanup(services, logger);
+
+            // Phase 37C: weather (NWS) for the Dashboard card — one monitor for the interactive session, started here
+            // after the window is assigned. Start() returns at once: the cached weather is read on the thread pool and
+            // the first NWS request waits WeatherMonitor.StartupDelay, so startup never waits for it. The headless
+            // --scheduled-refresh host never starts it, so no weather request is made while the app is closed.
+            weatherMonitor.Start();
+            logger.LogInformation("Weather (National Weather Service) monitor started; alerts are checked about every {Minutes} min while the app is open.",
+                new WeatherRefreshPolicy().Alerts.Target?.TotalMinutes);
 
             StartTempPdfCleanup(logger);
         }
@@ -296,7 +309,7 @@ public partial class App : global::Avalonia.Application
     /// there is never a close-confirmation loop and the app can always be closed. Overlapping close
     /// requests while a flush is running are ignored rather than starting another flush.
     /// </summary>
-    private static void AttachShutdownFlush(IClassicDesktopStyleApplicationLifetime desktop, MainViewModel mainViewModel, IPersonalSyncCoordinator syncCoordinator, IOfficialDataRefreshCoordinator refreshCoordinator, IHistoricalBackfillService historicalBackfill, ILogger logger, IApplicationUpdateCoordinator? updateCoordinator = null)
+    private static void AttachShutdownFlush(IClassicDesktopStyleApplicationLifetime desktop, MainViewModel mainViewModel, IPersonalSyncCoordinator syncCoordinator, IOfficialDataRefreshCoordinator refreshCoordinator, IHistoricalBackfillService historicalBackfill, ILogger logger, IApplicationUpdateCoordinator? updateCoordinator = null, IWeatherMonitor? weatherMonitor = null)
     {
         var flushed = false;
         var flushRunning = false;
@@ -361,7 +374,8 @@ public partial class App : global::Avalonia.Application
                 // Phase 23D: an update check or download in progress is cancelled too (a partial download is
                 // deleted by the next attempt; nothing installed is touched).
                 mainViewModel.Settings.Updates.CancelBackgroundWork();
-                var stop = Task.WhenAll(refreshCoordinator.StopAsync(), historicalBackfill.StopAsync(), updateCoordinator?.StopAsync() ?? Task.CompletedTask);
+                // Phase 37C: the weather monitor stops too (a cancelled NWS request writes nothing; the cache keeps its last-known-good weather).
+                var stop = Task.WhenAll(refreshCoordinator.StopAsync(), historicalBackfill.StopAsync(), updateCoordinator?.StopAsync() ?? Task.CompletedTask, weatherMonitor?.StopAsync() ?? Task.CompletedTask);
                 await Task.WhenAny(stop, Task.Delay(RefreshStopTimeout)).ConfigureAwait(true);
             }
             catch (Exception ex)
@@ -646,6 +660,12 @@ public partial class App : global::Avalonia.Application
         services.AddSingleton<ICalendarDisplayPreferenceStore>(provider => new FileCalendarDisplayPreferenceStore(
             FileCalendarDisplayPreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FileCalendarDisplayPreferenceStore>>()));
         services.AddSingleton<CalendarDisplaySettingsViewModel>();
+        // Phase 37F follow-up: "Include Weather Outlook" for Passdown PDFs — one local file, never synced.
+        services.AddSingleton<IPassdownWeatherOutlookPreferenceStore>(provider => new FilePassdownWeatherOutlookPreferenceStore(
+            FilePassdownWeatherOutlookPreferenceStore.DefaultPath, provider.GetRequiredService<ILogger<FilePassdownWeatherOutlookPreferenceStore>>()));
+        // Phase 37D: one shared owner of that value, so Settings → Passdown Defaults and the Passdown's Weather Outlook
+        // checkbox read and write the same preference (one load, one save per change).
+        services.AddSingleton<PassdownWeatherOutlookSettingsViewModel>();
 
         // Phase 9A: the immutable finalized-passdown foundation.
         services.AddSingleton<IFinalizedPassdownRepository, SqliteFinalizedPassdownRepository>();
@@ -810,6 +830,33 @@ public partial class App : global::Avalonia.Application
             provider.GetRequiredService<ILogger<HistoricalBackfillService>>()));
         services.AddSingleton<IUiDispatcher, AvaloniaUiDispatcher>();
         services.AddSingleton<OfficialDataStatusViewModel>();
+
+        // Phase 37C: weather from the National Weather Service (spec §6.6), activating the Phase 37B code. One provider
+        // with its own HttpClient (never the official-data transport), one cache file, one coordinator and one monitor
+        // for the interactive app's lifetime; the Dashboard card only observes the monitor. Resolving these makes no
+        // request: only IWeatherMonitor.Start (OnFrameworkInitializationCompleted) begins retrieval, and the headless
+        // --scheduled-refresh host never calls it. The fixed, verified reference points (decision D8) — never the
+        // computer's location.
+        services.AddSingleton(CarowindsWeatherLocation.Park);
+        services.AddSingleton<IWeatherCacheStore>(provider => new FileWeatherCacheStore(
+            FileWeatherCacheStore.DefaultPath, provider.GetRequiredService<ILogger<FileWeatherCacheStore>>()));
+        services.AddSingleton<IWeatherProvider>(provider => new NwsWeatherProvider(
+            new NwsHttpTransport(
+                NwsHttpTransport.CreateHttpClient(),
+                NwsHttpTransport.BuildUserAgent(BuildIdentity.FromAssembly(typeof(App).Assembly, Environment.ProcessPath).Version)),
+            logger: provider.GetRequiredService<ILogger<NwsWeatherProvider>>()));
+        services.AddSingleton(provider => new WeatherRefreshCoordinator(
+            provider.GetRequiredService<IWeatherProvider>(),
+            provider.GetRequiredService<IWeatherCacheStore>(),
+            provider.GetRequiredService<IClock>(),
+            provider.GetRequiredService<WeatherLocation>(),
+            logger: provider.GetRequiredService<ILogger<WeatherRefreshCoordinator>>()));
+        services.AddSingleton<IWeatherMonitor>(provider => new WeatherMonitor(
+            provider.GetRequiredService<WeatherRefreshCoordinator>(),
+            provider.GetRequiredService<IClock>(),
+            provider.GetRequiredService<ILogger<WeatherMonitor>>()));
+        services.AddSingleton<IWeatherLinkLauncher, AvaloniaWeatherLinkLauncher>();
+        services.AddSingleton<DashboardWeatherViewModel>();
 
         services.AddTransient<DiagnosticsExportViewModel>();
 

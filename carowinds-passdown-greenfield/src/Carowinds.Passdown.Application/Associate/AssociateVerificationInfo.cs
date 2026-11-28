@@ -18,6 +18,14 @@ public enum AssociateVerificationState
     Unavailable,
     Error,
     Stale,
+
+    /// <summary>
+    /// Pre-RC.15 (<see cref="Refresh.VerifiedDatedPriceRetention"/>): the value was verified for this exact
+    /// date earlier, and the latest successful check found the date no longer offered (its sales window
+    /// ended, or it was withdrawn). The value is shown as previously verified; current sales availability
+    /// is not confirmed. Distinct from <see cref="Stale"/>, where the latest check itself failed.
+    /// </summary>
+    PreviouslyVerified,
 }
 
 /// <summary>
@@ -41,6 +49,17 @@ public sealed record AssociateVerificationInfo(
         if (effectiveStatus is null)
         {
             return NotCheckedYet;
+        }
+
+        // Only VerifiedDatedPriceRetention writes a successful no-offer attempt beside an older verified
+        // success; every other successful completion replaces the success evidence too.
+        if (lastKnownGood is { IsStale: true, SuccessEvidence.Status: RetrievalStatus.Verified, LastAttemptEvidence.Status: RetrievalStatus.Unavailable or RetrievalStatus.NotPublished })
+        {
+            return new AssociateVerificationInfo(
+                AssociateVerificationState.PreviouslyVerified,
+                lastKnownGood.SuccessEvidence.TimeChecked,
+                lastKnownGood.Age(asOf),
+                lastKnownGood.LastAttemptEvidence.Detail);
         }
 
         var detail = lastKnownGood.IsStale
