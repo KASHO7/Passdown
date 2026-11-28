@@ -128,7 +128,7 @@ confirmations, not item-by-item runs of their checklists, so the items below sti
 | E.6 | **Print → Microsoft Print to PDF**, open the file | Same content as the preview; sharp text | |
 | E.7 | Physical printer if available | Prints correctly; note the printer model | |
 | E.8 | **Create PDF** | Same weather choice as the preview | |
-| E.9 | Preview freshness: open Passdown right after launch (before weather arrives, ~10 s), leave the preview untouched until the Dashboard shows weather, then **Print to PDF** without editing | **Record what the visible preview showed before printing and what the printed file contains.** Expected by design: the printed file uses the newest weather and the preview then updates to match (decision D-2) | |
+| E.9 | Preview freshness: open Passdown right after launch (before weather arrives, ~10 s), leave the preview untouched until the Dashboard shows weather, then **Print to PDF** without editing | **Record what the visible preview showed before printing and what the printed file contains.** Expected by design (decision D-2, accepted 2026-11-28): the printed file uses the newest weather and the preview then updates to match. Report only if the printed file has *older* weather than the preview, another date's weather, or the preview never updates | |
 | E.10 | History: open an earlier finalized Passdown, print it | Opens and prints the stored document; no current weather added; unchanged | |
 | E.11 | High-DPI printing: at 150 % (or 125 %) display scaling, print a 2-page Passdown to Microsoft Print to PDF while watching Task Manager → Details → `Carowinds.Passdown.Desktop.exe` memory | Note peak memory during printing and memory 1 minute later (a temporary rise is expected; it should fall back) | |
 
@@ -169,5 +169,5 @@ confirmations, not item-by-item runs of their checklists, so the items below sti
 ## Report back
 
 Send: the A–H results, the header details (PC, Windows build, scaling), and screenshots of anything that failed or
-looked wrong. Say explicitly whether items C.11, E.9 and E.11 were done: C.11 checks the D-1 change, and E.9 and E.11
-inform decisions D-2 and D-3.
+looked wrong. Say explicitly whether items C.11, E.9 and E.11 were done: C.11 checks the D-1 change, E.9 the accepted
+D-2 behavior, and E.11 informs decision D-3.

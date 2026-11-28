@@ -8,10 +8,10 @@ not owner-accepted as an integrated build / RC.15 not prepared / not published.
 |---|---|
 | Branch | `feature/passdown-redesign` (local; 41 commits ahead of the local `origin/feature/passdown-redesign` ref at the start; remote not re-fetched; nothing pushed) |
 | Starting commit | `2427b9d` (pricing harness 2 package record, documentation only) |
-| Ending commits | `8921324` (37E-1: NWS request-volume simulation tests, test only), `4f17bed` (37E-2: this record, the checklist, index and testing guide; documentation only), `69d70a7` (37E-3: owner-approved D-1 Calendar wording, tests, specification and architecture), then the 37E-4 documentation commit (D-1 results and the second package) |
+| Ending commits | `8921324` (37E-1: NWS request-volume simulation tests, test only), `4f17bed` (37E-2: this record, the checklist, index and testing guide; documentation only), `69d70a7` (37E-3: owner-approved D-1 Calendar wording, tests, specification and architecture), `c95da27` (37E-4: D-1 results and the second package; documentation only), then 37E-5 (D-2 decision; documentation only) |
 | Reviewed source baseline | `69d70a7` for the D-1 change, the final suite and `RC15-Phase37E2-LOCALTEST`; `8921324` (production identical to `1be060d`) for the audit, benchmarks and the first package |
 | Dirty-tree caveats | Clean at start and before packaging; no unrelated changes present |
-| Authorization | Owner brief "Carowinds Operations — Phase 37E: Integrated Validation, Reliability Audit & RC.15 Release Readiness" (2026-11-28): validation, tests, bounded measurements, documentation and a LOCALTEST package; production changes only after owner approval. Owner reply "Yes, implement D-1" (2026-11-28) approved the §19 D-1 change, implemented in §25 |
+| Authorization | Owner brief "Carowinds Operations — Phase 37E: Integrated Validation, Reliability Audit & RC.15 Release Readiness" (2026-11-28): validation, tests, bounded measurements, documentation and a LOCALTEST package; production changes only after owner approval. Owner reply "Yes, implement D-1" (2026-11-28) approved the §19 D-1 change, implemented in §25; owner reply "Accept, release note" (2026-11-28) decided D-2 |
 | Release status | `v0.1.0-rc.14` (tag → `3d603f0`) published and frozen; source `<Version>` `0.1.0-rc.14` (not bumped); no RC.15 tag, manifest or signature exists |
 | Database schema / sync formats | Schema 18 (`Migration0018CreateOfficialReferenceDocumentsTable`); sync envelope 1 (`SyncEnvelopeSerializer.CurrentSyncSchemaVersion`); draft payload 4 (`AssociateDraftPayload.CurrentSchemaVersion`); finalized snapshot 2 (`FinalizedPassdownSnapshot.CurrentSchemaVersion`); official price history file 1; weather cache format 1; update manifest format 1 — all unchanged since RC.14 |
 
@@ -26,7 +26,8 @@ pricing fix is narrowly scoped. Deterministic simulation confirms about **31 NWS
 is failing or rate-limiting), so a few devices on one public IP make a negligible load.
 
 The audit raised D-1 (Calendar retained-price wording), which the owner approved and which is now implemented
-locally (§25). Still open: D-2 (preview freshness after weather arrives), D-3 (high-DPI printing observation) and D-4
+locally (§25), and D-2 (preview freshness after weather arrives), which the owner accepted as designed with a
+release-notes line (§19). Still open: D-3 (high-DPI printing observation) and D-4
 (integrated Windows acceptance of `RC15-Phase37E2-LOCALTEST`). Recommendation: **conditional GO** to RC.15 preparation
 once the integrated checklist is run on Windows; **NO-GO** for publication until then.
 
@@ -285,7 +286,7 @@ high-DPI printing), F Pricing retention (review only, no reseed), G Personal Syn
 |---|---|
 | Data corruption/loss, draft persistence, pricing verification, Weather date/alert safety, PDF creation/printing, sync/History, updater verification, packaging security | **No blocker found** |
 | Calendar retained-price wording (D-1) | Owner-approved; implemented locally (§25); awaiting Windows (checklist C.11) |
-| Preview freshness after weather arrives (D-2) | Needs decision |
+| Preview freshness after weather arrives (D-2) | Decided: accepted as designed, release-notes line (§19); no code change |
 | High-DPI Windows printing observation (D-3) | Needs decision (observation only) |
 | Integrated Windows acceptance of this package (D-4) | Needs decision / evidence gap |
 | Optional UI refinements, Phase 36E, TD-02 runner, seasonal themes, Personal Tasks/Issue Tracking | Deferred |
@@ -303,7 +304,15 @@ run of this package, and — at release preparation — the RC.14 → RC.15 upda
   verified November 27, availability not confirmed" (optionally the same for `Stale`: "· could not be rechecked"), plus
   focused presentation tests. Alternatives: accept as is for RC.15 and record it as a known limitation. Recommended:
   implement before RC.15 (it is the one surface that can read as "on sale").
-- **D-2 Preview freshness.** Options: (a) accept and add a release-notes line ("Print and Save use the latest weather;
+- **D-2 Preview freshness — decided 2026-11-28: accept with a release-notes line (option a).** No code change; the
+  behavior is now stated in `AGENT_BUILD_SPEC.md` §6.6 (37E-5). Text to include in the RC.15 release notes when their
+  preparation is authorized (the bundled notes are tied to the version, so they are not created now):
+
+  > **Weather in printed Passdowns.** Print, Save PDF and Create PDF always use the latest weather the app has. If new
+  > weather arrives while the preview is open, the printed or saved PDF can show newer weather than the preview did;
+  > the preview updates to match right after.
+
+  Original options: (a) accept and add a release-notes line ("Print and Save use the latest weather;
   the preview updates after printing"); (b) narrow change: when the monitor's snapshot would change the captured outlook
   for the displayed date, call the existing `Preview.NotifyContentChanged()` (coalesced, no new timer), with regression
   tests for "weather arrives → preview regenerates once" and "unchanged weather → no regeneration". Recommended: (a) for
@@ -324,7 +333,8 @@ The updater, manifest format, signing tool and trusted key are unchanged since R
 `Carowinds.Passdown.Updater`, `Infrastructure/Updates`, `tools/update-signing`). The RC.13 → RC.14 owner success does
 **not** prove RC.14 → RC.15. At release preparation (separately authorized), in order:
 
-1. Bump `<Version>` to `0.1.0-rc.15`; update bundled release notes and the tester guide; clean build and full suite.
+1. Bump `<Version>` to `0.1.0-rc.15`; update bundled release notes (including the D-2 weather line, §19) and the
+   tester guide; clean build and full suite.
 2. Build with `Build-PortableRelease.ps1` (no `-LocalTestLabel`) from a clean detached worktree of the release commit;
    the frozen-release guard must pass; re-hash every earlier artifact before and after.
 3. Sign with `tools/update-signing` using the established key (outside the repository; never printed or copied):
@@ -349,9 +359,10 @@ The updater, manifest format, signing tool and trusted key are unchanged since R
 
 ## 22. Product specification review status
 
-Updated (by D-1 only). `AGENT_BUILD_SPEC.md` §7.5 ("Previously verified date-specific prices") now names the Calendar's
+Updated (by D-1 and D-2). §6.6 PDF Weather Outlook now states the preview/print weather behavior accepted in D-2
+(2026-11-28). `AGENT_BUILD_SPEC.md` §7.5 ("Previously verified date-specific prices") now names the Calendar's
 Daily ticket line, and §9.2 states its wording, citing owner decision D-1 (2026-11-28) and this record. §6.6, §17.3 and
-§22 match the source reviewed; D-2 would need a specification line only if the owner approves a change.
+§22 match the source reviewed.
 
 ## 23. Architecture documentation review status
 
@@ -366,7 +377,7 @@ persisted field).
 
 **No-go for RC.15 publication today; conditional go for RC.15 release preparation** when: (1) the integrated checklist
 is run on Windows with `RC15-Phase37E2-LOCALTEST` with no blocking failure, including C.11 (D-1 wording), F.2–F.7, E.9
-and E.11; (2) the owner settles D-2 (recommended: accept with a release-notes line); (3) RC.15 preparation and the
+and E.11; (2) the RC.15 release notes carry the D-2 line (§19); (3) RC.15 preparation and the
 updater plan (§21) are separately authorized.
 
 ## Validation
@@ -390,7 +401,7 @@ updater plan (§21) are separately authorized.
 - All measurements are from the macOS development host; Windows timing, DPI, Narrator and printing are unverified.
 - The NWS simulation models provider behaviour; it is not a live measurement. No live NWS or official request was made.
 - Personal Sync was validated by the automated suites with temporary folders; a Windows disposable-folder run is in §G.
-- D-2 to D-4 open; D-1 implemented, awaiting Windows.
+- D-3 and D-4 open; D-1 implemented, awaiting Windows; D-2 accepted (release-notes line at RC.15 preparation).
 - D-1 leaves the Calendar's `Stale` price wording unchanged (plain amount, as since Phase 13D); the D-1 wording was not
   rendered in a visual fixture (it relies on the panel's existing `TextWrapping="Wrap"`), so its on-screen fit is first
   checked on Windows (C.11).
