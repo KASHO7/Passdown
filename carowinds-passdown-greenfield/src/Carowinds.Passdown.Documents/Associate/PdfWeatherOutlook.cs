@@ -104,6 +104,16 @@ public static class PdfWeatherOutlookBuilder
             shortAttribution);
     }
 
+    /// <summary>
+    /// Phase 37D: the same condition wording and icon classification the PDF uses, for the Calendar's hourly rows (one
+    /// vocabulary across surfaces). Null wording for a blank condition; <see cref="PdfWeatherIcon.None"/> when unclassified.
+    /// </summary>
+    public static (string? Condition, PdfWeatherIcon Icon) DescribeCondition(string? shortForecast, bool daytime)
+    {
+        var text = Normalize(shortForecast);
+        return text is null ? (null, PdfWeatherIcon.None) : (SentenceCase(text), Classify(text, daytime).Icon);
+    }
+
     private static string? TemperatureText(IReadOnlyList<HourlyForecastPeriod> hours)
     {
         if (hours.Any(hour => hour.TemperatureF is null))

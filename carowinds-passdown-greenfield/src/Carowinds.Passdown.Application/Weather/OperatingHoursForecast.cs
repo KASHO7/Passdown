@@ -75,10 +75,12 @@ public static class OperatingHoursForecastSelector
     {
         ArgumentNullException.ThrowIfNull(hours);
 
-        if (hours.Status != EffectiveHoursStatus.Open || hours.Opening is not { } opening || hours.Closing is not { } closing || opening == closing)
+        if (OperatingWindow(operatingDate, hours) is not { } window)
         {
             return OperatingHoursForecastSelection.Omitted(OperatingHoursForecastOmission.NoParkHours);
         }
+
+        var (opensAt, closesAt) = window;
 
         if (snapshot?.Hourly is not { } hourly || snapshot.HourlyStatus.CheckedAt is not { } retrievedAt)
         {
@@ -90,8 +92,6 @@ public static class OperatingHoursForecastSelector
             return OperatingHoursForecastSelection.Omitted(OperatingHoursForecastOmission.ForecastTooOld);
         }
 
-        var opensAt = ToUtc(operatingDate, opening);
-        var closesAt = ToUtc(closing > opening ? operatingDate : operatingDate.AddDays(1), closing);
         if (now >= closesAt)
         {
             return OperatingHoursForecastSelection.Omitted(OperatingHoursForecastOmission.HoursEnded);
@@ -117,6 +117,25 @@ public static class OperatingHoursForecastSelector
             new OperatingHoursForecast(operatingDate, opensAt, closesAt, from, covering, hourly.UpdateTime, retrievedAt),
             OperatingHoursForecastOmission.None);
     }
+
+    /// <summary>
+    /// Phase 37D: the instants an operating date's effective park hours run between — the same rule the PDF selection
+    /// uses (closing at or before opening runs past midnight into the next day; Eastern time, DST-aware). Null when the
+    /// date has no usable hours (closed, not checked yet, not published, or equal times); nothing is substituted.
+    /// </summary>
+    public static (DateTimeOffset OpensAt, DateTimeOffset ClosesAt)? OperatingWindow(DateOnly operatingDate, EffectiveHours hours)
+    {
+        ArgumentNullException.ThrowIfNull(hours);
+        if (hours.Status != EffectiveHoursStatus.Open || hours.Opening is not { } opening || hours.Closing is not { } closing || opening == closing)
+        {
+            return null;
+        }
+
+        return (ToUtc(operatingDate, opening), ToUtc(closing > opening ? operatingDate : operatingDate.AddDays(1), closing));
+    }
+
+    /// <summary>Phase 37D: the start of an Eastern calendar date as an instant (DST-aware), for date-bounded forecast windows.</summary>
+    public static DateTimeOffset StartOfEasternDay(DateOnly date) => ToUtc(date, TimeOnly.MinValue);
 
     private static bool HasGap(IReadOnlyList<HourlyForecastPeriod> periods)
     {
