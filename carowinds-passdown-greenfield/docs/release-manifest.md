@@ -595,7 +595,7 @@ clean.
 ## Release content cleanliness note
 
 A byte-string scan of both release forms found the build host's absolute repository path
-(`/Users/kashyap/Documents/Passdown/carowinds-passdown-greenfield/...`) embedded once per managed
+(`~/Documents/Passdown/carowinds-passdown-greenfield/...`) embedded once per managed
 assembly, as the PE CodeView debug-directory's `.pdb` path — standard compiler-emitted build
 metadata (present even though no `.pdb` file itself is shipped), not user data, credentials, or a
 new regression: every prior rebuild since Phase 15F was built on this same host and carries the
@@ -2259,7 +2259,7 @@ EXECUTED. Distribution NOT approved. Nothing pushed, uploaded or published.** Ru
 
 | | |
 |---|---|
-| Artifact | `/Users/kashyap/Documents/Passdown/carowinds-passdown-greenfield/artifacts/releases/Carowinds-Operations-0.1.0-rc.8-win-x64.zip` |
+| Artifact | `~/Documents/Passdown/carowinds-passdown-greenfield/artifacts/releases/Carowinds-Operations-0.1.0-rc.8-win-x64.zip` |
 | Bytes | **75,714,287** (RC.7: 75,149,722) |
 | SHA-256 | **`6d753211ec0cca7393aac162b15d01220f3ae12a05e489a5316c71489c7f83ea`** |
 | Architecture / runtime | win-x64, self-contained (`coreclr.dll`, `hostfxr.dll` included); `Carowinds.Passdown.Desktop.exe` and `Carowinds.Passdown.Updater.exe` are `PE32+ (GUI) x86-64` |
@@ -2293,7 +2293,7 @@ EXECUTED. Distribution NOT approved. Nothing pushed, uploaded or published.** Ru
 
 | | |
 |---|---|
-| Artifact | `/Users/kashyap/Documents/Passdown/carowinds-passdown-greenfield/artifacts/releases/Carowinds-Operations-0.1.0-rc.8-win-x64-singlefile.exe` |
+| Artifact | `~/Documents/Passdown/carowinds-passdown-greenfield/artifacts/releases/Carowinds-Operations-0.1.0-rc.8-win-x64-singlefile.exe` |
 | Bytes | **191,886,156** (RC.7 EXE: 191,013,708) |
 | SHA-256 | **`9026dc93944b0a9a0476858bb71acd9d997696ef2eb00a0ee6d741401753c654`** |
 | Checks | Phase 15F single-file command into a freshly deleted `artifacts/publish/win-x64-singlefile`; output = exe + `LatoFont/OFL.txt` (`.pdb` removed). `PE32+ (GUI) x86-64`; carries `0.1.0-rc.8+a651e26…`; Fury image embedded once; no rc.7 strings, no developer paths, no private-key bytes. Frozen read-only |

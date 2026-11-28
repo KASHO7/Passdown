@@ -31,7 +31,7 @@ Result must match the hash above exactly. Record: 94064EEE63A2CB7BC0D30E83D45AFD
 
 Record:
 
-- Windows edition/version/build (`winver` or `Get-ComputerInfo | Select WindowsProductName,WindowsVersion,OsBuildNumber`):PS C:\Users\Kishan\Downloads> Get-ComputerInfo | Select WindowsProductName,WindowsVersion,OsBuildNumber
+- Windows edition/version/build (`winver` or `Get-ComputerInfo | Select WindowsProductName,WindowsVersion,OsBuildNumber`):PS C:\Users\<user>\Downloads> Get-ComputerInfo | Select WindowsProductName,WindowsVersion,OsBuildNumber
 
 WindowsProductName WindowsVersion OsBuildNumber
 ------------------ -------------- -------------
@@ -41,7 +41,7 @@ Windows 10 Pro     2009           26200
 
 - Architecture (`$env:PROCESSOR_ARCHITECTURE`): ARM64
 - Display scaling (Settings → System → Display): ______________________
-- Was .NET SDK/runtime already installed before this test? (`dotnet --info`, or note if `dotnet` isn't found at all): PS C:\Users\Kishan\Downloads> dotnet --info
+- Was .NET SDK/runtime already installed before this test? (`dotnet --info`, or note if `dotnet` isn't found at all): PS C:\Users\<user>\Downloads> dotnet --info
 .NET SDK:
  Version:           10.0.400
  Commit:            14fbf8d527

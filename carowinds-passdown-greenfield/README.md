@@ -51,6 +51,8 @@ load directly. Skills: `build-and-test`, `phase-review`, `retrieval-source`, `ui
 
 ## Repository hygiene
 
-macOS metadata and generated test/IDE output are ignored. Some `.DS_Store` files were committed or
-staged before those rules existed; ignoring them does not untrack them. Removing them from the index
-(`git rm --cached`) is a separate step that needs the owner's approval.
+macOS metadata, generated test/IDE output, build output and the repo-root `artifacts/` folder are
+ignored, as are databases, logs, `.env` files, signing-key containers and `LOCAL-ONLY-*` test packages
+(Phase 38A). No `.DS_Store` file is tracked any more (removed in `edd7a79` and `7c2027e`). Ignoring a
+file never untracks one that is already committed; removing anything from the index (`git rm --cached`)
+needs the owner's approval.

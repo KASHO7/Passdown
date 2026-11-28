@@ -74,7 +74,7 @@ folder verified unchanged, no switching back to it).
 
 ### Sync folder and account safety
 
-- Accounts: `Kishan` = Computer A, `CarowindsTestB` = Computer B (the existing VM test accounts).
+- Accounts: the primary account = Computer A, `CarowindsTestB` = Computer B (the existing VM test accounts).
 - `Phase30-SyncTest.ps1 -Mode Prepare` (elevated, app closed in both accounts) stops at the first problem.
   In order: copies both `%LOCALAPPDATA%\Carowinds Passdown` folders and the existing
   `C:\Users\Public\CarowindsSyncTest\Carowinds Operations Sync` to

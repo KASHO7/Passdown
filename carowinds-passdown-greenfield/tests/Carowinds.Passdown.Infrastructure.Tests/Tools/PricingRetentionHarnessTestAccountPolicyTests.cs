@@ -18,8 +18,8 @@ public class PricingRetentionHarnessTestAccountPolicyTests
         Assert.True(TestAccountPolicy.IsApproved(userName));
 
     [Theory]
-    [InlineData("Kishan")]
-    [InlineData("kashyap")]
+    [InlineData("Sam")]
+    [InlineData("jane.doe")]
     [InlineData("Administrator")]
     [InlineData("")]
     [InlineData(" ")]
@@ -46,11 +46,11 @@ public class PricingRetentionHarnessTestAccountPolicyTests
     [Fact]
     public void RefusalMessage_NamesBothApprovedAccounts_AndTheCurrentUser()
     {
-        var message = TestAccountPolicy.RefusalMessage("Kishan");
+        var message = TestAccountPolicy.RefusalMessage("Sam");
 
         Assert.Contains("'CarowindsTest'", message);
         Assert.Contains("'CarowindsTestB'", message);
-        Assert.Contains("current user: 'Kishan'", message);
+        Assert.Contains("current user: 'Sam'", message);
     }
 
     [Fact]
