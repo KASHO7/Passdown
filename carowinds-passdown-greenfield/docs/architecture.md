@@ -25,7 +25,7 @@ Release state from records: `0.1.0-rc.14` published 2026-11-27T00:56Z as a GitHu
 | Desktop | Application, Infrastructure, Documents | Avalonia MVVM, DI composition, UI coordination |
 | Updater | Infrastructure | Separate staged update executable |
 
-Verified from `src/*/*.csproj` at the review baseline. Tools outside this table: `tools/update-signing` (in the solution) and `tools/updater-offline-stager`, `tools/updater-test-harness` reference Infrastructure; `tools/perf-benchmarks` and `tools/visual-fixtures` reference Desktop. Test projects reference only the production project they cover (Infrastructure.Tests also references `tools/update-signing`). Keep Infrastructure and Documents independent; no concrete infrastructure/UI dependencies in Application or Domain. `Directory.Build.props` declares the source version and target framework; inspect it rather than deriving versions from historical records.
+Verified from `src/*/*.csproj` at the review baseline. Tools outside this table: `tools/update-signing` (in the solution) and `tools/updater-offline-stager`, `tools/updater-test-harness` and (pre-RC.15, test only) `tools/pricing-retention-harness` reference Infrastructure; `tools/perf-benchmarks` and `tools/visual-fixtures` reference Desktop. Test projects reference only the production project they cover (Infrastructure.Tests also references `tools/update-signing`). Keep Infrastructure and Documents independent; no concrete infrastructure/UI dependencies in Application or Domain. `Directory.Build.props` declares the source version and target framework; inspect it rather than deriving versions from historical records.
 
 ## Subsystem map
 

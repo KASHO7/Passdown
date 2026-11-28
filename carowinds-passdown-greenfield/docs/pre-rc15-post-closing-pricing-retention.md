@@ -158,6 +158,37 @@ accesso coalescing, direct PDFium rendering and the Lato font path are untouched
 | Earlier artifacts | All 15,329 earlier files under `artifacts/` (39 under `artifacts/releases`) re-hashed byte-identical |
 | Windows checklist | [rc15-pricing-retention-localtest-windows-checklist.md](releases/rc15-pricing-retention-localtest-windows-checklist.md) — deterministic reproduction: Check Online on today after closing; status **NOT EXECUTED** |
 
+## 11. Deterministic Windows verification harness
+
+Owner brief "Pre-RC.15 — Windows Pricing-Retention Verification" (2026-11-28): verify on Windows without waiting for
+a closing. Chosen: a disposable console harness, `tools/pricing-retention-harness/` (not in `CarowindsPassdown.slnx`,
+not shipped with the app; same pattern as `tools/updater-offline-stager`), rather than any production test mode.
+
+- **Production code exercised:** `DatedAdmissionSource`, `DatedFastLaneSource`, `DatedSourceRegistration`,
+  `SqliteDatedResultRepository`, `SqliteConnectionFactory` (and, only to create an empty build-host database for
+  `--database`, the production migrations through `MigrationRunner`). No production source changed.
+- **Synthetic inputs:** a stub `IRetrievalHttpClient` serves only embedded committed fixtures
+  (`fixtures/dated-admission/published-window.json`, `fixtures/dated-admission/after-closing-window.json`,
+  `fixtures/dated-fast-lane/published-today.json`, `fixtures/dated-fast-lane/horizon-window.json`,
+  `fixtures/dated-fast-lane/no-dates-found.json`, `fixtures/dated-fast-lane/after-closing-horizon-window.json`); there
+  is no HTTP client, so no request is possible. Its own `IClock` is set to 2026-08-20 3:10 PM ET, then 10:15 PM ET;
+  the system clock is not changed.
+- **Date:** Thursday 2026-08-20, a past date the app never retrieves online (automatic checks skip past dates; the
+  rolling window starts today; Check Online short-circuits past dated-pricing dates without a request), so nothing
+  live can overwrite the synthetic data during the check.
+- **Isolation guards:** writes only to the signed-in user's database when that user is `CarowindsTest`; refuses while
+  the app runs, when the database is missing or not at the current schema, or when the date already has stored
+  dated-admission/Fast Lane results. `verify` is read-only. No database is packaged (the build script refuses one).
+- **Build-host evidence (Mac):** `seed` on a fresh schema-18 database → 8/8 PASS, 5 fixture answers, 0 network
+  requests; a second `seed` refused; `verify` → 8/8 PASS; the default-path run as a non-`CarowindsTest` user refused
+  without creating a file. **Negative control:** the same harness built against the unfixed source `700d881` reports
+  `RESULT: FAIL` (6 checks: success `Unavailable` at 10:15 PM, "prices none"). A throwaway scratch program (outside
+  the repository) composed the production `AssociatePassdownService` workspace from the seeded database: three rows,
+  `PreviouslyVerified`, row note "Last verified Aug 20 at 3:10 PM ET — sales availability not confirmed."; after a
+  $45 override the PDF (Classic, Modern, Compact) printed Park Ticket $45.00, FAST LANE RESERVE $49.00, FAST LANE
+  ULTIMATE $85.00 and the footer "Some product pricing has not been recently verified.".
+- **Windows steps:** checklist section "Simulated closing" (S.1–S.10); not executed.
+
 ## Validation
 
 | Check | Result |

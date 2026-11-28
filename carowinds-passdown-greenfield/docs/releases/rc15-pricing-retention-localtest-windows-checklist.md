@@ -114,6 +114,62 @@ candidate.
 
 8.2 Calendar, Shows, Notes, History and Settings are unchanged.
 
+## Simulated closing — verify without waiting for the park to close
+
+Sections 1–3 need a real closing. This section reproduces the same transition deterministically with synthetic data
+for the past date **Thursday, August 20, 2026**, which the app never retrieves online. It uses the separate harness
+package `LOCAL-ONLY-RC15-PricingRetentionHarness-LOCALTEST-win-x64.zip` (details in the fix record §11). The harness
+runs the app's own Daily Admission and Fast Lane code and its own database code; only the official answers are
+recorded synthetic ones and the clock is the harness's own (3:10 PM, then 10:15 PM on Aug 20). It makes no network
+request and does not touch the Windows clock. Prices: Park Ticket **$49.00**, FAST LANE RESERVE **$49.00**, FAST LANE
+ULTIMATE **$85.00** (synthetic).
+
+Status of every item: **NOT EXECUTED.**
+
+S.1 Sign in as **`CarowindsTest`**. Extract the app ZIP (this candidate) and the harness ZIP into two new folders.
+Open the app once, wait until the window is ready, then close it completely.
+
+S.2 Turn **Wi-Fi/network off** for the rest of this section (proves nothing comes from the internet; the app works
+offline from its local data).
+
+S.3 In the harness folder: Shift+right-click → **Open in Terminal**, run
+`.\carowinds-pricing-retention-harness.exe seed`. Expected: Step 1 shows `Verified` for DatedAdmissionTickets and
+DatedFastLane; Step 2 shows `Unavailable`; "Network requests: 0"; eight `[PASS]` lines including
+"verified at Aug 20, 2026 3:10 PM ET" and "latest check 'Unavailable' at Aug 20, 2026 10:15 PM ET"; final line
+**RESULT: PASS**. Screenshot the window. (It refuses, changing nothing, for another Windows user, while the app is
+open, or if run a second time.)
+
+S.4 Open the app → **Passdown** → select **August 20, 2026** → **Products & Pricing**: **Daily Admission** shows Park
+Ticket $49.00 and **Fast Lane** shows FAST LANE RESERVE $49.00 and FAST LANE ULTIMATE $85.00, each with
+**"Last verified Aug 20 at 3:10 PM ET — sales availability not confirmed."** No row reads as current or on sale.
+Season Passes are **not** listed for this past date (existing rule: current catalog prices are never shown for past
+dates); select **today** to see Season Passes listed as before.
+
+S.5 Give **Park Ticket** a manual price of **$45** (Edit price). The row shows $45.00 as the price; the official $49.00
+remains available through Reset to official (do not reset yet).
+
+S.6 **Overview** → live PDF preview: DAILY ADMISSION Park Ticket **$45.00**, FAST LANE $49.00 and $85.00, and the footer
+**"Some product pricing has not been recently verified."** Check Classic, Modern and Compact. Save PDF and Print
+(Microsoft Print to PDF) show the same.
+
+S.7 Optional (still offline): **Check Online** on August 20 — the prices and the "Last verified … 3:10 PM" lines stay.
+
+S.8 **Close and reopen** the app (still offline). August 20 → Products & Pricing: the same three prices, the same
+"Last verified Aug 20 at 3:10 PM ET" lines, Park Ticket still $45.00 effective. Note: because August 20 is past and now
+has a saved draft, the app finalizes it at startup — **History** lists August 20, 2026, and its PDF shows the same
+prices, $45.00 and the footer note. This synthetic History entry stays in the CarowindsTest account only.
+
+S.9 Close the app; in the harness folder run `.\carowinds-pricing-retention-harness.exe verify` → eight `[PASS]` lines
+and **RESULT: PASS**. Screenshot.
+
+S.10 Light and Dark (Settings → Appearance): the "Last verified …" lines are readable in both. Turn the network back on
+when finished. Never point Personal Sync at the real shared folder from this account.
+
+**Evidence that confirms the fix:** S.3 and S.9 show the Aug 20 prices still stored as `Verified` at 3:10 PM after a
+successful 10:15 PM answer that no longer lists the date (the same harness run against the unfixed source reports
+`FAIL`: "last verified result is 'Unavailable'", "prices none"); S.4 shows the UI keeps them with the not-on-sale
+wording; S.6/S.8 show the PDF and the restart keep them, with the override intact.
+
 ## Reporting
 
 Send the PASS / FAIL / NOT EXECUTED list with notes and screenshots. Windows validation of this fix is **not complete**
