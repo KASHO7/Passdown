@@ -6,7 +6,7 @@ Status: implemented locally / awaiting Windows validation (local test candidate 
 |---|---|
 | Branch | `feature/passdown-redesign` (local; nothing pushed) |
 | Starting commit | `700d881` (Phase 37D-6, documentation only) |
-| Ending commits | `1be060d` (fix and regression tests), then documentation commits (this record, specification, architecture, Windows checklist) |
+| Ending commits | `1be060d` (fix and regression tests), `42f6a7b` (specification, architecture, record, checklist; documentation only), then a documentation commit recording the Windows candidate |
 | Reviewed source baseline | `1be060d` (tests, build and measurements ran on this production source) |
 | Dirty-tree caveats | Clean at start; no unrelated changes present |
 | Authorization | Owner brief "Carowinds Operations — Pre-RC.15 Pricing Reliability Fix: Preserve Verified Daily Pricing After Park Closing" (2026-11-27). Implementation gate (§13): local, bounded, no schema, Personal Sync or historical-pricing-format change, so implemented under that authorization |
@@ -143,6 +143,20 @@ No measurable difference: run-to-run spread (shown by the untouched Price Histor
 volume is identical; the price-update path adds one indexed SQLite point read only when a dated pricing source returns
 a payload-less no-offer answer, and no read otherwise. Preview coalescing, the price-history reader and snapshot cache,
 accesso coalescing, direct PDFium rendering and the Lato font path are untouched.
+
+## 10. Windows LOCALTEST package
+
+| | RC15-PricingRetention-LOCALTEST |
+|---|---|
+| Source commit | `42f6a7b` (production source identical to `1be060d`) |
+| Version shown | `0.1.0-rc.15-LOCALTEST.pricing-retention` (source `<Version>` still `0.1.0-rc.14`) |
+| ZIP | `artifacts/local-test/RC15-PricingRetention-LOCALTEST/LOCAL-ONLY-RC15-PricingRetention-LOCALTEST-win-x64.zip` |
+| Size / files | 76,543,573 bytes; 308 files |
+| SHA-256 | `080ffc5765110f35a137bb08d276e2ec2ce9d19c7a412ab9287ec5835345d191` |
+| Package validation | `Build-PortableRelease.ps1 -LocalTestLabel … -LocalTestVersion …` content validation passed for folder and ZIP; no database, WAL/SHM, draft, preference, weather cache, key, signature, manifest, PDB or PDF file |
+| Real-ZIP test | `RealReleaseZip` passed against this ZIP (a bogus path fails) |
+| Earlier artifacts | All 15,329 earlier files under `artifacts/` (39 under `artifacts/releases`) re-hashed byte-identical |
+| Windows checklist | [rc15-pricing-retention-localtest-windows-checklist.md](releases/rc15-pricing-retention-localtest-windows-checklist.md) — deterministic reproduction: Check Online on today after closing; status **NOT EXECUTED** |
 
 ## Validation
 

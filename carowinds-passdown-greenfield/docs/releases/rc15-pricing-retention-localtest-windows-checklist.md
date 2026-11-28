@@ -1,7 +1,7 @@
 # RC15 local Windows test candidate — post-closing pricing retention
 
 **LOCAL-ONLY. Not a release.** It is not pushed, tagged, signed or published, and it has no update manifest.
-RC.14 (published prerelease `v0.1.0-rc.14`) and every earlier file under `artifacts/` are unchanged: __ARTIFACT_COUNT__
+RC.14 (published prerelease `v0.1.0-rc.14`) and every earlier file under `artifacts/` are unchanged: all 15,329 (39 under `artifacts/releases`)
 were re-hashed after this build.
 
 This candidate fixes the Windows report of 2026-11-27: after the park closed, Daily Admission and Fast Lane prices
@@ -12,13 +12,13 @@ Record: [pre-rc15-post-closing-pricing-retention.md](../pre-rc15-post-closing-pr
 
 | | RC15-PricingRetention-LOCALTEST |
 |---|---|
-| Source commit | __SOURCE_COMMIT__ |
+| Source commit | `42f6a7b` (production source identical to `1be060d`; the later commit is documentation only) |
 | Version shown in the app | `0.1.0-rc.15-LOCALTEST.pricing-retention` |
 | Package | `artifacts/local-test/RC15-PricingRetention-LOCALTEST/LOCAL-ONLY-RC15-PricingRetention-LOCALTEST-win-x64.zip` |
-| ZIP size / files | __ZIP_SIZE__ |
-| ZIP SHA-256 | `__ZIP_SHA__` |
+| ZIP size / files | 76,543,573 bytes (73.0 MB); 308 files |
+| ZIP SHA-256 | `080ffc5765110f35a137bb08d276e2ec2ce9d19c7a412ab9287ec5835345d191` |
 | EXE inside the ZIP | `LOCAL-ONLY-RC15-PricingRetention-LOCALTEST-win-x64\Carowinds.Passdown.Desktop.exe` |
-| Mac verification | __MAC_VERIFICATION__ |
+| Mac verification | Deterministic suite 6,518 passed / 0 failed / 0 skipped; repository guards 31/31; clean Release build 0 warnings / 0 errors; script content validation (folder and ZIP, 308 files); `RealReleaseZip` passed (a bogus path fails); marker names `42f6a7b`; no database, WAL/SHM, draft, weather cache, preference file, key, signature, update-manifest, PDB or PDF file in the ZIP; all 15,329 earlier artifact files (including RC.14) re-hashed byte-identical |
 
 The source `<Version>` is still `0.1.0-rc.14` (not bumped). Database schema 18, no migration. Personal Sync, the draft
 format and finalized History are unchanged.
