@@ -46,13 +46,19 @@ public sealed record DashboardPricingPresentation(
         }
 
         var rows = summary.Items
-            .Select(item => new DashboardPriceRowPresentation(item.ProductName, PriceFormatting.Format(item.OfficialPriceAmount), item.State == AssociateVerificationState.Stale))
+            .Select(item => new DashboardPriceRowPresentation(
+                item.ProductName,
+                PriceFormatting.Format(item.OfficialPriceAmount),
+                item.State is AssociateVerificationState.Stale or AssociateVerificationState.PreviouslyVerified))
             .ToList();
 
         var isStale = rows.Any(row => row.IsStale);
+        var anyCouldNotRecheck = summary.Items.Any(item => item.State == AssociateVerificationState.Stale);
         var verified = summary.Items.Where(item => item.LastVerifiedAt.HasValue).Select(item => item.LastVerifiedAt!.Value).ToList();
         string? freshness = isStale
-            ? "Some prices could not be rechecked — may be out of date"
+            ? anyCouldNotRecheck
+                ? "Some prices could not be rechecked — may be out of date"
+                : "Some prices are no longer listed — availability not confirmed" // pre-RC.15 previously verified
             : verified.Count > 0 ? $"Verified {EasternTimestampFormat.Relative(verified.Min(), nowUtc)}" : null;
 
         var more = summary.TotalCount - rows.Count;

@@ -25,7 +25,9 @@ public sealed record HistoricalPricingSourceCapability(SourceCategory Category, 
 /// live-checked 2026-10-16: every accesso dated keyword answered "No dates found" for past open
 /// dates, and every catalog page lists only today's offering. No official source of past ticket
 /// prices was found, so no historical pricing backfill exists — past dates use only what was recorded.
-/// Diagnostics print this list; nothing branches on it.
+/// Diagnostics print this list. Pre-RC.15: <see cref="Refresh.VerifiedDatedPriceRetention"/> reads the
+/// <see cref="HistoricalPricingCapability.StoredObservationsOnly"/> set so a payload-less "no longer offered"
+/// answer never erases those recorded exact-date prices.
 /// </summary>
 public static class HistoricalPricingSourceCapabilities
 {

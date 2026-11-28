@@ -379,7 +379,7 @@ public sealed class OperationsDashboardService(
     ];
 
     private static DashboardSourceStatus ClassifyDatedCategory(SourceCategory category, AssociateVerificationState state) =>
-        state == AssociateVerificationState.Unavailable && OptionalPromotionalDatedCategories.Contains(category)
+        state is AssociateVerificationState.Unavailable or AssociateVerificationState.PreviouslyVerified && OptionalPromotionalDatedCategories.Contains(category)
             ? DashboardSourceStatus.NotApplicable
             : Classify(state);
 
@@ -392,6 +392,8 @@ public sealed class OperationsDashboardService(
         AssociateVerificationState.Unavailable => DashboardSourceStatus.Unavailable,
         AssociateVerificationState.Error => DashboardSourceStatus.VerificationIssue,
         AssociateVerificationState.Stale => DashboardSourceStatus.Stale,
+        // Pre-RC.15: the latest successful check found the date no longer offered — the same source answer as Unavailable.
+        AssociateVerificationState.PreviouslyVerified => DashboardSourceStatus.Unavailable,
         _ => DashboardSourceStatus.NotChecked,
     };
 }

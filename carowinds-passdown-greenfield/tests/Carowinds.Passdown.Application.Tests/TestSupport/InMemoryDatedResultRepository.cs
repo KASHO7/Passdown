@@ -34,4 +34,11 @@ internal sealed class InMemoryDatedResultRepository : IDatedResultRepository
         _records[key] = new DatedResultRecord(key, existing?.SuccessEvidence, existing?.SuccessPayloadJson, evidence);
         return Task.CompletedTask;
     }
+
+    public Task RecordNoOfferAttemptRetainingVerifiedAsync(DatedResultKey key, SourceEvidence evidence, CancellationToken cancellationToken = default)
+    {
+        var existing = _records.GetValueOrDefault(key);
+        _records[key] = new DatedResultRecord(key, existing?.SuccessEvidence, existing?.SuccessPayloadJson, evidence);
+        return Task.CompletedTask;
+    }
 }

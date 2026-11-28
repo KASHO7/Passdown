@@ -40,6 +40,7 @@ public sealed record CategoryStatusPresentation(string CategoryDisplayName, stri
             AssociateVerificationState.Closed => "Not available for this date",
             AssociateVerificationState.Error => "Unable to verify current pricing",
             AssociateVerificationState.Stale => "Unable to recheck — no earlier information is available",
+            AssociateVerificationState.PreviouslyVerified => "No longer listed for this date",
             AssociateVerificationState.Verified => "Verified — no products currently listed",
             _ => "Not checked yet",
         };
